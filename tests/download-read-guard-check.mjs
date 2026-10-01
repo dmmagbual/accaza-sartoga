@@ -23,6 +23,9 @@ export const SMALL_NODES = new Set([
   '/', 'admins', 'adminPerms', 'settings', 'config', 'payment', 'calBlocks', 'availability', 'usageTypes', 'expenseItems', 'expenseCategories',
   'cfAccounts', 'chartOfAccounts', 'platformVarAccounts', 'pettyCashSettings', 'posStaff', 'staffPushTokens', 'channelPrices',
   'posActiveShift', 'accountingPeriods', 'publicCatalogVersion', 'dataVersions', 'undepositedOpeningBalance', 'documentCounters',
+  // BIR tax regime: one fixed-shape config object (mode, rates, TIN, checklist ticks) that never
+  // grows with sales, cash or history volume; every financial posting path reads it.
+  'taxSettings',
   'books/monthlyNet', 'books/monthlyNetMeta', 'books/config', 'books/reconciliationConfig', 'books/chartCodeMigrations',
   'cashBalanceSummary', 'cashBalanceSummaryMeta', 'cashFlowIndexMeta', 'undepositedPageIndexMeta', 'supplierAdvanceShiftIndexMeta',
   'systemHealth', 'systemMaintenance', 'supplierMigrations', 'historicalArchiveSync', 'posSettings/invCategories', 'posSettings/tolerances',

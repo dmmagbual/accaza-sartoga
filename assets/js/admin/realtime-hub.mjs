@@ -100,7 +100,7 @@ function createSubscriptionHub(database,ops){
   }
   var critical={settings:1,activeOrders:1,posActiveShift:1,'.info/connected':1};
   var scopes={
-    categories:['dashboard','pos','menu','availability','recipes','analytics'],menuItems:['dashboard','pos','menu','availability','recipes','analytics'],optionGroups:['pos','menu','availability','recipes'],packages:['pos','menu','recipes','inventory'],availability:['dashboard','pos','menu','availability'],channelPrices:['pos','menu'],posStaff:['pos','ops','possettings'],posSettings:['pos','ops','possettings','recipes'],
+    categories:['dashboard','pos','menu','availability','recipes','analytics'],menuItems:['dashboard','pos','menu','availability','recipes','analytics'],optionGroups:['pos','menu','availability','recipes'],packages:['pos','menu','recipes','inventory'],availability:['dashboard','pos','menu','availability'],channelPrices:['pos','menu'],posStaff:['pos','ops','possettings'],posSettings:['pos','ops','possettings','recipes'],taxSettings:['pos','possettings'],
     orders:['dashboard','saleshistory','analytics','pnl','payouts','stockvalue','dailyreport','cashflow','receivables'],
     // Dashboard and Analytics use compact Firestore report summaries. They must
     // never attach the raw archived-order period just to draw aggregate cards.

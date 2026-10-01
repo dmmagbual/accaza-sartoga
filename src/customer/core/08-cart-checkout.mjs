@@ -18,6 +18,8 @@ function updateCartDisplay(){
       +'</div></div></div>';
   }).join('');
   var pkgExtra=(window.__custPkgs||[]).reduce(function(s,p){return s+(Number(p.extraCost)||0);},0);if(pkgExtra){total+=pkgExtra;box.innerHTML+='<div style="display:flex;justify-content:space-between;padding:0.55rem 0;color:var(--bd);font-size:0.82rem;"><span>Package extra charges</span><strong>₱'+pkgExtra.toLocaleString()+'</strong></div>';}
+  var taxLine=window.__custTaxLine?window.__custTaxLine(total):null;
+  if(taxLine){box.innerHTML+='<div style="display:flex;justify-content:space-between;padding:0.55rem 0;color:var(--bd);font-size:0.82rem;"><span>'+taxLine.label+'</span><strong>₱'+taxLine.amount.toLocaleString()+'</strong></div>';total=taxLine.total;}
   // Wire cart qty buttons
   box.querySelectorAll('button[data-cartkey]').forEach(function(btn){
     btn.addEventListener('click',function(e){if(e&&e.stopPropagation)e.stopPropagation();

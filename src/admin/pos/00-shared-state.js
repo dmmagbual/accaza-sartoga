@@ -36,6 +36,15 @@ function telemetry(){return window.AccazaTelemetry||{start:function(){},end:func
 function capturePosDraft(root){if(!root)return;var active=document.activeElement,focusId=active&&root.contains(active)?active.id:'';root.querySelectorAll('input[id],textarea[id],select[id]').forEach(function(el){posDraft[el.id]={value:el.value,checked:!!el.checked,type:el.type};});posDraft.__focus=focusId;}
 function restorePosDraft(root){if(!root)return;Object.keys(posDraft).forEach(function(id){if(id==='__focus')return;var el=document.getElementById(id),v=posDraft[id];if(!el||!root.contains(el))return;if(v.type==='checkbox'||v.type==='radio')el.checked=v.checked;else el.value=v.value;});var f=posDraft.__focus&&document.getElementById(posDraft.__focus);if(f&&root.contains(f))setTimeout(function(){try{f.focus();}catch(e){}},0);}
 var DISC_TYPES={senior:{label:'Senior Citizen',rate:0.20},pwd:{label:'PWD',rate:0.20},athlete:{label:'National Athlete',rate:0.20},promo5:{label:'5% Drink Promo',rate:0.05}};
+/* Effective tax regime right now, mirroring Financial.effectiveTaxFor on the server.
+   Returns null before the effective date so statutory discounts keep their old basis. */
+function posTaxNow(){
+  var ts=window.__taxSettings||{};
+  if(ts.mode!=='vat'&&ts.mode!=='percentage')return null;
+  if(Number(ts.effectiveAt||0)>Date.now())return null;
+  var rate=Number(ts.mode==='vat'?ts.vatRate:ts.percentageRate),fallback=ts.mode==='vat'?12:3;
+  return {mode:ts.mode,rate:(isFinite(rate)&&rate>0&&rate<=100)?rate:fallback,inclusive:ts.inclusive!==false};
+}
 
 function A(){return window.__accaza;}
 /* Platform (Grab/FoodPanda) order-number key — MUST match functions/index.js platformRefKey. */
@@ -230,6 +239,7 @@ function init(){
   var a=A();
   window.__online=(typeof navigator!=='undefined')?navigator.onLine:true;
   a.subscribe('posSettings', function(s){ window.__posSettings=s.val()||{}; if(document.getElementById('posPay'))renderPosCart(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
+  a.subscribe('taxSettings', function(s){ window.__taxSettings=s.val()||{}; });
   a.subscribe('cfAccounts',function(s){paymentAccountsMap=s.val()||{};if(document.getElementById('posPay'))renderPosCart();});
   a.subscribe('booksChart',function(s){booksChartMap=s.val()||{};if(isTab('purchases'))renderPurchases();});
   a.subscribe('.info/connected', function(sn){ window.__online=(sn.val()===true); updateOfflineUI(); if(window.__online) flushOfflineQueue(); });

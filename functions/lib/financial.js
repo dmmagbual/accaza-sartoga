@@ -48,11 +48,56 @@ function unmappedOrderPayments(order, accounts) {
   if (order.voided || !["Completed", "Received"].includes(status) || order.paymentStatus === "pending" || ["grabfood", "foodpanda"].includes(channel)) return [];
   return paymentRows(order).filter((payment) => payment.method.toLowerCase() !== "cash" && !accountForPayment(payment, accounts || {}));
 }
-function orderPosting(order, accounts) {
+// BIR tax split. The server derives the effective tax from /taxSettings with an
+// effective-date wall (sales completed before effectiveAt keep their original
+// treatment). Inclusive (default): prices contain the tax — VAT revenue is credited
+// net with the VAT portion to liability:output_vat, percentage tax books a balanced
+// expense/liability pair. Exclusive: tax is added on top — the menu subtotal is the
+// net sale and the collected add-on goes straight to the payable. Refunds reverse the
+// same split so the orderNetSales === sourceNetSales audit identity holds on both legs.
+function effectiveTaxFor(taxSettings, occurredAt) {
+  taxSettings = taxSettings || {};
+  if (taxSettings.mode !== "vat" && taxSettings.mode !== "percentage") return null;
+  if (Number(taxSettings.effectiveAt || 0) > Number(occurredAt) || Number(occurredAt || 0) <= 0) return null;
+  const fallback = taxSettings.mode === "vat" ? 12 : 3;
+  const rate = Number(taxSettings.mode === "vat" ? taxSettings.vatRate : taxSettings.percentageRate);
+  return {mode: taxSettings.mode, rate: Number.isFinite(rate) && rate > 0 && rate <= 100 ? rate : fallback, inclusive: taxSettings.inclusive !== false};
+}
+function taxSplit(base, tax) {
+  base = money(base);
+  const mode = tax && tax.mode;
+  if ((mode !== "vat" && mode !== "percentage") || !(base > 0)) return {mode: "", base, rate: 0, taxAmount: 0, net: base, inclusive: true};
+  const rate = Number(tax.rate) > 0 ? Number(tax.rate) : (mode === "vat" ? 12 : 3);
+  // base is always the amount actually charged. VAT extraction is the same formula
+  // whether the tax sat inside the price or was added on top. Percentage tax differs:
+  // inclusive carves rate% of the charged amount (the shelf price is the gross sale);
+  // exclusive takes rate/(100+rate) because the add-on inflated the collection.
+  if (mode === "vat") {const taxAmount = money(base - base / (1 + rate / 100)); return {mode, base, rate, taxAmount, net: money(base - taxAmount), inclusive: tax.inclusive !== false};}
+  const inclusive = tax.inclusive !== false;
+  const taxAmount = inclusive ? money(base * rate / 100) : money(base * rate / (100 + rate));
+  return {mode, base, rate, taxAmount, net: inclusive ? base : money(base - taxAmount), inclusive};
+}
+// Tax base = the amount actually collected for the sale: customer payment total
+// in-store, gross platform sale online (platforms report and remit on gross).
+function orderTaxBase(order) {
+  order = order || {};
+  const channel = safe(order.channel).toLowerCase(), platform = channel === "grabfood" || channel === "foodpanda";
+  return money(platform ? (order.grossPlatform != null ? order.grossPlatform : (order.subtotal != null ? order.subtotal : order.total)) : order.total);
+}
+// Output VAT currently attributable to the order after refunds: full VAT less
+// the VAT already reversed on refunds. Mirrors the movement math exactly
+// (same money() rounding steps) so close/reconciliation never drifts a cent.
+function orderOutputVat(order, tax) {
+  if (!tax || tax.mode !== "vat") return 0;
+  const base = orderTaxBase(order), refund = money(order && order.refundAmount);
+  return money(Math.max(0, money(taxSplit(base, tax).taxAmount - taxSplit(refund, tax).taxAmount)));
+}
+function orderPosting(order, accounts, tax) {
   order = order || {}; const id = safe(order.id); if (!id) throw new Error("Order ID is required.");
   const channel = safe(order.channel || "instore").toLowerCase();
   const platform = channel === "grabfood" || channel === "foodpanda";
   const lines = [], cashEntries = [], warnings = [];
+  let taxStamp = null;
   if (platform) {
     const gross = money(order.grossPlatform != null ? order.grossPlatform : (order.subtotal != null ? order.subtotal : order.total));
     const commission = money(order.commission), discount = money(order.platformDiscount), wht = money(order.platformWht), vat = money(order.platformVat), adsMarketing=money(order.platformAdsMarketing), marketingFee=money(order.platformMarketingFee);
@@ -72,7 +117,21 @@ function orderPosting(order, accounts) {
     if (vat) lines.push(line("expense:platform_service_vat", vat, 0, "Platform service VAT"));
     const debits = totals(lines).debit;
     if (Math.abs(debits - gross) > 0.009) lines.push(line(debits < gross ? "expense:platform_estimate_variance" : "revenue:platform_estimate_variance", debits < gross ? money(gross - debits) : 0, debits > gross ? money(debits - gross) : 0, "Platform estimate rounding/variance"));
-    lines.push(line("revenue:sales", 0, gross, "Platform gross sales"));
+    // Platforms set the final price, so platform sales are always tax-inclusive:
+    // the reported gross already contains the tax — an exclusive add-on never happens there.
+    const split = taxSplit(gross, Object.assign({}, tax, {inclusive: true}));
+    if (split.mode === "vat" && split.taxAmount > 0) {
+      lines.push(line("revenue:sales", 0, split.net, "Platform net sales (VAT-exclusive)"));
+      lines.push(line("liability:output_vat", 0, split.taxAmount, "Output VAT"));
+      taxStamp = {mode: split.mode, rate: split.rate, base: split.base, amount: split.taxAmount, inclusive: true};
+    } else {
+      lines.push(line("revenue:sales", 0, gross, "Platform gross sales"));
+      if (split.mode === "percentage" && split.taxAmount > 0) {
+        lines.push(line("expense:percentage_tax", split.taxAmount, 0, "Percentage tax"));
+        lines.push(line("liability:percentage_tax", 0, split.taxAmount, "Percentage tax payable"));
+        taxStamp = {mode: split.mode, rate: split.rate, base: split.base, amount: split.taxAmount, inclusive: true};
+      }
+    }
   } else {
     const payments = paymentRows(order), total = money(order.total), discount = money(order.discount), loyaltyDiscount = money(order.loyaltyDiscount), prepaidRefund = money(order.preCompletionCashRefund && order.preCompletionCashRefund.amount);
     const gross = money(order.subtotal != null ? order.subtotal : total + discount + loyaltyDiscount);
@@ -91,15 +150,57 @@ function orderPosting(order, accounts) {
     } else if (Math.abs(paid - total) > 0.009) lines.push(line(paid < total ? "asset:unmapped_payment:balance" : "revenue:payment_overage", paid < total ? money(total - paid) : 0, paid > total ? money(paid - total) : 0, "Payment allocation difference"));
     if (discount) lines.push(line("expense:customer_discount", discount, 0, "Customer discount"));
     if (loyaltyDiscount) lines.push(line("expense:loyalty_discount", loyaltyDiscount, 0, order.loyaltyRewardId ? `Loyalty reward · ${safe(order.loyaltyRewardId)}` : "Loyalty reward discount"));
-    lines.push(line("revenue:sales", 0, gross, channel === "online" ? "Online order gross sales" : "In-store gross sales"));
+    const split = taxSplit(total, tax);
+    if (split.mode === "vat" && split.taxAmount > 0) {
+      // Exclusive: the menu subtotal is already the net sale, so revenue is credited
+      // in full and only the collected add-on goes to output VAT.
+      lines.push(line("revenue:sales", 0, split.inclusive === false ? gross : money(gross - split.taxAmount), channel === "online" ? "Online net sales (VAT-exclusive)" : "In-store net sales (VAT-exclusive)"));
+      lines.push(line("liability:output_vat", 0, split.taxAmount, split.inclusive === false ? "Output VAT (added on top)" : "Output VAT"));
+      taxStamp = {mode: split.mode, rate: split.rate, base: split.base, amount: split.taxAmount, inclusive: split.inclusive};
+    } else {
+      lines.push(line("revenue:sales", 0, gross, channel === "online" ? "Online order gross sales" : "In-store gross sales"));
+      if (split.mode === "percentage" && split.taxAmount > 0) {
+        if (split.inclusive === false) {
+          // Exclusive: the customer paid this tax on top, so it is a pure payable —
+          // no expense pair; revenue stays at the menu subtotal.
+          lines.push(line("liability:percentage_tax", 0, split.taxAmount, "Percentage tax payable (added on top)"));
+        } else {
+          lines.push(line("expense:percentage_tax", split.taxAmount, 0, "Percentage tax"));
+          lines.push(line("liability:percentage_tax", 0, split.taxAmount, "Percentage tax payable"));
+        }
+        taxStamp = {mode: split.mode, rate: split.rate, base: split.base, amount: split.taxAmount, inclusive: split.inclusive};
+      }
+    }
   }
   const sum = assertBalanced(lines);
-  return {type: "order_sale", sourceType: "order", sourceId: id, channel, amount: sum.credit, lines, cashEntries, warnings};
+  return {type: "order_sale", sourceType: "order", sourceId: id, channel, amount: sum.credit, lines, cashEntries, warnings, tax: taxStamp};
 }
-function reversalPosting(order, amount, kind, accounts, settlementPayments) {
+function reversalPosting(order, amount, kind, accounts, settlementPayments, tax) {
   order = order || {}; const value = money(amount); if (!(value > 0)) throw new Error("Reversal amount must be positive.");
   const channel = safe(order.channel || "instore").toLowerCase(); const platform = channel === "grabfood" || channel === "foodpanda"; const lines = [], cashEntries = [], warnings = [];
-  lines.push(line("revenue:sales_reversal", value, 0, kind === "void" ? "Voided sale" : "Sales refund"));
+  // Refunds reverse the same tax split as the original sale: the VAT portion
+  // comes off output VAT payable (not sales reversal) so sourceNetSales still
+  // equals orderNetSales; percentage tax reverses its own pair. Platform sales
+  // are always tax-inclusive (the platform set the final price), and exclusive
+  // percentage tax reverses only the payable because no expense was ever booked.
+  const split = taxSplit(value, platform ? Object.assign({}, tax, {inclusive: true}) : tax);
+  let taxStamp = null;
+  if (split.mode === "vat" && split.taxAmount > 0) {
+    lines.push(line("revenue:sales_reversal", split.net, 0, kind === "void" ? "Voided sale (net of VAT)" : "Sales refund (net of VAT)"));
+    lines.push(line("liability:output_vat", split.taxAmount, 0, "Reverse output VAT"));
+    taxStamp = {mode: split.mode, rate: split.rate, base: split.base, amount: split.taxAmount, inclusive: split.inclusive};
+  } else if (split.mode === "percentage" && split.inclusive === false && split.taxAmount > 0) {
+    lines.push(line("revenue:sales_reversal", split.net, 0, kind === "void" ? "Voided sale (net of added tax)" : "Sales refund (net of added tax)"));
+    lines.push(line("liability:percentage_tax", split.taxAmount, 0, "Reverse percentage tax"));
+    taxStamp = {mode: split.mode, rate: split.rate, base: split.base, amount: split.taxAmount, inclusive: split.inclusive};
+  } else {
+    lines.push(line("revenue:sales_reversal", value, 0, kind === "void" ? "Voided sale" : "Sales refund"));
+    if (split.mode === "percentage" && split.taxAmount > 0) {
+      lines.push(line("liability:percentage_tax", split.taxAmount, 0, "Reverse percentage tax"));
+      lines.push(line("expense:percentage_tax", 0, split.taxAmount, "Reverse percentage tax"));
+      taxStamp = {mode: split.mode, rate: split.rate, base: split.base, amount: split.taxAmount, inclusive: split.inclusive};
+    }
+  }
   if (platform) lines.push(line(`asset:platform_receivable:${channel}`, 0, value, "Reduce platform receivable"));
   else {
     let settlements = Array.isArray(settlementPayments) ? settlementPayments.map((row) => ({method: safe(row.method), amount: money(row.amount)})).filter((row) => row.method && row.amount > 0) : [];
@@ -108,7 +209,7 @@ function reversalPosting(order, amount, kind, accounts, settlementPayments) {
     settlements.forEach((chosen) => {if (chosen.method.toLowerCase() === "cash") lines.push(line("asset:register_cash", 0, chosen.amount, "Refund/void settlement")); else { const accountId = accountForPayment(chosen, accounts || {}); lines.push(line(accountId ? `asset:cash_account:${accountId}` : `asset:unmapped_payment:${chosen.method.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, 0, chosen.amount, "Refund/void settlement")); if (accountId) cashEntries.push({id: "", accountId, dir: "out", amount: chosen.amount, category: kind === "void" ? "Void reversal" : "Refund", method: chosen.method}); else warnings.push(`No cash-flow account mapping for ${chosen.method}.`); }});
   }
   assertBalanced(lines);
-  return {type: kind === "void" ? "order_void" : "order_refund", sourceType: "order", sourceId: safe(order.id), channel, amount: value, lines, cashEntries, warnings, settlementPayments: Array.isArray(settlementPayments) ? settlementPayments : []};
+  return {type: kind === "void" ? "order_void" : "order_refund", sourceType: "order", sourceId: safe(order.id), channel, amount: value, lines, cashEntries, warnings, tax: taxStamp, settlementPayments: Array.isArray(settlementPayments) ? settlementPayments : []};
 }
 function movement(type, sourceType, sourceId, lines, extra) {
   assertBalanced(lines); return Object.assign({type: safe(type), sourceType: safe(sourceType), sourceId: safe(sourceId), amount: totals(lines).debit, lines, warnings: []}, extra || {});
@@ -149,12 +250,25 @@ function postingDifference(before, after, type, sourceId, label) {
   return movement(type || "posting_correction", "order", sourceId, lines, {channel: after && after.channel || before && before.channel || ""});
 }
 
-function orderNetSales(order) {
+function orderNetSales(order, tax) {
   order = order || {};
   const channel=safe(order.channel).toLowerCase(),platform=channel==="grabfood"||channel==="foodpanda";
   const gross = money(platform&&order.grossPlatform!=null?order.grossPlatform:(order.subtotal != null ? order.subtotal : order.total));
   const discount=platform?(order.netSalesPlatform!=null?money(Math.max(0,gross-money(order.netSalesPlatform))):money(order.platformDiscount)):money(money(order.discount)+money(order.loyaltyDiscount));
-  return money(Math.max(0, gross - discount - money(order.refundAmount)));
+  const refund = money(order.refundAmount);
+  let net = money(gross - discount - refund);
+  if (tax && tax.mode === "vat") {
+    // Inclusive: revenue is credited net of VAT, so net sales exclude the remaining
+    // output VAT. Exclusive: the menu subtotal is already net, and only the VAT
+    // inside a refund left the payable (not revenue), so that VAT is added back.
+    net = money(tax.inclusive === false ? net + money(taxSplit(refund, tax).taxAmount) : net - orderOutputVat(order, tax));
+  } else if (tax && tax.mode === "percentage" && tax.inclusive === false) {
+    // Exclusive percentage tax books revenue at the menu subtotal and refunds
+    // reverse it net of the collected add-on, so the tax inside a refund is
+    // added back exactly like exclusive VAT.
+    net = money(net + money(taxSplit(refund, tax).taxAmount));
+  }
+  return money(Math.max(0, net));
 }
 
 function sourceNetSales(movements, sourceId) {
@@ -200,4 +314,4 @@ function platformPayoutPosting(payout, definitions) {
   return movement("platform_payout_settlement", "platformPayout", safe(payout.id), lines, {occurredAt:Number(payout.accountingOccurredAt||payout.settledAt||Date.now()),approvalId:safe(payout.approvalId),approvedBy:safe(payout.approvedBy),reconstructedFromPayoutRecord:payout.reconstructedFromPayoutRecord===true});
 }
 
-module.exports = {BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment,unmappedOrderPayments, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting};
+module.exports = {BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting};

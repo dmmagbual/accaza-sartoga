@@ -183,7 +183,9 @@ const {internal: I} = loadFunctions(db, {now: NOW, expose: ['calculateOrderInven
     bounded.cutoff = cutoff(bounded);
     assert.equal(strip(FinancialClose.buildClose(bounded)), strip(FinancialClose.buildClose(full)), `${closeType} ${businessDate} ${shiftId} is unchanged`);
     const whole = db.reads.filter((r) => !r.query && !r.path.includes('/')).map((r) => r.path).sort();
-    assert.deepEqual(whole.filter((p) => !['shifts', 'supplierAdvanceShifts', 'supplierAdvanceShiftIndexMeta'].includes(p)), ['cashCustody', 'financialMovements'], 'only the ledger and custody are read in full');
+    // taxSettings joins the allowed whole reads: one fixed-shape config object (BIR tax regime)
+    // that never grows with history; the close needs it to split net sales from output VAT.
+    assert.deepEqual(whole.filter((p) => !['shifts', 'supplierAdvanceShifts', 'supplierAdvanceShiftIndexMeta'].includes(p)), ['cashCustody', 'financialMovements', 'taxSettings'], 'only the ledger, custody and the tax regime config are read in full');
   }
 }
 

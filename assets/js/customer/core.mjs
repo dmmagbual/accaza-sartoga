@@ -114,7 +114,7 @@ window.enableNotifications=async function(){
 window.__setupPush=setupPush;
 
 // DB refs
-const reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups'),packagesRef=ref(db,'packages'),publicCatalogVersionRef=ref(db,'publicCatalogVersion'),publicOrderStatusRef=ref(db,'publicOrderStatus');
+const reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups'),packagesRef=ref(db,'packages'),publicCatalogVersionRef=ref(db,'publicCatalogVersion'),publicOrderStatusRef=ref(db,'publicOrderStatus'),publicTaxInfoRef=ref(db,'publicTaxInfo');
 window.__custPkgs=[];
 window.__accazaC={db:db,ref:ref,set:set,get:get,onValue:onValue,get menuItemsMap(){return menuItemsMap;},get optionGroupsMap(){return optionGroupsMap;},get packagesMap(){return packagesMap;},getMenuItems:getMenuItems,getCats:getCats,getCatLabel:getCatLabel,getItemOptionGroups:getItemOptionGroups};
 window.__custAddPackage=function(components,meta){(components||[]).forEach(function(c){var key=Date.now()+'_'+Math.random().toString(36).substr(2,5)+Math.floor(Math.random()*99);cart[key]={name:c.name,details:c.details||('pkg: '+meta.name),qty:c.qty,unitTotal:c.unitTotal,cat:c.cat||'',itemKey:c.itemKey,size:c.size||null,optLabels:c.optLabels||[],stream:(meta.type==='promo'?'promo':'events'),pkgId:meta.id,packageRole:c.packageRole||null};});window.__custPkgs.push(meta);updateCartDisplay();renderOrderSection();};
@@ -188,6 +188,18 @@ function renderPublicOrderStatus(){
   syncPlaceOrderButton();
 }
 onValue(publicOrderStatusRef,function(snap){publicOrdersOpen=!!(snap.val()&&snap.val().acceptingOrders===true);renderPublicOrderStatus();},function(){publicOrdersOpen=false;renderPublicOrderStatus();});
+// Tax-exclusive pricing: publicTaxInfo mirrors only mode/rate/inclusive (no TIN or
+// other admin data). The cart adds the same tax the server adds so the customer
+// approves the final total once; the server re-prices and rejects any mismatch.
+var publicTaxInfo=null;
+window.__custTaxLine=function(net){
+  var t=publicTaxInfo;if(!t||(t.mode!=='vat'&&t.mode!=='percentage'))return null;
+  if(t.inclusive!==false)return null;
+  var rate=Number(t.rate)>0&&Number(t.rate)<=100?Number(t.rate):(t.mode==='vat'?12:3);
+  net=Number(net)||0;var add=Math.round(net*rate)/100;
+  return {mode:t.mode,rate:rate,label:(t.mode==='vat'?'VAT ':'Percentage tax ')+rate+'% (added on top)',amount:add,total:Math.round((net+add)*100)/100};
+};
+onValue(publicTaxInfoRef,function(snap){publicTaxInfo=snap.val()||null;if(typeof updateCartDisplay==='function')updateCartDisplay();},function(){publicTaxInfo=null;if(typeof updateCartDisplay==='function')updateCartDisplay();});
 onValue(ref(db,'.info/connected'),function(snap){
   customerLiveConnected=snap.val()===true;
   var badge=document.getElementById('fbSync');
@@ -825,6 +837,8 @@ function updateCartDisplay(){
       +'</div></div></div>';
   }).join('');
   var pkgExtra=(window.__custPkgs||[]).reduce(function(s,p){return s+(Number(p.extraCost)||0);},0);if(pkgExtra){total+=pkgExtra;box.innerHTML+='<div style="display:flex;justify-content:space-between;padding:0.55rem 0;color:var(--bd);font-size:0.82rem;"><span>Package extra charges</span><strong>₱'+pkgExtra.toLocaleString()+'</strong></div>';}
+  var taxLine=window.__custTaxLine?window.__custTaxLine(total):null;
+  if(taxLine){box.innerHTML+='<div style="display:flex;justify-content:space-between;padding:0.55rem 0;color:var(--bd);font-size:0.82rem;"><span>'+taxLine.label+'</span><strong>₱'+taxLine.amount.toLocaleString()+'</strong></div>';total=taxLine.total;}
   // Wire cart qty buttons
   box.querySelectorAll('button[data-cartkey]').forEach(function(btn){
     btn.addEventListener('click',function(e){if(e&&e.stopPropagation)e.stopPropagation();
@@ -915,7 +929,11 @@ window.placeOrder=async function(){
   if(paymentProofBusy){alert('Please wait while the receipt is being optimized.');return;}
   if(!paymentProofData){alert('Please remove and attach the payment proof again.');return;}
   const proofSrc=paymentProofData;
-  const total=Object.values(cart).reduce((s,c)=>s+c.qty*c.unitTotal,0)+(window.__custPkgs||[]).reduce((s,p)=>s+(Number(p.extraCost)||0),0);
+  const netTotal=Object.values(cart).reduce((s,c)=>s+c.qty*c.unitTotal,0)+(window.__custPkgs||[]).reduce((s,p)=>s+(Number(p.extraCost)||0),0);
+  // Menu prices are net; under tax-exclusive pricing the cart and the server both
+  // add the tax on top, so expectedTotal matches the final server-priced total.
+  const taxLine=window.__custTaxLine?window.__custTaxLine(netTotal):null;
+  const total=taxLine?taxLine.total:netTotal;
   const itemsArr=Object.values(cart).map(c=>c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty);
   const lineItemsArr=Object.values(cart).map(c=>({itemKey:c.itemKey||null,size:c.size||null,optLabels:c.optLabels||[],qty:c.qty,stream:c.stream||null,pkg:c.pkgId||null,packageRole:c.packageRole||null}));
   const _sig=phone+'|'+itemsArr.join('~')+'|'+total;

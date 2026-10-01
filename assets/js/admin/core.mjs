@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=633";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=634";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -1303,14 +1303,28 @@ window.printOrder = function(orderId) {
     return {name:match?text.slice(0,match.index).trim():text,qty:match?Math.max(1,Number(match[1])||1):1,total:null};
   });
   var rows=soldLines.length?soldLines.map(function(line){return'<tr><td>'+escHtml(line.name)+' &times;'+escHtml(line.qty)+'</td><td style="text-align:right;">'+(line.total==null?'':receiptPeso(line.total))+'</td></tr>';}).join(''):'<tr><td colspan="2">No item details recorded</td></tr>';
+  /* Tax rendering mirrors Financial.taxSplit on the server: VAT = base - base/(1+rate/100) either way; percentage = base*rate/100 inclusive, base*rate/(100+rate) exclusive (the add-on inflated the charged amount). Tax base matches orderTaxBase (platform gross vs in-store total). Orders charged before a tax regime existed have no o.tax and render exactly as before. */
+  var tax=(o.tax&&(o.tax.mode==='vat'||o.tax.mode==='percentage'))?o.tax:null;
+  var taxRate=tax?(Number(tax.rate)||0):0,taxBase=0,taxAmount=0,taxExclusive=tax?tax.inclusive===false:false;
+  if(tax){
+    var tch=String(o.channel||'').toLowerCase(),tplat=(tch==='grabfood'||tch==='foodpanda');
+    taxBase=Number(tplat?(o.grossPlatform!=null?o.grossPlatform:(o.subtotal!=null?o.subtotal:o.total)):o.total)||0;
+    taxAmount=Math.round((tax.mode==='vat'?taxBase-taxBase/(1+taxRate/100):(taxExclusive?taxBase*taxRate/(100+taxRate):taxBase*taxRate/100))*100)/100;
+  }
   var receiptHtml='<!doctype html><html><head><meta charset="UTF-8"/><title>Receipt '+escHtml(dispRef)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2{text-align:center;margin:0 0 2px;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
-    +'<h2>Accaza Coffee House</h2><div style="text-align:center;">'+escHtml(addr)+'</div><hr>'
+    +'<h2>Accaza Coffee House</h2><div style="text-align:center;">'+escHtml(addr)+'</div>'
+    +(tax&&tax.tin?'<div style="text-align:center;">TIN: '+escHtml(tax.tin)+(tax.branchCode&&tax.branchCode!=='00000'?' / Branch '+escHtml(tax.branchCode):'')+'</div>':'')
+    +(tax?'<div style="text-align:center;font-weight:700;">'+(tax.mode==='vat'?'VAT':'NON-VAT')+'</div>':'')
+    +'<hr>'
     +'<div>Order: '+escHtml(dispRef)+'</div>'+(o.completedOrderCorrection?'<div>Corrects original order: '+escHtml(o.originalOrderId)+'</div>':'')+'<div>'+escHtml(o.date||'')+' '+escHtml(o.time||'')+'</div><div>On Duty: '+escHtml(o.onDuty||o.staff||'-')+'</div><div>Customer: '+escHtml(o.name||'Walk-in')+'</div>'
     +'<hr><table>'+rows+'</table><hr>'
     +'<table><tr><td>Subtotal</td><td style="text-align:right;">'+receiptPeso(o.subtotal!=null?o.subtotal:o.total)+'</td></tr>'
     +((o.discountLines&&o.discountLines.length)?o.discountLines.map(function(d){var lbl={senior:'Senior 20%',pwd:'PWD 20%',athlete:'Athlete 20%',promo5:'Promo 5%'}[d.type]||d.type;return'<tr><td>'+escHtml(lbl)+(d.idNumber?' · '+escHtml(d.idNumber):'')+'</td><td style="text-align:right;">-'+receiptPeso(d.value)+'</td></tr>';}).join(''):'')
     +(function(){var sc=(o.discountLines||[]).reduce(function(s,d){return s+(Number(d.value)||0);},0);var man=(Number(o.discount)||0)-sc;return man>0.005?'<tr><td>Discount</td><td style="text-align:right;">-'+receiptPeso(man)+'</td></tr>':'';})()
     +(Number(o.loyaltyDiscount)>0?'<tr><td>Loyalty reward'+(o.loyaltyRewardName?' · '+escHtml(o.loyaltyRewardName):'')+'</td><td style="text-align:right;">-'+receiptPeso(o.loyaltyDiscount)+'</td></tr>':'')
+    +(tax&&tax.mode==='vat'?'<tr><td>Net of VAT</td><td style="text-align:right;">'+receiptPeso(Math.round((taxBase-taxAmount)*100)/100)+'</td></tr><tr><td>VAT ('+taxRate+'%) '+(taxExclusive?'added':'included')+'</td><td style="text-align:right;">'+receiptPeso(taxAmount)+'</td></tr>':'')
+    +(tax&&tax.mode==='percentage'?'<tr><td>Pct. tax ('+taxRate+'%) '+(taxExclusive?'added':'included')+'</td><td style="text-align:right;">'+receiptPeso(taxAmount)+'</td></tr>':'')
+    +(tax&&Number(o.total)>=1000?'<tr><td>Buyer TIN (&#8369;1,000+)</td><td style="text-align:right;">________</td></tr>':'')
     +'<tr><td><b>TOTAL</b></td><td style="text-align:right;"><b>'+receiptPeso(o.total)+'</b></td></tr>'
     +'<tr><td>Payment</td><td style="text-align:right;">'+escHtml(o.payment||'-')+'</td></tr>'
     +(o.completedOrderCorrection?'<tr><td>Original electronic payment</td><td style="text-align:right;">'+receiptPeso(o.originalPaidTotal)+'</td></tr>'+(Number(o.refundAmount)>0?'<tr><td>Cash refund</td><td style="text-align:right;">-'+receiptPeso(o.refundAmount)+'</td></tr>':''):'')
@@ -1319,7 +1333,7 @@ window.printOrder = function(orderId) {
     +(o.tendered?'<tr><td>Cash</td><td style="text-align:right;">'+receiptPeso(o.tendered)+'</td></tr><tr><td>Change</td><td style="text-align:right;">'+receiptPeso(o.change)+'</td></tr>':'')
     +(o.tipRounding?'<tr><td>Tip / kept change</td><td style="text-align:right;">'+receiptPeso(o.tipRounding)+'</td></tr>':'')
     +'</table><hr><div style="text-align:center;">Salamat! Please come again.</div>'
-    +'<div style="text-align:center;font-size:9px;margin-top:4px;">This is not an official BIR receipt.</div>'
+    +(tax?'<div style="text-align:center;font-size:9px;margin-top:4px;">'+(tax.mode==='vat'?(taxExclusive?'All prices are exclusive of VAT; VAT is added on top.':'All prices are VAT-inclusive.'):(taxExclusive?'All prices are exclusive of '+taxRate+'% percentage tax (NON-VAT); tax is added on top.':'All prices are inclusive of '+taxRate+'% percentage tax (NON-VAT).'))+'</div>':'<div style="text-align:center;font-size:9px;margin-top:4px;">This is not an official BIR receipt.</div>')
     +'<div style="text-align:center;margin-top:8px;"><button id="receiptPrint" type="button">Print</button></div></body></html>';
   var win = window.open('', '_blank', 'width=360,height=640');
   if(!win){alert('Allow pop-ups to print the receipt.');return;}

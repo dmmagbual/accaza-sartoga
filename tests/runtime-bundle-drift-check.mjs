@@ -89,6 +89,9 @@ expectedFunctionExports.push('manageAccazaAiBusiness');
 expectedFunctionExports.push('askAccazaAIStandalone');
 // 25 Sep 2026: evidence-based closing of background-task dead letters from System Health.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getOperationalExceptions')+1,0,'resolveBackgroundFailure');
+// Oct 2026: BIR tax compliance Phase 1 — owner-only VAT / percentage tax regime with the
+// server-side BIR requirement checklist gate and effective-date wall (completed sales never recomputed).
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('managePortalAccount')+1,0,'setTaxSettings');
 const functionsSource=fs.readFileSync(path.join(root,'functions/index.js'),'utf8');
 if(!functionsSource.includes('"x-goog-api-key":key')||functionsSource.includes('generateContent?key='))throw new Error('Accaza AI must authenticate Gemini requests with the current x-goog-api-key header, not a URL query key.');
 if(!functionsSource.includes('const ACCAZA_AI_QUERY_ROLES = ["owner","superadmin","admin","manager","cashier"]')||!functionsSource.includes('ACCAZA_AI_QUERY_ROLES.includes(actor.role)'))throw new Error('Accaza AI must authorize cashiers through the server-side query-role allowlist.');

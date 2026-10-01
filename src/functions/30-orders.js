@@ -290,13 +290,22 @@ exports.createOnlineOrder = onCall(
     const proof = decodePaymentProof(input.proof);
     // Only the menu items, option groups and packages on this order are read (readCatalogKeyed).
     const availSnap = await db.ref("/availability").get();
+    const taxSettings = (await db.ref("/taxSettings").get()).val() || {};
     const priced = await readCatalogKeyed(db, ["menuItems", "optionGroups", "packages"], (maps) => priceOrderLinesServer(input.lineItems, maps.menuItems, maps.optionGroups, availSnap.val() || {}, maps.packages));
-    if (priced.total <= 0 || priced.total > 200000) throw new HttpsError("invalid-argument", "Calculated order total is outside the allowed range.");
+    // Online menu prices are net. Under tax-exclusive pricing the tax is added on top
+    // server-side (VAT and percentage tax alike) so the charged total, the receipt and
+    // the Finance Books all derive from the one final number the customer approved.
+    // The order is stamped with the tax regime even when inclusive so online receipts
+    // show the same VAT/NON-VAT lines as POS receipts.
+    const tax = Financial.effectiveTaxFor(taxSettings, Date.now());
+    let finalTotal = money(priced.total);
+    if (tax && tax.inclusive === false) finalTotal = money(finalTotal + Math.round(finalTotal * tax.rate) / 100);
+    if (priced.total <= 0 || finalTotal > 200000) throw new HttpsError("invalid-argument", "Calculated order total is outside the allowed range.");
     const expectedTotal = Number(input.expectedTotal);
-    if (!Number.isFinite(expectedTotal) || Math.abs(money(expectedTotal) - priced.total) > 0.01) {
-      throw new HttpsError("failed-precondition", `The menu price changed. The current total is PHP ${priced.total.toFixed(2)}. Refresh the menu and review your order.`);
+    if (!Number.isFinite(expectedTotal) || Math.abs(money(expectedTotal) - finalTotal) > 0.01) {
+      throw new HttpsError("failed-precondition", `The menu price changed. The current total is PHP ${finalTotal.toFixed(2)}. Refresh the menu and review your order.`);
     }
-    const signature = crypto.createHash("sha256").update(JSON.stringify({uid, type: orderType, lines: priced.lines, total: priced.total})).digest("hex");
+    const signature = crypto.createHash("sha256").update(JSON.stringify({uid, type: orderType, lines: priced.lines, total: finalTotal})).digest("hex");
     const lockRef = db.ref(`/orderLocks/${uid}/${signature}`);
     const now = Date.now();
     const lock = await lockRef.transaction((current) => {
@@ -310,12 +319,13 @@ exports.createOnlineOrder = onCall(
     const itemText = priced.lines.map((line) => `${line.name}${line.size ? ` (${line.size})` : ""}${line.optLabels.length ? ` [${line.optLabels.join(", ")}]` : ""} x${line.qty}`).join(", ");
     const order = {
       id: orderId, ownerUid: uid, name, phone, type: orderType, address, payment, contact, contactMethod,
-      items: itemText, total: priced.total, notes, status: "Pending", receivedByCustomer: false,
+      items: itemText, subtotal: money(priced.total), total: finalTotal, notes, status: "Pending", receivedByCustomer: false,
+      tax: tax ? {mode: tax.mode, rate: tax.rate, inclusive: tax.inclusive !== false, tin: String(taxSettings.tin || ""), branchCode: String(taxSettings.branchCode || "")} : null,
       time: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit"}).format(nowDate),
       date: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", year: "numeric", month: "long", day: "numeric"}).format(nowDate),
       timestamp: now, lineItems: priced.lines.map(({cat, ...line}) => line), packages: priced.packages,
       extraCost: priced.extraCost, source: "online", pricingVersion: "server-v1", pricedAt: now,
-      channel: "online", paymentStatus: "pending", payments: [{method: payment, amount: priced.total}],
+      channel: "online", paymentStatus: "pending", payments: [{method: payment, amount: finalTotal}],
     };
     const proofPath = `payment-proofs/${uid}/${orderId}.${proof.ext}`;
     const proofFile = getStorage().bucket(PROOF_BUCKET).file(proofPath);
@@ -343,8 +353,8 @@ exports.createOnlineOrder = onCall(
       });
     } catch (error) { logger.warn("Order saved but customer profile update failed", {uid, orderId, error: String(error)}); }
     try { await lockRef.update({id: orderId}); } catch (error) { logger.warn("Order saved but duplicate lock annotation failed", {uid, orderId}); }
-    logger.info("Server-priced online order created", {orderId, uid, total: priced.total, appCheck: Boolean(request.app)});
-    return {orderId, total: priced.total};
+    logger.info("Server-priced online order created", {orderId, uid, total: finalTotal, taxExclusive: Boolean(tax && tax.inclusive === false), appCheck: Boolean(request.app)});
+    return {orderId, total: finalTotal};
   },
 );
 

@@ -63,13 +63,13 @@ exports.recordPlatformCatchup = onCall(
       time: d.toLocaleTimeString("en-PH", {hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila"}),
       timestamp: parsedTs, completedAt: parsedTs, schemaVersion: 2,
     };
-    const accounts = (await db.ref("/cfAccounts").get()).val() || {};
+    const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {};
     const writes = Object.assign({}, approval.usedWrites, {
       [`orders/${oid}`]: order,
       [`operationalAudit/${now}_rekey_${oid}`]: {action: "rekey_platform_order", sourceType: "order", sourceId: oid, platformRef: ref, channel, amount: gross, actorUid: actor.uid, actorRole: actor.role, approvalId: approval.id, reference, orderDate: dateStr, ts: now, schemaVersion: 1},
     });
     await db.ref().update(writes);
-    const posted = await postOrderFinancial(db, order, accounts, {uid: actor.uid, role: actor.role});
+    const posted = await postOrderFinancial(db, order, accounts, {uid: actor.uid, role: actor.role}, taxSettings);
     return {orderId: oid, platformRef: ref, net, financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
   },
 );
