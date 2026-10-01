@@ -16,26 +16,26 @@
 // ---------------------------------------------------------------------------
 function rewardsMembersHtml() {
   var query = _rewardsState.memberQuery || {phone: '', memberId: ''};
-  var html = '<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;">' +
-    '<label style="font-size:.76rem;">Mobile number<input id="memberSearchPhone" value="' + rewardsEscape(query.phone) + '" placeholder="09… or +63…" style="display:block;width:160px;"></label>' +
-    '<label style="font-size:.76rem;">or Member ID<input id="memberSearchId" value="' + rewardsEscape(query.memberId) + '" placeholder="mem_…" style="display:block;width:180px;"></label>' +
-    '<button type="button" id="memberSearch"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Searching…' : 'Look up') + '</button>' +
+  var html = '<div class="rw-search">' +
+    '<div class="rw-field"><label>Mobile number</label><input id="memberSearchPhone" value="' + rewardsEscape(query.phone) + '" placeholder="09… or +63…"></div>' +
+    '<div class="rw-field"><label>or Member ID</label><input id="memberSearchId" value="' + rewardsEscape(query.memberId) + '" placeholder="mem_…"></div>' +
+    '<div class="rw-field rw-field-inline"><label>&nbsp;</label><button type="button" id="memberSearch" class="rw-btn ok"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Searching…' : 'Look up') + '</button></div>' +
     '</div>' +
-    '<div style="font-size:.72rem;color:#666;margin-top:.35rem;">Find one member by exact mobile number or member ID. Browsing the member list is intentionally not possible.</div>';
-  if (_rewardsState.member) html += '<div style="margin-top:.9rem;">' + rewardsMemberCardHtml(_rewardsState.member) + '</div>';
+    '<div class="rw-fineprint">Find one member by exact mobile number or member ID. Browsing the member list is intentionally not possible.</div>';
+  if (_rewardsState.member) html += rewardsMemberCardHtml(_rewardsState.member);
   return html;
 }
 
 function rewardsStatusBadge(status) {
-  var palette = {active: ['#e8f5e9', '#1b5e20', 'Active'], blocked: ['#fde8e8', '#721c24', 'Blocked'], anonymized: ['#eee', '#444', 'Anonymized']};
-  var row = palette[status] || palette.active;
-  return '<span style="display:inline-block;padding:.15rem .5rem;border-radius:999px;font-size:.72rem;background:' + row[0] + ';color:' + row[1] + ';">' + row[2] + '</span>';
+  var cls = {active: 'ok', blocked: 'bad', anonymized: 'off'}[status] || 'ok';
+  var label = {active: 'Active', blocked: 'Blocked', anonymized: 'Anonymized'}[status] || 'Active';
+  return '<span class="rw-badge ' + cls + '">' + label + '</span>';
 }
 
 function rewardsMemberCardHtml(member) {
   var stampsHtml = (member.stamps || []).map(function (currency) {
-    return '<span style="display:inline-flex;align-items:center;margin:0 .8rem .4rem 0;font-size:.82rem;">' +
-      '<span style="display:inline-block;width:13px;height:13px;border-radius:50%;margin-right:.35rem;border:1px solid rgba(0,0,0,.2);background:' + rewardsEscape(currency.color || '#ccc') + ';"></span>' +
+    return '<span class="rw-stamp">' +
+      '<span class="rw-swatch" style="background:' + rewardsEscape(currency.color || '#ccc') + ';"></span>' +
       rewardsEscape(currency.label || currency.code) + ': <strong>&nbsp;' + (Number(currency.balance) || 0) + '</strong></span>';
   }).join('');
   var rows = [
@@ -44,39 +44,39 @@ function rewardsMemberCardHtml(member) {
     ['Member since', member.memberSince ? rewardsDate(member.memberSince) : '—'],
     ['Open reward claims', String(Number(member.openRewards) || 0)],
   ];
-  var html = '<div style="border:1px solid #e3e3e3;border-radius:12px;padding:.9rem;background:#fff;">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap;">' +
-    '<div style="font-size:.95rem;font-weight:600;color:var(--bd);">' + rewardsEscape(member.name || '(name removed)') + '</div>' +
+  var html = '<div class="rw-member">' +
+    '<div class="rw-member-top">' +
+    '<div class="rw-member-name">' + rewardsEscape(member.name || '(name removed)') + '</div>' +
     rewardsStatusBadge(member.status) + '</div>' +
-    '<table style="margin-top:.5rem;border-collapse:collapse;font-size:.8rem;">' +
+    '<div class="rw-kv">' +
     rows.map(function (row) {
-      return '<tr><td style="padding:.15rem .6rem .15rem 0;color:#666;white-space:nowrap;">' + row[0] + '</td><td style="padding:.15rem 0;">' + row[1] + '</td></tr>';
-    }).join('') + '</table>' +
-    '<div style="margin-top:.6rem;font-size:.76rem;color:#666;">Stamps held</div>' +
-    '<div style="margin-top:.25rem;">' + (stampsHtml || '<span style="font-size:.8rem;color:#666;">None.</span>') + '</div>';
+      return '<div class="rw-kv-row"><span class="rw-kv-key">' + row[0] + '</span><span class="rw-kv-val">' + row[1] + '</span></div>';
+    }).join('') + '</div>' +
+    '<div class="rw-stamplist-label">Stamps held</div>' +
+    '<div class="rw-stamplist">' + (stampsHtml || '<span class="rw-cell-sub">None.</span>') + '</div>';
 
   if (member.status === 'anonymized') {
-    html += '<div style="margin-top:.8rem;padding:.6rem;border-radius:8px;background:#eee;color:#444;font-size:.78rem;">' +
+    html += '<div class="rw-mutedbox">' +
       'Personal data was removed' + (member.anonymizedAt ? (' on ' + rewardsDate(member.anonymizedAt)) : '') +
       '. The ledger, balances and reward claims are kept for accounting, and no further change is possible on this record.</div>';
   } else if (_rewardsState.anonymizeArmed === member.memberId) {
-    html += '<div style="margin-top:.8rem;border:1px solid #b35b5b;border-radius:10px;padding:.7rem;background:#fdf3f3;">' +
-      '<div style="font-size:.8rem;font-weight:600;color:#721c24;">Erase personal data — permanent</div>' +
-      '<div style="font-size:.74rem;color:#555;margin-top:.3rem;">This deletes the member\'s name, mobile number and badge forever. Any stamps they still hold are forfeited. ' +
+    html += '<div class="rw-dangerbox">' +
+      '<div class="rw-dangerbox-title">Erase personal data — permanent</div>' +
+      '<div class="rw-dangerbox-body">This deletes the member\'s name, mobile number and badge forever. Any stamps they still hold are forfeited. ' +
       'Ledger entries, balances and reward claims are kept for accounting, but the person behind the record can never be identified or restored.</div>' +
-      '<label style="font-size:.76rem;margin-top:.5rem;display:block;">Type ANONYMIZE (all caps) to continue:' +
-      '<input id="memberAnonymizeWord" autocomplete="off" style="display:block;width:170px;margin-top:.25rem;"></label>' +
-      '<div style="display:flex;gap:.4rem;margin-top:.5rem;">' +
-      '<button type="button" id="memberAnonymizeConfirm"' + (_rewardsState.busy ? ' disabled' : '') + ' style="border-color:#b35b5b;color:#721c24;background:#fff;">' + (_rewardsState.busy ? 'Erasing…' : 'Erase forever') + '</button>' +
-      '<button type="button" id="memberAnonymizeCancel"' + (_rewardsState.busy ? ' disabled' : '') + '>Cancel</button></div></div>';
+      '<div class="rw-field"><label>Type ANONYMIZE (all caps) to continue:</label>' +
+      '<input id="memberAnonymizeWord" autocomplete="off"></div>' +
+      '<div class="rw-form-actions">' +
+      '<button type="button" id="memberAnonymizeConfirm" class="rw-btn danger"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Erasing…' : 'Erase forever') + '</button>' +
+      '<button type="button" id="memberAnonymizeCancel" class="rw-btn sec"' + (_rewardsState.busy ? ' disabled' : '') + '>Cancel</button></div></div>';
   } else {
-    html += '<div style="margin-top:.8rem;display:flex;gap:.4rem;flex-wrap:wrap;">' +
+    html += '<div class="rw-actions-row">' +
       (member.status === 'blocked'
-        ? '<button type="button" data-memberunblock="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + '>Unblock member</button>'
-        : '<button type="button" data-memberblock="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + '>Block member</button>') +
-      '<button type="button" data-memberanonymize="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + ' style="border-color:#b35b5b;color:#721c24;background:#fff;">Erase personal data…</button>' +
+        ? '<button type="button" class="rw-btn sec" data-memberunblock="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + '>Unblock member</button>'
+        : '<button type="button" class="rw-btn sec" data-memberblock="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + '>Block member</button>') +
+      '<button type="button" class="rw-btn danger" data-memberanonymize="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + '>Erase personal data…</button>' +
       '</div>' +
-      '<div style="font-size:.72rem;color:#666;margin-top:.4rem;">Blocking keeps every stamp and only pauses earning and redemption. Erasing is permanent: the member\'s name, number and badge are deleted, and any stamps still held are forfeited.</div>';
+      '<div class="rw-fineprint">Blocking keeps every stamp and only pauses earning and redemption. Erasing is permanent: the member\'s name, number and badge are deleted, and any stamps still held are forfeited.</div>';
   }
   return html + '</div>';
 }

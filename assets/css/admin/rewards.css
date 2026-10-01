@@ -1,0 +1,114 @@
+/* Rewards program tab (admin). Scoped to #rewardsRoot so nothing leaks to other screens.
+   Tokens come from site.css: --bd ink, --bl brass, --cr cream, --cd camel, --tl sage. */
+
+/* --- page head ---------------------------------------------------------- */
+#rewardsRoot .rw-head{display:flex;justify-content:space-between;align-items:flex-start;gap:.6rem;flex-wrap:wrap;margin-bottom:.9rem;}
+#rewardsRoot .rw-title{margin:0;font-family:'Playfair Display',serif;color:var(--bd);font-size:1.3rem;}
+#rewardsRoot .rw-sub{font-size:.78rem;color:var(--tl);margin:.25rem 0 0;max-width:46rem;}
+
+/* --- buttons ------------------------------------------------------------ */
+#rewardsRoot .rw-btn{display:inline-block;padding:.45rem .85rem;border:1px solid var(--bd);border-radius:8px;background:#fff;color:var(--bd);font:500 .78rem 'Inter',sans-serif;cursor:pointer;line-height:1.25;transition:background .15s ease;}
+#rewardsRoot .rw-btn:hover:not(:disabled){background:var(--cr);}
+#rewardsRoot .rw-btn:disabled{opacity:.55;cursor:default;}
+#rewardsRoot .rw-btn.ok{background:var(--bd);color:#fff;border-color:var(--bd);}
+#rewardsRoot .rw-btn.ok:hover:not(:disabled){background:var(--bm);}
+#rewardsRoot .rw-btn.sec{border-color:var(--cd);color:var(--tm);background:#fff;}
+#rewardsRoot .rw-btn.sec:hover:not(:disabled){border-color:var(--bl);color:var(--bd);background:var(--cr);}
+#rewardsRoot .rw-btn.danger{border-color:#b35b5b;color:#721c24;background:#fff;}
+#rewardsRoot .rw-btn.danger:hover:not(:disabled){background:#fdf3f3;}
+#rewardsRoot .rw-btn.sm{padding:.32rem .6rem;font-size:.74rem;}
+
+/* --- pill subtabs ---------------------------------------------------------- */
+#rewardsRoot .rw-tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin:.9rem 0 1.1rem;}
+#rewardsRoot .rw-tab{padding:.42rem .95rem;border-radius:999px;border:1px solid var(--cd);background:#fff;color:var(--tm);font:500 .76rem 'Inter',sans-serif;cursor:pointer;transition:all .15s ease;}
+#rewardsRoot .rw-tab:hover{border-color:var(--bl);color:var(--bd);}
+#rewardsRoot .rw-tab.on{background:var(--bd);border-color:var(--bd);color:#fff;}
+
+/* --- stat cards ---------------------------------------------------------- */
+#rewardsRoot .rw-stats{display:flex;gap:.6rem;flex-wrap:wrap;}
+#rewardsRoot .rw-stat{flex:1 1 150px;min-width:150px;padding:.75rem .9rem;border:1px solid var(--cd);border-radius:12px;background:#fff;}
+#rewardsRoot .rw-stat-num{display:block;font-family:'Playfair Display',serif;font-size:1.5rem;color:var(--bd);line-height:1.15;}
+#rewardsRoot .rw-stat-lbl{display:block;font-size:.68rem;color:var(--tl);text-transform:uppercase;letter-spacing:.05em;margin-top:.15rem;}
+#rewardsRoot .rw-stat-hint{display:block;font-size:.68rem;color:var(--tl);margin-top:.15rem;}
+
+/* --- section cards ---------------------------------------------------------- */
+#rewardsRoot .rw-card{border:1px solid var(--cd);border-radius:12px;padding:1rem 1.1rem;background:#fff;margin-top:1rem;}
+#rewardsRoot .rw-card-head{display:flex;justify-content:space-between;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin:0 0 .55rem;}
+#rewardsRoot .rw-card-title{margin:0;font-size:.88rem;font-weight:600;color:var(--bd);}
+
+/* --- data tables ---------------------------------------------------------- */
+#rewardsRoot table.rw-table{width:100%;border-collapse:collapse;font-size:.82rem;}
+#rewardsRoot .rw-table th{text-align:left;padding:.45rem .35rem;border-bottom:2px solid var(--cr);color:var(--tl);font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;font-weight:600;}
+#rewardsRoot .rw-table td{padding:.5rem .35rem;border-bottom:1px solid var(--cr);vertical-align:top;}
+#rewardsRoot .rw-table tr:last-child td{border-bottom:none;}
+#rewardsRoot .rw-table tr.rw-off td{opacity:.55;}
+#rewardsRoot .rw-table tr.rw-total td{border-bottom:none;border-top:2px solid var(--cd);font-weight:600;color:var(--bd);}
+#rewardsRoot .rw-cell-sub{display:block;font-size:.72rem;color:var(--tl);margin-top:.1rem;}
+#rewardsRoot .rw-actions{text-align:right;white-space:nowrap;}
+#rewardsRoot .rw-actions .rw-btn+.rw-btn{margin-left:.35rem;}
+#rewardsRoot .rw-amount{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+#rewardsRoot .rw-nowrap{white-space:nowrap;}
+
+/* --- empty states ---------------------------------------------------------- */
+#rewardsRoot .rw-empty{padding:1.5rem 1rem;text-align:center;border:1px dashed var(--cd);border-radius:12px;background:#fbf8f3;}
+#rewardsRoot .rw-empty-ic{font-size:1.5rem;line-height:1;}
+#rewardsRoot .rw-empty-t{font-size:.82rem;font-weight:600;color:var(--bd);margin-top:.4rem;}
+#rewardsRoot .rw-empty-s{font-size:.74rem;color:var(--tl);margin-top:.15rem;}
+
+/* --- note banners ---------------------------------------------------------- */
+#rewardsRoot .rw-note{margin-top:.9rem;padding:.55rem .7rem;border-radius:8px;font-size:.78rem;}
+#rewardsRoot .rw-note.ok{background:#e8f5e9;color:#1b5e20;}
+#rewardsRoot .rw-note.bad{background:#fde8e8;color:#721c24;}
+#rewardsRoot .rw-fatal{padding:.9rem;border-radius:10px;background:#fde8e8;color:#721c24;font-size:.82rem;}
+#rewardsRoot .rw-loading{padding:1.3rem 1rem;text-align:center;color:var(--tl);font-size:.82rem;}
+
+/* --- forms ---------------------------------------------------------- */
+#rewardsRoot .rw-form{border:1px solid var(--cd);border-radius:12px;padding:.95rem 1rem;background:#fbf8f3;margin-top:.95rem;}
+#rewardsRoot .rw-form-title{font-size:.82rem;font-weight:600;color:var(--bd);margin-bottom:.55rem;}
+#rewardsRoot .rw-fields{display:flex;gap:.7rem;flex-wrap:wrap;align-items:flex-end;}
+#rewardsRoot .rw-field{font-size:.73rem;color:var(--tm);}
+#rewardsRoot .rw-field input,#rewardsRoot .rw-field select{display:block;margin-top:.22rem;padding:.42rem .5rem;border:1px solid var(--cd);border-radius:8px;font:400 .8rem 'Inter',sans-serif;color:var(--td);background:#fff;}
+#rewardsRoot .rw-field input:focus,#rewardsRoot .rw-field select:focus{outline:2px solid var(--bl);outline-offset:-1px;}
+#rewardsRoot .rw-field input:disabled{background:var(--cr);color:var(--tm);}
+#rewardsRoot .rw-checks{display:flex;gap:1.1rem;margin-top:.6rem;font-size:.78rem;color:var(--td);flex-wrap:wrap;}
+#rewardsRoot .rw-warn{font-size:.72rem;color:#8a6d3b;margin-top:.55rem;max-width:40rem;}
+#rewardsRoot .rw-form-actions{margin-top:.8rem;display:flex;gap:.45rem;flex-wrap:wrap;}
+
+/* --- stamp swatches + palette picker ---------------------------------------------------------- */
+#rewardsRoot .rw-swatch{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:middle;margin-right:.4rem;border:1px solid rgba(0,0,0,.18);}
+#rewardsRoot .rw-colors{display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.35rem;}
+#rewardsRoot .rw-color{display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border-radius:999px;border:2px solid transparent;background:#fff;cursor:pointer;font:500 .73rem 'Inter',sans-serif;color:var(--td);transition:border-color .15s ease;}
+#rewardsRoot .rw-color:hover{border-color:var(--cd);}
+#rewardsRoot .rw-color.on{border-color:var(--bd);}
+
+/* --- status badges ---------------------------------------------------------- */
+#rewardsRoot .rw-badge{display:inline-block;padding:.14rem .55rem;border-radius:999px;font-size:.7rem;font-weight:600;}
+#rewardsRoot .rw-badge.ok{background:#e8f5e9;color:#1b5e20;}
+#rewardsRoot .rw-badge.bad{background:#fde8e8;color:#721c24;}
+#rewardsRoot .rw-badge.off{background:var(--cr);color:var(--tm);}
+
+/* --- member card ---------------------------------------------------------- */
+#rewardsRoot .rw-member{border:1px solid var(--cd);border-radius:12px;padding:.95rem 1.05rem;background:#fff;}
+#rewardsRoot .rw-member-top{display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap;}
+#rewardsRoot .rw-member-name{font-size:.95rem;font-weight:600;color:var(--bd);}
+#rewardsRoot .rw-kv{border-collapse:collapse;font-size:.8rem;margin-top:.55rem;}
+#rewardsRoot .rw-kv td{padding:.16rem .7rem .16rem 0;vertical-align:top;}
+#rewardsRoot .rw-kv td:first-child{color:var(--tl);white-space:nowrap;}
+#rewardsRoot .rw-stamplist{margin-top:.3rem;}
+#rewardsRoot .rw-stamp{display:inline-flex;align-items:center;gap:.35rem;margin:0 .9rem .35rem 0;font-size:.82rem;}
+#rewardsRoot .rw-actions-row{margin-top:.8rem;display:flex;gap:.45rem;flex-wrap:wrap;}
+#rewardsRoot .rw-fineprint{font-size:.72rem;color:var(--tl);margin-top:.45rem;max-width:42rem;}
+
+/* --- milestones ---------------------------------------------------------- */
+#rewardsRoot .rw-mile{display:flex;align-items:center;gap:.65rem;padding:.45rem 0;border-bottom:1px solid var(--cr);font-size:.8rem;color:var(--td);}
+#rewardsRoot .rw-mile:last-child{border-bottom:none;}
+#rewardsRoot .rw-ava{width:28px;height:28px;border-radius:50%;background:var(--bd);color:var(--cr);display:inline-flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:600;flex:0 0 auto;}
+
+/* --- irreversible-action panel ---------------------------------------------------------- */
+#rewardsRoot .rw-dangerbox{margin-top:.85rem;border:1px solid #b35b5b;border-radius:10px;padding:.75rem .85rem;background:#fdf3f3;}
+#rewardsRoot .rw-dangerbox-title{font-size:.8rem;font-weight:600;color:#721c24;}
+#rewardsRoot .rw-dangerbox-body{font-size:.74rem;color:#555;margin-top:.3rem;max-width:44rem;}
+#rewardsRoot .rw-mutedbox{margin-top:.85rem;padding:.65rem .75rem;border-radius:8px;background:var(--cr);color:var(--tm);font-size:.78rem;}
+
+/* --- search row ---------------------------------------------------------- */
+#rewardsRoot .rw-search{display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;}

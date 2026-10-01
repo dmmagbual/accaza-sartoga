@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 const read = (rel) => fs.readFileSync(new URL('../' + rel, import.meta.url), 'utf8');
 const core = read('src/admin/rewards/00-rewards-core.js');
 const reports = read('src/admin/rewards/10-rewards-reports.js');
+const stamps = read('src/admin/rewards/15-rewards-stamps.js');
 const catalog = read('src/admin/rewards/20-rewards-catalog.js');
 const rules = read('src/admin/rewards/30-rewards-rules.js');
 const members = read('src/admin/rewards/40-rewards-members.js');
@@ -29,7 +30,7 @@ const serverMembers = read('src/functions/26a-loyalty-members.js');
 const customerJs = read('assets/js/customer/rewards.js');
 const customerHtml = read('rewards.html');
 const bundle = read('assets/js/admin/rewards.js');
-const sections = core + reports + catalog + rules + members + register;
+const sections = core + reports + stamps + catalog + rules + members + register;
 
 // --- the tab exists, loads as a module, and is admin-only -------------------
 assert.ok(/posSwitchTab\('rewards',this\)/.test(navHtml) && /id="tab-rewards"/.test(navHtml) && /id="rewardsRoot"/.test(navHtml),
