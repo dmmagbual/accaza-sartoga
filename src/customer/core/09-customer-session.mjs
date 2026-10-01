@@ -34,7 +34,11 @@ window.placeOrder=async function(){
   if(paymentProofBusy){alert('Please wait while the receipt is being optimized.');return;}
   if(!paymentProofData){alert('Please remove and attach the payment proof again.');return;}
   const proofSrc=paymentProofData;
-  const total=Object.values(cart).reduce((s,c)=>s+c.qty*c.unitTotal,0)+(window.__custPkgs||[]).reduce((s,p)=>s+(Number(p.extraCost)||0),0);
+  const netTotal=Object.values(cart).reduce((s,c)=>s+c.qty*c.unitTotal,0)+(window.__custPkgs||[]).reduce((s,p)=>s+(Number(p.extraCost)||0),0);
+  // Menu prices are net; under tax-exclusive pricing the cart and the server both
+  // add the tax on top, so expectedTotal matches the final server-priced total.
+  const taxLine=window.__custTaxLine?window.__custTaxLine(netTotal):null;
+  const total=taxLine?taxLine.total:netTotal;
   const itemsArr=Object.values(cart).map(c=>c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty);
   const lineItemsArr=Object.values(cart).map(c=>({itemKey:c.itemKey||null,size:c.size||null,optLabels:c.optLabels||[],qty:c.qty,stream:c.stream||null,pkg:c.pkgId||null,packageRole:c.packageRole||null}));
   const _sig=phone+'|'+itemsArr.join('~')+'|'+total;

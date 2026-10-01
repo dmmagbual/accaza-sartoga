@@ -116,14 +116,14 @@ exports.legacyOwnerCapitalReset = onCall({region: ORDER_REGION, enforceAppCheck:
 function manilaDayRange(day){const start=Date.parse(`${day}T00:00:00.000+08:00`);return{start,end:start+86399999};}
 async function financialCloseInput(db,closeType,businessDate,shiftId){
   const range=manilaDayRange(businessDate),val=(snap)=>snap.val()||{};
-  const [movementSnap,custodySnap,dayShiftSnap,receivableSnap,payableSnap,advanceSnap,payoutNullSnap,payoutEmptySnap,invoiceSnap,advanceShifts]=await Promise.all([
+  const [movementSnap,custodySnap,dayShiftSnap,receivableSnap,payableSnap,advanceSnap,payoutNullSnap,payoutEmptySnap,invoiceSnap,advanceShifts,taxSettingsSnap]=await Promise.all([
     /* download-ok: manual Financial Close reconciles all-time control balances from the ledger */db.ref("/financialMovements").get(),
     /* download-ok: manual custody at cutoff needs every custody row and its later recoveries */db.ref("/cashCustody").get(),
     db.ref("/shifts").orderByChild("openAt").startAt(range.start).endAt(range.end).get(),
     db.ref("/receivables").orderByChild("status").equalTo("open").get(),db.ref("/payables").orderByChild("status").equalTo("open").get(),
     db.ref("/pettyCashVouchers").orderByChild("transactionType").equalTo("purchase_advance").get(),
     db.ref("/platformPayouts").orderByChild("depositMovementId").equalTo(null).get(),db.ref("/platformPayouts").orderByChild("depositMovementId").equalTo("").get(),
-    db.ref("/purchaseInvoices").orderByChild("date").equalTo(businessDate).get(),supplierAdvanceShiftPayOuts(db),
+    db.ref("/purchaseInvoices").orderByChild("date").equalTo(businessDate).get(),supplierAdvanceShiftPayOuts(db),db.ref("/taxSettings").get(),
   ]);
   const shifts=val(dayShiftSnap);
   if(shiftId&&!shifts[shiftId]){const row=(await db.ref(`/shifts/${shiftId}`).get()).val();if(row)shifts[shiftId]=row;}
@@ -160,7 +160,7 @@ async function financialCloseInput(db,closeType,businessDate,shiftId){
   const platformPayouts=Object.assign({},val(payoutNullSnap),val(payoutEmptySnap));
   // buildClose lists exceptions in record order, so every map is handed over in database key order.
   const keyed=(map)=>{const out={};Object.keys(map||{}).sort(BackupDelta.keyCompare).forEach((key)=>{out[key]=map[key];});return out;};
-  return{closeType,businessDate,shiftId,orders:keyed(live),archivedOrders:keyed(archived),shifts:keyed(shifts),financialMovements:movements,inventoryMovements:keyed(inventoryMovements),purchaseInvoices:keyed(val(invoiceSnap)),booksJournal:keyed(booksJournal),cashCustody:val(custodySnap),receivables:keyed(val(receivableSnap)),payables:keyed(val(payableSnap)),pettyCashVouchers:keyed(val(advanceSnap)),platformPayouts:keyed(platformPayouts)};
+  return{closeType,businessDate,shiftId,orders:keyed(live),archivedOrders:keyed(archived),shifts:keyed(shifts),financialMovements:movements,inventoryMovements:keyed(inventoryMovements),purchaseInvoices:keyed(val(invoiceSnap)),booksJournal:keyed(booksJournal),cashCustody:val(custodySnap),receivables:keyed(val(receivableSnap)),payables:keyed(val(payableSnap)),pettyCashVouchers:keyed(val(advanceSnap)),platformPayouts:keyed(platformPayouts),taxSettings:val(taxSettingsSnap)};
 }
 
 exports.runFinancialClose = onCall(

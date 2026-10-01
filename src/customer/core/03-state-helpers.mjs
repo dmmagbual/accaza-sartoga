@@ -24,6 +24,18 @@ function renderPublicOrderStatus(){
   syncPlaceOrderButton();
 }
 onValue(publicOrderStatusRef,function(snap){publicOrdersOpen=!!(snap.val()&&snap.val().acceptingOrders===true);renderPublicOrderStatus();},function(){publicOrdersOpen=false;renderPublicOrderStatus();});
+// Tax-exclusive pricing: publicTaxInfo mirrors only mode/rate/inclusive (no TIN or
+// other admin data). The cart adds the same tax the server adds so the customer
+// approves the final total once; the server re-prices and rejects any mismatch.
+var publicTaxInfo=null;
+window.__custTaxLine=function(net){
+  var t=publicTaxInfo;if(!t||(t.mode!=='vat'&&t.mode!=='percentage'))return null;
+  if(t.inclusive!==false)return null;
+  var rate=Number(t.rate)>0&&Number(t.rate)<=100?Number(t.rate):(t.mode==='vat'?12:3);
+  net=Number(net)||0;var add=Math.round(net*rate)/100;
+  return {mode:t.mode,rate:rate,label:(t.mode==='vat'?'VAT ':'Percentage tax ')+rate+'% (added on top)',amount:add,total:Math.round((net+add)*100)/100};
+};
+onValue(publicTaxInfoRef,function(snap){publicTaxInfo=snap.val()||null;if(typeof updateCartDisplay==='function')updateCartDisplay();},function(){publicTaxInfo=null;if(typeof updateCartDisplay==='function')updateCartDisplay();});
 onValue(ref(db,'.info/connected'),function(snap){
   customerLiveConnected=snap.val()===true;
   var badge=document.getElementById('fbSync');

@@ -40,6 +40,7 @@ function renderPosCart(options){
       +posLoyaltyClaimRow()
       +(posScopedDisc.length?('<div style="font-size:0.76rem;margin-bottom:0.4rem;">'+posScopedDisc.map(function(d,ix){return '<div style="display:flex;justify-content:space-between;align-items:center;color:#155724;margin-bottom:0.15rem;"><span>'+esc((DISC_TYPES[d.type]||{}).label||d.type)+' · '+esc(d.name)+(d.idNumber?' ('+esc(d.idNumber)+')':'')+'</span><span style="white-space:nowrap;">−'+peso(d.value)+' <button class="pz-btn warn" data-sdrm="'+ix+'" style="padding:0 0.35rem;">✕</button></span></div>';}).join('')+'</div>'):'')
       +(posMeta.cashRounding?'<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span>Cash rounding</span><span id="posRound">₱0.00</span></div>':''))
+      +'<div id="posTaxRow" style="display:none;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span id="posTaxLbl"></span><span id="posTaxAmt"></span></div>'
       +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);font-size:1rem;border-top:1px solid var(--cd);padding-top:0.4rem;"><span>'+(isPlat?'Gross':'Total')+'</span><span id="posTotal">'+peso(sub)+'</span></div>'
     +'</div>'
     +(correction?'<div style="margin-top:0.7rem;padding:0.55rem;background:#e8f5ec;border:1px solid #b8dfc4;border-radius:6px;font-size:0.78rem;color:#155724;"><b>Original '+esc(correction.paymentKind)+' payment stays recorded.</b><br>POS will calculate any cash refund from '+peso(correction.originalTotal)+'.</div>':isPlat
@@ -62,7 +63,11 @@ function renderPosCart(options){
   var disc=document.getElementById('posDisc');
   var splitRows=[];
   var pay=null, splitChk=null;
-  function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()+posLoyaltyDiscount()); var tot=Math.max(0,sub-d); if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
+  function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()+posLoyaltyDiscount()); var tot=Math.max(0,sub-d);
+    var tax=isPlat?null:posTaxNow(),row=document.getElementById('posTaxRow');
+    if(tax&&tax.inclusive===false){var add=Math.round(tot*tax.rate)/100; tot=Math.round((tot+add)*100)/100; if(row){row.style.display='flex';var tl=document.getElementById('posTaxLbl'),ta=document.getElementById('posTaxAmt');if(tl)tl.textContent=(tax.mode==='vat'?'VAT '+tax.rate+'%':'Percentage tax '+tax.rate+'%')+' added on top';if(ta)ta.textContent='+'+peso(add);}}
+    else if(row)row.style.display='none';
+    if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
   function draftElectronicPayments(){
     if(isPlat)return[];
     var tot=grandTotal();

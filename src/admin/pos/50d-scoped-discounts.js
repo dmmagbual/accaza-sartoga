@@ -15,8 +15,15 @@ function applyScoped(key,type,idNum,name){
     if(idSlotUsed(idNum,cat)){alert('ID '+idNum+' already used its '+cat+' discount (max 1 drink + 1 food per ID).');return false;}
   }
   var rate=(DISC_TYPES[type]||{}).rate||0;
-  var value=Math.round(c.unitTotal*rate*100)/100;
-  posScopedDisc.push({type:type,rate:rate,idNumber:idNum||'',holderName:name||'',key:key,itemKey:c.itemKey,name:c.name,size:c.size||'',cat:cat,unitPrice:c.unitTotal,value:value});
+  /* Statutory 20% (senior/PWD/athlete) is computed on the VAT-exempt price under
+     VAT-inclusive mode (RA 9994/10754: discount base excludes VAT). Under tax-exclusive
+     pricing the shelf price is already VAT-exempt, so no carve-out is made. The 5% promo
+     is a merchant promo, not statutory, so it stays a straight 5% of the full price in
+     every tax mode. */
+  var base=c.unitTotal,tax=(type!=='promo5')?posTaxNow():null;
+  if(tax&&tax.mode==='vat'&&tax.inclusive!==false)base=c.unitTotal/(1+tax.rate/100);
+  var value=Math.round(base*rate*100)/100;
+  posScopedDisc.push({type:type,rate:rate,idNumber:idNum||'',holderName:name||'',key:key,itemKey:c.itemKey,name:c.name,size:c.size||'',cat:cat,unitPrice:c.unitTotal,basis:Math.round(base*100)/100,value:value});
   return true;
 }
 function openDiscountModal(){
@@ -27,6 +34,7 @@ function openDiscountModal(){
     var idNum=(mask.querySelector('#dscId')||{}).value||'';
     var nm=(mask.querySelector('#dscName')||{}).value||'';
     var isPromo=type==='promo5';
+    var tax=posTaxNow(),vatOn=tax&&tax.mode==='vat';
     var rows=Object.keys(posCart).map(function(k){var c=posCart[k];var cat=lineCat(k);var left=c.qty-discountedUnits(k);
       var eligible = left>0 && (isPromo?cat==='drink':(cat==='drink'||cat==='food'));
       return '<tr><td>'+esc(c.name)+(c.size?' ('+esc(c.size)+')':'')+'<div style="font-size:0.7rem;color:var(--tl);">'+(cat||'untagged')+' · '+peso(c.unitTotal)+'/unit · '+left+' of '+c.qty+' left</div></td><td style="text-align:right;">'+(eligible?'<button class="pz-btn ok" data-dscapply="'+k+'" style="padding:0.2rem 0.55rem;">Discount 1</button>':'<span style="font-size:0.72rem;color:var(--tl);">—</span>')+'</td></tr>';
@@ -35,6 +43,7 @@ function openDiscountModal(){
     mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
       +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Scoped discount</div>'
       +'<p class="pz-sub" style="margin-top:0.2rem;">Statutory Senior/PWD/Athlete = 20% on the eligible person’s own items (max 1 drink + 1 food per ID). 5% promo = 1 drink. No stacking on the same unit.</p>'
+      +(vatOn?(tax.inclusive===false?'<p class="pz-sub" style="margin-top:0.2rem;">VAT mode (tax added on top): the shelf price is already VAT-exempt, so the statutory 20% is computed on the full unit price.</p>':'<p class="pz-sub" style="margin-top:0.2rem;">VAT mode (tax inside the price): the statutory 20% is computed on the VAT-exempt price (unit ÷ '+(1+tax.rate/100).toFixed(4)+'). The 5% promo stays on the full price.</p>'):'')
       +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end;margin-bottom:0.6rem;"><div><span class="pz-lbl">Type</span><select class="pz-in" id="dscType">'+Object.keys(DISC_TYPES).map(function(t){return '<option value="'+t+'"'+(t===type?' selected':'')+'>'+esc(DISC_TYPES[t].label)+' ('+Math.round(DISC_TYPES[t].rate*100)+'%)</option>';}).join('')+'</select></div>'
       +(isPromo?'':'<div><span class="pz-lbl">ID number</span><input class="pz-in" id="dscId" value="'+esc(idNum)+'" placeholder="OSCA/PWD/athlete ID"/></div><div><span class="pz-lbl">Holder name</span><input class="pz-in" id="dscName" value="'+esc(nm)+'"/></div>')+'</div>'
       +'<table class="pz-tbl"><thead><tr><th>Cart item</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'

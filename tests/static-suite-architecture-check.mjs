@@ -66,6 +66,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // adding an anonymous telemetry endpoint. Reviewed guard count 559 -> 560.
 // Oct 2026 (safe update delivery): the existing PWA update guard now pins the shared update-ready
 // event instead of a second direct-reload bar. The guard count is unchanged.
-if(guardDigest!=='950469eaca8cf9b14145b8a83c6a9da4483905ce7b0feec516c7f9a0969aa29f')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (BIR tax compliance Phase 1): the server sales-reconciliation guard's orderNetSales
+// marker now includes the taxSettings argument, so net sales must be derived under the effective
+// tax regime rather than ignoring tax. Same single guard, widened, not weakened; count 560.
+if(guardDigest!=='fed9719cd074610cd8a546aabc3a7d608b466e8d45dd827f1f02103ab8f7573b')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 560 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

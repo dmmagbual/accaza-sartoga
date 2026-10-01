@@ -124,7 +124,7 @@ const BOOKS_CHART_SEED_ROWS = [
   ["3000","Owner's Capital","Equity"],["3050","Cash Float Clearing","Equity","POS shift float source"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],["3900","Retained Earnings","Equity"],
   ["4000","Sales - In-store","Income"],["4010","Sales - Online (own)","Income"],["4020","Sales - GrabFood","Income"],["4030","Sales - FoodPanda","Income"],["4900","Discounts & Comps","Income","Contra-income (debit balance)"],["4910","Sales Returns & Refunds","Income","Existing void and refund adjustments"],["4920","Loyalty Discounts","Income","Contra-income (debit balance) - Red/Yellow Stamps reward redemptions, kept separate from 4900 so loyalty spend is separately reportable"],["4990","Other Income","Income"],
   ["5000","COGS - Coffee & Beans","COGS"],["5010","COGS - Milk & Dairy","COGS"],["5020","COGS - Syrups & Flavors","COGS"],["5030","COGS - Food & Pastries","COGS"],["5040","COGS - Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],["5905","Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],
-  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6079","Staff Advance Write-offs","Expense","Uncollectible staff advances written off through the liquidation workflow"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
+  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6079","Staff Advance Write-offs","Expense","Uncollectible staff advances written off through the liquidation workflow"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6086","Percentage Tax","Expense","Non-VAT percentage tax on gross receipts"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
 ].map(function(row){if(row[0]==="1000")return ["1000","Cash on Hand - Cash in Register","Asset"];if(row[0]==="1030")return ["1001","Cash on Hand - Undeposited Collection","Asset","Cash awaiting bank deposit; controlled by cash custody"];return row;});
 function booksChartSeed(){const out={};BOOKS_CHART_SEED_ROWS.forEach(function(r){const control=CONTROL_ACCOUNT_RULES[r[0]]||{};out[r[0]]=Object.assign({code:r[0],name:r[1],type:r[2],note:r[3]||"",active:true,system:true,sensitive:SENSITIVE_BOOKS_CODES.has(r[0]),postingRule:"open",correctionMessage:""},control);});return out;}
 async function ensureBooksChart(db) {
@@ -394,12 +394,16 @@ async function findOrder(db, orderId) {
   if (!snap.exists()) throw new HttpsError("not-found", "Order not found.");
   return {id, node, order: Object.assign({id}, snap.val() || {})};
 }
-async function postOrderFinancial(db, order, accounts, actor) {
+async function postOrderFinancial(db, order, accounts, actor, taxSettings) {
   const effectiveStatus = order && order.status === "Archived" ? order.prevStatus : order && order.status;
   if (!order || !order.id || order.paymentStatus === "pending" || !["Completed", "Received"].includes(String(effectiveStatus || ""))) return {skipped: true};
-  const movement = Financial.orderPosting(order, accounts || {});
+  const occurredAt = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now());
+  // Effective-date wall: tax comes from /taxSettings and applies only to sales
+  // completed at/after effectiveAt. History is never recomputed.
+  const tax = Financial.effectiveTaxFor(taxSettings, occurredAt);
+  const movement = Financial.orderPosting(order, accounts || {}, tax);
   if (order.paymentApprovalId) {movement.approvalId = order.paymentApprovalId; movement.approvedBy = financeText(order.paymentApprovedBy, 160);}
-  movement.occurredAt = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now());
+  movement.occurredAt = occurredAt;
   movement.actorName = order.onDuty || order.staff || "POS";
   const date = financeDateFromTimestamp(movement.occurredAt);
   const writes = {};
@@ -420,14 +424,14 @@ async function postPreCompletionCashRefund(db, order, actor) {
   return commitFinancial(db,movementId,movement,actor,writes);
 }
 
-async function fullOrderVoidMovement(db, order, accounts, settlementPayments) {
+async function fullOrderVoidMovement(db, order, accounts, settlementPayments, taxSettings) {
   // netMovementCorrection only nets movements whose sourceId is this order, so
   // read exactly those through the sourceId index instead of the whole ledger.
   const movementSnap = await db.ref("/financialMovements").orderByChild("sourceId").equalTo(String(order.id || "")).get();
   const movement = Financial.netMovementCorrection(Object.values(movementSnap.val() || {}), order.id, "order_void", "Fully reverse voided order");
   if (!movement) return null;
   const remaining = Financial.money(Math.max(0, Financial.money(order.total) - Financial.money(order.refundAmount)));
-  const settlement = Financial.reversalPosting(order, remaining, "void", accounts || {}, settlementPayments);
+  const settlement = Financial.reversalPosting(order, remaining, "void", accounts || {}, settlementPayments, Financial.effectiveTaxFor(taxSettings, Number(order.completedAt || order.receivedAt || order.timestamp || Date.now())));
   movement.cashEntries = settlement.cashEntries || [];
   movement.settlementPayments = settlement.settlementPayments || [];
   movement.warnings = settlement.warnings || [];
@@ -440,18 +444,18 @@ exports.onOrderFinancialPosting = onValueWritten(
     const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
     if (!afterRaw) return;
     const order = Object.assign({id: event.params.orderId}, afterRaw);
-    const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const actor = {uid: "server", role: "server"};
-    await postOrderFinancial(db, order, accounts, actor);
+    const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const taxSettings = (await db.ref("/taxSettings").get()).val() || {}; const actor = {uid: "server", role: "server"};
+    await postOrderFinancial(db, order, accounts, actor, taxSettings);
     await postPreCompletionCashRefund(db, order, actor);
     const beforeRefund = Financial.money(before.refundAmount), afterRefund = Financial.money(order.refundAmount);
     if (afterRefund > beforeRefund) {
-      const delta = Financial.money(afterRefund - beforeRefund), movement = Financial.reversalPosting(order, delta, "refund", accounts);
+      const delta = Financial.money(afterRefund - beforeRefund), saleTime = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now()), movement = Financial.reversalPosting(order, delta, "refund", accounts, null, Financial.effectiveTaxFor(taxSettings, saleTime));
       movement.occurredAt = Number(order.refundedAt || Date.now()); movement.actorName = order.refundedBy || order.staff || "Refund";
       const movementId = `refund_${order.id}_${Math.round(afterRefund * 100)}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes);
     }
     if (order.voided === true && before.voided !== true) {
       const remaining = Financial.money(Math.max(0, Financial.money(order.total) - afterRefund));
-      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts); if (movement) { movement.occurredAt = Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
+      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
     }
   },
 );

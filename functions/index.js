@@ -1659,6 +1659,87 @@ exports.managePortalAccount = onCall(
     }
   },
 );
+const TAX_MODES = ["none", "vat", "percentage"];
+const TAX_STRUCTURES = ["sole", "opc", "corporation"];
+// Server-side canonical BIR requirement checklist. The client renders its own labels for
+// these ids; activation is refused unless every id is confirmed true, so a tampered
+// client cannot activate a tax category by sending an empty or partial list.
+// Shared items register the POS system itself (BIR Form 1905 / RR 7-2024): once a tax
+// category is on, Accaza receipts become the official invoices, so system registration,
+// on-demand reports and 10-year record retention apply under BOTH VAT and percentage tax.
+const TAX_SHARED_REQUIREMENT_IDS = ["cas_1905_filed", "pos_reports_audit", "pos_data_retention"];
+const TAX_REQUIREMENT_IDS = {
+  vat: [...TAX_SHARED_REQUIREMENT_IDS, "cor_2303", "tin_branch", "books_registered", "vat_invoices", "sequential_numbering", "form_2550q"],
+  percentage: [...TAX_SHARED_REQUIREMENT_IDS, "cor_2303", "tin_branch", "books_registered", "nonvat_invoices", "sequential_numbering", "form_2551q"]
+};
+
+function taxTin(value) {
+  const digits = String(value == null ? "" : value).replace(/\D/g, "");
+  if (!/^\d{9}$/.test(digits)) throw new HttpsError("invalid-argument", "TIN must be 9 digits (example: 123-456-789).");
+  return digits.replace(/^(\d{3})(\d{3})(\d{3})$/, "$1-$2-$3");
+}
+function taxBranchCode(value) {
+  const digits = String(value == null || value === "" ? "00000" : value).replace(/\D/g, "");
+  if (!/^\d{5}$/.test(digits)) throw new HttpsError("invalid-argument", "Branch code must be 5 digits (use 00000 for the head office).");
+  return digits;
+}
+function taxRate(value, fallback) {
+  const rate = Number(value == null || value === "" ? fallback : value);
+  if (!Number.isFinite(rate) || rate <= 0 || rate > 100) throw new HttpsError("invalid-argument", "Tax rate must be between 0.01 and 100 percent.");
+  return Math.round(rate * 100) / 100;
+}
+function taxRequirements(value) {
+  const out = {};
+  Object.entries(value || {}).forEach(([mode, ticks]) => {
+    if (mode === "none" || !TAX_REQUIREMENT_IDS[mode]) return;
+    const clean = {};
+    Object.entries(ticks || {}).forEach(([id, flag]) => { if (TAX_REQUIREMENT_IDS[mode].includes(id) && flag === true) clean[id] = true; });
+    if (Object.keys(clean).length) out[mode] = clean;
+  });
+  return out;
+}
+
+// Tax regime is owner-controlled and effective-dated: sales completed before effectiveAt keep
+// their original treatment and are never recomputed. Only the owner (or superadmin) may change it.
+exports.setTaxSettings = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalUser(db, request), data = request.data || {};
+    if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can change tax settings.");
+    const current = (await db.ref("/taxSettings").get()).val() || {};
+    const mode = TAX_MODES.includes(data.mode) ? data.mode : (current.mode || "none");
+    const structure = TAX_STRUCTURES.includes(data.structure) ? data.structure : (current.structure || "sole");
+    const requirements = Object.assign({}, current.requirements, taxRequirements(data.requirements));
+    if (mode !== "none") {
+      const missing = TAX_REQUIREMENT_IDS[mode].filter((id) => !(requirements[mode] || {})[id]);
+      if (missing.length) throw new HttpsError("failed-precondition", "Complete first the BIR requirement before tax is activated.");
+    }
+    const tin = data.tin != null ? taxTin(data.tin) : (current.tin || "");
+    const branchCode = data.branchCode != null ? taxBranchCode(data.branchCode) : (current.branchCode || "00000");
+    if (mode !== "none" && !tin) throw new HttpsError("invalid-argument", "Enter your BIR TIN and branch code before activating a tax category.");
+    const vatRate = taxRate(data.vatRate != null ? data.vatRate : (current.vatRate != null ? current.vatRate : 12), 12);
+    const percentageRate = taxRate(data.percentageRate != null ? data.percentageRate : (current.percentageRate != null ? current.percentageRate : 3), 3);
+    // Inclusive = listed prices already contain the tax (default, matches pre-flag sales).
+    // Exclusive = tax is added on top at checkout, so customers pay more than the shelf price.
+    const inclusive = data.inclusive != null ? data.inclusive === true : (current.inclusive !== false);
+    const now = Date.now(), modeChanged = mode !== (current.mode || "none");
+    let effectiveAt;
+    if (data.effectiveAt != null) {
+      effectiveAt = Number(data.effectiveAt);
+      if (!Number.isFinite(effectiveAt) || effectiveAt < now - 86400000) throw new HttpsError("invalid-argument", "Effective date must be today or later so completed sales keep their original tax treatment.");
+    } else if (modeChanged || current.effectiveAt == null) effectiveAt = now;
+    else effectiveAt = Number(current.effectiveAt);
+    const next = {mode, structure, vatRate, percentageRate, inclusive, effectiveAt, tin, branchCode, requirements, updatedAt: now, updatedBy: actor.uid, updatedByRole: actor.role, schemaVersion: 1};
+    await db.ref().update({
+      taxSettings: next,
+      // Public mirror for the customer app checkout: only whether tax is added on top.
+      // TIN, checklist and structure stay admin-only in /taxSettings.
+      publicTaxInfo: {mode, rate: mode === "vat" ? vatRate : mode === "percentage" ? percentageRate : 0, inclusive, effectiveAt},
+      [`operationalAudit/${now}_set_tax_settings`]: {action: "set_tax_settings", sourceType: "taxSettings", sourceId: "tax", before: {mode: current.mode || "none", structure: current.structure || "sole", vatRate: current.vatRate, percentageRate: current.percentageRate, inclusive: current.inclusive !== false, effectiveAt: current.effectiveAt}, after: {mode, structure, vatRate, percentageRate, inclusive, effectiveAt, tin, branchCode}, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}
+    });
+    return {tax: next};
+  }
+);
 const REJECTED_ORDER_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 function operationalAuditRecord(action, sourceType, sourceId, actor, details = {}) {
@@ -2517,14 +2598,14 @@ exports.legacyOwnerCapitalReset = onCall({region: ORDER_REGION, enforceAppCheck:
 function manilaDayRange(day){const start=Date.parse(`${day}T00:00:00.000+08:00`);return{start,end:start+86399999};}
 async function financialCloseInput(db,closeType,businessDate,shiftId){
   const range=manilaDayRange(businessDate),val=(snap)=>snap.val()||{};
-  const [movementSnap,custodySnap,dayShiftSnap,receivableSnap,payableSnap,advanceSnap,payoutNullSnap,payoutEmptySnap,invoiceSnap,advanceShifts]=await Promise.all([
+  const [movementSnap,custodySnap,dayShiftSnap,receivableSnap,payableSnap,advanceSnap,payoutNullSnap,payoutEmptySnap,invoiceSnap,advanceShifts,taxSettingsSnap]=await Promise.all([
     /* download-ok: manual Financial Close reconciles all-time control balances from the ledger */db.ref("/financialMovements").get(),
     /* download-ok: manual custody at cutoff needs every custody row and its later recoveries */db.ref("/cashCustody").get(),
     db.ref("/shifts").orderByChild("openAt").startAt(range.start).endAt(range.end).get(),
     db.ref("/receivables").orderByChild("status").equalTo("open").get(),db.ref("/payables").orderByChild("status").equalTo("open").get(),
     db.ref("/pettyCashVouchers").orderByChild("transactionType").equalTo("purchase_advance").get(),
     db.ref("/platformPayouts").orderByChild("depositMovementId").equalTo(null).get(),db.ref("/platformPayouts").orderByChild("depositMovementId").equalTo("").get(),
-    db.ref("/purchaseInvoices").orderByChild("date").equalTo(businessDate).get(),supplierAdvanceShiftPayOuts(db),
+    db.ref("/purchaseInvoices").orderByChild("date").equalTo(businessDate).get(),supplierAdvanceShiftPayOuts(db),db.ref("/taxSettings").get(),
   ]);
   const shifts=val(dayShiftSnap);
   if(shiftId&&!shifts[shiftId]){const row=(await db.ref(`/shifts/${shiftId}`).get()).val();if(row)shifts[shiftId]=row;}
@@ -2561,7 +2642,7 @@ async function financialCloseInput(db,closeType,businessDate,shiftId){
   const platformPayouts=Object.assign({},val(payoutNullSnap),val(payoutEmptySnap));
   // buildClose lists exceptions in record order, so every map is handed over in database key order.
   const keyed=(map)=>{const out={};Object.keys(map||{}).sort(BackupDelta.keyCompare).forEach((key)=>{out[key]=map[key];});return out;};
-  return{closeType,businessDate,shiftId,orders:keyed(live),archivedOrders:keyed(archived),shifts:keyed(shifts),financialMovements:movements,inventoryMovements:keyed(inventoryMovements),purchaseInvoices:keyed(val(invoiceSnap)),booksJournal:keyed(booksJournal),cashCustody:val(custodySnap),receivables:keyed(val(receivableSnap)),payables:keyed(val(payableSnap)),pettyCashVouchers:keyed(val(advanceSnap)),platformPayouts:keyed(platformPayouts)};
+  return{closeType,businessDate,shiftId,orders:keyed(live),archivedOrders:keyed(archived),shifts:keyed(shifts),financialMovements:movements,inventoryMovements:keyed(inventoryMovements),purchaseInvoices:keyed(val(invoiceSnap)),booksJournal:keyed(booksJournal),cashCustody:val(custodySnap),receivables:keyed(val(receivableSnap)),payables:keyed(val(payableSnap)),pettyCashVouchers:keyed(val(advanceSnap)),platformPayouts:keyed(platformPayouts),taxSettings:val(taxSettingsSnap)};
 }
 
 exports.runFinancialClose = onCall(
@@ -4550,13 +4631,22 @@ exports.createOnlineOrder = onCall(
     const proof = decodePaymentProof(input.proof);
     // Only the menu items, option groups and packages on this order are read (readCatalogKeyed).
     const availSnap = await db.ref("/availability").get();
+    const taxSettings = (await db.ref("/taxSettings").get()).val() || {};
     const priced = await readCatalogKeyed(db, ["menuItems", "optionGroups", "packages"], (maps) => priceOrderLinesServer(input.lineItems, maps.menuItems, maps.optionGroups, availSnap.val() || {}, maps.packages));
-    if (priced.total <= 0 || priced.total > 200000) throw new HttpsError("invalid-argument", "Calculated order total is outside the allowed range.");
+    // Online menu prices are net. Under tax-exclusive pricing the tax is added on top
+    // server-side (VAT and percentage tax alike) so the charged total, the receipt and
+    // the Finance Books all derive from the one final number the customer approved.
+    // The order is stamped with the tax regime even when inclusive so online receipts
+    // show the same VAT/NON-VAT lines as POS receipts.
+    const tax = Financial.effectiveTaxFor(taxSettings, Date.now());
+    let finalTotal = money(priced.total);
+    if (tax && tax.inclusive === false) finalTotal = money(finalTotal + Math.round(finalTotal * tax.rate) / 100);
+    if (priced.total <= 0 || finalTotal > 200000) throw new HttpsError("invalid-argument", "Calculated order total is outside the allowed range.");
     const expectedTotal = Number(input.expectedTotal);
-    if (!Number.isFinite(expectedTotal) || Math.abs(money(expectedTotal) - priced.total) > 0.01) {
-      throw new HttpsError("failed-precondition", `The menu price changed. The current total is PHP ${priced.total.toFixed(2)}. Refresh the menu and review your order.`);
+    if (!Number.isFinite(expectedTotal) || Math.abs(money(expectedTotal) - finalTotal) > 0.01) {
+      throw new HttpsError("failed-precondition", `The menu price changed. The current total is PHP ${finalTotal.toFixed(2)}. Refresh the menu and review your order.`);
     }
-    const signature = crypto.createHash("sha256").update(JSON.stringify({uid, type: orderType, lines: priced.lines, total: priced.total})).digest("hex");
+    const signature = crypto.createHash("sha256").update(JSON.stringify({uid, type: orderType, lines: priced.lines, total: finalTotal})).digest("hex");
     const lockRef = db.ref(`/orderLocks/${uid}/${signature}`);
     const now = Date.now();
     const lock = await lockRef.transaction((current) => {
@@ -4570,12 +4660,13 @@ exports.createOnlineOrder = onCall(
     const itemText = priced.lines.map((line) => `${line.name}${line.size ? ` (${line.size})` : ""}${line.optLabels.length ? ` [${line.optLabels.join(", ")}]` : ""} x${line.qty}`).join(", ");
     const order = {
       id: orderId, ownerUid: uid, name, phone, type: orderType, address, payment, contact, contactMethod,
-      items: itemText, total: priced.total, notes, status: "Pending", receivedByCustomer: false,
+      items: itemText, subtotal: money(priced.total), total: finalTotal, notes, status: "Pending", receivedByCustomer: false,
+      tax: tax ? {mode: tax.mode, rate: tax.rate, inclusive: tax.inclusive !== false, tin: String(taxSettings.tin || ""), branchCode: String(taxSettings.branchCode || "")} : null,
       time: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit"}).format(nowDate),
       date: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", year: "numeric", month: "long", day: "numeric"}).format(nowDate),
       timestamp: now, lineItems: priced.lines.map(({cat, ...line}) => line), packages: priced.packages,
       extraCost: priced.extraCost, source: "online", pricingVersion: "server-v1", pricedAt: now,
-      channel: "online", paymentStatus: "pending", payments: [{method: payment, amount: priced.total}],
+      channel: "online", paymentStatus: "pending", payments: [{method: payment, amount: finalTotal}],
     };
     const proofPath = `payment-proofs/${uid}/${orderId}.${proof.ext}`;
     const proofFile = getStorage().bucket(PROOF_BUCKET).file(proofPath);
@@ -4603,8 +4694,8 @@ exports.createOnlineOrder = onCall(
       });
     } catch (error) { logger.warn("Order saved but customer profile update failed", {uid, orderId, error: String(error)}); }
     try { await lockRef.update({id: orderId}); } catch (error) { logger.warn("Order saved but duplicate lock annotation failed", {uid, orderId}); }
-    logger.info("Server-priced online order created", {orderId, uid, total: priced.total, appCheck: Boolean(request.app)});
-    return {orderId, total: priced.total};
+    logger.info("Server-priced online order created", {orderId, uid, total: finalTotal, taxExclusive: Boolean(tax && tax.inclusive === false), appCheck: Boolean(request.app)});
+    return {orderId, total: finalTotal};
   },
 );
 
@@ -4850,7 +4941,7 @@ const BOOKS_CHART_SEED_ROWS = [
   ["3000","Owner's Capital","Equity"],["3050","Cash Float Clearing","Equity","POS shift float source"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],["3900","Retained Earnings","Equity"],
   ["4000","Sales - In-store","Income"],["4010","Sales - Online (own)","Income"],["4020","Sales - GrabFood","Income"],["4030","Sales - FoodPanda","Income"],["4900","Discounts & Comps","Income","Contra-income (debit balance)"],["4910","Sales Returns & Refunds","Income","Existing void and refund adjustments"],["4920","Loyalty Discounts","Income","Contra-income (debit balance) - Red/Yellow Stamps reward redemptions, kept separate from 4900 so loyalty spend is separately reportable"],["4990","Other Income","Income"],
   ["5000","COGS - Coffee & Beans","COGS"],["5010","COGS - Milk & Dairy","COGS"],["5020","COGS - Syrups & Flavors","COGS"],["5030","COGS - Food & Pastries","COGS"],["5040","COGS - Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],["5905","Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],
-  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6079","Staff Advance Write-offs","Expense","Uncollectible staff advances written off through the liquidation workflow"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
+  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6079","Staff Advance Write-offs","Expense","Uncollectible staff advances written off through the liquidation workflow"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6086","Percentage Tax","Expense","Non-VAT percentage tax on gross receipts"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
 ].map(function(row){if(row[0]==="1000")return ["1000","Cash on Hand - Cash in Register","Asset"];if(row[0]==="1030")return ["1001","Cash on Hand - Undeposited Collection","Asset","Cash awaiting bank deposit; controlled by cash custody"];return row;});
 function booksChartSeed(){const out={};BOOKS_CHART_SEED_ROWS.forEach(function(r){const control=CONTROL_ACCOUNT_RULES[r[0]]||{};out[r[0]]=Object.assign({code:r[0],name:r[1],type:r[2],note:r[3]||"",active:true,system:true,sensitive:SENSITIVE_BOOKS_CODES.has(r[0]),postingRule:"open",correctionMessage:""},control);});return out;}
 async function ensureBooksChart(db) {
@@ -5120,12 +5211,16 @@ async function findOrder(db, orderId) {
   if (!snap.exists()) throw new HttpsError("not-found", "Order not found.");
   return {id, node, order: Object.assign({id}, snap.val() || {})};
 }
-async function postOrderFinancial(db, order, accounts, actor) {
+async function postOrderFinancial(db, order, accounts, actor, taxSettings) {
   const effectiveStatus = order && order.status === "Archived" ? order.prevStatus : order && order.status;
   if (!order || !order.id || order.paymentStatus === "pending" || !["Completed", "Received"].includes(String(effectiveStatus || ""))) return {skipped: true};
-  const movement = Financial.orderPosting(order, accounts || {});
+  const occurredAt = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now());
+  // Effective-date wall: tax comes from /taxSettings and applies only to sales
+  // completed at/after effectiveAt. History is never recomputed.
+  const tax = Financial.effectiveTaxFor(taxSettings, occurredAt);
+  const movement = Financial.orderPosting(order, accounts || {}, tax);
   if (order.paymentApprovalId) {movement.approvalId = order.paymentApprovalId; movement.approvedBy = financeText(order.paymentApprovedBy, 160);}
-  movement.occurredAt = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now());
+  movement.occurredAt = occurredAt;
   movement.actorName = order.onDuty || order.staff || "POS";
   const date = financeDateFromTimestamp(movement.occurredAt);
   const writes = {};
@@ -5146,14 +5241,14 @@ async function postPreCompletionCashRefund(db, order, actor) {
   return commitFinancial(db,movementId,movement,actor,writes);
 }
 
-async function fullOrderVoidMovement(db, order, accounts, settlementPayments) {
+async function fullOrderVoidMovement(db, order, accounts, settlementPayments, taxSettings) {
   // netMovementCorrection only nets movements whose sourceId is this order, so
   // read exactly those through the sourceId index instead of the whole ledger.
   const movementSnap = await db.ref("/financialMovements").orderByChild("sourceId").equalTo(String(order.id || "")).get();
   const movement = Financial.netMovementCorrection(Object.values(movementSnap.val() || {}), order.id, "order_void", "Fully reverse voided order");
   if (!movement) return null;
   const remaining = Financial.money(Math.max(0, Financial.money(order.total) - Financial.money(order.refundAmount)));
-  const settlement = Financial.reversalPosting(order, remaining, "void", accounts || {}, settlementPayments);
+  const settlement = Financial.reversalPosting(order, remaining, "void", accounts || {}, settlementPayments, Financial.effectiveTaxFor(taxSettings, Number(order.completedAt || order.receivedAt || order.timestamp || Date.now())));
   movement.cashEntries = settlement.cashEntries || [];
   movement.settlementPayments = settlement.settlementPayments || [];
   movement.warnings = settlement.warnings || [];
@@ -5166,18 +5261,18 @@ exports.onOrderFinancialPosting = onValueWritten(
     const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
     if (!afterRaw) return;
     const order = Object.assign({id: event.params.orderId}, afterRaw);
-    const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const actor = {uid: "server", role: "server"};
-    await postOrderFinancial(db, order, accounts, actor);
+    const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const taxSettings = (await db.ref("/taxSettings").get()).val() || {}; const actor = {uid: "server", role: "server"};
+    await postOrderFinancial(db, order, accounts, actor, taxSettings);
     await postPreCompletionCashRefund(db, order, actor);
     const beforeRefund = Financial.money(before.refundAmount), afterRefund = Financial.money(order.refundAmount);
     if (afterRefund > beforeRefund) {
-      const delta = Financial.money(afterRefund - beforeRefund), movement = Financial.reversalPosting(order, delta, "refund", accounts);
+      const delta = Financial.money(afterRefund - beforeRefund), saleTime = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now()), movement = Financial.reversalPosting(order, delta, "refund", accounts, null, Financial.effectiveTaxFor(taxSettings, saleTime));
       movement.occurredAt = Number(order.refundedAt || Date.now()); movement.actorName = order.refundedBy || order.staff || "Refund";
       const movementId = `refund_${order.id}_${Math.round(afterRefund * 100)}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes);
     }
     if (order.voided === true && before.voided !== true) {
       const remaining = Financial.money(Math.max(0, Financial.money(order.total) - afterRefund));
-      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts); if (movement) { movement.occurredAt = Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
+      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
     }
   },
 );
@@ -6035,11 +6130,12 @@ exports.correctPlatformPresettlement = onCall(
     if (net < -0.009) throw new HttpsError("failed-precondition", "The verified platform deductions exceed the verified gross.");
     const delta = Financial.money(Math.abs(oldNet - net)), referenceChanged = newPlatformRef !== previousPlatformRef,figuresChanged=[oldGross-gross,oldCommission-commission,oldMerchantPromo-merchantPromo,oldDeliveryFeeDiscount-deliveryFeeDiscount,oldAdsMarketing-adsMarketing,oldMarketingFee-marketingFee].some((value)=>Math.abs(value)>0.009); if (!referenceChanged && !figuresChanged) throw new HttpsError("failed-precondition", "The verified reference and figures are unchanged.");
     const version = Math.max(1, Number(o.preSettlementCorrectionVersion || 0) + 1), movementId = `platform_presettle_${found.id}_${version}`;
-    const approval = await claimManagerApproval(db, data, "correct_platform_presettlement", found.id, delta, movementId), now = Date.now(), accounts = (await db.ref("/cfAccounts").get()).val() || {};
+    const approval = await claimManagerApproval(db, data, "correct_platform_presettlement", found.id, delta, movementId), now = Date.now(), accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {};
     const corrected = Object.assign({}, o, {platformRef:newPlatformRef,grossPlatform:gross,subtotal:gross,total:gross,platformDiscount:discount,platformMerchantPromo:merchantPromo,platformDeliveryFeeDiscount:deliveryFeeDiscount,platformAdsMarketing:adsMarketing,platformMarketingFee:marketingFee,netSalesPlatform:Financial.money(gross-discount),commission,netPlatform:Math.max(0,net),preSettlementCorrected:true,preSettlementCorrectionVersion:version,preSettlementCorrectedAt:now,preSettlementCorrectedBy:actor.uid,preSettlementCorrectionReason:reason});
     delete corrected.dupPlatformRef;
     if (Array.isArray(corrected.payments)) corrected.payments = corrected.payments.map((payment) => Object.assign({}, payment, {amount:corrected.payments.length === 1 ? gross : payment.amount, ref:platformRefKey(payment.ref) === oldRefKey ? newPlatformRef : payment.ref}));
-    const beforePosting = Financial.orderPosting(o, accounts), afterPosting = Financial.orderPosting(corrected, accounts), movement = Financial.postingDifference(beforePosting, afterPosting, "platform_presettlement_correction", found.id, "Pre-settlement correction");
+    // Both postings use the order's original sale-time tax regime so the difference telescopes exactly.
+    const presettleTax = Financial.effectiveTaxFor(taxSettings, Number(o.timestamp || now)), beforePosting = Financial.orderPosting(o, accounts, presettleTax), afterPosting = Financial.orderPosting(corrected, accounts, presettleTax), movement = Financial.postingDifference(beforePosting, afterPosting, "platform_presettlement_correction", found.id, "Pre-settlement correction");
     const approvedBy = approval.record.approvedEmail || approval.record.approvedRole;
     if (movement) {movement.occurredAt = Number(o.timestamp || now); movement.approvalId = approval.id; movement.approvedBy = approvedBy; movement.correctionRecordedAt = now; movement.platformRef = newPlatformRef; movement.previousPlatformRef = previousPlatformRef;}
     const history = {version,before:{platformRef:previousPlatformRef,gross:oldGross,commission:oldCommission,merchantPromo:oldMerchantPromo,deliveryFeeDiscount:oldDeliveryFeeDiscount,adsMarketing:oldAdsMarketing,marketingFee:oldMarketingFee,net:oldNet},after:{platformRef:newPlatformRef,gross,commission,merchantPromo,deliveryFeeDiscount,adsMarketing,marketingFee,net:Math.max(0,net)},reason,platformRef:newPlatformRef,previousPlatformRef,approvalId:approval.id,approvedBy,actorUid:actor.uid,actorRole:actor.role,at:now,inventoryEffect:0,cogsEffect:0,movementId:movement?movementId:""};
@@ -6202,7 +6298,7 @@ exports.processOrderAdjustment = onCall(
       if (nextStatus !== o.status) { verified.statusUpdatedAt = now; verified.statusUpdatedBy = actor.uid; }
       const writes = {[`${found.node}/${o.id}`]: verified, [`activeOrders/${o.id}`]: activeOrderProjection(verified), [`operationalAudit/${now}_cashier_verify_${o.id}`]: {action: "cashier_verify_payment", sourceType: "order", sourceId: o.id, amount: verified.cashierVerifiedAmount, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}};
       if (verified.ownerUid) writes[`customerOrders/${verified.ownerUid}/${o.id}/status`] = nextStatus;
-      await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, posted = await postOrderFinancial(db, verified, accounts, {uid: "server", role: "server"});
+      await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {}, posted = await postOrderFinancial(db, verified, accounts, {uid: "server", role: "server"}, taxSettings);
       return {verified: true, status: nextStatus, paymentStatus: "cashier_verified", financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
     }
     if (data.action === "manager_validate_payment") {
@@ -6218,7 +6314,7 @@ exports.processOrderAdjustment = onCall(
       const activeShift = (await db.ref("/posActiveShift").get()).val() || null;
       const writes = Object.assign({}, approval.usedWrites, {[`${found.node}/${o.id}`]: validated, [`activeOrders/${o.id}`]: shouldProjectOrder(validated, activeShift, now) ? activeOrderProjection(validated) : null, [`operationalAudit/${now}_manager_validate_${o.id}`]: {action: "manager_validate_payment", sourceType: "order", sourceId: o.id, actorUid: actor.uid, actorRole: actor.role, approvedBy: approval.record.approvedBy, approvedRole: approval.record.approvedRole, approvalId: approval.id, ts: now, schemaVersion: 1}});
       if (validated.ownerUid) writes[`customerOrders/${validated.ownerUid}/${o.id}/status`] = nextStatus;
-      await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, posted = await postOrderFinancial(db, validated, accounts, {uid: "server", role: "server"}); return {validated: true, paymentStatus: "manager_validated", approvedBy, financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
+      await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {}, posted = await postOrderFinancial(db, validated, accounts, {uid: "server", role: "server"}, taxSettings); return {validated: true, paymentStatus: "manager_validated", approvedBy, financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
     }
     if (data.action === "complete_order_item_correction") {
       const requestId=correctionRequestKey(data.requestId),commandRef=db.ref(`/orderCorrectionCommands/${requestId}`),existingCommand=(await commandRef.get()).val();
@@ -6234,10 +6330,14 @@ exports.processOrderAdjustment = onCall(
       if(Object.keys(o.costCorrections||{}).length)throw new HttpsError("failed-precondition","A manager already posted the missing recipe cost for this sale. Use manager review; no stock was changed.");
       const active=(await db.ref("/posActiveShift").get()).val()||null;if(!active||active.id!==o.shiftId||active.status==="closed")throw new HttpsError("failed-precondition","This order is not in the currently open shift.");
       const reason=financeText(data.reason,300),acknowledgement=financeText(data.customerAcknowledgement,160);if(!reason||!acknowledgement)throw new HttpsError("invalid-argument","Reason and customer acknowledgement are required.");
-      const [availabilitySnap,oldPlanSnap,posSettings,accountsSnap]=await Promise.all([db.ref("/availability").get(),db.ref(`/orderInventoryPlans/${o.id}`).get(),readPosSettings(db,["denomTracking"]),db.ref("/cfAccounts").get()]);
+      const [availabilitySnap,oldPlanSnap,posSettings,accountsSnap,taxSettingsSnap]=await Promise.all([db.ref("/availability").get(),db.ref(`/orderInventoryPlans/${o.id}`).get(),readPosSettings(db,["denomTracking"]),db.ref("/cfAccounts").get(),db.ref("/taxSettings").get()]);
       const paymentKind=OrderCorrection.paymentKind(o,accountsSnap.val()||{});if(!paymentKind)throw new HttpsError("failed-precondition","Completed-order changes require one verified bank or configured e-wallet payment.");
       const oldPlan=oldPlanSnap.val();if(!UncostedSales.validPlan(oldPlan))throw new HttpsError("failed-precondition","The original immutable inventory plan is missing. Use manager review; no stock was changed.");
-      const priced=await readCatalogKeyed(db,["menuItems","optionGroups","packages"],(maps)=>priceOrderLinesServer(data.lineItems,maps.menuItems,maps.optionGroups,availabilitySnap.val()||{},maps.packages)),correctedTotal=Financial.money(priced.total),expected=Financial.money(data.expectedTotal),originalTotal=Financial.money(o.total);
+      const priced=await readCatalogKeyed(db,["menuItems","optionGroups","packages"],(maps)=>priceOrderLinesServer(data.lineItems,maps.menuItems,maps.optionGroups,availabilitySnap.val()||{},maps.packages)),correctionTax=Financial.effectiveTaxFor(taxSettingsSnap.val()||{},Number(o.completedAt||o.timestamp||Date.now())),expected=Financial.money(data.expectedTotal),originalTotal=Financial.money(o.total);
+      // Tax-exclusive original sale: the corrected order carries the same add-on the
+      // original was charged (original regime via the effective-date wall), so the cash
+      // refund includes the tax on removed items and matches the POS cart's math.
+      let correctedTotal=Financial.money(priced.total);if(correctionTax&&correctionTax.inclusive===false&&correctedTotal>0)correctedTotal=Financial.money(correctedTotal+Math.round(correctedTotal*correctionTax.rate)/100);
       if(!(correctedTotal>0)||correctedTotal>originalTotal+.009)throw new HttpsError("invalid-argument","The corrected order must be greater than zero and cannot exceed the original paid total.");
       if(Math.abs(expected-correctedTotal)>.009)throw new HttpsError("failed-precondition",`Current menu pricing makes the corrected order PHP ${correctedTotal.toFixed(2)}. Refresh and review it.`);
       const itemSignature=(rows)=>JSON.stringify((rows||[]).map((line)=>[line.itemKey,line.size||"",line.optLabels||[],Number(line.qty)||0]));
@@ -6261,14 +6361,14 @@ exports.processOrderAdjustment = onCall(
       const correctedUncosted=Array.isArray(plan.uncostedLines)?plan.uncostedLines:[],uncostedVariant=`cor_${token.slice(0,8)}`;updated.costPendingLines=correctedUncosted.length||null;
       if(refund>0)updated.refundHistory=Object.assign({},o.refundHistory||{},{[`refund_${o.id}_${Math.round(refund*100)}`]:{amount:refund,payments:[{method:"Cash",amount:refund}],reason,at:now,by:actor.uid,actorRole:actor.role,approvalMode:"independent_manager",approvalId:refundApproval.id,approvedBy:refundApproval.record.approvedBy,reviewStatus:"manager_approved",shiftId:o.shiftId,correctedOrderTotal:correctedTotal,customerAcknowledgement:acknowledgement,orderStage:"completed_not_prepared",inventoryOutcome:"original_reversed_corrected_deducted"}});
       const correctionRecord={id:correctionId,orderId:o.id,shiftId:o.shiftId,status:"completed",paymentKind,originalPaymentReference:financeText(payment.ref,120),originalTotal,correctedOrderTotal:correctedTotal,refundAmount:refund,originalLineItems:o.lineItems||[],correctedLineItems:priced.lines,originalInventoryPlanId:o.id,correctedInventoryPlan:plan,reason,customerAcknowledgement:acknowledgement,preparationStatus:"not_prepared",approvalId:correctionApproval.id,approvedBy,approvedByUid:correctionApproval.record.approvedBy,approvedRole:correctionApproval.record.approvedRole,cashRefundApprovalId:refundApproval?refundApproval.id:"",createdAt:now,createdBy:actor.uid,createdByRole:actor.role,initiatedByStaff,reviewStatus:"manager_approved",schemaVersion:1};
-      const movementOrder=Object.assign({},o,{cogsAccountSnapshot:o.cogsAccountSnapshot||oldPlan.accountSnapshot||{}}),movement=OrderCorrection.movement(movementOrder,plan,refund,accountsSnap.val()||{}),movementId=refund>0?`refund_${o.id}_${Math.round(refund*100)}`:`correction_${o.id}_${token}`,writes=Object.assign({},correctionApproval.usedWrites,refundApproval?refundApproval.usedWrites:{},{[`orders/${o.id}`]:updated,[`activeOrders/${o.id}`]:activeOrderProjection(updated),[`orderCorrections/${correctionId}`]:correctionRecord,[`orderCorrectionCommands/${requestId}`]:{status:"posted",orderId:o.id,correctionId,refundAmount:refund,correctedOrderTotal:correctedTotal,movementId:movement?movementId:"",approvalId:correctionApproval.id,cashRefundApprovalId:refundApproval?refundApproval.id:"",claimedAt:now,postedAt:Date.now(),actorUid:actor.uid,schemaVersion:1},[`operationalAudit/${now}_completed_order_correction_${o.id}`]:{action:"complete_order_item_correction",sourceType:"order",sourceId:o.id,correctionId,movementId:movement?movementId:"",paymentKind,originalTotal,correctedOrderTotal:correctedTotal,refundAmount:refund,customerAcknowledgement:acknowledgement,inventoryOutcome:"original_reversed_corrected_deducted",approvalId:correctionApproval.id,approvedByUid:correctionApproval.record.approvedBy,approvedRole:correctionApproval.record.approvedRole,cashRefundApprovalId:refundApproval?refundApproval.id:"",shiftId:o.shiftId,initiatedByStaff,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}});
+      const movementOrder=Object.assign({},o,{cogsAccountSnapshot:o.cogsAccountSnapshot||oldPlan.accountSnapshot||{}}),movement=OrderCorrection.movement(movementOrder,plan,refund,accountsSnap.val()||{},Financial.effectiveTaxFor(taxSettingsSnap.val()||{},Number(o.completedAt||o.timestamp||Date.now()))),movementId=refund>0?`refund_${o.id}_${Math.round(refund*100)}`:`correction_${o.id}_${token}`,writes=Object.assign({},correctionApproval.usedWrites,refundApproval?refundApproval.usedWrites:{},{[`orders/${o.id}`]:updated,[`activeOrders/${o.id}`]:activeOrderProjection(updated),[`orderCorrections/${correctionId}`]:correctionRecord,[`orderCorrectionCommands/${requestId}`]:{status:"posted",orderId:o.id,correctionId,refundAmount:refund,correctedOrderTotal:correctedTotal,movementId:movement?movementId:"",approvalId:correctionApproval.id,cashRefundApprovalId:refundApproval?refundApproval.id:"",claimedAt:now,postedAt:Date.now(),actorUid:actor.uid,schemaVersion:1},[`operationalAudit/${now}_completed_order_correction_${o.id}`]:{action:"complete_order_item_correction",sourceType:"order",sourceId:o.id,correctionId,movementId:movement?movementId:"",paymentKind,originalTotal,correctedOrderTotal:correctedTotal,refundAmount:refund,customerAcknowledgement:acknowledgement,inventoryOutcome:"original_reversed_corrected_deducted",approvalId:correctionApproval.id,approvedByUid:correctionApproval.record.approvedBy,approvedRole:correctionApproval.record.approvedRole,cashRefundApprovalId:refundApproval?refundApproval.id:"",shiftId:o.shiftId,initiatedByStaff,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}});
       if(movement){movement.occurredAt=now;movement.actorName=actor.role;movement.correctionId=correctionId;movement.approvalId=correctionApproval.id;movement.approvedBy=approvedBy;if(refundApproval)movement.cashRefundApprovalId=refundApproval.id;movement.controlReason="Completed in-store order changed with independent manager approval; original electronic receipt retained, item usage replaced, and any approved difference returned from register cash.";addOrderCashWrites(writes,movement,movementId,o,actor);await commitFinancial(db,movementId,movement,actor,writes);}else await db.ref().update(writes);
       // Flags follow the corrected lines: the old lines' flags close, the new ones open.
       await supersedeUncostedSale(db,o.id,uncostedVariant);if(correctedUncosted.length)await registerUncostedSale(db,o.id,Object.assign({},o,{completedAt:now}),correctedUncosted,uncostedVariant);
       return{duplicate:false,correctionId,refundAmount:refund,correctedOrderTotal:correctedTotal,movementId:movement?movementId:""};
     }
-    const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "Reason is required."); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; await postOrderFinancial(db, o, accounts, {uid: "server", role: "server"});
-    const now = Date.now(), writes = {}; let movementId, movement;
+    const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "Reason is required."); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {}; await postOrderFinancial(db, o, accounts, {uid: "server", role: "server"}, taxSettings);
+    const now = Date.now(), writes = {}, saleTax = Financial.effectiveTaxFor(taxSettings, Number(o.completedAt||o.receivedAt||o.timestamp||Date.now())); let movementId, movement;
     if (data.action === "cash_order_change_refund") {
       if (["grabfood", "foodpanda"].includes(String(o.channel || "").toLowerCase())) throw new HttpsError("failed-precondition", "Platform orders must be corrected through platform settlement.");
       if (String(o.channel || "instore").toLowerCase() !== "instore") throw new HttpsError("failed-precondition", "This cashier cash-refund workflow is for in-store orders only.");
@@ -6291,7 +6391,7 @@ exports.processOrderAdjustment = onCall(
       const latest=(await db.ref(`/${found.node}/${o.id}`).get()).val()||{};
       if(Financial.money(latest.refundAmount)!==already){await lockRef.transaction((current)=>current&&current.token===lockToken?null:current,undefined,false);throw new HttpsError("aborted","The refundable balance changed. Refresh the order before trying again.");}
       movementId = `refund_${o.id}_${Math.round(cumulative * 100)}`;
-      movement = Financial.reversalPosting(o, delta, "refund", accounts, [{method:"Cash", amount:delta}]);
+      movement = Financial.reversalPosting(o, delta, "refund", accounts, [{method:"Cash", amount:delta}], saleTax);
       movement.controlReason = "Customer order changed after verified electronic payment; cashier returned the system-calculated difference from the current register.";
       movement.refundShiftId = activeShift.id; movement.originalPaymentMethods = direct.map((row) => financeText(row.method, 60)); movement.correctedOrderTotal = correctedTotal;
       const prior = o.refundPayments || {}, nextRefundPayments = Object.assign({}, prior, {Cash:Financial.money(Number(prior.Cash || 0) + delta)});
@@ -6301,8 +6401,8 @@ exports.processOrderAdjustment = onCall(
       writes[`orderCashRefundLocks/${o.id}`]=null;
       writes[`operationalAudit/${now}_cash_order_change_refund_${o.id}`] = {action:"cash_order_change_refund",sourceType:"order",sourceId:o.id,movementId,amount:delta,originalTotal,currentNetBefore:currentNet,correctedOrderTotal:correctedTotal,originalPaymentMethods:movement.originalPaymentMethods,customerAcknowledgement:acknowledgement,orderStage:processed?"processed":"not_processed",inventoryOutcome:processed?inventoryOutcome:"not_yet_deducted",shiftId:activeShift.id,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};
     }
-    else if (data.action === "refund") { const delta = Financial.money(data.amount), already = Financial.money(o.refundAmount), max = Financial.money(o.total); if (!(delta > 0) || already + delta > max + 0.009) throw new HttpsError("invalid-argument", "Refund exceeds the refundable amount."); const cumulative = Financial.money(already + delta), original = (Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior = o.refundPayments || {}, tender = Array.isArray(data.refundPayments)?data.refundPayments.map((row) => ({method:financeText(row.method,60),amount:Financial.money(row.amount)})).filter((row) => row.method&&row.amount>0):[]; if ((o.channel||"instore") === "instore") {if (Math.abs(tender.reduce((s,row)=>Financial.money(s+row.amount),0)-delta)>0.009) throw new HttpsError("invalid-argument","Refund tender allocations must equal the refund amount."); const allowed={}; original.forEach((row)=>{allowed[row.method]=Financial.money((allowed[row.method]||0)+Financial.money(row.amount));}); tender.forEach((row)=>{if (!allowed[row.method] || Financial.money((prior[row.method]||0)+row.amount)>allowed[row.method]+0.009) throw new HttpsError("invalid-argument",`Refund through ${row.method} exceeds the original payment.`);});} movementId = `refund_${o.id}_${Math.round(cumulative * 100)}`; const approval = await claimManagerApproval(db, data, "refund", o.id, delta, movementId); movement = Financial.reversalPosting(o, delta, "refund", accounts, tender); Object.assign(writes, approval.usedWrites); const nextRefundPayments=Object.assign({},prior);tender.forEach((row)=>{nextRefundPayments[row.method]=Financial.money((nextRefundPayments[row.method]||0)+row.amount);}); writes[`${found.node}/${o.id}/refundAmount`] = cumulative; writes[`${found.node}/${o.id}/refundPayments`] = nextRefundPayments; writes[`${found.node}/${o.id}/refundHistory/${movementId}`] = {amount:delta,payments:tender,reason,at:now,by:actor.uid,approvalId:approval.id,approvedBy:approval.record.approvedEmail||approval.record.approvedRole}; writes[`${found.node}/${o.id}/refundReason`] = reason; writes[`${found.node}/${o.id}/refundedAt`] = now; writes[`${found.node}/${o.id}/refundedBy`] = actor.uid; writes[`${found.node}/${o.id}/refunded`] = true; }
-    else if (data.action === "void") { if (o.voided) throw new HttpsError("already-exists", "Order is already voided."); const value = Financial.money(Math.max(0, Financial.money(o.total) - Financial.money(o.refundAmount))); if (!(value > 0)) throw new HttpsError("failed-precondition", "Nothing remains to void."); movementId = `void_${o.id}`; const approval = await claimManagerApproval(db, data, "void", o.id, value, movementId), original=(Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior=o.refundPayments||{}, tender=[]; if ((o.channel||"instore")==="instore") {let rem=value; original.forEach((row)=>{const available=Financial.money(Math.max(0,Financial.money(row.amount)-Financial.money(prior[row.method]))),use=Financial.money(Math.min(rem,available));if(use>0){tender.push({method:row.method,amount:use});rem=Financial.money(rem-use);}});if(rem>0.009)throw new HttpsError("failed-precondition","Original payment allocation cannot support the void reversal.");} movement = await fullOrderVoidMovement(db, o, accounts, tender); if (!movement) throw new HttpsError("failed-precondition", "The void has no remaining financial balance to reverse."); Object.assign(writes, approval.usedWrites); writes[`${found.node}/${o.id}/voided`] = true; writes[`${found.node}/${o.id}/voidPayments`] = tender; writes[`${found.node}/${o.id}/voidApprovalId`] = approval.id; writes[`${found.node}/${o.id}/voidApprovedBy`] = approval.record.approvedEmail||approval.record.approvedRole; writes[`${found.node}/${o.id}/voidReason`] = reason; writes[`${found.node}/${o.id}/voidedAt`] = now; writes[`${found.node}/${o.id}/voidedBy`] = actor.uid; }
+    else if (data.action === "refund") { const delta = Financial.money(data.amount), already = Financial.money(o.refundAmount), max = Financial.money(o.total); if (!(delta > 0) || already + delta > max + 0.009) throw new HttpsError("invalid-argument", "Refund exceeds the refundable amount."); const cumulative = Financial.money(already + delta), original = (Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior = o.refundPayments || {}, tender = Array.isArray(data.refundPayments)?data.refundPayments.map((row) => ({method:financeText(row.method,60),amount:Financial.money(row.amount)})).filter((row) => row.method&&row.amount>0):[]; if ((o.channel||"instore") === "instore") {if (Math.abs(tender.reduce((s,row)=>Financial.money(s+row.amount),0)-delta)>0.009) throw new HttpsError("invalid-argument","Refund tender allocations must equal the refund amount."); const allowed={}; original.forEach((row)=>{allowed[row.method]=Financial.money((allowed[row.method]||0)+Financial.money(row.amount));}); tender.forEach((row)=>{if (!allowed[row.method] || Financial.money((prior[row.method]||0)+row.amount)>allowed[row.method]+0.009) throw new HttpsError("invalid-argument",`Refund through ${row.method} exceeds the original payment.`);});} movementId = `refund_${o.id}_${Math.round(cumulative * 100)}`; const approval = await claimManagerApproval(db, data, "refund", o.id, delta, movementId); movement = Financial.reversalPosting(o, delta, "refund", accounts, tender, saleTax); Object.assign(writes, approval.usedWrites); const nextRefundPayments=Object.assign({},prior);tender.forEach((row)=>{nextRefundPayments[row.method]=Financial.money((nextRefundPayments[row.method]||0)+row.amount);}); writes[`${found.node}/${o.id}/refundAmount`] = cumulative; writes[`${found.node}/${o.id}/refundPayments`] = nextRefundPayments; writes[`${found.node}/${o.id}/refundHistory/${movementId}`] = {amount:delta,payments:tender,reason,at:now,by:actor.uid,approvalId:approval.id,approvedBy:approval.record.approvedEmail||approval.record.approvedRole}; writes[`${found.node}/${o.id}/refundReason`] = reason; writes[`${found.node}/${o.id}/refundedAt`] = now; writes[`${found.node}/${o.id}/refundedBy`] = actor.uid; writes[`${found.node}/${o.id}/refunded`] = true; }
+    else if (data.action === "void") { if (o.voided) throw new HttpsError("already-exists", "Order is already voided."); const value = Financial.money(Math.max(0, Financial.money(o.total) - Financial.money(o.refundAmount))); if (!(value > 0)) throw new HttpsError("failed-precondition", "Nothing remains to void."); movementId = `void_${o.id}`; const approval = await claimManagerApproval(db, data, "void", o.id, value, movementId), original=(Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior=o.refundPayments||{}, tender=[]; if ((o.channel||"instore")==="instore") {let rem=value; original.forEach((row)=>{const available=Financial.money(Math.max(0,Financial.money(row.amount)-Financial.money(prior[row.method]))),use=Financial.money(Math.min(rem,available));if(use>0){tender.push({method:row.method,amount:use});rem=Financial.money(rem-use);}});if(rem>0.009)throw new HttpsError("failed-precondition","Original payment allocation cannot support the void reversal.");} movement = await fullOrderVoidMovement(db, o, accounts, tender, taxSettings); if (!movement) throw new HttpsError("failed-precondition", "The void has no remaining financial balance to reverse."); Object.assign(writes, approval.usedWrites); writes[`${found.node}/${o.id}/voided`] = true; writes[`${found.node}/${o.id}/voidPayments`] = tender; writes[`${found.node}/${o.id}/voidApprovalId`] = approval.id; writes[`${found.node}/${o.id}/voidApprovedBy`] = approval.record.approvedEmail||approval.record.approvedRole; writes[`${found.node}/${o.id}/voidReason`] = reason; writes[`${found.node}/${o.id}/voidedAt`] = now; writes[`${found.node}/${o.id}/voidedBy`] = actor.uid; }
     else throw new HttpsError("invalid-argument", "Adjustment action is invalid.");
     if (data.restock === true) {writes[`${found.node}/${o.id}/inventoryReversalRequested`] = true; writes[`${found.node}/${o.id}/inventoryReversalReason`] = reason;}
     movement.occurredAt = now; movement.actorName = actor.role; if (data.approvalId) movement.approvalId=financeText(data.approvalId,160); addOrderCashWrites(writes, movement, movementId, o, actor); const committed = await commitFinancial(db, movementId, movement, actor, writes); return {movementId, duplicate: committed.duplicate, amount:movement.amount, correctedOrderTotal:movement.correctedOrderTotal, refundShiftId:movement.refundShiftId};
@@ -6373,13 +6473,13 @@ exports.recordPlatformCatchup = onCall(
       time: d.toLocaleTimeString("en-PH", {hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila"}),
       timestamp: parsedTs, completedAt: parsedTs, schemaVersion: 2,
     };
-    const accounts = (await db.ref("/cfAccounts").get()).val() || {};
+    const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {};
     const writes = Object.assign({}, approval.usedWrites, {
       [`orders/${oid}`]: order,
       [`operationalAudit/${now}_rekey_${oid}`]: {action: "rekey_platform_order", sourceType: "order", sourceId: oid, platformRef: ref, channel, amount: gross, actorUid: actor.uid, actorRole: actor.role, approvalId: approval.id, reference, orderDate: dateStr, ts: now, schemaVersion: 1},
     });
     await db.ref().update(writes);
-    const posted = await postOrderFinancial(db, order, accounts, {uid: actor.uid, role: actor.role});
+    const posted = await postOrderFinancial(db, order, accounts, {uid: actor.uid, role: actor.role}, taxSettings);
     return {orderId: oid, platformRef: ref, net, financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
   },
 );
@@ -6676,11 +6776,11 @@ exports.ensureFinancialLedger = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 540, memory: "512MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables"]);
-    const [ordersSnap, archiveSnap, accountsSnap, ledgerSnap, shiftsSnap, vouchersSnap, replenishmentsSnap, pettySettingsSnap, receivablesSnap, payablesSnap, movementsSnap, payoutsSnap, varianceDefsSnap] = /* download-ok: manual ledger backfill tool */await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/cfAccounts").get(), db.ref("/cfLedger").get(), db.ref("/shifts").get(), db.ref("/pettyCashVouchers").get(), db.ref("/pettyCashReplenishments").get(), db.ref("/pettyCashSettings").get(), db.ref("/receivables").get(), db.ref("/payables").get(), db.ref("/financialMovements").get(), db.ref("/platformPayouts").get(), db.ref("/platformVarAccounts").get()]);
-    const accounts = accountsSnap.val() || {}, legacyLedger = ledgerSnap.val() || {}, all = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {}), originalMovements = movementsSnap.val() || {}; let posted = 0, duplicates = 0, skipped = 0, salesDiscountsReclassified = 0; const serverActor = {uid: "server", role: "server"};
+    const [ordersSnap, archiveSnap, accountsSnap, ledgerSnap, shiftsSnap, vouchersSnap, replenishmentsSnap, pettySettingsSnap, receivablesSnap, payablesSnap, movementsSnap, payoutsSnap, varianceDefsSnap, taxSettingsSnap] = /* download-ok: manual ledger backfill tool */await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/cfAccounts").get(), db.ref("/cfLedger").get(), db.ref("/shifts").get(), db.ref("/pettyCashVouchers").get(), db.ref("/pettyCashReplenishments").get(), db.ref("/pettyCashSettings").get(), db.ref("/receivables").get(), db.ref("/payables").get(), db.ref("/financialMovements").get(), db.ref("/platformPayouts").get(), db.ref("/platformVarAccounts").get(), db.ref("/taxSettings").get()]);
+    const accounts = accountsSnap.val() || {}, taxSettings = taxSettingsSnap.val() || {}, legacyLedger = ledgerSnap.val() || {}, all = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {}), originalMovements = movementsSnap.val() || {}; let posted = 0, duplicates = 0, skipped = 0, salesDiscountsReclassified = 0; const serverActor = {uid: "server", role: "server"};
     const ledgerRun = {movements: originalMovements, written: 0};
     return knownFinancialMovements.run(ledgerRun, async () => {
-    for (const id of Object.keys(all)) { try {const order = Object.assign({id}, all[id]), result = await postOrderFinancial(db, order, accounts, serverActor); if (result.skipped) skipped++; else if (result.duplicate) duplicates++; else posted++;const prepaid=await postPreCompletionCashRefund(db,order,serverActor);if(!prepaid.skipped){if(prepaid.duplicate)duplicates++;else posted++;} const orderStatus=order.status==="Archived"?order.prevStatus:order.status,discountReclass=!order.voided&&["Completed","Received"].includes(orderStatus)&&order.paymentStatus!=="pending"?Financial.platformDiscountReclassification(order,originalMovements[`sale_${id}`]):null;if(discountReclass){const movementId=`sales_discount_reclass_${id}`,now=Date.now(),rr=await commitFinancial(db,movementId,discountReclass,serverActor,{[`operationalAudit/${now}_sales_discount_reclass_${id}`]:{action:"platform_sales_discount_reclassified",sourceType:"order",sourceId:id,movementId,originalMovementId:`sale_${id}`,amount:Financial.money(discountReclass.amount),actorUid:actor.uid,ts:now,schemaVersion:1,accounting:"Reclassify platform-funded discounts from selling expense to contra-revenue; no cash, receivable, inventory, or profit change."}});if(rr.duplicate)duplicates++;else{posted++;salesDiscountsReclassified++;}}const refund = Financial.money(order.refundAmount); if (refund > 0) {const movementId = `refund_${id}_${Math.round(refund * 100)}`, movement = Financial.reversalPosting(order, refund, "refund", accounts), writes = {}; movement.occurredAt = Number(order.refundedAt || order.timestamp || Date.now()); if (!legacyLedger[`cfrefund_${id}`]) addOrderCashWrites(writes, movement, movementId, order, serverActor); const rr = await commitFinancial(db, movementId, movement, serverActor, writes); rr.duplicate ? duplicates++ : posted++;} if (order.voided) {const remaining = Financial.money(Math.max(0, Financial.money(order.total) - refund)); if (remaining > 0) {const movementId = `void_${id}`, movement = Financial.reversalPosting(order, remaining, "void", accounts), writes = {}; movement.occurredAt = Number(order.voidedAt || order.timestamp || Date.now()); addOrderCashWrites(writes, movement, movementId, order, serverActor); const vr = await commitFinancial(db, movementId, movement, serverActor, writes); vr.duplicate ? duplicates++ : posted++;}}} catch (error) {logger.error("3C backfill order failed", {id, error: String(error)}); throw new HttpsError("internal", `Backfill stopped at order ${id}. It is safe to retry.`);} }
+    for (const id of Object.keys(all)) { try {const order = Object.assign({id}, all[id]), saleTax = Financial.effectiveTaxFor(taxSettings, Number(order.completedAt||order.receivedAt||order.timestamp||Date.now())), result = await postOrderFinancial(db, order, accounts, serverActor, taxSettings); if (result.skipped) skipped++; else if (result.duplicate) duplicates++; else posted++;const prepaid=await postPreCompletionCashRefund(db,order,serverActor);if(!prepaid.skipped){if(prepaid.duplicate)duplicates++;else posted++;} const orderStatus=order.status==="Archived"?order.prevStatus:order.status,discountReclass=!order.voided&&["Completed","Received"].includes(orderStatus)&&order.paymentStatus!=="pending"?Financial.platformDiscountReclassification(order,originalMovements[`sale_${id}`]):null;if(discountReclass){const movementId=`sales_discount_reclass_${id}`,now=Date.now(),rr=await commitFinancial(db,movementId,discountReclass,serverActor,{[`operationalAudit/${now}_sales_discount_reclass_${id}`]:{action:"platform_sales_discount_reclassified",sourceType:"order",sourceId:id,movementId,originalMovementId:`sale_${id}`,amount:Financial.money(discountReclass.amount),actorUid:actor.uid,ts:now,schemaVersion:1,accounting:"Reclassify platform-funded discounts from selling expense to contra-revenue; no cash, receivable, inventory, or profit change."}});if(rr.duplicate)duplicates++;else{posted++;salesDiscountsReclassified++;}}const refund = Financial.money(order.refundAmount); if (refund > 0) {const movementId = `refund_${id}_${Math.round(refund * 100)}`, movement = Financial.reversalPosting(order, refund, "refund", accounts, [], saleTax), writes = {}; movement.occurredAt = Number(order.refundedAt || order.timestamp || Date.now()); if (!legacyLedger[`cfrefund_${id}`]) addOrderCashWrites(writes, movement, movementId, order, serverActor); const rr = await commitFinancial(db, movementId, movement, serverActor, writes); rr.duplicate ? duplicates++ : posted++;} if (order.voided) {const remaining = Financial.money(Math.max(0, Financial.money(order.total) - refund)); if (remaining > 0) {const movementId = `void_${id}`, movement = Financial.reversalPosting(order, remaining, "void", accounts, [], saleTax), writes = {}; movement.occurredAt = Number(order.voidedAt || order.timestamp || Date.now()); addOrderCashWrites(writes, movement, movementId, order, serverActor); const vr = await commitFinancial(db, movementId, movement, serverActor, writes); vr.duplicate ? duplicates++ : posted++;}}} catch (error) {logger.error("3C backfill order failed", {id, error: String(error)}); throw new HttpsError("internal", `Backfill stopped at order ${id}. It is safe to retry.`);} }
       let orphanReversed = 0;
       for (const movementId of Object.keys(originalMovements)) {
         const original = originalMovements[movementId] || {}, sourceId = String(original.sourceId || "");
@@ -6959,12 +7059,12 @@ exports.auditFinancialControls = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "512MiB"},
   async (request) => {
     const db=getDatabase();await requirePortalPermission(db,request,["cashflow","receivables","payables"]);
-    const snaps=/* download-ok: manual control audit */await Promise.all([db.ref("/orders").get(),db.ref("/archivedOrders").get(),db.ref("/financialMovements").get(),db.ref("/cfLedger").get(),db.ref("/receivables").get(),db.ref("/payables").get(),db.ref("/platformPayouts").get(),db.ref("/cashCustody").get(),db.ref("/cfAccounts").get(),db.ref("/posSettings").get(),db.ref("/posActiveShift").get()]);
-    const liveOrders=snaps[0].val()||{},archivedOrders=snaps[1].val()||{};await repairArchivedOrderMetadataGhosts(db,liveOrders,archivedOrders);const orders=Object.assign({},archivedOrders,liveOrders),cash=snaps[3].val()||{},ars=snaps[4].val()||{},aps=snaps[5].val()||{},payouts=snaps[6].val()||{},custody=snaps[7].val()||{},accounts=snaps[8].val()||{},issues=[];let movements=snaps[2].val()||{};
+    const snaps=/* download-ok: manual control audit */await Promise.all([db.ref("/orders").get(),db.ref("/archivedOrders").get(),db.ref("/financialMovements").get(),db.ref("/cfLedger").get(),db.ref("/receivables").get(),db.ref("/payables").get(),db.ref("/platformPayouts").get(),db.ref("/cashCustody").get(),db.ref("/cfAccounts").get(),db.ref("/posSettings").get(),db.ref("/posActiveShift").get(),db.ref("/taxSettings").get()]);
+    const liveOrders=snaps[0].val()||{},archivedOrders=snaps[1].val()||{};await repairArchivedOrderMetadataGhosts(db,liveOrders,archivedOrders);const orders=Object.assign({},archivedOrders,liveOrders),cash=snaps[3].val()||{},ars=snaps[4].val()||{},aps=snaps[5].val()||{},payouts=snaps[6].val()||{},custody=snaps[7].val()||{},accounts=snaps[8].val()||{},taxSettings=snaps[11].val()||{},issues=[];let movements=snaps[2].val()||{};
     const dateMaintenance=await automaticallyRepairFinanceDates(db,cash,movements,"financial_control_audit");if(dateMaintenance.repaired)movements=/* download-ok: manual control audit */(await db.ref("/financialMovements").get()).val()||{};
     const resolvedPaymentMappings=new Set();Object.values(movements).forEach((m)=>{if(m&&m.type==="payment_account_reclassification"&&m.originalMovementId&&m.method)resolvedPaymentMappings.add(`${m.originalMovementId}|${financeText(m.method,60).toLowerCase()}`);});
     Object.keys(movements).forEach((id)=>{const m=movements[id],sum=Financial.totals(m.lines||[]);if(Math.abs(sum.debit-sum.credit)>0.009)issues.push({severity:"critical",kind:"unbalanced",source:id,amount:Financial.money(sum.debit-sum.credit)});(m.warnings||[]).forEach((w)=>{const match=/^No cash-flow account mapping for (.+)\.$/.exec(String(w||"")),resolved=match&&resolvedPaymentMappings.has(`${id}|${financeText(match[1],60).toLowerCase()}`);if(!resolved)issues.push({severity:"warning",kind:"movement_warning",source:id,detail:w});});});
-    const saleMovementRows=Object.values(movements);Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status;if(o.voided||!["Completed","Received"].includes(status)||o.paymentStatus==="pending"||!movements[`sale_${id}`])return;const expected=Financial.orderNetSales(o),actual=Financial.sourceNetSales(saleMovementRows,id),difference=Financial.money(actual-expected);if(Math.abs(difference)>0.009)issues.push({severity:"critical",kind:"sale_amount_mismatch",source:id,detail:`Admin net sales ${expected.toFixed(2)}; Finance Books ${actual.toFixed(2)}`,amount:difference,expected,actual});});
+    const saleMovementRows=Object.values(movements);Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status;if(o.voided||!["Completed","Received"].includes(status)||o.paymentStatus==="pending"||!movements[`sale_${id}`])return;const expected=Financial.orderNetSales(o,Financial.effectiveTaxFor(taxSettings,Number(o.completedAt||o.receivedAt||o.timestamp||Date.now()))),actual=Financial.sourceNetSales(saleMovementRows,id),difference=Financial.money(actual-expected);if(Math.abs(difference)>0.009)issues.push({severity:"critical",kind:"sale_amount_mismatch",source:id,detail:`Admin net sales ${expected.toFixed(2)}; Finance Books ${actual.toFixed(2)}`,amount:difference,expected,actual});});
     Object.keys(cash).forEach((id)=>{if(!cash[id].movementId)issues.push({severity:"warning",kind:"legacy_cash_without_movement",source:id,amount:Financial.money(cash[id].amount)});});
     Object.keys(cash).forEach((id)=>{const row=cash[id]||{},mv=movements[row.movementId];if(mv&&row.date&&!mv.dateRepairSupersededBy&&BooksBridge.businessDate(mv.occurredAt)!==row.date)issues.push({severity:"critical",kind:"cash_finance_date_mismatch",source:id,detail:`Cash ${row.date}; Finance ${BooksBridge.businessDate(mv.occurredAt)}`,amount:Financial.money(row.amount)});});
     let unsettledValue=0,unsettledCount=0;Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status,platform=["grabfood","foodpanda"].includes(String(o.channel||"").toLowerCase());if(!o.voided&&["Completed","Received"].includes(status)&&o.paymentStatus!=="pending"&&!movements[`sale_${id}`])issues.push({severity:"critical",kind:"sale_not_posted",source:id,amount:Financial.money(o.total)});if(platform&&!o.voided&&(o.settlementStatus||"unsettled")!=="settled"){unsettledCount++;unsettledValue=Financial.money(unsettledValue+Financial.money(o.netPlatform));}Financial.unmappedOrderPayments(o,accounts).forEach((p)=>issues.push({severity:"warning",kind:"unmapped_payment_method",source:id,detail:financeText(p.method,60),amount:Financial.money(p.amount)}));});

@@ -36,6 +36,15 @@ function telemetry(){return window.AccazaTelemetry||{start:function(){},end:func
 function capturePosDraft(root){if(!root)return;var active=document.activeElement,focusId=active&&root.contains(active)?active.id:'';root.querySelectorAll('input[id],textarea[id],select[id]').forEach(function(el){posDraft[el.id]={value:el.value,checked:!!el.checked,type:el.type};});posDraft.__focus=focusId;}
 function restorePosDraft(root){if(!root)return;Object.keys(posDraft).forEach(function(id){if(id==='__focus')return;var el=document.getElementById(id),v=posDraft[id];if(!el||!root.contains(el))return;if(v.type==='checkbox'||v.type==='radio')el.checked=v.checked;else el.value=v.value;});var f=posDraft.__focus&&document.getElementById(posDraft.__focus);if(f&&root.contains(f))setTimeout(function(){try{f.focus();}catch(e){}},0);}
 var DISC_TYPES={senior:{label:'Senior Citizen',rate:0.20},pwd:{label:'PWD',rate:0.20},athlete:{label:'National Athlete',rate:0.20},promo5:{label:'5% Drink Promo',rate:0.05}};
+/* Effective tax regime right now, mirroring Financial.effectiveTaxFor on the server.
+   Returns null before the effective date so statutory discounts keep their old basis. */
+function posTaxNow(){
+  var ts=window.__taxSettings||{};
+  if(ts.mode!=='vat'&&ts.mode!=='percentage')return null;
+  if(Number(ts.effectiveAt||0)>Date.now())return null;
+  var rate=Number(ts.mode==='vat'?ts.vatRate:ts.percentageRate),fallback=ts.mode==='vat'?12:3;
+  return {mode:ts.mode,rate:(isFinite(rate)&&rate>0&&rate<=100)?rate:fallback,inclusive:ts.inclusive!==false};
+}
 
 function A(){return window.__accaza;}
 /* Platform (Grab/FoodPanda) order-number key — MUST match functions/index.js platformRefKey. */
@@ -230,6 +239,7 @@ function init(){
   var a=A();
   window.__online=(typeof navigator!=='undefined')?navigator.onLine:true;
   a.subscribe('posSettings', function(s){ window.__posSettings=s.val()||{}; if(document.getElementById('posPay'))renderPosCart(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
+  a.subscribe('taxSettings', function(s){ window.__taxSettings=s.val()||{}; });
   a.subscribe('cfAccounts',function(s){paymentAccountsMap=s.val()||{};if(document.getElementById('posPay'))renderPosCart();});
   a.subscribe('booksChart',function(s){booksChartMap=s.val()||{};if(isTab('purchases'))renderPurchases();});
   a.subscribe('.info/connected', function(sn){ window.__online=(sn.val()===true); updateOfflineUI(); if(window.__online) flushOfflineQueue(); });
@@ -3390,8 +3400,15 @@ function applyScoped(key,type,idNum,name){
     if(idSlotUsed(idNum,cat)){alert('ID '+idNum+' already used its '+cat+' discount (max 1 drink + 1 food per ID).');return false;}
   }
   var rate=(DISC_TYPES[type]||{}).rate||0;
-  var value=Math.round(c.unitTotal*rate*100)/100;
-  posScopedDisc.push({type:type,rate:rate,idNumber:idNum||'',holderName:name||'',key:key,itemKey:c.itemKey,name:c.name,size:c.size||'',cat:cat,unitPrice:c.unitTotal,value:value});
+  /* Statutory 20% (senior/PWD/athlete) is computed on the VAT-exempt price under
+     VAT-inclusive mode (RA 9994/10754: discount base excludes VAT). Under tax-exclusive
+     pricing the shelf price is already VAT-exempt, so no carve-out is made. The 5% promo
+     is a merchant promo, not statutory, so it stays a straight 5% of the full price in
+     every tax mode. */
+  var base=c.unitTotal,tax=(type!=='promo5')?posTaxNow():null;
+  if(tax&&tax.mode==='vat'&&tax.inclusive!==false)base=c.unitTotal/(1+tax.rate/100);
+  var value=Math.round(base*rate*100)/100;
+  posScopedDisc.push({type:type,rate:rate,idNumber:idNum||'',holderName:name||'',key:key,itemKey:c.itemKey,name:c.name,size:c.size||'',cat:cat,unitPrice:c.unitTotal,basis:Math.round(base*100)/100,value:value});
   return true;
 }
 function openDiscountModal(){
@@ -3402,6 +3419,7 @@ function openDiscountModal(){
     var idNum=(mask.querySelector('#dscId')||{}).value||'';
     var nm=(mask.querySelector('#dscName')||{}).value||'';
     var isPromo=type==='promo5';
+    var tax=posTaxNow(),vatOn=tax&&tax.mode==='vat';
     var rows=Object.keys(posCart).map(function(k){var c=posCart[k];var cat=lineCat(k);var left=c.qty-discountedUnits(k);
       var eligible = left>0 && (isPromo?cat==='drink':(cat==='drink'||cat==='food'));
       return '<tr><td>'+esc(c.name)+(c.size?' ('+esc(c.size)+')':'')+'<div style="font-size:0.7rem;color:var(--tl);">'+(cat||'untagged')+' · '+peso(c.unitTotal)+'/unit · '+left+' of '+c.qty+' left</div></td><td style="text-align:right;">'+(eligible?'<button class="pz-btn ok" data-dscapply="'+k+'" style="padding:0.2rem 0.55rem;">Discount 1</button>':'<span style="font-size:0.72rem;color:var(--tl);">—</span>')+'</td></tr>';
@@ -3410,6 +3428,7 @@ function openDiscountModal(){
     mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
       +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Scoped discount</div>'
       +'<p class="pz-sub" style="margin-top:0.2rem;">Statutory Senior/PWD/Athlete = 20% on the eligible person’s own items (max 1 drink + 1 food per ID). 5% promo = 1 drink. No stacking on the same unit.</p>'
+      +(vatOn?(tax.inclusive===false?'<p class="pz-sub" style="margin-top:0.2rem;">VAT mode (tax added on top): the shelf price is already VAT-exempt, so the statutory 20% is computed on the full unit price.</p>':'<p class="pz-sub" style="margin-top:0.2rem;">VAT mode (tax inside the price): the statutory 20% is computed on the VAT-exempt price (unit ÷ '+(1+tax.rate/100).toFixed(4)+'). The 5% promo stays on the full price.</p>'):'')
       +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end;margin-bottom:0.6rem;"><div><span class="pz-lbl">Type</span><select class="pz-in" id="dscType">'+Object.keys(DISC_TYPES).map(function(t){return '<option value="'+t+'"'+(t===type?' selected':'')+'>'+esc(DISC_TYPES[t].label)+' ('+Math.round(DISC_TYPES[t].rate*100)+'%)</option>';}).join('')+'</select></div>'
       +(isPromo?'':'<div><span class="pz-lbl">ID number</span><input class="pz-in" id="dscId" value="'+esc(idNum)+'" placeholder="OSCA/PWD/athlete ID"/></div><div><span class="pz-lbl">Holder name</span><input class="pz-in" id="dscName" value="'+esc(nm)+'"/></div>')+'</div>'
       +'<table class="pz-tbl"><thead><tr><th>Cart item</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'
@@ -3465,6 +3484,7 @@ function renderPosCart(options){
       +posLoyaltyClaimRow()
       +(posScopedDisc.length?('<div style="font-size:0.76rem;margin-bottom:0.4rem;">'+posScopedDisc.map(function(d,ix){return '<div style="display:flex;justify-content:space-between;align-items:center;color:#155724;margin-bottom:0.15rem;"><span>'+esc((DISC_TYPES[d.type]||{}).label||d.type)+' · '+esc(d.name)+(d.idNumber?' ('+esc(d.idNumber)+')':'')+'</span><span style="white-space:nowrap;">−'+peso(d.value)+' <button class="pz-btn warn" data-sdrm="'+ix+'" style="padding:0 0.35rem;">✕</button></span></div>';}).join('')+'</div>'):'')
       +(posMeta.cashRounding?'<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span>Cash rounding</span><span id="posRound">₱0.00</span></div>':''))
+      +'<div id="posTaxRow" style="display:none;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span id="posTaxLbl"></span><span id="posTaxAmt"></span></div>'
       +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);font-size:1rem;border-top:1px solid var(--cd);padding-top:0.4rem;"><span>'+(isPlat?'Gross':'Total')+'</span><span id="posTotal">'+peso(sub)+'</span></div>'
     +'</div>'
     +(correction?'<div style="margin-top:0.7rem;padding:0.55rem;background:#e8f5ec;border:1px solid #b8dfc4;border-radius:6px;font-size:0.78rem;color:#155724;"><b>Original '+esc(correction.paymentKind)+' payment stays recorded.</b><br>POS will calculate any cash refund from '+peso(correction.originalTotal)+'.</div>':isPlat
@@ -3487,7 +3507,11 @@ function renderPosCart(options){
   var disc=document.getElementById('posDisc');
   var splitRows=[];
   var pay=null, splitChk=null;
-  function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()+posLoyaltyDiscount()); var tot=Math.max(0,sub-d); if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
+  function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()+posLoyaltyDiscount()); var tot=Math.max(0,sub-d);
+    var tax=isPlat?null:posTaxNow(),row=document.getElementById('posTaxRow');
+    if(tax&&tax.inclusive===false){var add=Math.round(tot*tax.rate)/100; tot=Math.round((tot+add)*100)/100; if(row){row.style.display='flex';var tl=document.getElementById('posTaxLbl'),ta=document.getElementById('posTaxAmt');if(tl)tl.textContent=(tax.mode==='vat'?'VAT '+tax.rate+'%':'Percentage tax '+tax.rate+'%')+' added on top';if(ta)ta.textContent='+'+peso(add);}}
+    else if(row)row.style.display='none';
+    if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
   function draftElectronicPayments(){
     if(isPlat)return[];
     var tot=grandTotal();
@@ -3689,7 +3713,9 @@ function chargeSale(sub,total,payments,platform,discountApproval,cashierVerifica
   var payLabel=isPlat?channelLabel(platform.channel):(payments.length>1?'Split':payments[0].method);
   var _pendingPay=(!isPlat)&&directPaymentRows(payments).length>0,_verificationPolicy=_pendingPay?paymentVerificationPolicy(payments):null;
   var now=new Date();
-  var order={id:oid,clientTxnId:txnId,schemaVersion:2,syncState:'pending',name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,soldBy:seller.staff,soldByStaffId:seller.staffId,soldByUid:seller.uid,soldByRole:seller.role,shiftId:shift.id,loyaltyMemberId:((!isPlat&&posLoyaltyMember&&posLoyaltyMember.memberId)||''),loyaltyDiscount:(isPlat?0:posLoyaltyDiscount()),loyaltyRewardId:((!isPlat&&posLoyaltyClaim&&posLoyaltyClaim.rewardId)||''),loyaltyRewardName:((!isPlat&&posLoyaltyClaim&&posLoyaltyClaim.name)||''),packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?(_verificationPolicy==='manager_only'?'pending':'cashier_verified'):'confirmed'),paymentVerificationPolicy:_verificationPolicy,cashierVerificationIntent:!!(_pendingPay&&_verificationPolicy==='cashier_manager'&&cashierVerification&&cashierVerification.required),receivedByCustomer:true,preparationStatus:isPlat?'not_applicable':'not_prepared',tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
+  /* Snapshot the live tax regime at charge time so reprints show what the customer was actually charged (server posting derives its own regime via the effective-date wall). */
+  var _tax=posTaxNow(); _tax=_tax?{mode:_tax.mode,rate:_tax.rate,inclusive:isPlat?true:(_tax.inclusive!==false),tin:(window.__taxSettings&&window.__taxSettings.tin)||'',branchCode:(window.__taxSettings&&window.__taxSettings.branchCode)||''}:null;
+  var order={id:oid,clientTxnId:txnId,schemaVersion:2,syncState:'pending',name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),tax:_tax,staff:staff,soldBy:seller.staff,soldByStaffId:seller.staffId,soldByUid:seller.uid,soldByRole:seller.role,shiftId:shift.id,loyaltyMemberId:((!isPlat&&posLoyaltyMember&&posLoyaltyMember.memberId)||''),loyaltyDiscount:(isPlat?0:posLoyaltyDiscount()),loyaltyRewardId:((!isPlat&&posLoyaltyClaim&&posLoyaltyClaim.rewardId)||''),loyaltyRewardName:((!isPlat&&posLoyaltyClaim&&posLoyaltyClaim.name)||''),packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?(_verificationPolicy==='manager_only'?'pending':'cashier_verified'):'confirmed'),paymentVerificationPolicy:_verificationPolicy,cashierVerificationIntent:!!(_pendingPay&&_verificationPolicy==='cashier_manager'&&cashierVerification&&cashierVerification.required),receivedByCustomer:true,preparationStatus:isPlat?'not_applicable':'not_prepared',tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
   if(preCompletionRefund){order.preCompletionCashRefund=preCompletionRefund;order.refundPayments={Cash:preCompletionRefund.amount};order.refunded=true;order.refundedAt=order.timestamp;order.refundedBy=staff;order.refundReason=preCompletionRefund.reason;order.cashRefundReviewStatus='pending_shift_review';order.cashRefundShiftId=shift.id;if(preCompletionRefund.denoms&&Object.keys(preCompletionRefund.denoms).length)order.cashChange=Object.assign({},preCompletionRefund.denoms);}
   if(discountApproval){order.discountApprovalId=discountApproval.approvalId;order.discountApprovedBy=discountApproval.approvedBy;order.discountApprovedByUid=discountApproval.approvedByUid;order.discountApprovedRole=discountApproval.approvedRole;order.discountApprovalSource=discountApproval.sourceId;}
   if(isPlat){ order.platformRef=platform.platformRef; order.grossPlatform=platform.gross; order.platformDiscountPct=Number(platform.discountPct)||0; order.platformDiscount=Number(platform.discountAmt)||0; order.platformDiscountLines=platform.discountLines||[]; order.platformMerchantPromo=Number(platform.merchantPromo)||0; order.platformDeliveryFeeDiscount=Number(platform.deliveryFeeDiscount)||0; order.netSalesPlatform=Number(platform.netSales!=null?platform.netSales:total)||0; order.commission=platform.commission; order.commissionRate=platform.commissionRate; order.platformWht=Number(platform.wht)||0; order.platformWhtRate=Number(platform.whtRate)||0; order.platformVat=Number(platform.vat)||0; order.platformVatRate=Number(platform.vatRate)||0; order.netPlatform=platform.net; order.settlementStatus='unsettled'; order.payoutId=''; }

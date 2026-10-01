@@ -34,10 +34,10 @@ function cogsCorrectionLines(originalSnapshot, correctedSnapshot) {
   return lines;
 }
 
-function movement(order, correctedPlan, refund, accounts) {
+function movement(order, correctedPlan, refund, accounts, tax) {
   const value = Financial.money(refund), cogs = cogsCorrectionLines(order && order.cogsAccountSnapshot, correctedPlan && correctedPlan.accountSnapshot);
   let result = null;
-  if (value > 0) result = Financial.reversalPosting(order, value, "refund", accounts || {}, [{method: "Cash", amount: value}]);
+  if (value > 0) result = Financial.reversalPosting(order, value, "refund", accounts || {}, [{method: "Cash", amount: value}], tax);
   if (!result && cogs.length) result = Financial.movement("completed_order_item_correction", "order", String(order && order.id || ""), cogs);
   else if (result && cogs.length) { result.lines = result.lines.concat(cogs); Financial.assertBalanced(result.lines); result.amount = Financial.totals(result.lines).debit; }
   if (result) result.type = "completed_order_item_correction";

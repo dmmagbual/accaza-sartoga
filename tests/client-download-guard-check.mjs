@@ -24,6 +24,9 @@ const SMALL = new Set(['.info/connected', 'settings', 'config', 'payment', 'calB
   'accountingPeriods', 'publicCatalogVersion', 'historicalArchiveSync', 'books/monthlyNet', 'booksChart', 'cashFlowIndexMeta', 'cashFlowOpenings', 'cashFlowMonthly',
   'staffAccounts', 'adminAccounts', 'admins', 'adminPerms', 'usageTypes', 'expenseItems', 'platformVarAccounts', 'pettyCashSettings', 'heldOrders', 'receivables',
   'systemHealth', 'staffReceiptIndex',
+  // BIR tax regime: one fixed-shape config object (mode, rates, TIN, checklist ticks) that never
+  // grows with trading history; the POS needs it live for VAT-aware discounts and receipts.
+  'taxSettings',
   // One record (the owner's emergency sign-out cutoff), overwritten in place, never grows.
   'sessionControl']);
 // Whole-node reads that are accepted, with the reason. Anything new must be added here on purpose.
