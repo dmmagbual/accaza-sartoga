@@ -54,6 +54,21 @@ function cashSnapshot(shift,counts,fixedFloat){
 // . # $ / [ ]. Cash and platform rows have no receiving account, so an empty key
 // would reject the whole reconciliation write; unassigned accounts are not split.
 function reportKey(value){return String(value==null?'':value).replace(/[.#$/\[\]\u0000-\u001f\u007f]/g,'_').trim().slice(0,120);}
+// BIR sequential invoice series (ranking.docx Gap 1): every sale — POS and online — takes
+// the next number from one /posInvoiceControl counter, and the cumulative grand total
+// accumulates forever (never resets, never reduced by refunds — refunds post separately in
+// Finance Books). The transaction keeps the series gap-free under concurrent syncs, and
+// each sale stamps only on its create path, so replays never burn a number.
+async function stampInvoice(db,order){
+  const amount=cents(order&&order.total||0);
+  const result=await db.ref('/posInvoiceControl').transaction(current=>{
+    const state=current||{seq:0,grandTotalCents:0};
+    return {seq:(Number(state.seq)||0)+1,grandTotalCents:(Number(state.grandTotalCents)||0)+amount};
+  });
+  if(!result.committed)throw new Error('Invoice counter is busy. Sync the sale again.');
+  const state=result.snapshot.val()||{};
+  return {invoiceNumber:'SI-'+String(Number(state.seq)||0).padStart(6,'0'),invoiceSeq:Number(state.seq)||0,cumulativeGrandTotalCents:Number(state.grandTotalCents)||0};
+}
 // Only recognized server orders enter the final report. The original handover count
 // and time remain immutable; delayed sales change the final reconciliation only.
 function report(shift,orders,handover){
@@ -73,8 +88,10 @@ function report(shift,orders,handover){
     if(o.paymentStatus==='pending'){z.pending+=cents(o.total||0);z.pendingCount++;}
     if(o.paymentStatus==='cashier_verified'){z.managerPending+=cents(o.total||0);z.managerPendingCount++;}
     z.uncostedCount=(z.uncostedCount||0)+Math.max(0,Number(o.costPendingLines)||0);
-    z.sales.push({id,total:o.total||0,payments:o.payments||null,payment:o.payment||'',refundAmount:o.refundAmount||0,refundPayments:o.refundPayments||null,channel:o.channel||'instore',timestamp:o.timestamp||0,occurredAt:o.completedAt||o.receivedAt||o.timestamp||0,...(o.unsynced?{unsynced:true}:{})});
+    z.sales.push({id,total:o.total||0,payments:o.payments||null,payment:o.payment||'',refundAmount:o.refundAmount||0,refundPayments:o.refundPayments||null,channel:o.channel||'instore',timestamp:o.timestamp||0,occurredAt:o.completedAt||o.receivedAt||o.timestamp||0,...(o.invoiceNumber?{invoiceNumber:o.invoiceNumber}:{}),...(o.unsynced?{unsynced:true}:{})});
   }
+  const invoiced=z.sales.filter(r=>r.invoiceNumber).map(r=>r.invoiceNumber).sort();
+  if(invoiced.length)z.invoiceRange={first:invoiced[0],last:invoiced[invoiced.length-1],count:invoiced.length};
   z.payIns=(shift.payIns||[]).reduce((s,r)=>s+cents(r.amount||0),0);z.payOuts=(shift.payOuts||[]).reduce((s,r)=>s+cents(r.amount||0),0);
   z.expectedCash=cents(shift.openingFloat||0)+z.cashSales+z.tips-z.cashRefunds+z.payIns-z.payOuts;
   z.variance=cents(handover.cash.countedCash)-z.expectedCash;
@@ -95,4 +112,4 @@ function provisionalReport(shift,orders,handover,openItems){
   }
   return {...report(shift,merged,handover),status:'provisional',closeMode:'provisional_handover',openItems:openItems||{}};
 }
-module.exports={cents,countCash,digest,storedForm,commandDigest,sameCommand,commandOf,sealCommands,cashSnapshot,report,provisionalReport,reportKey};
+module.exports={cents,countCash,digest,storedForm,commandDigest,sameCommand,commandOf,sealCommands,cashSnapshot,stampInvoice,report,provisionalReport,reportKey};

@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=635";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=636";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -1323,9 +1323,10 @@ window.printOrder = function(orderId) {
   var receiptHtml='<!doctype html><html><head><meta charset="UTF-8"/><title>Receipt '+escHtml(dispRef)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2{text-align:center;margin:0 0 2px;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><div style="text-align:center;">'+escHtml(addr)+'</div>'
     +(tax&&tax.tin?'<div style="text-align:center;">TIN: '+escHtml(tax.tin)+(tax.branchCode&&tax.branchCode!=='00000'?' / Branch '+escHtml(tax.branchCode):'')+'</div>':'')
+    +(tax&&tax.ptu?'<div style="text-align:center;">PTU No.: '+escHtml(tax.ptu)+'</div>':'')
     +(tax?'<div style="text-align:center;font-weight:700;">'+(tax.mode==='vat'?'VAT':'NON-VAT')+'</div>':'')
     +'<hr>'
-    +'<div>Order: '+escHtml(dispRef)+'</div>'+(o.completedOrderCorrection?'<div>Corrects original order: '+escHtml(o.originalOrderId)+'</div>':'')+'<div>'+escHtml(o.date||'')+' '+escHtml(o.time||'')+'</div><div>On Duty: '+escHtml(o.onDuty||o.staff||'-')+'</div><div>Customer: '+escHtml(o.name||'Walk-in')+'</div>'
+    +'<div>Order: '+escHtml(dispRef)+'</div>'+(o.invoiceNumber?'<div>Invoice No.: '+escHtml(o.invoiceNumber)+'</div>':'')+(o.completedOrderCorrection?'<div>Corrects original order: '+escHtml(o.originalOrderId)+'</div>':'')+'<div>'+escHtml(o.date||'')+' '+escHtml(o.time||'')+'</div><div>On Duty: '+escHtml(o.onDuty||o.staff||'-')+'</div><div>Customer: '+escHtml(o.name||'Walk-in')+'</div>'
     +'<hr><table>'+rows+'</table><hr>'
     +'<table><tr><td>Subtotal</td><td style="text-align:right;">'+receiptPeso(o.subtotal!=null?o.subtotal:o.total)+'</td></tr>'
     +((o.discountLines&&o.discountLines.length)?o.discountLines.map(function(d){var lbl={senior:'Senior 20%',pwd:'PWD 20%',athlete:'Athlete 20%',promo5:'Promo 5%'}[d.type]||d.type;return'<tr><td>'+escHtml(lbl)+(d.idNumber?' · '+escHtml(d.idNumber):'')+'</td><td style="text-align:right;">-'+receiptPeso(d.value)+'</td></tr>';}).join(''):'')
@@ -1343,6 +1344,7 @@ window.printOrder = function(orderId) {
     +(o.tipRounding?'<tr><td>Tip / kept change</td><td style="text-align:right;">'+receiptPeso(o.tipRounding)+'</td></tr>':'')
     +'</table><hr><div style="text-align:center;">Salamat! Please come again.</div>'
     +(tax?'<div style="text-align:center;font-size:9px;margin-top:4px;">'+(tax.mode==='vat'?(taxExclusive?'All prices are exclusive of VAT; VAT is added on top.':'All prices are VAT-inclusive.'):(taxExclusive?'All prices are exclusive of '+taxRate+'% percentage tax (NON-VAT); tax is added on top.':'All prices are inclusive of '+taxRate+'% percentage tax (NON-VAT).'))+'</div>':'<div style="text-align:center;font-size:9px;margin-top:4px;">This is not an official BIR receipt.</div>')
+    +(tax?(tax.ptu?'<div style="text-align:center;font-size:9px;margin-top:2px;">This serves as your official invoice under BIR permit-to-use '+escHtml(tax.ptu)+'.</div>':'<div style="text-align:center;font-size:9px;margin-top:2px;">BIR permit-to-use number not yet set; this is not yet an official invoice.</div>'):'')
     +'<div style="text-align:center;margin-top:8px;"><button id="receiptPrint" type="button">Print</button></div></body></html>';
   var win = window.open('', '_blank', 'width=360,height=640');
   if(!win){alert('Allow pop-ups to print the receipt.');return;}
