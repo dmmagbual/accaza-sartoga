@@ -65,7 +65,10 @@ function renderPosCart(options){
   var pay=null, splitChk=null;
   function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()+posLoyaltyDiscount()); var tot=Math.max(0,sub-d);
     var tax=isPlat?null:posTaxNow(),row=document.getElementById('posTaxRow');
-    if(tax&&tax.inclusive===false){var add=Math.round(tot*tax.rate)/100; tot=Math.round((tot+add)*100)/100; if(row){row.style.display='flex';var tl=document.getElementById('posTaxLbl'),ta=document.getElementById('posTaxAmt');if(tl)tl.textContent=(tax.mode==='vat'?'VAT '+tax.rate+'%':'Percentage tax '+tax.rate+'%')+' added on top';if(ta)ta.textContent='+'+peso(add);}}
+    /* VAT-exclusive mode: the add-on applies only to the taxable portion. Statutory
+       senior/PWD/athlete units are VAT-exempt (RMC 72-2014), so their amount due
+       carries no VAT add-on. Percentage tax has no exempt concept (helper returns 0). */
+    if(tax&&tax.inclusive===false){var exempt=Math.min(tot,posExemptSales());var add=Math.round((tot-exempt)*tax.rate)/100; tot=Math.round((tot+add)*100)/100; if(row){row.style.display='flex';var tl=document.getElementById('posTaxLbl'),ta=document.getElementById('posTaxAmt');if(tl)tl.textContent=(tax.mode==='vat'?'VAT '+tax.rate+'%':'Percentage tax '+tax.rate+'%')+' added on top'+(exempt>0?' (senior/PWD portion VAT-EXEMPT)':'');if(ta)ta.textContent='+'+peso(add);}}
     else if(row)row.style.display='none';
     if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
   function draftElectronicPayments(){

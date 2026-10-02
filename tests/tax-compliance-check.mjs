@@ -29,7 +29,7 @@ const customerState = read('../src/customer/core/03-state-helpers.mjs');
 const customerCatalog = read('../src/customer/core/02-catalog-model.mjs');
 const customerCart = read('../src/customer/core/08-cart-checkout.mjs');
 const customerSession = read('../src/customer/core/09-customer-session.mjs');
-const settingsCard = read('../src/admin/register/70-settings-staff.js');
+const settingsCard = read('../src/admin/register/72-tax-compliance.js');
 const rules = read('../database.rules.json');
 
 const VAT12 = {mode: 'vat', rate: 12, inclusive: true};
@@ -173,8 +173,10 @@ assert.ok(orders.includes('tax: tax ? {mode: tax.mode, rate: tax.rate, inclusive
   'every online order must be stamped with the tax regime, TIN and branch code');
 
 // --- 7. receipts: lines, wording, platform base --------------------------
-assert.ok(receipt.includes("taxAmount=Math.round((tax.mode==='vat'?taxBase-taxBase/(1+taxRate/100):(taxExclusive?taxBase*taxRate/(100+taxRate):taxBase*taxRate/100))*100)/100"),
+assert.ok(receipt.includes("taxAmount=Math.round((taxExclusive?taxBase*taxRate/(100+taxRate):taxBase*taxRate/100)*100)/100"),
   'receipts must extract percentage-exclusive tax as rate/(100+rate), not rate/100');
+assert.ok(receipt.includes("saleVat=Math.round((vBase-vBase/(1+taxRate/100))*100)/100"),
+  'receipts must extract VAT from the taxable remainder after exempt sales');
 assert.ok(receipt.includes("<td>VAT ('+taxRate+'%) '+(taxExclusive?'added':'included')"), 'VAT receipts must say whether the tax was added or included');
 assert.ok(receipt.includes("<td>Pct. tax ('+taxRate+'%) '+(taxExclusive?'added':'included')"), 'percentage tax receipts must say added vs included too');
 assert.ok(receipt.includes("o.grossPlatform!=null?o.grossPlatform"), 'platform receipts must extract tax from the reported platform gross');
@@ -195,7 +197,7 @@ assert.ok(customerSession.includes('const total=taxLine?taxLine.total:netTotal;'
 assert.ok(settingsCard.includes('data-taxinc') && settingsCard.includes('Tax added on top (exclusive)'),
   'the settings card must offer inclusive/exclusive with the shelf-price warning');
 assert.ok(settingsCard.includes('customers pay more than the shelf price.'), 'switching to exclusive must warn that customers pay more than the shelf price');
-assert.ok(settingsCard.includes('payload={mode:mode,inclusive:inc,structure:structure,branchCode:branch,requirements:state.ticks}'),
-  'saving must always send the inclusive flag');
+assert.ok(settingsCard.includes('payload={mode:mode,inclusive:inc,requirements:state.ticks}'),
+  'saving must always send the inclusive flag — TIN/branch/structure live in Company Information now');
 
 console.log('PASS: BIR tax compliance end to end — effective-date wall, VAT and percentage tax split under inclusive and exclusive pricing, Finance postings and refunds, the orderNetSales reconciliation identity on every combination, owner-only checklist-gated activation with a TIN-free public mirror, server-authoritative online pricing, receipt lines, and the statutory Senior/PWD base per pricing mode.');

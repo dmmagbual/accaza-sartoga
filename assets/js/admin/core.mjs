@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=634";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=635";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -1045,7 +1045,7 @@ function dashboardAllowed(){return adminLoggedIn||(staffLoggedIn&&staffDashboard
 function staffPermsFrom(stored){var perms=Object.assign({},DEFAULT_STAFF_PERMS,stored||{});if(stored)Object.keys(LEGACY_STAFF_PERMS).forEach(function(key){if(stored[key]===undefined)perms[key]=LEGACY_STAFF_PERMS[key].some(function(from){return stored[from]===true;});});return perms;}
 var _permTabMap={"'dashboard'":'dashboard',"'liveoperations'":'liveoperations',"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'availSection'":'availability',"'commentsSection'":'comments',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'saleshistory'":'saleshistory',"'undeposited'":'undeposited',"'ops'":'registerOps'};
 // Settings is locked for staff-level roles except Channel Pricing (ticked per account) and Change Password.
-var _permAlwaysHide=["'payment'","'staffaccounts'","'packages'","'operations'","'possettings'","'accountingperiods'","'dedupe'","'payouts'","'rewards'"];
+var _permAlwaysHide=["'payment'","'staffaccounts'","'packages'","'operations'","'possettings'","'accountingperiods'","'dedupe'","'payouts'","'rewards'","'companyinfo'","'taxcompliance'"];
 function mountLegacyAdminPanels(){
   var wrap=document.querySelector('#adminDash .admin-wrap');if(!wrap)return;
   ['availSection','commentsSection'].forEach(function(id){var panel=document.getElementById(id);if(!panel)return;panel.classList.add('admin-tab-content','admin-integrated-panel');wrap.appendChild(panel);});
@@ -1305,11 +1305,20 @@ window.printOrder = function(orderId) {
   var rows=soldLines.length?soldLines.map(function(line){return'<tr><td>'+escHtml(line.name)+' &times;'+escHtml(line.qty)+'</td><td style="text-align:right;">'+(line.total==null?'':receiptPeso(line.total))+'</td></tr>';}).join(''):'<tr><td colspan="2">No item details recorded</td></tr>';
   /* Tax rendering mirrors Financial.taxSplit on the server: VAT = base - base/(1+rate/100) either way; percentage = base*rate/100 inclusive, base*rate/(100+rate) exclusive (the add-on inflated the charged amount). Tax base matches orderTaxBase (platform gross vs in-store total). Orders charged before a tax regime existed have no o.tax and render exactly as before. */
   var tax=(o.tax&&(o.tax.mode==='vat'||o.tax.mode==='percentage'))?o.tax:null;
-  var taxRate=tax?(Number(tax.rate)||0):0,taxBase=0,taxAmount=0,taxExclusive=tax?tax.inclusive===false:false;
+  var taxRate=tax?(Number(tax.rate)||0):0,taxBase=0,taxAmount=0,taxExclusive=tax?tax.inclusive===false:false,exemptSales=0;
   if(tax){
     var tch=String(o.channel||'').toLowerCase(),tplat=(tch==='grabfood'||tch==='foodpanda');
     taxBase=Number(tplat?(o.grossPlatform!=null?o.grossPlatform:(o.subtotal!=null?o.subtotal:o.total)):o.total)||0;
-    taxAmount=Math.round((tax.mode==='vat'?taxBase-taxBase/(1+taxRate/100):(taxExclusive?taxBase*taxRate/(100+taxRate):taxBase*taxRate/100))*100)/100;
+    if(tax.mode==='vat'){
+      /* Mirrors server orderExemptSales/orderOutputVat exactly (RMC 72-2014): the exempt charged portion carries no output VAT; VAT is extracted only from the taxable remainder, less VAT reversed on refunds. */
+      exemptSales=Math.max(0,Math.min(Number(o.vatExemptSales)||0,taxBase));
+      if(!(exemptSales>0)&&Array.isArray(o.discountLines)){exemptSales=(o.discountLines||[]).reduce(function(c,d){var ty=String((d&&d.type)||'').toLowerCase();return (ty==='senior'||ty==='pwd'||ty==='athlete')?c+((Number(d.basis)||0)*(1-(Number(d.rate)||0))):c;},0);exemptSales=Math.max(0,Math.min(Math.round(exemptSales*100)/100,taxBase));}
+      var vBase=Math.max(0,taxBase-exemptSales),saleVat=Math.round((vBase-vBase/(1+taxRate/100))*100)/100,refundAmt=Math.max(0,Number(o.refundAmount)||0),refundVat=0;
+      if(refundAmt>0){var exPart=(exemptSales>0&&taxBase>0)?Math.min(refundAmt,Math.round(refundAmt*exemptSales/taxBase*100)/100):0,rBase=Math.round(Math.max(0,refundAmt-exPart)*100)/100;refundVat=Math.round((rBase-rBase/(1+taxRate/100))*100)/100;}
+      taxAmount=Math.max(0,Math.round((saleVat-refundVat)*100)/100);
+    } else {
+      taxAmount=Math.round((taxExclusive?taxBase*taxRate/(100+taxRate):taxBase*taxRate/100)*100)/100;
+    }
   }
   var receiptHtml='<!doctype html><html><head><meta charset="UTF-8"/><title>Receipt '+escHtml(dispRef)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2{text-align:center;margin:0 0 2px;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><div style="text-align:center;">'+escHtml(addr)+'</div>'
@@ -1322,7 +1331,7 @@ window.printOrder = function(orderId) {
     +((o.discountLines&&o.discountLines.length)?o.discountLines.map(function(d){var lbl={senior:'Senior 20%',pwd:'PWD 20%',athlete:'Athlete 20%',promo5:'Promo 5%'}[d.type]||d.type;return'<tr><td>'+escHtml(lbl)+(d.idNumber?' · '+escHtml(d.idNumber):'')+'</td><td style="text-align:right;">-'+receiptPeso(d.value)+'</td></tr>';}).join(''):'')
     +(function(){var sc=(o.discountLines||[]).reduce(function(s,d){return s+(Number(d.value)||0);},0);var man=(Number(o.discount)||0)-sc;return man>0.005?'<tr><td>Discount</td><td style="text-align:right;">-'+receiptPeso(man)+'</td></tr>':'';})()
     +(Number(o.loyaltyDiscount)>0?'<tr><td>Loyalty reward'+(o.loyaltyRewardName?' · '+escHtml(o.loyaltyRewardName):'')+'</td><td style="text-align:right;">-'+receiptPeso(o.loyaltyDiscount)+'</td></tr>':'')
-    +(tax&&tax.mode==='vat'?'<tr><td>Net of VAT</td><td style="text-align:right;">'+receiptPeso(Math.round((taxBase-taxAmount)*100)/100)+'</td></tr><tr><td>VAT ('+taxRate+'%) '+(taxExclusive?'added':'included')+'</td><td style="text-align:right;">'+receiptPeso(taxAmount)+'</td></tr>':'')
+    +(tax&&tax.mode==='vat'?(exemptSales>0?'<tr><td>VAT-EXEMPT (senior/PWD)</td><td style="text-align:right;">'+receiptPeso(exemptSales)+'</td></tr>':'')+'<tr><td>Net of VAT</td><td style="text-align:right;">'+receiptPeso(Math.round((taxBase-exemptSales-taxAmount)*100)/100)+'</td></tr><tr><td>VAT ('+taxRate+'%) '+(taxExclusive?'added':'included')+'</td><td style="text-align:right;">'+receiptPeso(taxAmount)+'</td></tr>':'')
     +(tax&&tax.mode==='percentage'?'<tr><td>Pct. tax ('+taxRate+'%) '+(taxExclusive?'added':'included')+'</td><td style="text-align:right;">'+receiptPeso(taxAmount)+'</td></tr>':'')
     +(tax&&Number(o.total)>=1000?'<tr><td>Buyer TIN (&#8369;1,000+)</td><td style="text-align:right;">________</td></tr>':'')
     +'<tr><td><b>TOTAL</b></td><td style="text-align:right;"><b>'+receiptPeso(o.total)+'</b></td></tr>'

@@ -1707,16 +1707,26 @@ exports.setTaxSettings = onCall(
     const db = getDatabase(), actor = await requirePortalUser(db, request), data = request.data || {};
     if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can change tax settings.");
     const current = (await db.ref("/taxSettings").get()).val() || {};
+    // The registered identity (TIN, branch code, structure) has one home: /companyInfo.
+    // A TIN saved in the old tax card before that tab existed still counts — seed the
+    // company record from taxSettings once so the owner never retypes identity facts.
+    let company = (await db.ref("/companyInfo").get()).val() || {};
+    let companySeeded = false;
+    if (!company.tin && current.tin) {
+      company = Object.assign({}, company, {tin: current.tin, branchCode: company.branchCode || current.branchCode || "00000", structure: TAX_STRUCTURES.includes(company.structure) ? company.structure : (current.structure || "sole")});
+      companySeeded = true;
+    }
     const mode = TAX_MODES.includes(data.mode) ? data.mode : (current.mode || "none");
-    const structure = TAX_STRUCTURES.includes(data.structure) ? data.structure : (current.structure || "sole");
+    const structure = TAX_STRUCTURES.includes(company.structure) ? company.structure : (current.structure || "sole");
     const requirements = Object.assign({}, current.requirements, taxRequirements(data.requirements));
     if (mode !== "none") {
       const missing = TAX_REQUIREMENT_IDS[mode].filter((id) => !(requirements[mode] || {})[id]);
       if (missing.length) throw new HttpsError("failed-precondition", "Complete first the BIR requirement before tax is activated.");
     }
-    const tin = data.tin != null ? taxTin(data.tin) : (current.tin || "");
-    const branchCode = data.branchCode != null ? taxBranchCode(data.branchCode) : (current.branchCode || "00000");
-    if (mode !== "none" && !tin) throw new HttpsError("invalid-argument", "Enter your BIR TIN and branch code before activating a tax category.");
+    if (mode !== "none" && (!company.tin || !company.registeredName || !company.address))
+      throw new HttpsError("invalid-argument", "Enter your BIR TIN and branch code before activating a tax category. Finish your registered business name, address and TIN in the Company Information tab (Settings → Company Information) first.");
+    const tin = mode !== "none" ? taxTin(company.tin) : (current.tin || "");
+    const branchCode = mode !== "none" ? taxBranchCode(company.branchCode) : (current.branchCode || "00000");
     const vatRate = taxRate(data.vatRate != null ? data.vatRate : (current.vatRate != null ? current.vatRate : 12), 12);
     const percentageRate = taxRate(data.percentageRate != null ? data.percentageRate : (current.percentageRate != null ? current.percentageRate : 3), 3);
     // Inclusive = listed prices already contain the tax (default, matches pre-flag sales).
@@ -1730,14 +1740,238 @@ exports.setTaxSettings = onCall(
     } else if (modeChanged || current.effectiveAt == null) effectiveAt = now;
     else effectiveAt = Number(current.effectiveAt);
     const next = {mode, structure, vatRate, percentageRate, inclusive, effectiveAt, tin, branchCode, requirements, updatedAt: now, updatedBy: actor.uid, updatedByRole: actor.role, schemaVersion: 1};
-    await db.ref().update({
+    const updates = {
       taxSettings: next,
       // Public mirror for the customer app checkout: only whether tax is added on top.
       // TIN, checklist and structure stay admin-only in /taxSettings.
       publicTaxInfo: {mode, rate: mode === "vat" ? vatRate : mode === "percentage" ? percentageRate : 0, inclusive, effectiveAt},
       [`operationalAudit/${now}_set_tax_settings`]: {action: "set_tax_settings", sourceType: "taxSettings", sourceId: "tax", before: {mode: current.mode || "none", structure: current.structure || "sole", vatRate: current.vatRate, percentageRate: current.percentageRate, inclusive: current.inclusive !== false, effectiveAt: current.effectiveAt}, after: {mode, structure, vatRate, percentageRate, inclusive, effectiveAt, tin, branchCode}, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}
-    });
+    };
+    if (companySeeded) updates.companyInfo = Object.assign({}, company, {updatedAt: now, updatedBy: actor.uid, updatedByRole: actor.role});
+    await db.ref().update(updates);
     return {tax: next};
+  }
+);
+// BIR quarterly tax returns — 2550Q (VAT) and 2551Q (percentage tax) — plus the
+// annual accountant export (1701 sole proprietorship / 1702 OPC or corporation).
+// Figures come only from stored financial-close summaries and purchase invoices:
+// one ranged read on the close index, one small read per close, one indexed
+// purchaseInvoices date query. No order re-reads and no new triggers.
+
+const QUARTER_MONTHS = {1: ["01", "03"], 2: ["04", "06"], 3: ["07", "09"], 4: ["10", "12"]};
+const QUARTER_END_DAY = {1: "31", 2: "30", 3: "30", 4: "31"};
+
+function quarterRange(year, quarter) {
+  return {
+    periodStart: `${year}-${QUARTER_MONTHS[quarter][0]}-01`,
+    periodEnd: `${year}-${QUARTER_MONTHS[quarter][1]}-${QUARTER_END_DAY[quarter]}`,
+  };
+}
+
+// One close per business date: the daily close already covers every shift of
+// that day, so summing it together with its shift closes would double count
+// sales. Shift closes are only used for dates that have no daily close.
+async function quarterCloseRows(db, periodStart, periodEnd) {
+  const index = (await db.ref("/financialCloseIndex").orderByKey().startAt(periodStart).endAt(periodEnd).get()).val() || {};
+  const selected = [];
+  Object.keys(index).sort().forEach((date) => {
+    const day = index[date] || {};
+    let daily = null;
+    const shifts = [];
+    Object.keys(day).sort().forEach((id) => {
+      const row = day[id] || {}, closeId = String(row.closeId || id);
+      if (!closeId) return;
+      if (row.closeType === "DAILY_CLOSE" || closeId.indexOf("daily_") === 0) daily = {closeId, status: String(row.status || "")};
+      else shifts.push({closeId, status: String(row.status || "")});
+    });
+    (daily ? [daily] : shifts).forEach((row) => selected.push(row));
+  });
+  const seen = new Set();
+  const unique = selected.filter((row) => (seen.has(row.closeId) ? false : (seen.add(row.closeId), true)));
+  return Promise.all(unique.map(async (row) => {
+    const current = (await db.ref(`/financialCloses/${row.closeId}/current`).get()).val() || {};
+    const admin = current.admin || {};
+    return {
+      closeId: row.closeId,
+      status: String(current.status || row.status || ""),
+      grossSales: Number(admin.grossSales || 0),
+      vatExemptSales: Number(admin.vatExemptSales || 0),
+      outputVat: Number(admin.outputVat || 0),
+      percentageTax: Number(admin.percentageTax || 0),
+      netSales: Number(admin.netSales || 0),
+      expectedCogs: Number(admin.expectedCogs || 0),
+      discounts: Number(admin.discounts || 0),
+      refunds: Number(admin.refunds || 0),
+    };
+  }));
+}
+
+async function quarterInputVat(db, periodStart, periodEnd) {
+  const invoices = (await db.ref("/purchaseInvoices").orderByChild("date").startAt(periodStart).endAt(periodEnd).get()).val() || {};
+  return Financial.money(Object.keys(invoices).reduce((sum, id) => {
+    const row = invoices[id] || {};
+    return sum + (row.reversed === true ? 0 : Number(row.inputVat || 0));
+  }, 0));
+}
+
+// Gross-margin P&L from the same close summaries the tax figures come from — the
+// accountant's 1701/1702 filing needs cost of sales and net sales, not only tax.
+function quarterPnl(closes) {
+  const rows = Array.isArray(closes) ? closes : [];
+  const sum = (field) => Financial.money(rows.reduce((acc, row) => acc + Number(row[field] || 0), 0));
+  return {netSales: sum("netSales"), discounts: sum("discounts"), refunds: sum("refunds"), expectedCogs: sum("expectedCogs")};
+}
+
+function returnFingerprint(record) {
+  const core = record.mode === "annual"
+    ? JSON.stringify(record.annual.quarters.map((q) => [q.quarter, q.figures, q.gate]))
+    : JSON.stringify([record.returnType, record.periodStart, record.periodEnd, record.figures, record.closes]);
+  return crypto.createHash("sha256").update(core).digest("hex");
+}
+
+exports.prepareQuarterlyTaxReturn = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["dailyreport", "pnl"]), data = request.data || {};
+    const mode = data.mode === "annual" ? "annual" : "quarterly", today = financeDateFromTimestamp(Date.now());
+    if (!/^\d{4}$/.test(String(data.year || ""))) throw new HttpsError("invalid-argument", "Year must use YYYY.");
+    const year = Number(data.year);
+    if (year < 2020 || year > Number(today.slice(0, 4))) throw new HttpsError("invalid-argument", "Year is outside the supported range.");
+    let quarter = 0, periodStart = `${year}-01-01`, periodEnd = `${year}-12-31`;
+    if (mode === "quarterly") {
+      quarter = Number(data.quarter);
+      if (![1, 2, 3, 4].includes(quarter)) throw new HttpsError("invalid-argument", "Quarter must be 1, 2, 3 or 4.");
+      const range = quarterRange(year, quarter);
+      periodStart = range.periodStart; periodEnd = range.periodEnd;
+      if (today <= periodEnd) throw new HttpsError("failed-precondition", "That quarter has not ended yet. Prepare the return after the quarter closes.");
+    }
+    const returnId = mode === "annual" ? `annual_${year}` : `q${year}Q${quarter}`;
+    const node = (await db.ref(`/taxReturns/${returnId}`).get()).val() || {}, existing = node.current || null;
+    if (data.action === "get") return {returnId, current: existing, latestRevision: Number(node.latestRevision || 0)};
+
+    const [taxSnap, companySnap] = await Promise.all([db.ref("/taxSettings").get(), db.ref("/companyInfo").get()]);
+    const tax = taxSnap.val() || {}, company = companySnap.val() || {};
+    const companyIdentity = {tin: tax.tin || company.tin || "", branchCode: tax.branchCode || company.branchCode || "00000", registeredName: company.registeredName || "", structure: company.structure || "sole"};
+    const accounts = {outputVatPayable: "2210", percentageTaxPayable: "2220", inputVatCredit: "1250"};
+
+    let record;
+    if (mode === "quarterly") {
+      if (tax.mode !== "vat" && tax.mode !== "percentage") throw new HttpsError("failed-precondition", "Activate VAT or percentage tax in Tax Compliance before preparing a quarterly return.");
+      const closes = await quarterCloseRows(db, periodStart, periodEnd);
+      const gate = Financial.quarterCloseGate(closes);
+      if (!gate.ok) throw new HttpsError("failed-precondition", gate.reason === "NO_RECONCILED_CLOSES"
+        ? "No reconciled Financial Close exists for this quarter. Run and reconcile the daily or shift close first."
+        : "Every Financial Close in the quarter must be RECONCILED before the BIR return can be prepared. Outstanding: " + gate.blocked.join(", "));
+      const figures = Financial.quarterlyTaxFigures(closes, await quarterInputVat(db, periodStart, periodEnd));
+      record = {
+        schemaVersion: 1, mode, returnType: tax.mode === "vat" ? "2550Q" : "2551Q",
+        year, quarter, periodStart, periodEnd, status: "READY",
+        amountDue: tax.mode === "vat" ? figures.vatPayable : figures.percentageTax,
+        figures, pnl: quarterPnl(closes), accounts,
+        tax: {mode: tax.mode, vatRate: tax.vatRate, percentageRate: tax.percentageRate, inclusive: tax.inclusive !== false},
+        company: companyIdentity,
+        closes: closes.map((row) => ({closeId: row.closeId, status: row.status})),
+        preparedBy: actor.uid, preparedRole: actor.role, requestId: financeText(data.requestId, 80),
+      };
+    } else {
+      const quarters = [];
+      const pnlTotals = {netSales: 0, discounts: 0, refunds: 0, expectedCogs: 0};
+      for (let q = 1; q <= 4; q++) {
+        const range = quarterRange(year, q);
+        const closes = await quarterCloseRows(db, range.periodStart, range.periodEnd);
+        const pnl = quarterPnl(closes);
+        Object.keys(pnlTotals).forEach((field) => {pnlTotals[field] = Financial.money(pnlTotals[field] + pnl[field]);});
+        quarters.push({
+          quarter: q, periodStart: range.periodStart, periodEnd: range.periodEnd,
+          gate: Financial.quarterCloseGate(closes),
+          figures: Financial.quarterlyTaxFigures(closes, await quarterInputVat(db, range.periodStart, range.periodEnd)),
+          pnl,
+        });
+      }
+      const sumOf = (field) => Financial.money(quarters.reduce((sum, q) => sum + Number(q.figures[field] || 0), 0));
+      const totals = {grossSales: sumOf("grossSales"), vatExemptSales: sumOf("vatExemptSales"), outputVat: sumOf("outputVat"), percentageTax: sumOf("percentageTax"), inputVat: sumOf("inputVat"), pnl: pnlTotals};
+      totals.vatPayable = Financial.money(Math.max(0, totals.outputVat - totals.inputVat));
+      // Annual 1701/1702 support: the accountant files the return, so the export
+      // reports every quarter with its own gate status instead of blocking.
+      const annualForm = companyIdentity.structure === "opc" || companyIdentity.structure === "corporation" ? "1702" : "1701";
+      record = {
+        schemaVersion: 1, mode, returnType: `ANNUAL_${annualForm}`,
+        year, periodStart, periodEnd, status: "READY",
+        amountDue: totals.vatPayable,
+        annual: {form: annualForm, quarters, totals},
+        accounts,
+        tax: {mode: tax.mode || "none", vatRate: tax.vatRate, percentageRate: tax.percentageRate, inclusive: tax.inclusive !== false},
+        company: companyIdentity,
+        preparedBy: actor.uid, preparedRole: actor.role, requestId: financeText(data.requestId, 80),
+      };
+    }
+
+    record.fingerprint = returnFingerprint(record);
+    if (existing && (existing.fingerprint === record.fingerprint || (record.requestId && existing.requestId === record.requestId))) {
+      return Object.assign({returnId, duplicate: true}, existing);
+    }
+    const now = Date.now(), revision = Math.max(0, Math.floor(Number(node.latestRevision || 0))) + 1;
+    record.preparedAt = now;
+    const writes = {
+      [`taxReturns/${returnId}/returnId`]: returnId,
+      [`taxReturns/${returnId}/mode`]: mode,
+      [`taxReturns/${returnId}/year`]: year,
+      [`taxReturns/${returnId}/quarter`]: mode === "quarterly" ? quarter : null,
+      [`taxReturns/${returnId}/latestRevision`]: revision,
+      [`taxReturns/${returnId}/current`]: record,
+      [`taxReturns/${returnId}/revisions/${revision}`]: record,
+      [`operationalAudit/${now}_${returnId}_prepare_tax_return`]: operationalAuditRecord("prepare_tax_return", "taxReturn", returnId, actor, {mode, revision, returnType: record.returnType, fingerprint: record.fingerprint, amountDue: record.amountDue}),
+    };
+    await db.ref().update(writes);
+    return Object.assign({returnId, revision, duplicate: false}, record);
+  },
+);
+// Company Information: the single home for the registered business identity —
+// registered name, trade name, address, TIN, branch code, business structure, RDO,
+// Form 2303 and VAT registration dates. Owner-only and audited. setTaxSettings reads
+// this record and stamps the identity into taxSettings at activation so receipts
+// print it unchanged; nothing here is ever mirrored publicly.
+exports.setCompanyInfo = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalUser(db, request), data = request.data || {};
+    if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can change company information.");
+    const current = (await db.ref("/companyInfo").get()).val() || {};
+    const text = (value, max) => String(value == null ? "" : value).trim().slice(0, max);
+    const registeredName = text(data.registeredName, 160);
+    if (!registeredName) throw new HttpsError("invalid-argument", "Registered business name is required.");
+    const address = text(data.address, 300);
+    if (!address) throw new HttpsError("invalid-argument", "Registered address is required.");
+    const tinDigits = String(data.tin == null ? "" : data.tin).replace(/\D/g, "");
+    if (!/^\d{9}$/.test(tinDigits)) throw new HttpsError("invalid-argument", "TIN must be 9 digits (example: 123-456-789).");
+    const tin = tinDigits.replace(/^(\d{3})(\d{3})(\d{3})$/, "$1-$2-$3");
+    const branchCode = String(data.branchCode == null || data.branchCode === "" ? "00000" : data.branchCode).replace(/\D/g, "");
+    if (!/^\d{5}$/.test(branchCode)) throw new HttpsError("invalid-argument", "Branch code must be 5 digits (use 00000 for the head office).");
+    if (!TAX_STRUCTURES.includes(data.structure)) throw new HttpsError("invalid-argument", "Choose the business structure: sole proprietorship, OPC, or corporation.");
+    const dateMs = (value, label) => {
+      if (value == null || value === "") return null;
+      const n = Number(value);
+      if (!Number.isFinite(n) || n <= 0) throw new HttpsError("invalid-argument", `${label} is not a valid date.`);
+      return n;
+    };
+    const now = Date.now();
+    const next = {
+      registeredName,
+      tradeName: text(data.tradeName, 160),
+      address,
+      tin,
+      branchCode,
+      structure: data.structure,
+      rdo: text(data.rdo, 60),
+      cor2303IssuedAt: dateMs(data.cor2303IssuedAt, "Form 2303 date"),
+      vatRegisteredAt: dateMs(data.vatRegisteredAt, "VAT registration date"),
+      updatedAt: now, updatedBy: actor.uid, updatedByRole: actor.role, schemaVersion: 1
+    };
+    await db.ref().update({
+      companyInfo: next,
+      [`operationalAudit/${now}_set_company_info`]: {action: "set_company_info", sourceType: "companyInfo", sourceId: "company", before: {registeredName: current.registeredName || "", tin: current.tin || "", branchCode: current.branchCode || "", structure: current.structure || ""}, after: {registeredName, tin, branchCode, structure: data.structure}, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}
+    });
+    return {company: next};
   }
 );
 const REJECTED_ORDER_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
@@ -5958,7 +6192,16 @@ async function purchaseInventoryLines(db, invoice, credit) {
   const lines = Array.isArray(invoice && invoice.lines) ? invoice.lines : [], inventory = {}, totals = {};
   const [chart] = await Promise.all([ensureBooksChart(db), ...[...new Set(lines.map((line) => String(line && line.itemId || "")).filter((id) => TrackedRead.trackable(id)))].map(async (id) => { const item = (await db.ref(`/inventory/${id}`).get()).val(); if (item !== null && item !== undefined) inventory[id] = item; })]);
   lines.forEach((line) => {const expense=line&&line.lineType==="expense",fixedAsset=line&&line.lineType==="fixed_asset",expenseCode=String(line&&line.expenseAccount||""),item=inventory[line.itemId]||{},mapping=BooksBridge.itemAccounts(item),account=chart[expenseCode],validExpense=account&&account.active!==false&&account.type==="Expense"&&/^6\d{3}$/.test(expenseCode)&&expenseCode!=="6110",code=fixedAsset?(line.assetCategory==="furniture"?"1510":"1500"):expense?(validExpense?expenseCode:""):mapping.inventory||"1290",value=Financial.money(line.total);if(expense&&!code)throw new HttpsError("failed-precondition", "Select an active 6000-series operating-expense account for every one-time purchase expense. Cash Short / Over is controlled separately.");if(value>0)totals[code]=Financial.money((totals[code]||0)+value);});
-  const expected=Financial.money(invoice&&invoice.total),found=Financial.money(Object.values(totals).reduce((sum,value)=>sum+value,0)),gap=Financial.money(expected-found);if(gap)totals["1290"]=Financial.money((totals["1290"]||0)+gap);
+  const expected=Financial.money(invoice&&invoice.total),inputVat=Financial.money(invoice&&invoice.inputVat);
+  if(inputVat>0){
+    const netFound=Financial.money(Object.values(totals).reduce((sum,value)=>sum+value,0)),netGap=Financial.money(expected-netFound-inputVat);
+    if(netGap>0)totals["1290"]=Financial.money((totals["1290"]||0)+netGap);
+    else if(netGap<0)throw new HttpsError("failed-precondition","Input VAT does not reconcile: the line amounts plus input VAT exceed the invoice total. Enter the line costs and VAT exactly as billed.");
+    totals["1250"]=Financial.money((totals["1250"]||0)+inputVat);
+  } else {
+    const found=Financial.money(Object.values(totals).reduce((sum,value)=>sum+value,0)),gap=Financial.money(expected-found);
+    if(gap)totals["1290"]=Financial.money((totals["1290"]||0)+gap);
+  }
   return Object.keys(totals).filter((code)=>totals[code]>0).sort().map((code)=>Financial.line(`coa:${code}`,credit?0:totals[code],credit?totals[code]:0,invoice.supplier||"Purchase"));
 }
 

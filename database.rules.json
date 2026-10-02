@@ -21,6 +21,14 @@
     // rules). Direct browser writes are blocked: manager-level posSettings access must
     // never reach tax mode, rates, or effective dates.
     "taxSettings":  { ".read": "auth != null && root.child('admins').child(auth.uid).exists()", ".write": false },
+    // Registered business identity (name, address, TIN, branch code, structure) is written
+    // only by the setCompanyInfo Cloud Function. Admin-readable, never public — unlike the
+    // TIN-free publicTaxInfo mirror the customer checkout reads.
+    "companyInfo":  { ".read": "auth != null && root.child('admins').child(auth.uid).exists()", ".write": false },
+    // Prepared BIR returns (2550Q / 2551Q / annual 1701-1702 export) are written only by the
+    // prepareQuarterlyTaxReturn Cloud Function with an operational audit record. Readable by
+    // signed-in portal staff like the tax settings they summarize; never public.
+    "taxReturns":   { ".read": "auth != null && root.child('admins').child(auth.uid).exists()", ".write": false },
 
     // ---- Customer submissions: any signed-in visitor may CREATE; admins read/modify ----
     "orders": {

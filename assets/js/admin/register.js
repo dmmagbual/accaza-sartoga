@@ -51,7 +51,7 @@ function verifyPayment(oid){
 }
 function validatePayment(oid){var o=ordersMap[oid],managerOnly=o&&verificationPolicyForOrder(o)==='manager_only';if(!o||(managerOnly?o.paymentStatus!=='pending':['cashier_verified'].indexOf(o.paymentStatus)<0)){alert('This payment is not awaiting manager validation.');return;}var a=A();if(!a.processOrderAdjustment||!a.managerApproval){alert('Manager validation service is unavailable. Refresh the portal.');return;}a.managerApproval('validate_payment',oid,Number(o.total)||0,managerOnly?'Manager-only payment verification':'Revalidate cashier-confirmed payment').then(function(ap){return a.processOrderAdjustment({action:'manager_validate_payment',orderId:oid,approvalId:ap.approvalId});}).then(function(){if(window.__posLog)window.__posLog('manager-validate-payment',oid,peso(o.total));(window.accazaToast||function(){})('Payment manager validated','ok');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Manager validation failed: '+((e&&e.message)||e));});}
 window.__posVerify=function(oid){verifyPayment(oid);};
-window.__accazaRegisterModule('register',function(name){ if(name==='ops')renderOps(); if(name==='possettings'){renderPosSettings();} if(name==='discrepancy')renderDiscrepancies(); if(name==='petty')renderPetty(); });
+window.__accazaRegisterModule('register',function(name){ if(name==='ops')renderOps(); if(name==='possettings'){renderPosSettings();} if(name==='companyinfo'){renderCompanyInfo();} if(name==='taxcompliance'){renderTaxCompliance();} if(name==='discrepancy')renderDiscrepancies(); if(name==='petty')renderPetty(); });
 
 function staffArr(){return Object.keys(staffList).map(function(k){return Object.assign({id:k},staffList[k]);}).sort(function(a,b){return(a.name||'').localeCompare(b.name||'');});}
 
@@ -733,7 +733,6 @@ function renderPosSettings(){
     +'<button class="pz-btn" id="stAdd">Add</button></div>'
     +'<p class="az-note" style="margin:.6rem 0 0;">Each cashier must be linked once to their Firebase login. After linking, POS shifts and sales can only use that signed-in staff member.</p><table class="pz-tbl" style="margin-top:0.6rem;"><tbody>'+(staffArr().length?staffArr().map(function(s){return '<tr><td>'+esc(s.name)+'</td><td>'+esc(s.role||'cashier')+'</td><td style="color:var(--tl);">'+(s.accountUid?'Linked login':'Not linked')+'</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-stlink="'+s.id+'">'+(s.accountUid?'Relink login / PIN':'Link login / PIN')+'</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-stdel="'+s.id+'">✕</button></td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No staff yet.</td></tr>')+'</tbody></table></div>';
   html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;display:block;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsDenom"/> Track cash by denomination at checkout (running drawer + per-denomination shift reconciliation)</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsTotalOnly"/> Reconcile on total only at close (still count denominations to reach the total, but skip the per-denomination variance)</label><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Cash variance tolerance ₱</span><input class="pz-in" id="opsTolerance" type="number" step="any" style="width:90px;"/><span style="font-size:0.75rem;color:var(--tl);">a discrepancy is only logged when the total is off by more than this</span></div><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Fixed cash float (imprest) ₱</span><input class="pz-in" id="opsFloat" type="number" step="any" placeholder="opening float" style="width:110px;"/><span style="font-size:0.75rem;color:var(--tl);">Optional. Blank = cashier keeps her opening float and remits the takings. Set a number for a fixed imprest float (0 = remit the whole drawer).</span></div></div>';
-  html+='<div id="taxCardBox"></div>';
   html+='<div class="pz-card payment-methods-shell" style="margin-bottom:1rem;"><div id="payMethodsBox"></div></div>';
   html+='<div class="az-sec">Data backup &amp; off-site copy</div><div class="pz-card" style="margin-bottom:1rem;"><div style="font-size:0.85rem;color:var(--tm);margin-bottom:0.5rem;">Your data is backed up automatically every day. For extra safety, also keep a copy <b>off this computer</b> once a week &mdash; a USB stick, another drive, or your own cloud.</div><div id="bkStatus" style="font-size:0.85rem;margin:0.4rem 0 0.7rem;">&hellip;</div><button class="pz-btn" id="bkDownload">&#11015; Download a backup copy</button><div style="font-size:0.75rem;color:var(--tl);margin-top:0.5rem;">Saves a copy of your current books, sales and inventory data as a file. After it downloads, move it somewhere off this computer.</div></div>';
   root.innerHTML=html;
@@ -746,8 +745,7 @@ function renderPosSettings(){
   var tol=document.getElementById('opsTolerance');if(tol){var a4=A();a4.get(a4.ref(a4.db,'posSettings')).then(function(s){var v=s.val()||{};tol.value=((v.tolerances&&v.tolerances.cashPeso!=null)?v.tolerances.cashPeso:20);});tol.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings/tolerances'),{cashPeso:Number(tol.value)||0});};}
   var ff=document.getElementById('opsFloat');if(ff){var a5=A();a5.get(a5.ref(a5.db,'posSettings')).then(function(s){var v=s.val()||{};ff.value=(v.fixedFloat!=null?v.fixedFloat:'');});ff.onchange=function(){var a=A();var raw=String(ff.value).trim();a.update(a.ref(a.db,'posSettings'),{fixedFloat:raw===''?null:(Number(raw)||0)});};}
   var bk=document.getElementById('bkDownload');
-  if(bk){var a6=A();a6.get(a6.ref(a6.db,'posSettings/offsiteBackup')).then(function(s){renderBackupStatus((s.val()||{}).lastAt);}).catch(function(){renderBackupStatus(0);});bk.onclick=exportDataBackup;}
-  wireTaxCard();
+  if(bk){var a6=A();a6.get(a6.ref(a.db,'posSettings/offsiteBackup')).then(function(s){renderBackupStatus((s.val()||{}).lastAt);}).catch(function(){renderBackupStatus(0);});bk.onclick=exportDataBackup;}
   renderPayMethods();
 }
 function kpi(l,v){return '<div class="az-kpi"><div class="v">'+v+'</div><div class="l">'+esc(l)+'</div></div>';}
@@ -815,9 +813,124 @@ function changeStaffPin(id){
   };
 }
 
+/* ══════════ COMPANY INFORMATION (registered business identity) ══════════ */
+/* One single home for the registered business facts. The TIN, branch code and
+   business structure typed here are stamped into taxSettings when a tax category
+   is activated (Tax Compliance tab), so every receipt prints the registered
+   identity BIR requires (RR 18-2012). Owner-only changes, audited server-side by
+   setCompanyInfo; a TIN saved in the old tax card pre-fills automatically so the
+   owner never retypes identity facts they already entered. */
+function renderCompanyInfo(){
+  var root=document.getElementById('companyInfoRoot');if(!root)return;
+  root.innerHTML='<div id="companyInfoBox"></div>';
+  wireCompanyInfo();
+}
+var COMPANY_STRUCTURES={
+  sole:{label:'Sole Proprietorship',hint:'One owner. Annual income tax return: BIR Form 1701.'},
+  opc:{label:'One Person Corporation',hint:'Single-stockholder corporation. Annual return: BIR Form 1702.'},
+  corporation:{label:'Corporation',hint:'Annual income tax return: BIR Form 1702.'}
+};
+function wireCompanyInfo(){
+  var box=document.getElementById('companyInfoBox');if(!box)return;
+  var canEdit=['owner','superadmin'].indexOf(String((window.__accazaAuthz||{}).role))>=0;
+  var state={loaded:false,rec:{}};
+  function dateStr(v){var n=Number(v);return (n>0&&isFinite(n))?window.AccazaDate.key(n):'';}
+  function draw(){
+    var r=state.rec||{};
+    var dis=canEdit?'':' disabled';
+    var h='<div class="az-sec">Company Information &mdash; your registered business identity</div><div class="pz-card">';
+    if(!state.loaded){h+='<p class="az-note" style="margin:0;">Loading company record…</p></div>';box.innerHTML=h;return;}
+    h+='<p class="az-note" style="margin:0 0 0.9rem;">Typed once here, used everywhere. The TIN, branch code and business structure are stamped onto your tax settings when you activate a tax category in the <b>Tax Compliance</b> tab, and they print on official receipts exactly as BIR requires.</p>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;">'
+      +'<div><span class="pz-lbl">Registered business name</span><input class="pz-in" id="ciName" type="text" maxlength="160" placeholder="As printed on your BIR Form 2303" value="'+esc(r.registeredName||'')+'"'+dis+'/></div>'
+      +'<div><span class="pz-lbl">Trade name</span><input class="pz-in" id="ciTrade" type="text" maxlength="160" placeholder="Operating name, if different (optional)" value="'+esc(r.tradeName||'')+'"'+dis+'/></div>'
+      +'<div style="grid-column:1/-1;"><span class="pz-lbl">Registered address</span><input class="pz-in" id="ciAddr" type="text" maxlength="300" placeholder="Business address registered with BIR" value="'+esc(r.address||'')+'"'+dis+'/></div>'
+      +'<div><span class="pz-lbl">BIR TIN</span><input class="pz-in" id="ciTin" type="text" inputmode="numeric" maxlength="11" placeholder="123-456-789" value="'+esc(r.tin||'')+'"'+dis+'/></div>'
+      +'<div><span class="pz-lbl">Branch code</span><input class="pz-in" id="ciBranch" type="text" inputmode="numeric" maxlength="5" placeholder="00000" value="'+esc(r.branchCode||'')+'"'+dis+'/></div>'
+      +'<div><span class="pz-lbl">Business structure</span><select class="pz-in" id="ciStructure"'+dis+'>'
+      +'<option value="sole"'+(r.structure==='sole'||!r.structure?' selected':'')+'>Sole Proprietorship</option>'
+      +'<option value="opc"'+(r.structure==='opc'?' selected':'')+'>One Person Corporation</option>'
+      +'<option value="corporation"'+(r.structure==='corporation'?' selected':'')+'>Corporation</option>'
+      +'</select><span style="font-size:0.72rem;color:var(--tl);display:block;margin-top:0.2rem;">'+esc((COMPANY_STRUCTURES[r.structure]||COMPANY_STRUCTURES.sole).hint)+'</span></div>'
+      +'<div><span class="pz-lbl">RDO</span><input class="pz-in" id="ciRdo" type="text" maxlength="60" placeholder="e.g. RDO 043" value="'+esc(r.rdo||'')+'"'+dis+'/></div>'
+      +'<div><span class="pz-lbl">Form 2303 (COR) issued</span><input class="pz-in" id="ciCor" type="date" value="'+dateStr(r.cor2303IssuedAt)+'"'+dis+'/></div>'
+      +'<div><span class="pz-lbl">VAT registration date</span><input class="pz-in" id="ciVat" type="date" value="'+dateStr(r.vatRegisteredAt)+'"'+dis+'/></div>'
+      +'</div>';
+    h+='<div style="background:rgba(28,107,84,.06);border:1px solid rgba(28,107,84,.25);border-radius:10px;padding:0.75rem 0.9rem;margin-top:0.9rem;font-size:0.8rem;color:var(--tm);">'
+      +'<b style="color:var(--bd);">Why this matters:</b> your business structure decides the annual return (Form 1701 for sole proprietorship, Form 1702 for OPC / corporation), the TIN and branch code print on every official receipt, and quarterly 2550Q / 2551Q preparation in the Tax Compliance tab reads these facts.'
+      +'</div>';
+    if(canEdit){
+      h+='<div style="display:flex;gap:0.6rem;align-items:center;margin-top:0.9rem;">'
+        +'<button class="pz-btn ok" id="ciSave" style="padding:0.55rem 1.3rem;">Save company information</button>'
+        +'<span id="ciStatus" style="font-size:0.8rem;color:var(--tl);"></span></div>';
+    } else {
+      h+='<p class="az-note" style="margin:0.8rem 0 0;">Only the owner account can change company information.</p>';
+    }
+    h+='</div>';
+    box.innerHTML=h;
+    var save=document.getElementById('ciSave');if(save)save.onclick=function(){saveCompanyInfo();};
+  }
+  var a=A();
+  if(a&&a.get){
+    a.get(a.ref(a.db,'companyInfo')).then(function(s){
+      state.rec=s.val()||{};
+      // A TIN typed in the old tax card before this tab existed still counts: pre-fill it once.
+      if(!state.rec.tin||!state.rec.branchCode||!state.rec.structure){
+        a.get(a.ref(a.db,'taxSettings')).then(function(t){
+          var live=t.val()||{};
+          if(!state.rec.tin&&live.tin)state.rec.tin=live.tin;
+          if(!state.rec.branchCode&&live.branchCode)state.rec.branchCode=live.branchCode;
+          if(!state.rec.structure&&live.structure)state.rec.structure=live.structure;
+          state.loaded=true;draw();
+        }).catch(function(){state.loaded=true;draw();});
+      } else {state.loaded=true;draw();}
+    }).catch(function(){state.loaded=true;draw();});
+  }
+  draw();
+}
+function saveCompanyInfo(){
+  var g=function(id){var el=document.getElementById(id);return el?String(el.value||'').trim():'';};
+  var payload={registeredName:g('ciName'),tradeName:g('ciTrade'),address:g('ciAddr'),tin:g('ciTin'),branchCode:g('ciBranch'),structure:g('ciStructure'),rdo:g('ciRdo')};
+  if(!payload.registeredName){alert('Enter your registered business name first.');return;}
+  if(!payload.address){alert('Enter your registered address first.');return;}
+  var digits=payload.tin.replace(/\D/g,'');
+  if(!/^\d{9}$/.test(digits)){alert('BIR TIN must be 9 digits (example: 123-456-789).');return;}
+  payload.tin=digits;
+  var branch=payload.branchCode.replace(/\D/g,'');
+  if(!branch)branch='00000';
+  if(!/^\d{5}$/.test(branch)){alert('Branch code must be 5 digits (use 00000 for the head office).');return;}
+  payload.branchCode=branch;
+  if(payload.structure!=='sole'&&payload.structure!=='opc'&&payload.structure!=='corporation'){alert('Choose a business structure.');return;}
+  var corEl=document.getElementById('ciCor'),vatEl=document.getElementById('ciVat');
+  if(corEl&&corEl.value){var d=Date.parse(corEl.value+'T00:00:00+08:00');if(!isFinite(d)){alert('Enter a valid Form 2303 date.');return;}payload.cor2303IssuedAt=d;}
+  if(vatEl&&vatEl.value){var v=Date.parse(vatEl.value+'T00:00:00+08:00');if(!isFinite(v)){alert('Enter a valid VAT registration date.');return;}payload.vatRegisteredAt=v;}
+  var btn=document.getElementById('ciSave'),status=document.getElementById('ciStatus');
+  if(btn)btn.disabled=true;if(status)status.textContent='Saving…';
+  var a=A();
+  if(!a||!a.callables||!a.callables.setCompanyInfo){if(btn)btn.disabled=false;alert('Company service unavailable. Refresh and try again.');return;}
+  a.callables.setCompanyInfo(payload).then(function(resp){
+    if(resp&&resp.data&&resp.data.company)window.__companyInfo=resp.data.company;
+    if(window.accazaToast)window.accazaToast('Company information saved.','ok');
+    wireCompanyInfo();
+  }).catch(function(e){
+    if(btn)btn.disabled=false;if(status)status.textContent='';
+    alert(((e&&e.message)||e)+'\n\nCompany information was NOT changed.');
+  });
+}
+
+function renderTaxCompliance(){
+  var root=document.getElementById('taxComplianceRoot');if(!root)return;
+  root.innerHTML='<div id="taxCardBox"></div><div id="taxReturnsBox"></div>';
+  wireTaxCard();
+  wireTaxReturns();
+}
+
 /* ══════════ BIR TAX CARD (VAT / Percentage tax) ══════════ */
 /* Labels mirror the server-side canonical checklist in src/functions/20c-tax-settings.js —
-   activation is blocked client-side with the same message, and the server re-checks every id. */
+   activation is blocked client-side with the same message, and the server re-checks every id.
+   The registered identity (TIN, branch code, business structure) is typed once in the
+   Company Information tab; the server stamps it into taxSettings at activation, so receipts
+   and online orders keep printing exactly as they do today. */
 var TAX_REQ_META={
   cas_1905_filed:{label:'BIR Form 1905 filed to register this POS system with your RDO',help:'RR 7-2024: the POS itself must be registered before Accaza receipts can serve as official invoices.'},
   pos_reports_audit:{label:'This POS can produce sales and audit reports on demand',help:'BIR officers may require daily and periodic sales reports from the register at any time.'},
@@ -891,14 +1004,12 @@ function wireTaxCard(){
         +'<br><b style="color:var(--bd);">Penalties:</b> late filing means a 25% surcharge on the tax due, 12% annual interest, plus compromise penalties.'
         +'<br><b style="color:var(--bd);">Forms and guides:</b> <a href="https://www.bir.gov.ph" target="_blank" rel="noopener">www.bir.gov.ph</a></div>';
     }
-    var liveTin=(live.tin||''),liveBranch=(live.branchCode!=null?live.branchCode:'00000'),liveStruct=(live.structure&&TAX_STRUCTURES[live.structure]?live.structure:'sole');
-    h+='<div style="display:grid;grid-template-columns:1.1fr 0.7fr 1.2fr;gap:0.5rem;align-items:end;margin-top:0.9rem;border-top:1px solid var(--cd);padding-top:0.8rem;">'
-      +'<div><span class="pz-lbl">BIR TIN</span><input class="pz-in" id="taxTin" placeholder="123-456-789" value="'+esc(liveTin)+'"/></div>'
-      +'<div><span class="pz-lbl">Branch code</span><input class="pz-in" id="taxBranch" placeholder="00000" value="'+esc(liveBranch)+'"/></div>'
-      +'<div><span class="pz-lbl">Business structure</span><select class="pz-in" id="taxStructure">'
-      +Object.keys(TAX_STRUCTURES).map(function(k){return '<option value="'+k+'"'+(k===liveStruct?' selected':'')+'>'+TAX_STRUCTURES[k]+'</option>';}).join('')
-      +'</select></div></div>'
-      +'<p class="az-note" style="margin:0.5rem 0 0;">Structure is stored for the annual return: sole proprietorship files Form 1701, OPC/corporation files Form 1702 (both due 15 April).</p>';
+    var liveStruct=(live.structure&&TAX_STRUCTURES[live.structure])?TAX_STRUCTURES[live.structure]:'';
+    h+='<div style="margin-top:0.9rem;border-top:1px solid var(--cd);padding-top:0.8rem;font-size:0.8rem;color:var(--tm);">'
+      +'<b style="color:var(--bd);">Receipt identity:</b> '
+      +(live.tin?'TIN '+esc(live.tin)+(live.branchCode?' &middot; branch '+esc(live.branchCode):''):'TIN not set yet')
+      +(liveStruct?' &middot; '+esc(liveStruct):'')
+      +' &mdash; typed once in <b style="color:var(--bd);">Company Information</b> and stamped onto every receipt automatically when a tax category is activated.</div>';
     h+='<div style="display:flex;gap:0.6rem;align-items:center;margin-top:0.9rem;">'
       +(mode!=='none'?'<button class="pz-btn ok" id="taxSave" style="padding:0.55rem 1.3rem;">'+(liveMode===mode?'Save changes':'Activate '+esc(info.title))+'</button>':'')
       +(liveMode!=='none'?'<button class="pz-btn sec" id="taxOff" style="padding:0.55rem 1rem;">Turn tax OFF</button>':'')
@@ -909,7 +1020,7 @@ function wireTaxCard(){
     box.querySelectorAll('[data-taxinc]').forEach(function(b){b.onclick=function(){state.inclusive=(b.getAttribute('data-taxinc')==='inclusive');draw();};});
     var eff=document.getElementById('taxEffective');if(eff)eff.onchange=function(){state.dateEdited=true;};
     var off=document.getElementById('taxOff');if(off)off.onclick=function(){
-      if(!confirm('Turn OFF tax? New sales will print without tax lines and post without tax. Completed sales keep their original treatment.'))return;
+      if(!confirm('Turn OFF tax? New sales will print without tax lines and post without tax. Completed sales keep their original treatment.\n\nAfter switching off, file BIR Form 1905 with your RDO to update your registration — otherwise BIR records still show this POS as issuing tax receipts.'))return;
       var a=A();if(!a||!a.callables||!a.callables.setTaxSettings){alert('Tax service unavailable. Refresh and try again.');return;}
       a.callables.setTaxSettings({mode:'none'}).then(function(){if(window.accazaToast)window.accazaToast('Tax turned off. New sales print without tax.','ok');}).catch(function(e){alert('Could not turn tax off: '+((e&&e.message)||e));});
     };
@@ -924,15 +1035,11 @@ function saveTaxSettings(state){
   if(mode!=='vat'&&mode!=='percentage')return;
   var missing=TAX_REQ_ORDER[mode].filter(function(id){return !state.ticks[mode][id];});
   if(missing.length){alert('Complete first the BIR requirement before tax is activated.\n\nStill to confirm:\n- '+missing.map(function(id){return TAX_REQ_META[id].label;}).join('\n- '));return;}
-  var tin=(document.getElementById('taxTin').value||'').trim();
-  var branch=(document.getElementById('taxBranch').value||'').trim()||'00000';
-  var structure=(document.getElementById('taxStructure')||{}).value||'sole';
   var inc=state.inclusive!=null?state.inclusive:((window.__taxSettings||{}).inclusive!==false);
   if(inc===false&&(window.__taxSettings||{}).inclusive!==false){
     if(!confirm('Tax-EXCLUSIVE pricing: POS and the online ordering site will ADD the tax on top of your listed prices, so customers pay more than the shelf price.\n\nContinue with tax added on top?'))return;
   }
-  var payload={mode:mode,inclusive:inc,structure:structure,branchCode:branch,requirements:state.ticks};
-  if(tin)payload.tin=tin;
+  var payload={mode:mode,inclusive:inc,requirements:state.ticks};
   var rateEl=document.getElementById('taxRate');
   if(rateEl&&rateEl.value!==''){var rate=Number(rateEl.value);if(!(rate>0&&rate<=100)){alert('Enter a rate between 0.01 and 100.');return;}payload[mode==='vat'?'vatRate':'percentageRate']=rate;}
   var effEl=document.getElementById('taxEffective');
@@ -949,6 +1056,178 @@ function saveTaxSettings(state){
     if(btn)btn.disabled=false;if(status)status.textContent='';
     alert(((e&&e.message)||e)+'\n\nTax settings were NOT changed.');
   });
+}
+
+/* ══════════ BIR QUARTERLY RETURNS (2550Q / 2551Q / annual 1701-1702 export) ══════════ */
+/* One-click preparation from the Tax Compliance tab. Figures come from reconciled
+   Financial Close summaries and purchase input VAT through the prepareQuarterlyTaxReturn
+   Cloud Function — no raw order data is re-read here. /taxReturns history is fetched
+   once when the tab opens (single read, no listener). */
+var QUARTER_DUE={1:'25 April',2:'25 July',3:'25 October',4:'25 January'};
+var QUARTER_LABEL={1:'Q1 (Jan - Mar)',2:'Q2 (Apr - Jun)',3:'Q3 (Jul - Sep)',4:'Q4 (Oct - Dec)'};
+var QUARTER_END={1:'-03-31',2:'-06-30',3:'-09-30',4:'-12-31'};
+function wireTaxReturns(){
+  var box=document.getElementById('taxReturnsBox');if(!box)return;
+  var todayKey=window.AccazaDate.key(),thisYear=Number(todayKey.slice(0,4));
+  var lastQ={year:thisYear-1,quarter:4};
+  for(var q=4;q>=1;q--){if(todayKey>String(thisYear)+QUARTER_END[q]){lastQ={year:thisYear,quarter:q};break;}}
+  var st={year:lastQ.year,quarter:lastQ.quarter,record:null,annualRecord:null,history:{},busy:false};
+  function quarterEnded(year,quarter){return todayKey>String(year)+QUARTER_END[quarter];}
+  function dueLabel(year,quarter){return QUARTER_DUE[quarter]+' '+(Number(quarter)===4?Number(year)+1:year);}
+  function pullFromHistory(){
+    var q=(st.history['q'+st.year+'Q'+st.quarter]||{}).current||null;
+    st.record=(q&&q.mode==='quarterly')?q:null;
+    var a=(st.history['annual_'+st.year]||{}).current||null;
+    st.annualRecord=(a&&a.mode==='annual')?a:null;
+  }
+  function refreshHistory(){var a=A();if(a&&a.get)a.get(a.ref(a.db,'taxReturns')).then(function(s){st.history=s.val()||{};draw();}).catch(function(){});}
+  function prepareReturn(mode){
+    var a=A();if(!a||!a.callables||!a.callables.prepareQuarterlyTaxReturn){alert('Tax return service unavailable. Refresh and try again.');return;}
+    if(mode==='quarterly'&&!quarterEnded(st.year,st.quarter)){alert('That quarter has not ended yet. Prepare the return after the quarter closes.');return;}
+    st.busy=true;draw();
+    a.callables.prepareQuarterlyTaxReturn(mode==='annual'?{mode:'annual',year:st.year}:{mode:'quarterly',year:st.year,quarter:st.quarter,requestId:'ui-'+Date.now()}).then(function(resp){
+      st.busy=false;var r=(resp&&resp.data)||null;
+      if(mode==='annual')st.annualRecord=r;else st.record=r;
+      if(window.accazaToast)window.accazaToast(r&&r.duplicate?'Return already prepared — showing the saved copy.':'Return prepared.','ok');
+      refreshHistory();draw();
+    }).catch(function(e){
+      st.busy=false;draw();
+      alert('Could not prepare the return:\n\n'+((e&&e.message)||e));
+    });
+  }
+  function trQuarterlyHtml(r){
+    var f=r.figures||{},p=r.pnl||{},vat=r.returnType==='2550Q';
+    function row(label,val,strong){return '<tr><td style="padding:0.3rem 0;border-bottom:1px solid var(--cd);color:var(--tm);">'+label+'</td><td style="padding:0.3rem 0;border-bottom:1px solid var(--cd);text-align:right;font-weight:'+(strong?'700':'500')+';color:var(--bd);">'+val+'</td></tr>';}
+    var h='<div style="border:1px solid rgba(28,107,84,.35);background:rgba(28,107,84,.05);border-radius:10px;padding:0.8rem 0.9rem;margin-top:0.9rem;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;"><b style="color:var(--bd);">BIR Form '+esc(r.returnType)+' &mdash; '+esc(QUARTER_LABEL[Number(r.quarter)]||'')+' '+r.year+'</b>'
+      +'<span style="padding:0.15rem 0.6rem;border-radius:99px;font-size:0.75rem;font-weight:700;background:rgba(28,107,84,.12);color:#1C6B54;">'+esc(r.status||'READY')+(r.duplicate?' &middot; SAVED COPY':'')+'</span></div>'
+      +'<div style="font-size:0.75rem;color:var(--tl);margin-top:0.15rem;">Period '+esc(r.periodStart)+' to '+esc(r.periodEnd)+' &middot; filing due '+esc(dueLabel(r.year,Number(r.quarter)))+' through eBIRForms or eFPS</div>'
+      +'<table style="width:100%;border-collapse:collapse;margin-top:0.6rem;font-size:0.85rem;">'
+      +row('Gross sales (including tax)',peso(f.grossSales));
+    if(vat){
+      h+=row('VAT-exempt sales &mdash; senior / PWD (RA 9994 / 10754)',peso(f.vatExemptSales));
+      h+=row('Output VAT &mdash; account 2210',peso(f.outputVat));
+      h+=row('Less: input VAT from purchases &mdash; account 1250',peso(f.inputVat));
+      h+=row('<b style="color:var(--bd);">Amount due with BIR Form 2550Q</b>','<span style="font-size:1rem;">'+peso(r.amountDue)+'</span>',true);
+    }else{
+      h+=row('<b style="color:var(--bd);">Amount due with BIR Form 2551Q (percentage tax)</b>','<span style="font-size:1rem;">'+peso(r.amountDue)+'</span>',true);
+    }
+    h+='</table>'
+      +'<div style="font-size:0.75rem;color:var(--tl);margin-top:0.5rem;">Gross-margin P&L for the quarter: net sales '+peso(p.netSales)+' &middot; cost of sales '+peso(p.expectedCogs)+' &middot; discounts '+peso(p.discounts)+' &middot; refunds '+peso(p.refunds)
+      +'<br>From '+(f.closeCount||0)+' reconciled Financial Close'+(f.closeCount===1?'':'s')+(r.revision?' &middot; revision '+r.revision:'')+' &middot; prepared '+esc(new Date(Number(r.preparedAt)||Date.now()).toLocaleString('en-PH'))+'.</div>'
+      +'<button class="pz-btn sec" id="trDownload" style="padding:0.45rem 1rem;margin-top:0.6rem;">Download CSV</button></div>';
+    return h;
+  }
+  function trAnnualHtml(r){
+    var an=r.annual||{},qs=an.quarters||[],t=an.totals||{},tp=t.pnl||{};
+    function cell(val,bold){return '<td style="padding:0.3rem 0;border-top:1px solid var(--cd);text-align:right;'+(bold?'font-weight:700;color:var(--bd);':'')+'">'+val+'</td>';}
+    var h='<div style="border:1px solid rgba(28,107,84,.35);background:rgba(28,107,84,.05);border-radius:10px;padding:0.8rem 0.9rem;margin-top:0.9rem;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;"><b style="color:var(--bd);">Annual export &mdash; BIR Form '+esc(an.form||'1701')+' &middot; '+r.year+'</b>'
+      +'<span style="padding:0.15rem 0.6rem;border-radius:99px;font-size:0.75rem;font-weight:700;background:rgba(28,107,84,.12);color:#1C6B54;">'+esc(r.status||'READY')+(r.duplicate?' &middot; SAVED COPY':'')+'</span></div>'
+      +'<table style="width:100%;border-collapse:collapse;margin-top:0.6rem;font-size:0.78rem;">'
+      +'<tr style="color:var(--tl);"><th style="text-align:left;padding:0.25rem 0;">Quarter</th><th style="text-align:right;">Gross sales</th><th style="text-align:right;">Exempt</th><th style="text-align:right;">Output VAT</th><th style="text-align:right;">% Tax</th><th style="text-align:right;">Input VAT</th><th style="text-align:right;">Net sales</th><th style="text-align:right;">Cost of sales</th><th style="text-align:right;padding:0.25rem 0;">Reconciled</th></tr>';
+    qs.forEach(function(q){
+      var f=q.figures||{},p=q.pnl||{},ok=q.gate&&q.gate.ok;
+      h+='<tr><td style="padding:0.3rem 0;border-top:1px solid var(--cd);color:var(--bd);font-weight:600;">Q'+q.quarter+'</td>'
+        +cell(peso(f.grossSales))+cell(peso(f.vatExemptSales))+cell(peso(f.outputVat))+cell(peso(f.percentageTax))+cell(peso(f.inputVat))+cell(peso(p.netSales))+cell(peso(p.expectedCogs))
+        +'<td style="padding:0.3rem 0;border-top:1px solid var(--cd);text-align:right;color:'+(ok?'#1C6B54':'#a3542a')+';font-weight:700;">'+(ok?'YES':'NO')+'</td></tr>';
+    });
+    h+='<tr><td style="padding:0.35rem 0;border-top:2px solid var(--bd);color:var(--bd);font-weight:700;">TOTAL</td>'
+      +cell(peso(t.grossSales),true)+cell(peso(t.vatExemptSales),true)+cell(peso(t.outputVat),true)+cell(peso(t.percentageTax),true)+cell(peso(t.inputVat),true)+cell(peso(tp.netSales),true)+cell(peso(tp.expectedCogs),true)
+      +'<td></td></tr></table>'
+      +'<div style="font-size:0.75rem;color:var(--tl);margin-top:0.5rem;">VAT payable for the year (output less input): <b>'+peso(t.vatPayable)+'</b>'+(r.revision?' &middot; revision '+r.revision:'')+' &middot; prepared '+esc(new Date(Number(r.preparedAt)||Date.now()).toLocaleString('en-PH'))+'.</div>'
+      +'<button class="pz-btn sec" id="trDownloadAnnual" style="padding:0.45rem 1rem;margin-top:0.6rem;">Download CSV</button></div>';
+    return h;
+  }
+  function trHistoryHtml(){
+    var keys=Object.keys(st.history).filter(function(k){return st.history[k]&&st.history[k].current&&st.history[k].current.returnType;}).sort().reverse();
+    if(!keys.length)return '<p class="az-note" style="margin:0.3rem 0 0;">Nothing prepared yet. Prepare a quarter above once its Financial Closes are reconciled.</p>';
+    var h='<table style="width:100%;border-collapse:collapse;margin-top:0.4rem;font-size:0.8rem;">';
+    keys.forEach(function(k){
+      var cur=st.history[k].current;
+      var label=cur.mode==='annual'?('Form '+((cur.annual&&cur.annual.form)||'1701')+' annual export'):('Form '+cur.returnType+' '+QUARTER_LABEL[Number(cur.quarter)]);
+      var period=cur.mode==='annual'?String(cur.year):(esc(cur.periodStart)+' to '+esc(cur.periodEnd));
+      h+='<tr><td style="padding:0.3rem 0;border-bottom:1px solid var(--cd);color:var(--bd);font-weight:600;">'+label+' '+cur.year+'</td>'
+        +'<td style="padding:0.3rem 0;border-bottom:1px solid var(--cd);color:var(--tm);">'+period+'</td>'
+        +'<td style="padding:0.3rem 0;border-bottom:1px solid var(--cd);text-align:right;font-weight:700;color:var(--bd);">'+peso(cur.amountDue)+'</td>'
+        +'<td style="padding:0.3rem 0;border-bottom:1px solid var(--cd);text-align:right;color:var(--tl);">'+esc(new Date(Number(cur.preparedAt)||0).toLocaleDateString('en-PH'))+'</td></tr>';
+    });
+    return h+'</table>';
+  }
+  function trCsvCell(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}
+  function trDownload(filename,rows){
+    var csv=rows.map(function(r){return r.map(trCsvCell).join(',');}).join('\r\n');
+    var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+    var link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=filename;
+    document.body.appendChild(link);link.click();document.body.removeChild(link);
+    setTimeout(function(){URL.revokeObjectURL(link.href);},1500);
+  }
+  function trQuarterlyCsv(r){
+    var f=r.figures||{},p=r.pnl||{},c=r.company||{},vat=r.returnType==='2550Q';
+    var rows=[['Accaza','BIR Form '+r.returnType+' preparation'],
+      ['Registered name',c.registeredName||''],['TIN',c.tin||''],['Branch code',c.branchCode||''],['Business structure',TAX_STRUCTURES[c.structure]||c.structure||''],
+      ['Period',r.periodStart+' to '+r.periodEnd],['Filing due',dueLabel(r.year,Number(r.quarter))],[],
+      ['Item','Amount'],['Gross sales (including tax)',f.grossSales]];
+    if(vat)rows.push(['VAT-exempt sales (senior/PWD)',f.vatExemptSales],['Output VAT - account 2210',f.outputVat],['Input VAT from purchases - account 1250',f.inputVat],['VAT payable (output less input)',f.vatPayable]);
+    else rows.push(['Percentage tax - account 2220',f.percentageTax]);
+    rows.push(['Amount due',r.amountDue],[],
+      ['Net sales',p.netSales],['Cost of sales (expected COGS)',p.expectedCogs],['Discounts',p.discounts],['Refunds',p.refunds],
+      ['Financial closes counted',f.closeCount],['Prepared at',new Date(Number(r.preparedAt)||Date.now()).toISOString()],['Revision',r.revision||1]);
+    return rows;
+  }
+  function trAnnualCsv(r){
+    var an=r.annual||{},c=r.company||{},t=an.totals||{},tp=t.pnl||{};
+    var rows=[['Accaza','Annual accountant export - BIR Form '+(an.form||'1701')+' '+r.year],
+      ['Registered name',c.registeredName||''],['TIN',c.tin||''],['Branch code',c.branchCode||''],[],
+      ['Quarter','Period','Reconciled','Gross sales','VAT-exempt sales','Output VAT','Percentage tax','Input VAT','VAT payable','Net sales','Cost of sales']];
+    (an.quarters||[]).forEach(function(q){
+      var f=q.figures||{},p=q.pnl||{};
+      rows.push(['Q'+q.quarter,q.periodStart+' to '+q.periodEnd,(q.gate&&q.gate.ok)?'YES':'NO',f.grossSales,f.vatExemptSales,f.outputVat,f.percentageTax,f.inputVat,f.vatPayable,p.netSales,p.expectedCogs]);
+    });
+    rows.push(['TOTAL '+r.year,'','','',t.grossSales,t.vatExemptSales,t.outputVat,t.percentageTax,t.inputVat,t.vatPayable,tp.netSales,tp.expectedCogs]);
+    return rows;
+  }
+  function draw(){
+    pullFromHistory();
+    var live=window.__taxSettings||{},liveMode=(live.mode==='vat'||live.mode==='percentage')?live.mode:'none';
+    var form=liveMode==='percentage'?'2551Q':'2550Q';
+    var h='<div class="az-sec">BIR quarterly returns &mdash; one-click preparation</div><div class="pz-card" style="margin-bottom:1rem;">'
+      +'<p class="az-note" style="margin:0;">Figures come from your reconciled Financial Close summaries and purchase input VAT. Every preparation is saved with a revision and an audit trail; preparing the same quarter again with unchanged figures simply returns the saved return.</p>';
+    if(liveMode==='none')h+='<p class="az-note" style="margin:0.6rem 0 0;color:#a3542a;">Activate VAT or percentage tax above before preparing a quarterly return. The annual accountant export below works even without an active tax category.</p>';
+    h+='<div style="display:flex;gap:0.6rem;align-items:end;flex-wrap:wrap;margin-top:0.8rem;">'
+      +'<div><span class="pz-lbl">Year</span><select class="pz-in" id="trYear">';
+    for(var y=thisYear;y>=2020;y--)h+='<option value="'+y+'"'+(y===st.year?' selected':'')+'>'+y+'</option>';
+    h+='</select></div><div><span class="pz-lbl">Quarter</span><div style="display:flex;gap:0.4rem;">';
+    [1,2,3,4].forEach(function(qq){
+      var ended=quarterEnded(st.year,qq),sel=st.quarter===qq;
+      h+='<button type="button" data-trq="'+qq+'"'+(ended?'':' disabled title="This quarter has not ended yet."')+' style="padding:0.45rem 0.8rem;border-radius:8px;cursor:'+(ended?'pointer':'not-allowed')+';border:'+(sel?'2px solid #1C6B54;background:rgba(28,107,84,.08);':'1px solid var(--cd);background:transparent;')+(ended?'':'opacity:.45;')+'font-weight:700;color:var(--bd);font-family:inherit;">Q'+qq+'</button>';
+    });
+    h+='</div></div></div>'
+      +'<div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin-top:0.9rem;">'
+      +'<button class="pz-btn ok" id="trPrepare" style="padding:0.55rem 1.2rem;"'+(liveMode==='none'||st.busy||!quarterEnded(st.year,st.quarter)?' disabled':'')+'>'+(st.busy?'Preparing…':'Prepare '+form+' for '+esc(QUARTER_LABEL[st.quarter])+' '+st.year)+'</button>'
+      +'<span style="font-size:0.8rem;color:var(--tm);">Filing due '+esc(dueLabel(st.year,st.quarter))+' &middot; through eBIRForms or eFPS</span></div>';
+    if(st.record)h+=trQuarterlyHtml(st.record);
+    h+='<div style="border-top:1px solid var(--cd);margin-top:1rem;padding-top:0.8rem;">'
+      +'<div style="font-weight:700;font-size:0.9rem;color:var(--bd);">Annual accountant export</div>'
+      +'<p class="az-note" style="margin:0.3rem 0 0.2rem;">Every quarter of the year with its own tax figures, reconciliation status and gross-margin P&L in one CSV — ready to hand to your accountant for BIR Form 1701 (sole proprietorship) or 1702 (OPC / corporation).</p>'
+      +'<button class="pz-btn sec" id="trPrepareAnnual" style="padding:0.5rem 1.1rem;margin-top:0.5rem;"'+(st.busy?' disabled':'')+'>'+(st.busy?'Preparing…':'Prepare annual export '+st.year)+'</button></div>';
+    if(st.annualRecord)h+=trAnnualHtml(st.annualRecord);
+    h+='<div style="border-top:1px solid var(--cd);margin-top:1rem;padding-top:0.8rem;"><div style="font-weight:700;font-size:0.9rem;color:var(--bd);">Prepared returns</div>'+trHistoryHtml()+'</div>';
+    h+='</div>';
+    box.innerHTML=h;
+    var ys=document.getElementById('trYear');if(ys)ys.onchange=function(){
+      st.year=Number(ys.value);
+      if(!quarterEnded(st.year,st.quarter)){for(var qq=4;qq>=1;qq--){if(quarterEnded(st.year,qq)){st.quarter=qq;break;}}}
+      pullFromHistory();draw();
+    };
+    box.querySelectorAll('[data-trq]').forEach(function(b){b.onclick=function(){st.quarter=Number(b.getAttribute('data-trq'));pullFromHistory();draw();};});
+    var pr=document.getElementById('trPrepare');if(pr)pr.onclick=function(){prepareReturn('quarterly');};
+    var pa=document.getElementById('trPrepareAnnual');if(pa)pa.onclick=function(){prepareReturn('annual');};
+    var dl=document.getElementById('trDownload');if(dl)dl.onclick=function(){if(st.record)trDownload('Accaza-'+st.record.returnType+'-'+st.record.year+'-Q'+st.record.quarter+'.csv',trQuarterlyCsv(st.record));};
+    var da=document.getElementById('trDownloadAnnual');if(da)da.onclick=function(){if(st.annualRecord)trDownload('Accaza-'+((st.annualRecord.annual||{}).form||'1701')+'-annual-'+st.annualRecord.year+'.csv',trAnnualCsv(st.annualRecord));};
+  }
+  draw();
+  refreshHistory();
 }
 /* Shift crew (Sep 2026). The shift owner keeps the drawer; other linked staff join the open
    shift to ring sales under their own name. The server (/shiftCrews) is the authority; the

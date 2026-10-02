@@ -50,7 +50,14 @@ export const BUNDLE_BUDGETS=Object.freeze({
   // the stamp list, the add/edit form and the fixed six-colour picker. It is config-only --
   // no listener and no loyalty history read -- and rides the already lazy-loaded register
   // bundle. Re-baselined under the budget policy to ~5% above the reviewed 240,003 bytes.
-  'assets/js/admin/register.js':252100,
+  // Sep 2026 re-baseline under the budget policy above: reviewed 223,322 bytes (admin 611).
+// Oct 2026 (+25.5 KB, 240.0 -> 265.5 KB) adds BIR tax compliance: the dedicated Tax
+// Compliance tab (VAT / percentage tax card with the BIR requirement checklist), the
+// Company Information tab, and one-click quarterly 2550Q/2551Q return preparation with
+// the annual accountant export. One-shot reads only (taxSettings, companyInfo,
+// taxReturns history); no standing listener. Re-baselined under the budget policy to
+// ~5% above the reviewed 265,488 bytes.
+'assets/js/admin/register.js':278800,
   // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.
   // Build 533 replaces Stock Value's whole-journal listener with monthly totals plus the

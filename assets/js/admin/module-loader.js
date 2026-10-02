@@ -5,10 +5,10 @@
   var routes={
     pos:['inbox','pos'],inventory:['pos'],purchases:['finance','pos'],recipes:['pos','uncostedsales'],usage:['pos'],channelpricing:['pos','channelpricing'],dedupe:['pos'],
     saleshistory:['saleshistory'],analytics:['pos','analytics'],payouts:['pos','analytics'],stockvalue:['pos','analytics'],dailyreport:['pos','analytics'],
-    ops:['pos','register'],possettings:['pos','register'],discrepancy:['pos','register'],petty:['finance','pos','register'],packages:['pos','packages'],staffaccounts:['staff'],
+    ops:['pos','register'],possettings:['pos','register'],companyinfo:['pos','register'],taxcompliance:['pos','register'],discrepancy:['pos','register'],petty:['finance','pos','register'],packages:['pos','packages'],staffaccounts:['staff'],
     operations:['operations'],liveoperations:['liveoperations'],undeposited:['undeposited'],inbox:['inbox'],accountingperiods:['accountingperiods'],rewards:['rewards']
   };
-  var roots={pos:'posRoot',inventory:'inventoryRoot',purchases:'purchasesRoot',recipes:'recipesRoot',usage:'usageRoot',channelpricing:'channelPricingRoot',dedupe:'dedupeRoot',saleshistory:'salesHistoryRoot',analytics:'analyticsRoot',payouts:'payoutsRoot',stockvalue:'stockValueRoot',dailyreport:'dailyReportRoot',ops:'opsRoot',possettings:'posSettingsRoot',discrepancy:'discrepancyRoot',petty:'pettyRoot',packages:'packagesRoot',staffaccounts:'accountAccessRoot',operations:'operationsRoot',liveoperations:'liveOperationsRoot',undeposited:'undepositedRoot',inbox:'staffInboxRoot',accountingperiods:'accountingPeriodsRoot',rewards:'rewardsRoot'};
+  var roots={pos:'posRoot',inventory:'inventoryRoot',purchases:'purchasesRoot',recipes:'recipesRoot',usage:'usageRoot',channelpricing:'channelPricingRoot',dedupe:'dedupeRoot',saleshistory:'salesHistoryRoot',analytics:'analyticsRoot',payouts:'payoutsRoot',stockvalue:'stockValueRoot',dailyreport:'dailyReportRoot',ops:'opsRoot',possettings:'posSettingsRoot',companyinfo:'companyInfoRoot',taxcompliance:'taxComplianceRoot',discrepancy:'discrepancyRoot',petty:'pettyRoot',packages:'packagesRoot',staffaccounts:'accountAccessRoot',operations:'operationsRoot',liveoperations:'liveOperationsRoot',undeposited:'undepositedRoot',inbox:'staffInboxRoot',accountingperiods:'accountingPeriodsRoot',rewards:'rewardsRoot'};
   var promises={},handlers={},requestSerial=0;
   var build=((typeof document.querySelector==='function'&&document.querySelector('meta[name="accaza-admin-build"]')||{}).content||'');
 

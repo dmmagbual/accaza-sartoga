@@ -84,13 +84,41 @@ function orderTaxBase(order) {
   const channel = safe(order.channel).toLowerCase(), platform = channel === "grabfood" || channel === "foodpanda";
   return money(platform ? (order.grossPlatform != null ? order.grossPlatform : (order.subtotal != null ? order.subtotal : order.total)) : order.total);
 }
+// VAT-exempt statutory sales (RMC 72-2014): senior/PWD/national-athlete portions
+// of the order are exempt from output VAT. The order carries vatExemptSales (the
+// exempt charged amount); orders that predate the field derive it from persisted
+// statutory discountLines rows — exempt charged = basis × (1 − rate). Merchant
+// promos are never exempt, and percentage tax has no exempt concept.
+function orderExemptSales(order, tax) {
+  if (!tax || tax.mode !== "vat") return 0;
+  const base = orderTaxBase(order);
+  let exempt = money(order && order.vatExemptSales);
+  if (!(exempt > 0) && Array.isArray(order && order.discountLines)) {
+    exempt = order.discountLines.reduce((carry, row) => {
+      const type = safe(row && row.type).toLowerCase();
+      if (type !== "senior" && type !== "pwd" && type !== "athlete") return carry;
+      return money(carry + money(money(row && row.basis) * (1 - Number(row && row.rate || 0))));
+    }, 0);
+  }
+  return money(Math.max(0, Math.min(exempt, base)));
+}
+// VAT relief reversed on a refund leg: the refund's exempt portion carries no VAT,
+// mirroring the sale's exempt-aware split so both legs stay cent-exact.
+function exemptRefundVat(order, value, tax) {
+  if (!tax || tax.mode !== "vat") return 0;
+  const base = orderTaxBase(order), exempt = orderExemptSales(order, tax), amount = money(value);
+  if (!(exempt > 0) || !(base > 0) || !(amount > 0)) return taxSplit(amount, tax).taxAmount;
+  const exemptPart = Math.min(amount, money(amount * exempt / base));
+  return taxSplit(money(Math.max(0, amount - exemptPart)), tax).taxAmount;
+}
 // Output VAT currently attributable to the order after refunds: full VAT less
 // the VAT already reversed on refunds. Mirrors the movement math exactly
 // (same money() rounding steps) so close/reconciliation never drifts a cent.
 function orderOutputVat(order, tax) {
   if (!tax || tax.mode !== "vat") return 0;
-  const base = orderTaxBase(order), refund = money(order && order.refundAmount);
-  return money(Math.max(0, money(taxSplit(base, tax).taxAmount - taxSplit(refund, tax).taxAmount)));
+  const base = orderTaxBase(order), exempt = orderExemptSales(order, tax), refund = money(order && order.refundAmount);
+  const saleVat = taxSplit(money(Math.max(0, base - exempt)), tax).taxAmount;
+  return money(Math.max(0, money(saleVat - exemptRefundVat(order, refund, tax))));
 }
 function orderPosting(order, accounts, tax) {
   order = order || {}; const id = safe(order.id); if (!id) throw new Error("Order ID is required.");
@@ -150,13 +178,16 @@ function orderPosting(order, accounts, tax) {
     } else if (Math.abs(paid - total) > 0.009) lines.push(line(paid < total ? "asset:unmapped_payment:balance" : "revenue:payment_overage", paid < total ? money(total - paid) : 0, paid > total ? money(paid - total) : 0, "Payment allocation difference"));
     if (discount) lines.push(line("expense:customer_discount", discount, 0, "Customer discount"));
     if (loyaltyDiscount) lines.push(line("expense:loyalty_discount", loyaltyDiscount, 0, order.loyaltyRewardId ? `Loyalty reward · ${safe(order.loyaltyRewardId)}` : "Loyalty reward discount"));
-    const split = taxSplit(total, tax);
+    // VAT-exempt statutory portions carry no output VAT: the split runs on the
+    // taxable charged amount only, so a fully exempt sale books zero VAT.
+    const exempt = tax && tax.mode === "vat" ? orderExemptSales(order, tax) : 0;
+    const split = taxSplit(exempt > 0 ? money(Math.max(0, total - exempt)) : total, tax);
     if (split.mode === "vat" && split.taxAmount > 0) {
       // Exclusive: the menu subtotal is already the net sale, so revenue is credited
       // in full and only the collected add-on goes to output VAT.
       lines.push(line("revenue:sales", 0, split.inclusive === false ? gross : money(gross - split.taxAmount), channel === "online" ? "Online net sales (VAT-exclusive)" : "In-store net sales (VAT-exclusive)"));
       lines.push(line("liability:output_vat", 0, split.taxAmount, split.inclusive === false ? "Output VAT (added on top)" : "Output VAT"));
-      taxStamp = {mode: split.mode, rate: split.rate, base: split.base, amount: split.taxAmount, inclusive: split.inclusive};
+      taxStamp = {mode: split.mode, rate: split.rate, base: split.base, amount: split.taxAmount, inclusive: split.inclusive, exempt};
     } else {
       lines.push(line("revenue:sales", 0, gross, channel === "online" ? "Online order gross sales" : "In-store gross sales"));
       if (split.mode === "percentage" && split.taxAmount > 0) {
@@ -183,10 +214,12 @@ function reversalPosting(order, amount, kind, accounts, settlementPayments, tax)
   // equals orderNetSales; percentage tax reverses its own pair. Platform sales
   // are always tax-inclusive (the platform set the final price), and exclusive
   // percentage tax reverses only the payable because no expense was ever booked.
-  const split = taxSplit(value, platform ? Object.assign({}, tax, {inclusive: true}) : tax);
+  const exempt = !platform && tax && tax.mode === "vat" ? orderExemptSales(order, tax) : 0;
+  const exemptPart = exempt > 0 && orderTaxBase(order) > 0 ? Math.min(value, money(value * exempt / orderTaxBase(order))) : 0;
+  const split = taxSplit(money(Math.max(0, value - exemptPart)), platform ? Object.assign({}, tax, {inclusive: true}) : tax);
   let taxStamp = null;
   if (split.mode === "vat" && split.taxAmount > 0) {
-    lines.push(line("revenue:sales_reversal", split.net, 0, kind === "void" ? "Voided sale (net of VAT)" : "Sales refund (net of VAT)"));
+    lines.push(line("revenue:sales_reversal", money(value - split.taxAmount), 0, kind === "void" ? "Voided sale (net of VAT)" : "Sales refund (net of VAT)"));
     lines.push(line("liability:output_vat", split.taxAmount, 0, "Reverse output VAT"));
     taxStamp = {mode: split.mode, rate: split.rate, base: split.base, amount: split.taxAmount, inclusive: split.inclusive};
   } else if (split.mode === "percentage" && split.inclusive === false && split.taxAmount > 0) {
@@ -261,7 +294,7 @@ function orderNetSales(order, tax) {
     // Inclusive: revenue is credited net of VAT, so net sales exclude the remaining
     // output VAT. Exclusive: the menu subtotal is already net, and only the VAT
     // inside a refund left the payable (not revenue), so that VAT is added back.
-    net = money(tax.inclusive === false ? net + money(taxSplit(refund, tax).taxAmount) : net - orderOutputVat(order, tax));
+    net = money(tax.inclusive === false ? net + exemptRefundVat(order, refund, tax) : net - orderOutputVat(order, tax));
   } else if (tax && tax.mode === "percentage" && tax.inclusive === false) {
     // Exclusive percentage tax books revenue at the menu subtotal and refunds
     // reverse it net of the collected add-on, so the tax inside a refund is
@@ -314,4 +347,30 @@ function platformPayoutPosting(payout, definitions) {
   return movement("platform_payout_settlement", "platformPayout", safe(payout.id), lines, {occurredAt:Number(payout.accountingOccurredAt||payout.settledAt||Date.now()),approvalId:safe(payout.approvalId),approvedBy:safe(payout.approvedBy),reconstructedFromPayoutRecord:payout.reconstructedFromPayoutRecord===true});
 }
 
-module.exports = {BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting};
+// Quarterly BIR return figures (2550Q VAT / 2551Q percentage tax) from stored
+// financial-close summaries — no order re-reads, so preparation costs nothing
+// beyond the close index it already walks. vatPayable = output VAT less the
+// input VAT claimed on purchases for the quarter.
+function quarterlyTaxFigures(closes, inputVat) {
+  const out = {grossSales: 0, vatExemptSales: 0, outputVat: 0, percentageTax: 0, inputVat: money(inputVat), vatPayable: 0, closeCount: 0};
+  (Array.isArray(closes) ? closes : []).forEach((close) => {
+    out.grossSales = money(out.grossSales + money(close && close.grossSales));
+    out.vatExemptSales = money(out.vatExemptSales + money(close && close.vatExemptSales));
+    out.outputVat = money(out.outputVat + money(close && close.outputVat));
+    out.percentageTax = money(out.percentageTax + money(close && close.percentageTax));
+    out.closeCount += 1;
+  });
+  out.vatPayable = money(Math.max(0, out.outputVat - out.inputVat));
+  return out;
+}
+// A quarter can only be prepared for BIR filing when every close in it is
+// reconciled (timing items are fine — they are documented and carried).
+// CERTIFIED is the strongest reconciled state, so certified closes pass too.
+function quarterCloseGate(closes) {
+  const rows = (Array.isArray(closes) ? closes : []).filter(Boolean);
+  if (!rows.length) return {ok: false, reason: "NO_RECONCILED_CLOSES"};
+  const blocked = rows.filter((row) => !["RECONCILED", "RECONCILED_WITH_TIMING_ITEMS", "CERTIFIED"].includes(safe(row.status)));
+  return blocked.length ? {ok: false, reason: "CLOSES_NOT_RECONCILED", blocked: blocked.map((row) => safe(row.closeId || row.id))} : {ok: true};
+}
+
+module.exports = {BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};
