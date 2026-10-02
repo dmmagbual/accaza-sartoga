@@ -26,6 +26,9 @@ export const SMALL_NODES = new Set([
   // BIR tax regime: one fixed-shape config object (mode, rates, TIN, checklist ticks) that never
   // grows with sales, cash or history volume; every financial posting path reads it.
   'taxSettings',
+  // Registered company identity (name, TIN, branch code, structure): typed once in the Company
+  // Information tab and stamped onto receipts and tax returns; fixed shape, never grows.
+  'companyInfo',
   'books/monthlyNet', 'books/monthlyNetMeta', 'books/config', 'books/reconciliationConfig', 'books/chartCodeMigrations',
   'cashBalanceSummary', 'cashBalanceSummaryMeta', 'cashFlowIndexMeta', 'undepositedPageIndexMeta', 'supplierAdvanceShiftIndexMeta',
   'systemHealth', 'systemMaintenance', 'supplierMigrations', 'historicalArchiveSync', 'posSettings/invCategories', 'posSettings/tolerances',

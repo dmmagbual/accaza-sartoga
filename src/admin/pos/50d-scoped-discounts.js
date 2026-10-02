@@ -15,16 +15,29 @@ function applyScoped(key,type,idNum,name){
     if(idSlotUsed(idNum,cat)){alert('ID '+idNum+' already used its '+cat+' discount (max 1 drink + 1 food per ID).');return false;}
   }
   var rate=(DISC_TYPES[type]||{}).rate||0;
-  /* Statutory 20% (senior/PWD/athlete) is computed on the VAT-exempt price under
-     VAT-inclusive mode (RA 9994/10754: discount base excludes VAT). Under tax-exclusive
-     pricing the shelf price is already VAT-exempt, so no carve-out is made. The 5% promo
-     is a merchant promo, not statutory, so it stays a straight 5% of the full price in
-     every tax mode. */
+  /* Statutory 20% (senior/PWD/athlete) under RMC 72-2014: the 20% applies to the
+     VAT-exempt price AND the VAT sitting inside the shelf price is not collected.
+     VAT-inclusive mode: discount = 20% of exempt price + the embedded VAT on that
+     unit (e.g. shelf 112 at 12% -> 20 on the 100 exempt price + 12 VAT relief = 32,
+     amount due 80, output VAT on the exempt portion zero). Tax-exclusive pricing:
+     the shelf price is already net of VAT, so the discount is 20% of the full price
+     with no relief. The 5% promo is a merchant promo, never statutory, so it stays
+     a straight 5% of the full price in every tax mode. */
   var base=c.unitTotal,tax=(type!=='promo5')?posTaxNow():null;
   if(tax&&tax.mode==='vat'&&tax.inclusive!==false)base=c.unitTotal/(1+tax.rate/100);
   var value=Math.round(base*rate*100)/100;
-  posScopedDisc.push({type:type,rate:rate,idNumber:idNum||'',holderName:name||'',key:key,itemKey:c.itemKey,name:c.name,size:c.size||'',cat:cat,unitPrice:c.unitTotal,basis:Math.round(base*100)/100,value:value});
+  if(tax&&tax.mode==='vat'&&tax.inclusive!==false)value=Math.round((value+(c.unitTotal-base))*100)/100;
+  var row={type:type,rate:rate,idNumber:idNum||'',holderName:name||'',key:key,itemKey:c.itemKey,name:c.name,size:c.size||'',cat:cat,unitPrice:c.unitTotal,basis:Math.round(base*100)/100,value:value};
+  row.amountDue=statutoryAmountDue(row);
+  posScopedDisc.push(row);
   return true;
+}
+/* The compliant amount due for a statutory line: the exempt charged amount the
+   customer pays for that unit. Zero output VAT applies to this portion. */
+function statutoryAmountDue(d){return Math.max(0,Math.round(((Number(d.unitPrice)||0)-(Number(d.value)||0))*100)/100);}
+function posExemptSales(){
+  var tax=posTaxNow(); if(!tax||tax.mode!=='vat')return 0;
+  return Math.round(posScopedDisc.filter(function(d){return d.type!=='promo5';}).reduce(function(s,d){return s+(Number(d.basis)||0)*(1-(Number(d.rate)||0));},0)*100)/100;
 }
 function openDiscountModal(){
   if(!Object.keys(posCart).length){alert('Add items to the cart first.');return;}

@@ -46,16 +46,26 @@ exports.setTaxSettings = onCall(
     const db = getDatabase(), actor = await requirePortalUser(db, request), data = request.data || {};
     if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can change tax settings.");
     const current = (await db.ref("/taxSettings").get()).val() || {};
+    // The registered identity (TIN, branch code, structure) has one home: /companyInfo.
+    // A TIN saved in the old tax card before that tab existed still counts — seed the
+    // company record from taxSettings once so the owner never retypes identity facts.
+    let company = (await db.ref("/companyInfo").get()).val() || {};
+    let companySeeded = false;
+    if (!company.tin && current.tin) {
+      company = Object.assign({}, company, {tin: current.tin, branchCode: company.branchCode || current.branchCode || "00000", structure: TAX_STRUCTURES.includes(company.structure) ? company.structure : (current.structure || "sole")});
+      companySeeded = true;
+    }
     const mode = TAX_MODES.includes(data.mode) ? data.mode : (current.mode || "none");
-    const structure = TAX_STRUCTURES.includes(data.structure) ? data.structure : (current.structure || "sole");
+    const structure = TAX_STRUCTURES.includes(company.structure) ? company.structure : (current.structure || "sole");
     const requirements = Object.assign({}, current.requirements, taxRequirements(data.requirements));
     if (mode !== "none") {
       const missing = TAX_REQUIREMENT_IDS[mode].filter((id) => !(requirements[mode] || {})[id]);
       if (missing.length) throw new HttpsError("failed-precondition", "Complete first the BIR requirement before tax is activated.");
     }
-    const tin = data.tin != null ? taxTin(data.tin) : (current.tin || "");
-    const branchCode = data.branchCode != null ? taxBranchCode(data.branchCode) : (current.branchCode || "00000");
-    if (mode !== "none" && !tin) throw new HttpsError("invalid-argument", "Enter your BIR TIN and branch code before activating a tax category.");
+    if (mode !== "none" && (!company.tin || !company.registeredName || !company.address))
+      throw new HttpsError("invalid-argument", "Enter your BIR TIN and branch code before activating a tax category. Finish your registered business name, address and TIN in the Company Information tab (Settings → Company Information) first.");
+    const tin = mode !== "none" ? taxTin(company.tin) : (current.tin || "");
+    const branchCode = mode !== "none" ? taxBranchCode(company.branchCode) : (current.branchCode || "00000");
     const vatRate = taxRate(data.vatRate != null ? data.vatRate : (current.vatRate != null ? current.vatRate : 12), 12);
     const percentageRate = taxRate(data.percentageRate != null ? data.percentageRate : (current.percentageRate != null ? current.percentageRate : 3), 3);
     // Inclusive = listed prices already contain the tax (default, matches pre-flag sales).
@@ -69,13 +79,15 @@ exports.setTaxSettings = onCall(
     } else if (modeChanged || current.effectiveAt == null) effectiveAt = now;
     else effectiveAt = Number(current.effectiveAt);
     const next = {mode, structure, vatRate, percentageRate, inclusive, effectiveAt, tin, branchCode, requirements, updatedAt: now, updatedBy: actor.uid, updatedByRole: actor.role, schemaVersion: 1};
-    await db.ref().update({
+    const updates = {
       taxSettings: next,
       // Public mirror for the customer app checkout: only whether tax is added on top.
       // TIN, checklist and structure stay admin-only in /taxSettings.
       publicTaxInfo: {mode, rate: mode === "vat" ? vatRate : mode === "percentage" ? percentageRate : 0, inclusive, effectiveAt},
       [`operationalAudit/${now}_set_tax_settings`]: {action: "set_tax_settings", sourceType: "taxSettings", sourceId: "tax", before: {mode: current.mode || "none", structure: current.structure || "sole", vatRate: current.vatRate, percentageRate: current.percentageRate, inclusive: current.inclusive !== false, effectiveAt: current.effectiveAt}, after: {mode, structure, vatRate, percentageRate, inclusive, effectiveAt, tin, branchCode}, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}
-    });
+    };
+    if (companySeeded) updates.companyInfo = Object.assign({}, company, {updatedAt: now, updatedBy: actor.uid, updatedByRole: actor.role});
+    await db.ref().update(updates);
     return {tax: next};
   }
 );

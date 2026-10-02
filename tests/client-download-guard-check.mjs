@@ -27,6 +27,9 @@ const SMALL = new Set(['.info/connected', 'settings', 'config', 'payment', 'calB
   // BIR tax regime: one fixed-shape config object (mode, rates, TIN, checklist ticks) that never
   // grows with trading history; the POS needs it live for VAT-aware discounts and receipts.
   'taxSettings',
+  // Registered company identity (name, TIN, branch code, structure): typed once in the Company
+  // Information tab and stamped onto receipts and tax returns; fixed shape, never grows.
+  'companyInfo',
   // One record (the owner's emergency sign-out cutoff), overwritten in place, never grows.
   'sessionControl']);
 // Whole-node reads that are accepted, with the reason. Anything new must be added here on purpose.
@@ -53,6 +56,9 @@ const ACCEPTED = {
   'reviews': 'customer reviews (a handful), Reviews page only',
   'appCustomers': 'installed-app customer list, App Customers page only',
   'monthlyExpenses': 'one row per month, P&L page only',
+  // One record per prepared BIR return (quarterly + annual, about five per year), read once
+  // when the Tax Compliance tab opens; revisions ride inside each record.
+  'taxReturns': 'prepared BIR returns, about five small records per year, Tax Compliance tab only',
   'posDeviceHealth': 'device status for the one open shift, Live Operations page only; read as posDeviceHealth/<shiftId>, a single shift record',
   'shiftCloseReceipts': 'one small control record per closed shift; no browser reads the node',
   'ownerDailySummaries': 'one row per day, Live Operations page only; read as ownerDailySummaries/<day>, a single day record',

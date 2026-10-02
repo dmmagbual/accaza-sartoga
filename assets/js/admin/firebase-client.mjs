@@ -26,6 +26,8 @@ callableNames.unshift('manageUncostedSales');
 callableNames.unshift('manageOrderService');
 callableNames.unshift('repairShiftDeclaredTips');
 callableNames.unshift('setTaxSettings');
+callableNames.unshift('prepareQuarterlyTaxReturn');
+callableNames.unshift('setCompanyInfo');
 callableNames.unshift('managePortalAccount');
 // Accaza AI may try up to four providers inside its 120 s server limit; the SDK default
 // (70 s) would abandon an answer a backup provider is still producing.

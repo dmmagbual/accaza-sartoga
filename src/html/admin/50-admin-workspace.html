@@ -1,6 +1,6 @@
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="display:inline-block;font-size:1.11rem;line-height:1.2;color:#5f4524;background:#f3e8d5;border:1px solid #d4bd98;border-radius:999px;padding:.16rem .46rem;font-weight:700;letter-spacing:.045em;vertical-align:middle;white-space:nowrap;">build&nbsp;v634</span></div><p style="font-size:.78rem;color:var(--tl);">Firebase cloud database</p></div><div style="display:flex;flex-direction:column;align-items:stretch;gap:.45rem;"><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><a href="books.html" target="_blank" rel="noopener" title="Open Finance Books in a new tab" style="background:#eef3ff;color:#1c3f8a;border:1px solid #b9c9ef;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;text-decoration:none;">Finance Books</a><button class="admin-logout" onclick="logoutAdmin()">Log out</button></div><button id="accazaAiOpen" type="button" style="background:#2f5c43;color:#fff;border:1px solid #214432;border-radius:6px;padding:.5rem .8rem;font-size:.78rem;font-weight:700;">✦ Accaza AI</button></div></div>
+            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="display:inline-block;font-size:1.11rem;line-height:1.2;color:#5f4524;background:#f3e8d5;border:1px solid #d4bd98;border-radius:999px;padding:.16rem .46rem;font-weight:700;letter-spacing:.045em;vertical-align:middle;white-space:nowrap;">build&nbsp;v635</span></div><p style="font-size:.78rem;color:var(--tl);">Firebase cloud database</p></div><div style="display:flex;flex-direction:column;align-items:stretch;gap:.45rem;"><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><a href="books.html" target="_blank" rel="noopener" title="Open Finance Books in a new tab" style="background:#eef3ff;color:#1c3f8a;border:1px solid #b9c9ef;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;text-decoration:none;">Finance Books</a><button class="admin-logout" onclick="logoutAdmin()">Log out</button></div><button id="accazaAiOpen" type="button" style="background:#2f5c43;color:#fff;border:1px solid #214432;border-radius:6px;padding:.5rem .8rem;font-size:.78rem;font-weight:700;">✦ Accaza AI</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -61,6 +61,8 @@
         <button class="admin-tab" id="tabBtnComments" onclick="showAdminSection('commentsSection',this)">💬 Comments</button>
       </div>
       <div class="tabgrp" data-grp="settings" data-label="Settings &amp; maintenance" style="display:none;">
+        <button class="admin-tab" onclick="posSwitchTab('companyinfo',this)">🏢 Company Information</button>
+        <button class="admin-tab" onclick="posSwitchTab('taxcompliance',this)">🧾 Tax Compliance</button>
         <button class="admin-tab" onclick="posSwitchTab('possettings',this)">⚙️ POS Settings</button>
         <button class="admin-tab" onclick="posSwitchTab('accountingperiods',this)">🔒 Accounting Periods</button>
         <button class="admin-tab" onclick="posSwitchTab('channelpricing',this)">💱 Channel Pricing</button>
@@ -254,6 +256,8 @@
     <div id="tab-payouts" class="admin-tab-content" style="display:none;"><div id="payoutsRoot"></div></div>
     <div id="tab-stockvalue" class="admin-tab-content" style="display:none;"><div id="stockValueRoot"></div></div>
     <div id="tab-ops" class="admin-tab-content" style="display:none;"><div id="opsRoot"></div></div>
+    <div id="tab-companyinfo" class="admin-tab-content" style="display:none;"><div id="companyInfoRoot"></div></div>
+    <div id="tab-taxcompliance" class="admin-tab-content" style="display:none;"><div id="taxComplianceRoot"></div></div>
     <div id="tab-possettings" class="admin-tab-content" style="display:none;"><div id="posSettingsRoot"></div></div>
     <div id="tab-accountingperiods" class="admin-tab-content" style="display:none;"><div id="accountingPeriodsRoot"></div></div>
     <div id="tab-operations" class="admin-tab-content" style="display:none;"><div id="operationsRoot"></div></div>
