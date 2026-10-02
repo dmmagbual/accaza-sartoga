@@ -46,7 +46,7 @@ function wireTaxCard(){
       +'<span style="display:inline-block;padding:0.15rem 0.6rem;border-radius:99px;font-size:0.75rem;font-weight:700;'
       +(liveMode==='none'?'background:rgba(0,0,0,.08);color:var(--tm);':'background:rgba(28,107,84,.12);color:#1C6B54;')+'">'
       +(liveMode==='none'?'NO TAX ACTIVE':(liveMode==='vat'?'VAT ACTIVE':'PERCENTAGE TAX ACTIVE'))+'</span>';
-    if(liveMode!=='none'){var lm=TAX_INFO[liveMode];h+='<span style="font-size:0.8rem;color:var(--tm);">'+esc(lm.title)+' at '+(liveMode==='vat'?(live.vatRate||12):(live.percentageRate||3))+'% '+(live.inclusive===false?'(tax added on top)':'(tax inside prices)')+' &middot; effective '+esc(new Date(Number(live.effectiveAt)||Date.now()).toLocaleDateString('en-PH'))+(live.tin?' &middot; TIN '+esc(live.tin):'')+'</span>';}
+    if(liveMode!=='none'){var lm=TAX_INFO[liveMode];h+='<span style="font-size:0.8rem;color:var(--tm);">'+esc(lm.title)+' at '+(liveMode==='vat'?(live.vatRate||12):(live.percentageRate||3))+'% '+(live.inclusive===false?'(tax added on top)':'(tax inside prices)')+' &middot; effective '+esc(new Date(Number(live.effectiveAt)||Date.now()).toLocaleDateString('en-PH'))+(live.tin?' &middot; TIN '+esc(live.tin):'')+(live.ptu?' &middot; PTU '+esc(live.ptu):'')+'</span>';}
     else h+='<span style="font-size:0.8rem;color:var(--tm);">Receipts print without tax lines. Pick a category below when you are ready.</span>';
     h+='</div>';
     if(!canEdit){h+='<p class="az-note" style="margin:0.7rem 0 0;">Only the owner account can change tax settings.</p></div>';box.innerHTML=h;return;}
@@ -78,7 +78,8 @@ function wireTaxCard(){
       h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;align-items:end;margin-top:0.9rem;">'
         +'<div><span class="pz-lbl">'+esc(info.rateLabel)+'</span><input class="pz-in" id="taxRate" type="number" step="0.01" min="0.01" max="100" value="'+rateVal+'"/></div>'
         +'<div><span class="pz-lbl">Effective date</span><input class="pz-in" id="taxEffective" type="date" min="'+window.AccazaDate.key()+'" value="'+(liveMode==='none'?window.AccazaDate.key():window.AccazaDate.key(live.effectiveAt))+'"/></div>'
-        +'<div style="font-size:0.75rem;color:var(--tl);padding-bottom:0.35rem;">Sales completed before this date keep their original treatment.</div></div>';
+        +'<div><span class="pz-lbl">BIR permit-to-use (PTU) no.</span><input class="pz-in" id="taxPtu" type="text" maxlength="40" placeholder="e.g. 123-456-789-2024-0001234" value="'+esc(live.ptu||'')+'"/></div></div>'
+      +'<div style="font-size:0.75rem;color:var(--tl);margin-top:0.4rem;">Sales completed before the effective date keep their original treatment. The PTU number is on your BIR POS registration letter; leave it blank until BIR issues it — receipts then print that the permit-to-use number is not yet set.</div>';
       h+='<div style="background:rgba(28,107,84,.06);border:1px solid rgba(28,107,84,.25);border-radius:10px;padding:0.75rem 0.9rem;margin-top:0.9rem;font-size:0.8rem;color:var(--tm);">'
         +'<b style="color:var(--bd);">'+esc(info.title)+'</b> &mdash; '+esc(info.desc)
         +'<br><b style="color:var(--bd);">When to file:</b> BIR Form '+(mode==='vat'?'2550Q':'2551Q')+' quarterly &mdash; due 25 April, 25 July, 25 October, 25 January through eBIRForms or eFPS.'
@@ -125,6 +126,8 @@ function saveTaxSettings(state){
   if(rateEl&&rateEl.value!==''){var rate=Number(rateEl.value);if(!(rate>0&&rate<=100)){alert('Enter a rate between 0.01 and 100.');return;}payload[mode==='vat'?'vatRate':'percentageRate']=rate;}
   var effEl=document.getElementById('taxEffective');
   if(effEl&&effEl.value&&state.dateEdited){var when=Date.parse(effEl.value+'T00:00:00+08:00');if(!Number.isFinite(when)||when<Date.now()-86400000){alert('Effective date must be today or later.');return;}payload.effectiveAt=when;}
+  var ptuEl=document.getElementById('taxPtu');
+  if(ptuEl)payload.ptu=String(ptuEl.value||'').trim();
   var btn=document.getElementById('taxSave'),status=document.getElementById('taxStatus');
   if(btn)btn.disabled=true;if(status)status.textContent='Saving…';
   var a=A();

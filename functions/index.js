@@ -1683,6 +1683,13 @@ function taxBranchCode(value) {
   if (!/^\d{5}$/.test(digits)) throw new HttpsError("invalid-argument", "Branch code must be 5 digits (use 00000 for the head office).");
   return digits;
 }
+// BIR permit-to-use number printed on every invoice once a tax category is active.
+// Formats vary by RDO (e.g. 123-456-789-2024-0001234), so keep it free-form but bounded.
+function taxPtu(value) {
+  const ptu = String(value == null ? "" : value).trim().slice(0, 40);
+  if (ptu !== "" && !/^[A-Za-z0-9][A-Za-z0-9 \-\/]*$/.test(ptu)) throw new HttpsError("invalid-argument", "PTU number may contain letters, digits, spaces, dashes and slashes only (example: 123-456-789-2024-0001234).");
+  return ptu;
+}
 function taxRate(value, fallback) {
   const rate = Number(value == null || value === "" ? fallback : value);
   if (!Number.isFinite(rate) || rate <= 0 || rate > 100) throw new HttpsError("invalid-argument", "Tax rate must be between 0.01 and 100 percent.");
@@ -1727,6 +1734,7 @@ exports.setTaxSettings = onCall(
       throw new HttpsError("invalid-argument", "Enter your BIR TIN and branch code before activating a tax category. Finish your registered business name, address and TIN in the Company Information tab (Settings → Company Information) first.");
     const tin = mode !== "none" ? taxTin(company.tin) : (current.tin || "");
     const branchCode = mode !== "none" ? taxBranchCode(company.branchCode) : (current.branchCode || "00000");
+    const ptu = taxPtu(data.ptu != null && data.ptu !== "" ? data.ptu : (current.ptu || ""));
     const vatRate = taxRate(data.vatRate != null ? data.vatRate : (current.vatRate != null ? current.vatRate : 12), 12);
     const percentageRate = taxRate(data.percentageRate != null ? data.percentageRate : (current.percentageRate != null ? current.percentageRate : 3), 3);
     // Inclusive = listed prices already contain the tax (default, matches pre-flag sales).
@@ -1739,13 +1747,13 @@ exports.setTaxSettings = onCall(
       if (!Number.isFinite(effectiveAt) || effectiveAt < now - 86400000) throw new HttpsError("invalid-argument", "Effective date must be today or later so completed sales keep their original tax treatment.");
     } else if (modeChanged || current.effectiveAt == null) effectiveAt = now;
     else effectiveAt = Number(current.effectiveAt);
-    const next = {mode, structure, vatRate, percentageRate, inclusive, effectiveAt, tin, branchCode, requirements, updatedAt: now, updatedBy: actor.uid, updatedByRole: actor.role, schemaVersion: 1};
+    const next = {mode, structure, vatRate, percentageRate, inclusive, effectiveAt, tin, branchCode, ptu, requirements, updatedAt: now, updatedBy: actor.uid, updatedByRole: actor.role, schemaVersion: 1};
     const updates = {
       taxSettings: next,
       // Public mirror for the customer app checkout: only whether tax is added on top.
       // TIN, checklist and structure stay admin-only in /taxSettings.
       publicTaxInfo: {mode, rate: mode === "vat" ? vatRate : mode === "percentage" ? percentageRate : 0, inclusive, effectiveAt},
-      [`operationalAudit/${now}_set_tax_settings`]: {action: "set_tax_settings", sourceType: "taxSettings", sourceId: "tax", before: {mode: current.mode || "none", structure: current.structure || "sole", vatRate: current.vatRate, percentageRate: current.percentageRate, inclusive: current.inclusive !== false, effectiveAt: current.effectiveAt}, after: {mode, structure, vatRate, percentageRate, inclusive, effectiveAt, tin, branchCode}, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}
+      [`operationalAudit/${now}_set_tax_settings`]: {action: "set_tax_settings", sourceType: "taxSettings", sourceId: "tax", before: {mode: current.mode || "none", structure: current.structure || "sole", vatRate: current.vatRate, percentageRate: current.percentageRate, inclusive: current.inclusive !== false, effectiveAt: current.effectiveAt}, after: {mode, structure, vatRate, percentageRate, inclusive, effectiveAt, tin, branchCode, ptu}, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}
     };
     if (companySeeded) updates.companyInfo = Object.assign({}, company, {updatedAt: now, updatedBy: actor.uid, updatedByRole: actor.role});
     await db.ref().update(updates);
@@ -3310,7 +3318,7 @@ async function finalizeShiftHandover(db,id,actor,options){
   if(exceptions)z.exceptions=exceptions;
   await assertAccountingPeriodOpen(db,handover.at,'finalizing the original shift reconciliation');
   const writes={[`pendingShiftHandovers/${id}`]:null,[`shifts/${id}/status`]:'closed',[`shifts/${id}/reconciliationStatus`]:'resolved',[`shifts/${id}/reconciliationMode`]:mode,[`shifts/${id}/zReport`]:z,[`shifts/${id}/provisionalZReport`]:null,[`shiftHandovers/${id}/state`]:'resolved',[`shiftHandovers/${id}/resolvedAt`]:now,[`shiftHandovers/${id}/resolvedBy`]:actor.uid,[`shiftHandovers/${id}/resolutionMode`]:mode,[`shiftHandovers/${id}/resolutionReason`]:reason,[`shiftHandovers/${id}/autoFinalize`]:null,[`shiftCloseVerifications/${id}`]:{shiftId:id,verifiedAt:now,verifiedBy:actor.uid,saleCount:items.saleCount,inventoryOutstanding:items.postingInventory.length,financeOutstanding:items.postingFinance.length,handover:true,mode},[`operationalAudit/handover_reconciled_${id}`]:{action:mode==='manager'?'reconcile_shift_handover':mode==='automatic'?'auto_finalize_shift_handover':'grace_finalize_shift_handover',sourceType:'shift',sourceId:id,actorUid:actor.uid,ts:now,reason,variance:z.variance,closeCheckError:handover.closeCheckError||'',exceptionCount:exceptions?Object.values(exceptions).reduce((sum,list)=>sum+list.length,0):0}};
-  for(const key of ['tx','gross','discounts','refunds','cashRefunds','net','cashSales','tips','voidCount','voidAmt','pending','pendingCount','byMethod','byChannel','payIns','payOuts','expectedCash','variance','varianceStatus'])writes[`shifts/${id}/${key}`]=z[key];
+  for(const key of ['tx','gross','discounts','refunds','cashRefunds','net','cashSales','tips','voidCount','voidAmt','pending','pendingCount','byMethod','byChannel','payIns','payOuts','expectedCash','variance','varianceStatus','invoiceRange'])writes[`shifts/${id}/${key}`]=z[key];
   if(z.variance)writes[`discrepancies/handover_${id}`]={kind:'cash',expected:z.expectedCash,actual:z.countedCash,variance:z.variance,value:z.variance,type:z.variance<0?'shortage':'overage',shiftId:id,staff:shift.staff||'',status:'open',financialStatus:'pending_manager_reconciliation',pendingMovementId:`shift_variance_${id}`,ts:handover.at};
   if(exceptions)writes[`shiftCloseFollowUps/${id}`]={shiftId:id,staff:shift.staff||'',kind:'closed_with_exceptions',at:now,closedAt:handover.at,exceptions,state:'open',schemaVersion:1};
   await db.ref().update(writes);
@@ -4895,7 +4903,7 @@ exports.createOnlineOrder = onCall(
     const order = {
       id: orderId, ownerUid: uid, name, phone, type: orderType, address, payment, contact, contactMethod,
       items: itemText, subtotal: money(priced.total), total: finalTotal, notes, status: "Pending", receivedByCustomer: false,
-      tax: tax ? {mode: tax.mode, rate: tax.rate, inclusive: tax.inclusive !== false, tin: String(taxSettings.tin || ""), branchCode: String(taxSettings.branchCode || "")} : null,
+      tax: tax ? {mode: tax.mode, rate: tax.rate, inclusive: tax.inclusive !== false, tin: String(taxSettings.tin || ""), branchCode: String(taxSettings.branchCode || ""), ptu: String(taxSettings.ptu || "")} : null,
       time: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit"}).format(nowDate),
       date: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", year: "numeric", month: "long", day: "numeric"}).format(nowDate),
       timestamp: now, lineItems: priced.lines.map(({cat, ...line}) => line), packages: priced.packages,
@@ -4914,6 +4922,8 @@ exports.createOnlineOrder = onCall(
         validation: "crc32c",
         metadata: {contentType: proof.contentType, cacheControl: "private, max-age=0, no-store", metadata: {orderId, ownerUid: uid}},
       });
+      const invoiceStamp = await ShiftHandover.stampInvoice(db, order);
+      order.invoiceNumber = invoiceStamp.invoiceNumber; order.invoiceSeq = invoiceStamp.invoiceSeq; order.cumulativeGrandTotalCents = invoiceStamp.cumulativeGrandTotalCents;
       await db.ref().update({[`orders/${orderId}`]: order, [`activeOrders/${orderId}`]: activeOrderProjection(order), [`customerOrders/${uid}/${orderId}`]: {createdAt: now, status: "Pending"}});
     } catch (error) {
       try { await proofFile.delete({ignoreNotFound: true}); } catch (ignored) {}

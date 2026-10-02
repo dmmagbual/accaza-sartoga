@@ -169,8 +169,8 @@ assert.ok(orders.includes('if (tax && tax.inclusive === false) finalTotal = mone
   'under exclusive pricing the SERVER adds the tax on top for both VAT and percentage tax');
 assert.ok(orders.includes('Math.abs(money(expectedTotal) - finalTotal) > 0.01'), 'the customer-approved total must gate the order, not trust the client');
 assert.ok(orders.includes('lines: priced.lines, total: finalTotal'), 'the duplicate lock must sign the final taxed total');
-assert.ok(orders.includes('tax: tax ? {mode: tax.mode, rate: tax.rate, inclusive: tax.inclusive !== false, tin: String(taxSettings.tin || ""), branchCode: String(taxSettings.branchCode || "")} : null'),
-  'every online order must be stamped with the tax regime, TIN and branch code');
+assert.ok(orders.includes('tax: tax ? {mode: tax.mode, rate: tax.rate, inclusive: tax.inclusive !== false, tin: String(taxSettings.tin || ""), branchCode: String(taxSettings.branchCode || ""), ptu: String(taxSettings.ptu || "")} : null'),
+  'every online order must be stamped with the tax regime, TIN, branch code and PTU');
 
 // --- 7. receipts: lines, wording, platform base --------------------------
 assert.ok(receipt.includes("taxAmount=Math.round((taxExclusive?taxBase*taxRate/(100+taxRate):taxBase*taxRate/100)*100)/100"),
