@@ -8,7 +8,7 @@ var financialCloseState={},financialCloseLoading={};
 var svFrom=null,svTo=null,svExpand=null;
 var azRange='month', azFrom=null, azTo=null, pnlMonth=null, analyticsHistoryLoading=false;
 var compactAnalytics={key:'',loading:false,error:'',current:null,previous:null,ytd:null,analyticsReady:false,request:0};
-var poChannel='grabfood', poFrom=null, poTo=null, poAuditSearch='';
+var poChannel='grabfood', poFrom=null, poTo=null, poAuditSearch='', poAppliedRange='', poQueue={live:{},archived:{},loading:false,error:'',complete:false,request:0};
 var PO_CHANNELS=[{k:'grabfood',lbl:'GrabFood'},{k:'foodpanda',lbl:'FoodPanda'}];
 var DEFAULT_VAR_ACCOUNTS=[
   {id:'va_ads',name:'Platform ads / marketing',type:'expense',order:1},
@@ -63,7 +63,7 @@ function init(){
   a.subscribe('platformVarAccounts',function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
 }
 // extend the POS tab switcher to also render our tabs
-window.__accazaRegisterModule('analytics',function(name){ if(name==='analytics')renderAnalytics(); if(name==='payouts')renderPayouts(); if(name==='stockvalue')renderStockValue(); if(name==='dailyreport')renderDailyReport(); });
+window.__accazaRegisterModule('analytics',function(name){ if(name==='analytics')renderAnalytics(); if(name==='payouts'){renderPayouts();loadPayoutQueue(false);} if(name==='stockvalue')renderStockValue(); if(name==='dailyreport')renderDailyReport(); });
 window.addEventListener('accaza-historical-sales-change',function(){compactAnalytics={key:'',loading:false,error:'',current:null,previous:null,request:compactAnalytics.request+1};operatingYearWeekly.reset();if(isTab('analytics'))renderAnalytics();});
 
 // Reporting is read-only: missing historical dates use the shared sales authority fallback.
