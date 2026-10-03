@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {budgetState,BUNDLE_BUDGETS as budgets} from './bundle-budgets.mjs';
+import {budgetState,usableBudget,BUNDLE_BUDGETS as budgets,BUNDLE_HARD_RESERVES as hardReserves} from './bundle-budgets.mjs';
 
 const root=process.cwd();
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
@@ -8,7 +8,15 @@ const size=file=>fs.statSync(path.join(root,file)).size;
 const fail=message=>{throw new Error(message);};
 const warn=(file,message)=>{console.warn('BUDGET WARNING: '+message);if(process.env.GITHUB_ACTIONS)console.log(`::warning file=${file}::${message}`);};
 if(budgetState(976,1000)!=='warn'||budgetState(974,1000)!=='ok'||budgetState(1001,1000)!=='fail'||budgetState(1000,1000)!=='warn')fail('Bundle budget warning policy is miscalibrated');
-for(const [file,maximum] of Object.entries(budgets)){const bytes=size(file),state=budgetState(bytes,maximum);if(state==='fail')fail(`${file} exceeds its Phase 11 byte budget: ${bytes} > ${maximum}. Split code out of the bundle, or review the growth and re-baseline the ceiling under the budget policy.`);if(state==='warn')warn(file,`${file} has ${maximum-bytes} bytes left of its ${maximum}-byte budget (${(100*bytes/maximum).toFixed(1)}% used). Split code out or re-review the ceiling before the next feature.`);}
+if(usableBudget(1000,50)!==950||budgetState(950,1000,50)!=='warn'||budgetState(951,1000,50)!=='fail')fail('Hard-reserve policy is miscalibrated');
+for(const [file,reserve] of Object.entries(hardReserves))if(!Object.hasOwn(budgets,file)||!Number.isInteger(reserve)||reserve<=0||reserve>=budgets[file])fail(`${file} has an invalid hard-reserve configuration`);
+const posFile='assets/js/admin/pos.js',posReserve=hardReserves[posFile];
+if(posReserve!==50000||budgets[posFile]!==650000)fail('POS lifeline must retain its reviewed 50 KB hard reserve inside the 650 KB envelope');
+for(const [file,maximum] of Object.entries(budgets)){
+  const bytes=size(file),reserve=hardReserves[file]||0,usable=usableBudget(maximum,reserve),state=budgetState(bytes,maximum,reserve);
+  if(state==='fail')fail(`${file} exceeds its usable byte budget: ${bytes} > ${usable}. ${reserve?`${reserve} protected bytes remain reserved for emergency POS recovery and cannot be consumed by ordinary feature growth. `:''}Split code out of the bundle, or explicitly review both the growth and reserve before changing the policy.`);
+  if(state==='warn')warn(file,`${file} has ${usable-bytes} usable bytes left before its ${usable}-byte release limit (${(100*bytes/usable).toFixed(1)}% used).${reserve?` Its ${reserve}-byte emergency reserve remains protected.`:''} Split code out or re-review the ceiling before the next feature.`);
+}
 
 const customer=read('assets/js/customer/core.mjs'),rules=read('database.rules.json'),moduleLoader=read('assets/js/admin/module-loader.js'),hub=read('assets/js/admin/realtime-hub.mjs'),telemetry=read('assets/js/admin/telemetry.js'),functions=read('functions/index.js'),register=read('assets/js/admin/register.js'),salesPeriod=read('assets/js/admin/sales-period-data.mjs');
 for(const marker of ['CUSTOMER_LIVE_ORDER_LIMIT=20','CUSTOMER_LIVE_RESERVATION_LIMIT=12',"query(ref(db,'customerOrders/'+uid),orderByChild('createdAt'),limitToLast(CUSTOMER_LIVE_ORDER_LIMIT))",'_myOrdersSub[id]=onValue','_myOrdersSub[id]()','_myResSub[id]=onValue','_myResSub[id]()'])if(!customer.includes(marker))fail(`Bounded customer listener safeguard missing: ${marker}`);

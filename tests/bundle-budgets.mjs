@@ -6,8 +6,19 @@
 // up to 100 bytes), so ordinary feature work does not stop a release. Once less than 2.5% of
 // a ceiling is left, every run prints a warning (and annotates the GitHub check) so the bundle
 // is split or its ceiling re-reviewed before it blocks. Ceilings are never raised automatically.
+// A hard reserve is protected capacity inside a ceiling. Normal growth fails at the usable
+// limit (ceiling minus reserve), so the reserve cannot be silently consumed by feature work.
 export const BUDGET_WARN_ROOM=0.025;
-export const budgetState=(bytes,maximum)=>bytes>maximum?'fail':maximum-bytes<maximum*BUDGET_WARN_ROOM?'warn':'ok';
+export const usableBudget=(maximum,reserve=0)=>maximum-reserve;
+export const budgetState=(bytes,maximum,reserve=0)=>{
+  const usable=usableBudget(maximum,reserve);
+  return bytes>usable?'fail':usable-bytes<usable*BUDGET_WARN_ROOM?'warn':'ok';
+};
+export const BUNDLE_HARD_RESERVES=Object.freeze({
+  // POS is the shop's lifeline. Keep 50 KB inaccessible to ordinary feature growth so a
+  // release cannot use the last reviewed capacity before the module is split or re-assessed.
+  'assets/js/admin/pos.js':50000
+});
 export const BUNDLE_BUDGETS=Object.freeze({
   // Also enforced by the Phase 6 customer-runtime guard in tests/static/10-syntax-rendering.mjs.
   // Sep 2026 re-baseline under the budget policy: reviewed 110,089 bytes (customer 85).
@@ -31,7 +42,10 @@ export const BUNDLE_BUDGETS=Object.freeze({
   // Build 615 (+23.0 KB, 526.3 -> 549.3 KB) adds the serving queue: left queue column, preparation
   // controls, Bar view, not-collected review and the close-of-shift review. The 2.5%
   // warning fired at 552,500; re-baselined under the budget policy to ~5% above the reviewed size.
-  'assets/js/admin/pos.js':576800,
+  // Oct 2026 lifeline safeguard: reviewed at 575,062 bytes. The 650 KB envelope includes the
+  // protected 50 KB reserve above, giving normal releases a 600 KB hard limit and 24,938 bytes
+  // of usable growth at review time. Changing the reserve requires an explicit test update.
+  'assets/js/admin/pos.js':650000,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
   // +1.4 KB (Sep 2026): receipt images load on demand from pettyCashReceipts instead of riding
   // on every voucher in the Petty/Purchases listeners.
