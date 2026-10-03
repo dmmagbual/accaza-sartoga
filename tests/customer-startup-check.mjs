@@ -11,6 +11,10 @@ const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'
 const release=JSON.parse(fs.readFileSync(path.join(root,'release-manifest.json'),'utf8'));
 const customerHtml=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const aboutHtml=fs.readFileSync(path.join(root,'about.html'),'utf8');
+const reservationsHtml=fs.readFileSync(path.join(root,'reservations.html'),'utf8');
+const contactHtml=fs.readFileSync(path.join(root,'contact.html'),'utf8');
+const rewardsHtml=fs.readFileSync(path.join(root,'rewards.html'),'utf8');
+const customerNavigationSource=fs.readFileSync(path.join(root,'src','html','customer','00-document-navigation.html'),'utf8');
 const legacyMenuHtml=fs.readFileSync(path.join(root,'menu.html'),'utf8');
 const staticStyles=fs.readFileSync(path.join(root,'styles.css'),'utf8');
 const customerStyles=fs.readFileSync(path.join(root,'assets','css','customer','site.css'),'utf8');
@@ -50,6 +54,13 @@ function navigationHrefs(html,page){
   return [...nav[1].matchAll(/href="([^"]+)"/g)].map(match=>match[1].startsWith('#')?`index.html${match[1]}`:match[1]);
 }
 assert.deepEqual(navigationHrefs(aboutHtml,'About page'),navigationHrefs(customerHtml,'Home page'),'About navigation must stay synchronized with Home navigation');
+for(const [page,html] of [['Home page',customerHtml],['About page',aboutHtml],['Reservations page',reservationsHtml],['Contact page',contactHtml],['Rewards page',rewardsHtml]]){
+  assert.ok(/href="rewards\.html"/.test(html),`${page} must expose the standalone Rewards page`);
+  assert.ok(/<div class="footer-links">[\s\S]*?href="rewards\.html"/.test(html),`${page} footer must expose the standalone Rewards page`);
+}
+assert.ok(/<li><a href="rewards\.html">Rewards<\/a><\/li>\s*<li class="nav-has-sub"><a href="about\.html">About/.test(customerNavigationSource),'Home navigation must place Rewards before, not inside, About');
+assert.ok(!/<ul class="nav-sub">[\s\S]*?href="rewards\.html"/.test(customerNavigationSource),'Rewards must never be nested under the About menu');
+assert.ok(/@media\(max-width:1180px\)\{\.hamburger\{display:flex;\}\.nav-links\{display:none;\}\}/.test(customerStyles),'Customer navigation must switch to the mobile menu before Rewards causes a wrapped desktop header');
 for(const marker of ['.nav-has-sub{position:relative;}','.nav-has-sub:focus-within .nav-sub','.nav-links.nav-open .nav-sub'])if(!staticStyles.includes(marker))throw new Error(`About navigation submenu style missing: ${marker}`);
 for(const marker of ['Our Mission','Our Vision','6:00 AM – 12:00 Midnight','href="index.html#menu">View Live Menu'])if(!aboutHtml.includes(marker))throw new Error(`About purpose, hours, or live-menu link missing: ${marker}`);
 if(aboutHtml.includes('3–12')||aboutHtml.includes('href="menu.html"'))throw new Error('About page must not advertise stale hours or link to the retired static menu');

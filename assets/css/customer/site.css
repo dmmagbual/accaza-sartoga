@@ -38,7 +38,9 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(25,36,27,0.96);b
 .nav-sub a{display:block;padding:0.5rem 1rem;white-space:nowrap;text-transform:uppercase;}
 .nav-links.nav-open .nav-sub{display:block;position:static;background:transparent;box-shadow:none;padding:0.25rem 0 0.4rem 1rem;}
 .nav-links.nav-open a{color:var(--cd);font-size:0.9rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.08);text-decoration:none;}
-@media(max-width:680px){.hamburger{display:flex;}}
+/* The customer shell carries the live-order status plus Rewards.  Switch to the
+   existing keyboard-accessible menu before the links can wrap into a second row. */
+@media(max-width:1180px){.hamburger{display:flex;}.nav-links{display:none;}}
 @media(max-width:900px){.order-service-status{margin-left:1.25rem;min-width:0;}.order-service-status__headline{font-size:.75rem;}.order-service-status__note{font-size:.72rem;}}
 @media(max-width:560px){nav{padding:.72rem 1rem;}.nav-logo{font-size:1rem;max-width:108px;line-height:1.08;}.order-service-status{margin-left:.75rem;gap:.2rem;}.order-service-status__headline{font-size:.66rem;}.order-service-status__dot{width:12px;height:12px;flex-basis:12px;}.order-service-status__note{padding-left:1.05rem;font-size:.62rem;}.order-service-status__headline,.order-service-status__note{white-space:normal;}}
 
