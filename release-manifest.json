@@ -14,8 +14,8 @@
   "builds": {
     "admin": 638,
     "books": 140,
-    "customer": 89,
-    "serviceWorkerCache": 625
+    "customer": 90,
+    "serviceWorkerCache": 626
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
