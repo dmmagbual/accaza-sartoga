@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {BUDGET_WARN_ROOM,BUNDLE_BUDGETS,BUNDLE_HARD_RESERVES,usableBudget} from '../tests/bundle-budgets.mjs';
 
 const root=process.cwd();
 const bundles=[
@@ -21,3 +22,15 @@ for(const bundle of bundles){
   fs.writeFileSync(path.join(root,bundle.target),output);
   console.log(`Built ${bundle.target} from ${files.length} ordered sections.`);
 }
+
+// Operations Center reads this local build artifact; it never calls Firebase for byte health.
+// Derive every threshold from the same policy used by CI so the visible card cannot drift.
+const posFile='assets/js/admin/pos.js';
+const posEnvelope=BUNDLE_BUDGETS[posFile];
+const posReserve=BUNDLE_HARD_RESERVES[posFile]||0;
+const posLimit=usableBudget(posEnvelope,posReserve);
+const posWarning=Math.round(posLimit*(1-BUDGET_WARN_ROOM));
+const posBytes=fs.statSync(path.join(root,posFile)).size;
+const posCapacity=`(function(global){\n  'use strict';\n  global.AccazaPosCapacity=Object.freeze({bytes:${posBytes},warning:${posWarning},limit:${posLimit},reserve:${posReserve},envelope:${posEnvelope}});\n})(window);\n`;
+fs.writeFileSync(path.join(root,'assets/js/admin/pos-capacity.js'),posCapacity);
+console.log(`Built assets/js/admin/pos-capacity.js from ${posFile} (${posBytes} bytes).`);
