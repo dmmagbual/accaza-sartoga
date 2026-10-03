@@ -20,7 +20,7 @@
 // ---------------------------------------------------------------------------
 var _rewardsState = {
   view: 'reports',
-  currencies: {}, currenciesLoaded: false,
+  currencies: {}, currenciesLoaded: false, currenciesAttempted: false,
   busy: false, note: '', noteBad: false,
   catalog: {}, catalogLoaded: false, catalogEditing: null,
   rules: {}, rulesLoaded: false, rulesEditing: null,
@@ -113,13 +113,18 @@ function renderRewards() {
   }
   root.innerHTML = rewardsMarkup();
   rewardsWire(root);
-  if (!_rewardsState.currenciesLoaded && !_rewardsState.busy) rewardsLoadCurrencies();
+  if (!_rewardsState.currenciesLoaded && !_rewardsState.currenciesAttempted && !_rewardsState.busy) rewardsLoadCurrencies();
 }
 
 function rewardsWire(root) {
   var refresh = root.querySelector('#rewardsRefresh');
   if (refresh) refresh.onclick = function () {
     _rewardsState.note = '';
+    if (!_rewardsState.currenciesLoaded) {
+      _rewardsState.currenciesAttempted = false;
+      rewardsLoadCurrencies();
+      return;
+    }
     if (_rewardsState.view === 'stamps') { _rewardsStampsState.loaded = false; rewardsStampsLoad(); }
     else if (_rewardsState.view === 'catalog') { _rewardsState.catalogLoaded = false; rewardsCatalogLoad(); }
     else if (_rewardsState.view === 'rules') { _rewardsState.rulesLoaded = false; rewardsRulesLoad(); }
@@ -148,15 +153,20 @@ function rewardsWire(root) {
 // stamps screen manages - the tab offers only currencies the server accepts.
 function rewardsLoadCurrencies() {
   var api = rewardsApi(); if (!api) return;
+  if (_rewardsState.busy || _rewardsState.currenciesAttempted) return;
+  _rewardsState.currenciesAttempted = true;
   _rewardsState.busy = true; renderRewards();
+  var loaded = false;
   api.manageLoyaltyCurrency({action: 'list'}).then(function (result) {
     _rewardsState.currencies = ((result && result.data) || {}).currencies || {};
     _rewardsState.currenciesLoaded = true;
+    loaded = true;
   }).catch(function (error) {
     _rewardsState.note = rewardsMessage(error, 'Could not load the stamp list.');
     _rewardsState.noteBad = true;
   }).then(function () {
     _rewardsState.busy = false; renderRewards();
+    if (!loaded) return;
     if (_rewardsState.view === 'reports' && !_rewardsState.reportsLoaded) rewardsReportsLoad();
     else if (_rewardsState.view === 'stamps' && !_rewardsStampsState.loaded) rewardsStampsLoad();
     else if (_rewardsState.view === 'catalog' && !_rewardsState.catalogLoaded) rewardsCatalogLoad();

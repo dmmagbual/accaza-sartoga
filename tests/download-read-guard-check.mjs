@@ -33,6 +33,7 @@ export const SMALL_NODES = new Set([
   'cashBalanceSummary', 'cashBalanceSummaryMeta', 'cashFlowIndexMeta', 'undepositedPageIndexMeta', 'supplierAdvanceShiftIndexMeta',
   'systemHealth', 'systemMaintenance', 'supplierMigrations', 'historicalArchiveSync', 'posSettings/invCategories', 'posSettings/tolerances',
   'inventoryReconciliations/openingBalance', 'financialControlLinks/correctionMovements', 'rateLimits/orders',
+  'loyaltyConfigState',
   // POS settings children are small configuration values; the whole settings node is not.
   'posSettings/payMethods', 'posSettings/fixedFloat', 'posSettings/denomTracking', 'posSettings/sharedBaseIngredients', 'posSettings/optionCosts', 'posSettings/packagingAssignments',
   // Small maintained indexes: shifts that hold a supplier advance, custody rows that still hold cash.
@@ -97,4 +98,6 @@ assert.equal(sampleFound.length, 2, sampleFound.join('\n'));
 assert.ok(sampleFound.some((v) => /hot: whole read of \/financialMovements/.test(v)));
 assert.ok(sampleFound.some((v) => /hot: reaches the manual-only full read of \/archivedOrders/.test(v)));
 assert.deepEqual(missingIndexes('db.ref("/orders").orderByChild("status").equalTo(1).get(); db.ref("/orders").orderByChild("shiftId").equalTo(1).get();', '{"rules": {"orders": {".indexOn": ["status"]}}}'), ['functions/index.js:1 queries /orders by shiftId without an .indexOn rule']);
+assert.deepEqual(missingIndexes('db.ref(`/loyaltyRewards/${memberId}`).orderByChild("status").equalTo("available").get();', '{"rules":{"loyaltyRewards":{"$memberId":{".indexOn":"status"}}}}'), [], 'dynamic per-member paths must resolve through wildcard rules');
+assert.deepEqual(missingIndexes('db.ref(`/loyaltyRewards/${memberId}`).orderByChild("status").equalTo("available").get();', '{"rules":{"loyaltyRewards":{"$memberId":{}}}}'), ['functions/index.js:1 queries /loyaltyRewards/$dynamic by status without an .indexOn rule'], 'dynamic per-member paths must not bypass the index guard');
 console.log(`download read guard: ${graph.length} functions checked, no unjustified whole-node downloads`);

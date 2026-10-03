@@ -57,7 +57,7 @@
     "test:loyalty-stamps-admin": "node tests/loyalty-stamps-admin-check.mjs",
     "test:loyalty-stamp-display": "node tests/loyalty-stamp-display-check.mjs",
     "test:loyalty-device-link": "node tests/loyalty-device-link-check.mjs",
-    "test:loyalty-rewards-admin": "node tests/loyalty-rewards-admin-check.mjs",
+    "test:loyalty-rewards-admin": "node tests/loyalty-rewards-admin-check.mjs && node tests/loyalty-cost-guard-check.mjs",
     "test:tax": "node tests/tax-compliance-check.mjs",
     "test:company-info": "node tests/company-info-check.mjs",
     "test:bir-quarterly": "node tests/bir-quarterly-returns-check.mjs",
