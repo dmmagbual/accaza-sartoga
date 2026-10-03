@@ -25,7 +25,7 @@ const adminCore = read('assets/js/admin/core.mjs');
 const staffAccess = read('assets/js/admin/staff-access.js');
 const client = read('assets/js/admin/firebase-client.mjs');
 const navHtml = read('src/html/admin/50-admin-workspace.html');
-const server = read('src/functions/26-loyalty.js');
+const server = read('src/functions/26-loyalty.js') + '\n' + read('src/functions/26-loyalty2-admin.js');
 const serverMembers = read('src/functions/26a-loyalty-members.js');
 const customerJs = read('assets/js/customer/rewards.js');
 const customerHtml = read('rewards.html');
@@ -48,8 +48,9 @@ assert.ok(bundle.includes('renderRewards') && bundle.includes('rewardsMembersHtm
   'the built rewards bundle must carry the screens (drift check pins exact contents)');
 
 // --- every callable is registered, and the screen refuses to run without them
-assert.ok(/callableNames\.unshift\('manageLoyaltyEarningRule','manageLoyaltyRewardCatalog','manageLoyaltyMemberStatus','getLoyaltyReports','searchLoyaltyMembers','manageLoyaltyMemberAnonymize'\)/.test(client),
-  'all six Rewards admin callables must be registered with the client');
+for (const name of ['manageLoyaltyEarningRule','manageLoyaltyRewardCatalog','manageLoyaltyMemberStatus','getLoyaltyReports','searchLoyaltyMembers','manageLoyaltyMemberAnonymize','manageDragonQuest']) {
+  assert.ok(client.includes(`'${name}'`), `${name} must be registered with the Rewards client`);
+}
 assert.ok(/\(a && a\.callables && a\.callables\.getLoyaltyReports\) \? a\.callables : null/.test(core),
   'every screen must go through the availability guard, or a missing callable would crash mid-render');
 

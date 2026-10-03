@@ -49,6 +49,7 @@
     "test:books-download-scope": "node tests/books-download-scope-check.mjs",
     "test:books-csv": "node tests/books-csv-export-check.mjs",
     "test:loyalty": "node tests/loyalty-check.mjs",
+    "test:dragon-quest": "node tests/dragon-quest-check.mjs",
     "test:loyalty-badge": "node tests/loyalty-badge-code-check.mjs",
     "test:pos-loyalty": "node tests/pos-loyalty-member-check.mjs",
     "test:loyalty-release": "node tests/loyalty-release-claim-check.mjs",

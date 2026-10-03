@@ -68,6 +68,9 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageLoyaltyRew
 // lost their device (OTP to their own number + secret rotation), and one-way anonymize
 // (PII stripped, ledger/balances kept for accounting).
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getLoyaltyReports')+1,0,'searchLoyaltyMembers','startLoyaltyBadgeRecovery','confirmLoyaltyBadgeRecovery','manageLoyaltyMemberAnonymize');
+// Oct 2026: Dragon Brew Quest reads customer state through callables, advances only
+// from completed POS orders, and keeps campaign editing behind loyaltyAdmin.
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageLoyaltyMemberAnonymize')+1,0,'getDragonQuest','enrollDragonQuest','onOrderDragonQuestProgress','manageDragonQuest');
 // Sep 2026: owner emergency sign-out of every portal session.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('onShiftCloseAssurance'),0,'signOutAllPortalSessions');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getUndepositedControlSnapshot')+1,0,'syncUndepositedLedgerPageIndex','syncPettyVoucherAttentionIndex','syncCashCustodyPageIndex','getUndepositedPage');

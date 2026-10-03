@@ -11,6 +11,8 @@ const buildSource=read('tools/build-runtime-bundles.mjs');
 const adminSource=read('src/html/admin/70-runtime.html');
 const adminHtml=read('admin.html');
 const sw=read('sw.js');
+const adminBuild=(adminHtml.match(/<meta name="accaza-admin-build" content="(\d+)"\/>/)||[])[1];
+assert.ok(adminBuild,'Admin build marker is missing');
 
 const capacityWindow={};
 vm.runInNewContext(capacitySource,{window:capacityWindow,Object});
@@ -39,7 +41,7 @@ for(const marker of ['POS RELEASE SAFEGUARD','POS bundle capacity','RELEASE BLOC
 const panel=operationsSource.slice(operationsSource.indexOf('function posCapacityPanel(){'),operationsSource.indexOf('function card(def,data)'));
 for(const forbidden of ['global.__accaza','subscribe(','onValue(','ref(','get('])assert.ok(!panel.includes(forbidden),`POS capacity panel must not add a Firebase operation: ${forbidden}`);
 for(const marker of ['fs.statSync','assets/js/admin/pos-capacity.js','BUNDLE_HARD_RESERVES','BUDGET_WARN_ROOM'])assert.ok(buildSource.includes(marker),`runtime build does not regenerate capacity from ${marker}`);
-for(const html of [adminSource,adminHtml])assert.ok(html.includes('assets/js/admin/pos-capacity.js?v=639'), 'Admin must load the generated capacity before Operations Center');
+for(const html of [adminSource,adminHtml])assert.ok(html.includes(`assets/js/admin/pos-capacity.js?v=${adminBuild}`), 'Admin must load the generated capacity before Operations Center');
 assert.ok(sw.includes("'/assets/js/admin/pos-capacity.js'"),'Admin offline shell must cache POS capacity');
 
 console.log('PASS: Operations Center shows automatically generated POS capacity with GOOD, WATCH, and RELEASE BLOCKED states without a Firebase read.');

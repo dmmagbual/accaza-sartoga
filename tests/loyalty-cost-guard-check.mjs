@@ -8,7 +8,7 @@ import {rulesIndex} from '../tools/download-read-graph.mjs';
 const read = (rel) => fs.readFileSync(new URL('../' + rel, import.meta.url), 'utf8');
 const admin = read('src/admin/rewards/00-rewards-core.js');
 const stamps = read('src/admin/rewards/15-rewards-stamps.js');
-const server = read('src/functions/26-loyalty.js');
+const server = read('src/functions/26-loyalty.js') + '\n' + read('src/functions/26-loyalty2-admin.js');
 const rules = read('database.rules.json');
 const availability = read('assets/js/customer/order-availability.mjs');
 const rewardsHtml = read('rewards.html');

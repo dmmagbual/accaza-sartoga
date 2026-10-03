@@ -26,6 +26,7 @@ var _rewardsState = {
   rules: {}, rulesLoaded: false, rulesEditing: null,
   reports: null, reportsLoaded: false,
   member: null, memberQuery: null,
+  dragon: {loaded: false, seasons: {}, missions: {}, activeSeasonId: null, selectedSeasonId: null, editingSeason: null, editingMission: null},
 };
 
 function A() { return window.__accaza; }
@@ -78,6 +79,7 @@ function rewardsSubtabsHtml() {
     {id: 'reports', label: 'Reports'},
     {id: 'stamps', label: 'Stamps'},
     {id: 'catalog', label: 'Reward catalog'},
+    {id: 'dragon', label: 'Dragon Quest'},
     {id: 'rules', label: 'Earning rules'},
     {id: 'members', label: 'Members'}
   ];
@@ -90,6 +92,7 @@ function rewardsSubtabsHtml() {
 function rewardsBodyHtml() {
   if (_rewardsState.view === 'stamps') return rewardsStampsHtml();
   if (_rewardsState.view === 'catalog') return rewardsCatalogHtml();
+  if (_rewardsState.view === 'dragon') return rewardsDragonHtml();
   if (_rewardsState.view === 'rules') return rewardsRulesHtml();
   if (_rewardsState.view === 'members') return rewardsMembersHtml();
   return rewardsReportsHtml();
@@ -127,6 +130,7 @@ function rewardsWire(root) {
     }
     if (_rewardsState.view === 'stamps') { _rewardsStampsState.loaded = false; rewardsStampsLoad(); }
     else if (_rewardsState.view === 'catalog') { _rewardsState.catalogLoaded = false; rewardsCatalogLoad(); }
+    else if (_rewardsState.view === 'dragon') { _rewardsState.dragon.loaded = false; rewardsDragonLoad(); }
     else if (_rewardsState.view === 'rules') { _rewardsState.rulesLoaded = false; rewardsRulesLoad(); }
     else if (_rewardsState.view === 'members') { rewardsMembersRenderOnly(); }
     else { _rewardsState.reportsLoaded = false; rewardsReportsLoad(); }
@@ -138,6 +142,7 @@ function rewardsWire(root) {
       renderRewards();
       if (_rewardsState.view === 'stamps' && !_rewardsStampsState.loaded) rewardsStampsLoad();
       else if (_rewardsState.view === 'catalog' && !_rewardsState.catalogLoaded) rewardsCatalogLoad();
+      else if (_rewardsState.view === 'dragon' && !_rewardsState.dragon.loaded) rewardsDragonLoad();
       else if (_rewardsState.view === 'rules' && !_rewardsState.rulesLoaded) rewardsRulesLoad();
       else if (_rewardsState.view === 'reports' && !_rewardsState.reportsLoaded) rewardsReportsLoad();
     };
@@ -145,6 +150,7 @@ function rewardsWire(root) {
   var body = root.querySelector('#rewardsBody');
   if (body && _rewardsState.view === 'stamps') rewardsStampsWire(body);
   else if (body && _rewardsState.view === 'catalog') rewardsCatalogWire(body);
+  else if (body && _rewardsState.view === 'dragon') rewardsDragonWire(body);
   else if (body && _rewardsState.view === 'rules') rewardsRulesWire(body);
   else if (body && _rewardsState.view === 'members') rewardsMembersWire(body);
 }
@@ -170,6 +176,7 @@ function rewardsLoadCurrencies() {
     if (_rewardsState.view === 'reports' && !_rewardsState.reportsLoaded) rewardsReportsLoad();
     else if (_rewardsState.view === 'stamps' && !_rewardsStampsState.loaded) rewardsStampsLoad();
     else if (_rewardsState.view === 'catalog' && !_rewardsState.catalogLoaded) rewardsCatalogLoad();
+    else if (_rewardsState.view === 'dragon' && !_rewardsState.dragon.loaded) rewardsDragonLoad();
     else if (_rewardsState.view === 'rules' && !_rewardsState.rulesLoaded) rewardsRulesLoad();
   });
 }
