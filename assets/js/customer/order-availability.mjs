@@ -1,5 +1,5 @@
 import{initializeApp,getApps}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,onValue}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,get,onValue}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=getApps()[0]||initializeApp(firebaseConfig);
@@ -20,8 +20,13 @@ function renderState(){showState(!navigator.onLine?'closed':acceptingOrders===nu
 if(buttons.length){
   renderState();
   window.addEventListener('offline',renderState);
-  window.addEventListener('online',renderState);
-  onValue(ref(getDatabase(app),'publicOrderStatus'),function(snapshot){
+  const statusRef=ref(getDatabase(app),'publicOrderStatus');
+  const once=document.body&&document.body.dataset.orderAvailabilityMode==='once';
+  const receive=function(snapshot){
     acceptingOrders=!!(snapshot.val()&&snapshot.val().acceptingOrders===true);renderState();
-  },function(){acceptingOrders=false;renderState();});
+  };
+  const failed=function(){acceptingOrders=false;renderState();};
+  const refresh=function(){if(!navigator.onLine){renderState();return;} acceptingOrders=null;renderState();get(statusRef).then(receive,failed);};
+  window.addEventListener('online',once?refresh:renderState);
+  if(once)refresh();else onValue(statusRef,receive,failed);
 }

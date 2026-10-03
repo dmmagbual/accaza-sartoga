@@ -150,19 +150,24 @@ function scanRange(tokens, src, start, end) {
     const close = matching(tokens, k + 1);
     if (close !== k + 3 && !(close === k + 2)) continue; // ref(expr) with more than one token: dynamic
     let path = close === k + 2 ? "/" : literalOf(tokens[k + 2]);
+    let indexPath = path;
     // `/${x}` names a whole top-level node chosen at run time; `/${x}/${y}` is a record.
-    if (tokens[k + 2] && tokens[k + 2].t === "tpl" && tokens[k + 2].expr) path = /^\/?\$\{\}$/.test(tokens[k + 2].v) ? "<dynamic-root>" : "<dynamic>";
-    if (close === k + 3 && tokens[k + 2].t === "id") path = "<dynamic-root>";
+    if (tokens[k + 2] && tokens[k + 2].t === "tpl" && tokens[k + 2].expr) {
+      const shapedIndexPath = tokens[k + 2].v.replace(/\$\{\}/g, "$dynamic");
+      indexPath = /^\/?\$dynamic$/.test(shapedIndexPath) ? "<dynamic>" : shapedIndexPath;
+      path = /^\/?\$\{\}$/.test(tokens[k + 2].v) ? "<dynamic-root>" : "<dynamic>";
+    }
+    if (close === k + 3 && tokens[k + 2].t === "id") { path = "<dynamic-root>"; indexPath = "<dynamic>"; }
     const query = [], orderBy = [];
     let q = close + 1, method = "";
     while (tokens[q] && tokens[q].v === "." && tokens[q + 1] && tokens[q + 1].t === "id" && tokens[q + 2] && tokens[q + 2].v === "(") {
       const name = tokens[q + 1].v, argsEnd = matching(tokens, q + 2);
       if (QUERY_METHODS.has(name)) { query.push(name); if (name === "orderByChild") orderBy.push(argsEnd === q + 4 && (tokens[q + 3].t === "str" || (tokens[q + 3].t === "tpl" && !tokens[q + 3].expr)) ? tokens[q + 3].v : "<dynamic>"); }
-      else if (name === "child") { const a = tokens[q + 3]; path = argsEnd === q + 4 && (a.t === "str" || (a.t === "tpl" && !a.expr)) ? `${path}/${a.v}` : "<dynamic>"; }
+      else if (name === "child") { const a = tokens[q + 3]; path = argsEnd === q + 4 && (a.t === "str" || (a.t === "tpl" && !a.expr)) ? `${path}/${a.v}` : "<dynamic>"; indexPath = path; }
       else { method = name; break; }
       q = argsEnd + 1;
     }
-    if (orderBy.length) indexUses.push({path: String(path).replace(/^\/+/, "").replace(/\/+$/, ""), fields: orderBy, line: src.slice(0, t.s).split("\n").length});
+    if (orderBy.length) indexUses.push({path: String(indexPath).replace(/^\/+/, "").replace(/\/+$/, ""), fields: orderBy, line: src.slice(0, t.s).split("\n").length});
     if (method !== "get" && method !== "once") continue;
     // Annotation: a /* download-ok: <kind> <reason> */ comment inside the same statement, before the read.
     let annotation = null;

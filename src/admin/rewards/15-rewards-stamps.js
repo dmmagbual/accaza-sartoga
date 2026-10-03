@@ -157,6 +157,7 @@ function rewardsStampsLoad() {
     _rewardsStampsState.loaded = true;
     // The shared currency labels feed the catalog and rules screens - refresh them too.
     _rewardsState.currenciesLoaded = false;
+    _rewardsState.currenciesAttempted = false;
   }).catch(function (error) {
     _rewardsStampsState.note = rewardsMessage(error, 'Could not load the stamp list.');
     _rewardsStampsState.noteBad = true;
@@ -185,6 +186,7 @@ function rewardsStampsSave(body) {
     _rewardsStampsState.noteBad = false;
     _rewardsStampsState.editing = null; _rewardsStampsState.loaded = false;
     _rewardsState.currenciesLoaded = false;
+    _rewardsState.currenciesAttempted = false;
   }).catch(function (error) {
     // Validation errors come back from the server (palette colour, code shape, cap) and
     // are shown as written - the operator needs the exact reason.
@@ -204,6 +206,7 @@ function rewardsStampsToggle(code, action) {
     _rewardsStampsState.note = action === 'enable' ? 'Stamp turned on.' : 'Stamp turned off. Members keep any stamps they already hold.';
     _rewardsStampsState.noteBad = false; _rewardsStampsState.loaded = false;
     _rewardsState.currenciesLoaded = false;
+    _rewardsState.currenciesAttempted = false;
   }).catch(function (error) {
     // A refusal here is a real safeguard (a live rule still awards it, or a live reward
     // still costs it). Show the server's wording: it names what to turn off first.

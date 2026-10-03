@@ -33,6 +33,7 @@ const LOYALTY_REGION = ORDER_REGION;
 const LOYALTY_BADGE_WINDOW_SECONDS = 60;
 const LOYALTY_OTP_TTL_MS = 5 * 60 * 1000;
 const LOYALTY_OTP_MAX_ATTEMPTS = 5;
+const LOYALTY_CONFIG_LIMITS = Object.freeze({currencies: 12, rules: 50, catalog: 50});
 const SEMAPHORE_API_KEY = defineSecret("SEMAPHORE_API_KEY");
 
 function loyaltyKey(value, label = "ID") {
@@ -89,6 +90,8 @@ async function sendLoyaltySms(phoneE164, message) {
 }
 
 async function ensureLoyaltyDefaults(db) {
+  const defaultsRef = db.ref("/loyaltyConfigState/defaultsV1");
+  if ((await defaultsRef.get()).exists()) return;
   // Both reads are admin-configured rules/catalog — sized like chartOfAccounts (a handful
   // of rows), never like order/ledger history — so a whole-node read never grows with sales.
   const [rulesSnap, catalogSnap, currenciesSnap] = await Promise.all([/* download-ok: bounded admin-configured rules, not history */ db.ref("/loyaltyEarningRules").get(), /* download-ok: bounded admin-configured catalog, not history */ db.ref("/loyaltyRewardCatalog").get(), /* download-ok: bounded admin-configured stamp currencies, not history */ db.ref("/loyaltyCurrencies").get()]);
@@ -117,7 +120,17 @@ async function ensureLoyaltyDefaults(db) {
       "loyaltyRewardCatalog/reward_20_off": {costCurrency: "yellow", costQty: 30, grantType: "percent_off_capped", cap: 200, percent: 20, itemId: null, expiryDays: 30, stackingAllowed: false, name: "20% off order (up to ₱200)", enabled: true, createdAt: now, system: true},
     });
   }
-  if (Object.keys(writes).length) await db.ref().update(writes);
+  writes["loyaltyConfigState/defaultsV1"] = {initializedAt: Date.now(), schemaVersion: 1};
+  await db.ref().update(writes);
+}
+
+async function createLoyaltyConfigRow(db, path, id, row, maximum, label) {
+  const result = await db.ref(path).transaction((current) => {
+    current = current || {};
+    if (!current[id] && Object.keys(current).length >= maximum) return;
+    return Object.assign({}, current, {[id]: Object.assign({}, current[id] || {}, row)});
+  }, undefined, false);
+  if (!result.committed) throw new HttpsError("resource-exhausted", `${label} is limited to ${maximum} records. Edit an existing record instead; disabled records remain part of the audit history.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -183,9 +196,9 @@ exports.completeLoyaltySignup = onCall(
 // ---------------------------------------------------------------------------
 // Badge scan (earn context) + phone-lookup fallback (earn-only, never redeem)
 // ---------------------------------------------------------------------------
-async function loyaltyMemberSnapshot(db, memberId) {
-  const [memberSnap, balSnap, currenciesSnap] = await Promise.all([db.ref(`/loyaltyMembers/${memberId}`).get(), db.ref(`/loyaltyBalances/${memberId}`).get(), /* download-ok: bounded admin-configured stamp currencies, not history */ db.ref("/loyaltyCurrencies").get()]);
-  const member = memberSnap.val();
+async function loyaltyMemberSnapshot(db, memberId, knownMember) {
+  const memberRead = knownMember ? Promise.resolve(knownMember) : db.ref(`/loyaltyMembers/${memberId}`).get().then((snap) => snap.val());
+  const [member, balSnap, currenciesSnap] = await Promise.all([memberRead, db.ref(`/loyaltyBalances/${memberId}`).get(), /* download-ok: bounded admin-configured stamp currencies, not history */ db.ref("/loyaltyCurrencies").get()]);
   if (!member || member.status === "blocked") return null;
   const balances = balSnap.val() || {};
   const currencies = Loyalty.normalizeCurrencies(currenciesSnap.val());
@@ -225,7 +238,7 @@ exports.scanLoyaltyBadge = onCall(
     const member = (await db.ref(`/loyaltyMembers/${memberId}`).get()).val();
     if (!member) throw new HttpsError("not-found", "Badge not recognized.");
     if (!loyaltyVerifyBadgeCode(memberId, member.badgeSecret, code, Date.now())) throw new HttpsError("permission-denied", "Badge code is invalid or expired. Ask the member to refresh their badge.");
-    const snapshot = await loyaltyMemberSnapshot(db, memberId);
+    const snapshot = await loyaltyMemberSnapshot(db, memberId, member);
     if (!snapshot) throw new HttpsError("failed-precondition", "This member account is blocked.");
     return Object.assign({verifiedBy: "badge_scan"}, snapshot);
   },
@@ -246,7 +259,7 @@ exports.getLoyaltyMemberCard = onCall(
     const member = (await db.ref(`/loyaltyMembers/${memberId}`).get()).val();
     if (!member) throw new HttpsError("not-found", "Badge not recognized.");
     if (!loyaltyVerifyBadgeCode(memberId, member.badgeSecret, code, Date.now())) throw new HttpsError("permission-denied", "Badge code is invalid or expired. Refresh the page and try again.");
-    const snapshot = await loyaltyMemberSnapshot(db, memberId);
+    const snapshot = await loyaltyMemberSnapshot(db, memberId, member);
     if (!snapshot) throw new HttpsError("failed-precondition", "This member account is blocked. Please talk to our staff.");
     return Object.assign({verifiedBy: "badge_self"}, snapshot);
   },
@@ -281,8 +294,8 @@ exports.lookupLoyaltyMemberByPhone = onCall(
 // (recognize-on-redemption), so this link is an operational convenience, never a GL balance.
 // See claude/loyalty-accounting-identity-2026-09-30.md.
 // ---------------------------------------------------------------------------
-async function setLoyaltyDeviceLink(db, uid, memberId, via) {
-  const member = (await db.ref(`/loyaltyMembers/${memberId}`).get()).val();
+async function setLoyaltyDeviceLink(db, uid, memberId, via, knownMember) {
+  const member = knownMember || (await db.ref(`/loyaltyMembers/${memberId}`).get()).val();
   if (!member || member.status === "blocked") throw new HttpsError("failed-precondition", "This membership is not available.");
   await db.ref(`/appCustomers/${uid}`).transaction((current) => {
     const profile = current || {};
@@ -319,8 +332,8 @@ exports.linkLoyaltyByBadge = onCall(
     const member = (await db.ref(`/loyaltyMembers/${memberId}`).get()).val();
     if (!member) throw new HttpsError("not-found", "Membership not recognized.");
     if (!loyaltyVerifyBadgeCode(memberId, member.badgeSecret, code, Date.now())) throw new HttpsError("permission-denied", "Badge code is invalid or expired. Refresh your Rewards badge and try again.");
-    await setLoyaltyDeviceLink(db, request.auth.uid, memberId, "badge");
-    const snapshot = await loyaltyMemberSnapshot(db, memberId);
+    await setLoyaltyDeviceLink(db, request.auth.uid, memberId, "badge", member);
+    const snapshot = await loyaltyMemberSnapshot(db, memberId, member);
     return Object.assign({linked: true, verifiedBy: "badge"}, snapshot || {});
   },
 );
@@ -370,9 +383,9 @@ exports.confirmLoyaltyLinkOtp = onCall(
       throw new HttpsError("invalid-argument", "Incorrect code.");
     }
     const memberId = loyaltyKey(record.memberId, "Member ID");
-    await setLoyaltyDeviceLink(db, uid, memberId, "otp");
+    const member = await setLoyaltyDeviceLink(db, uid, memberId, "otp");
     await otpRef.remove();
-    const snapshot = await loyaltyMemberSnapshot(db, memberId);
+    const snapshot = await loyaltyMemberSnapshot(db, memberId, member);
     return Object.assign({linked: true, verifiedBy: "otp"}, snapshot || {});
   },
 );
@@ -395,13 +408,14 @@ exports.unlinkLoyaltyFromDevice = onCall(
 // ---------------------------------------------------------------------------
 // Earning — wired into order completion (POS/instore channel only, Phase 1).
 // ---------------------------------------------------------------------------
-async function postLoyaltyEarning(db, order) {
+function loyaltyOrderCanEarn(order) {
   const effectiveStatus = order.status === "Archived" ? order.prevStatus : order.status;
-  if (!["Completed", "Received"].includes(String(effectiveStatus || ""))) return {skipped: true};
-  if (order.paymentStatus === "pending" || order.voided === true) return {skipped: true};
-  if (String(order.channel || "instore").toLowerCase() !== "instore") return {skipped: true}; // Phase 1: POS/walk-in only
-  const memberId = order.loyaltyMemberId ? loyaltyKey(order.loyaltyMemberId, "Member ID") : "";
-  if (!memberId) return {skipped: true}; // no badge/phone attached to this sale
+  return ["Completed", "Received"].includes(String(effectiveStatus || "")) && order.paymentStatus !== "pending" && order.voided !== true && String(order.channel || "instore").toLowerCase() === "instore" && !!order.loyaltyMemberId;
+}
+
+async function postLoyaltyEarning(db, order) {
+  if (!loyaltyOrderCanEarn(order)) return {skipped: true};
+  const memberId = loyaltyKey(order.loyaltyMemberId, "Member ID");
   const ledgerKey = `earn_${order.id}`;
   const ledgerRef = db.ref(`/loyaltyLedger/${memberId}/${ledgerKey}`);
   if ((await ledgerRef.get()).exists()) return {duplicate: true}; // idempotent — a re-fired trigger never double-earns
@@ -464,7 +478,8 @@ exports.onOrderLoyaltyEarning = onValueWritten(
     if (!afterRaw) return;
     const order = Object.assign({id: event.params.orderId}, afterRaw);
     const db = getDatabase();
-    await postLoyaltyEarning(db, order);
+    const beforeOrder = Object.assign({id: event.params.orderId}, before);
+    if (!loyaltyOrderCanEarn(beforeOrder) && loyaltyOrderCanEarn(order)) await postLoyaltyEarning(db, order);
     // Void handling: flag (never silently restore) a redeemed reward from a voided order.
     if (order.voided === true && before.voided !== true && order.loyaltyRewardId && order.loyaltyMemberId) {
       const rewardRef = db.ref(`/loyaltyRewards/${loyaltyKey(order.loyaltyMemberId)}/${loyaltyKey(order.loyaltyRewardId)}`);
@@ -686,7 +701,8 @@ exports.manageLoyaltyEarningRule = onCall(
     const ruleId = data.ruleId ? loyaltyKey(data.ruleId) : `rule_${crypto.randomBytes(8).toString("hex")}`;
     const now = Date.now();
     const row = {trigger, currency: data.currency, qty, condition: data.condition && typeof data.condition === "object" ? data.condition : {}, startAt: data.startAt == null ? null : Number(data.startAt), endAt: data.endAt == null ? null : Number(data.endAt), enabled: data.enabled !== false, name: financeText(data.name, 120), updatedAt: now, updatedBy: actor.uid};
-    await db.ref(`/loyaltyEarningRules/${ruleId}`).update(row);
+    if (data.ruleId) await db.ref(`/loyaltyEarningRules/${ruleId}`).update(row);
+    else await createLoyaltyConfigRow(db, "/loyaltyEarningRules", ruleId, row, LOYALTY_CONFIG_LIMITS.rules, "Earning rules");
     await db.ref(`/operationalAudit/${now}_loyalty_rule_${ruleId}`).set(operationalAuditRecord("manage_loyalty_earning_rule", "loyaltyEarningRule", ruleId, actor, row));
     return {ruleId};
   },
@@ -709,7 +725,9 @@ exports.manageLoyaltyRewardCatalog = onCall(
     if (!validated.ok) throw new HttpsError("invalid-argument", validated.errors.join(" "));
     const rewardId = data.rewardId ? loyaltyKey(data.rewardId) : `reward_${crypto.randomBytes(8).toString("hex")}`;
     const now = Date.now();
-    await db.ref(`/loyaltyRewardCatalog/${rewardId}`).update(Object.assign({}, validated.reward, {updatedAt: now, updatedBy: actor.uid}));
+    const row = Object.assign({}, validated.reward, {updatedAt: now, updatedBy: actor.uid});
+    if (data.rewardId) await db.ref(`/loyaltyRewardCatalog/${rewardId}`).update(row);
+    else await createLoyaltyConfigRow(db, "/loyaltyRewardCatalog", rewardId, row, LOYALTY_CONFIG_LIMITS.catalog, "Reward catalog");
     await db.ref(`/operationalAudit/${now}_loyalty_catalog_${rewardId}`).set(operationalAuditRecord("manage_loyalty_reward_catalog", "loyaltyRewardCatalog", rewardId, actor, validated.reward));
     return {rewardId};
   },
@@ -757,7 +775,9 @@ exports.manageLoyaltyCurrency = onCall(
     const existing = (await db.ref(`/loyaltyCurrencies/${currency.code}`).get()).val();
     // update() so an existing stamp keeps createdAt and its system flag: saving is an edit
     // of label/colour/cap/order only, never a re-creation.
-    await db.ref(`/loyaltyCurrencies/${currency.code}`).update(Object.assign({}, currency, existing ? {} : {createdAt: now}, {updatedAt: now, updatedBy: actor.uid}));
+    const row = Object.assign({}, currency, existing ? {} : {createdAt: now}, {updatedAt: now, updatedBy: actor.uid});
+    if (existing) await db.ref(`/loyaltyCurrencies/${currency.code}`).update(row);
+    else await createLoyaltyConfigRow(db, "/loyaltyCurrencies", currency.code, row, LOYALTY_CONFIG_LIMITS.currencies, "Stamp currencies");
     await db.ref(`/operationalAudit/${now}_loyalty_currency_${currency.code}`).set(operationalAuditRecord("manage_loyalty_currency", "loyaltyCurrencies", currency.code, actor, currency));
     return {code: currency.code, created: !existing};
   },
