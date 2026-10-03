@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 637,
+    "admin": 638,
     "books": 140,
     "customer": 89,
-    "serviceWorkerCache": 624
+    "serviceWorkerCache": 625
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -287,6 +287,7 @@
     "src/admin/finance/30-payable-detail.js",
     "src/admin/finance/40-payables-api.js",
     "assets/js/admin/operations-dashboard.js",
+    "assets/js/admin/pos-capacity.js",
     "assets/js/admin/packages.js",
     "assets/js/admin/accounting-periods.js",
     "CLAUDE_HANDOFF.md",

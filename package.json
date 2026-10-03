@@ -27,7 +27,7 @@
     "test:release-certification": "node tests/release-certification-check.mjs",
     "test:production-validation": "node tests/production-validation-check.mjs",
     "test:alert-escalation": "node tests/alert-escalation-check.mjs",
-    "test:operations-health-cards": "node tests/operations-health-cards-check.mjs",
+    "test:operations-health-cards": "node tests/operations-health-cards-check.mjs && node tests/pos-capacity-operations-check.mjs",
     "test:staff-module-access": "node tests/staff-module-access-check.mjs",
     "test:staff-screen-data-access": "node tests/staff-screen-data-access-check.mjs",
     "test:portal-presence": "node tests/portal-presence-check.mjs",
