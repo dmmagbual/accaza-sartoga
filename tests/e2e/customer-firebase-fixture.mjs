@@ -3,7 +3,7 @@ const FIREBASE_ORIGIN='https://www.gstatic.com/firebasejs/10.12.0/';
 // overrides replaces whole database paths (for example menuItems) for one test; default data is unchanged.
 const buildModules=(overrides={})=>({
   'firebase-app.js':`export function initializeApp(config){return {config};}`,
-  'firebase-app-check.js':`export class ReCaptchaEnterpriseProvider{constructor(key){this.key=key;}} export function initializeAppCheck(){return {};}`,
+  'firebase-app-check.js':`const instance={}; export class ReCaptchaEnterpriseProvider{constructor(key){this.key=key;}} export function initializeAppCheck(){return instance;} export async function getToken(){return {token:'app-check-test-token'};}`,
   'firebase-auth.js':`const user={uid:'browser-test-customer',getIdToken:async()=> 'browser-test-token'}; const auth={currentUser:user}; export function getAuth(){return auth;} export async function signInAnonymously(){return {user};} export async function signOut(){auth.currentUser=null;} export function onAuthStateChanged(_auth,callback){queueMicrotask(()=>callback(user));return ()=>{};}`,
   'firebase-functions.js':`export function getFunctions(){return {};} export function httpsCallable(_functions,name){return async()=>({data:name==='createOnlineOrder'?{orderId:'test-order'}:{ok:true}});}`,
   'firebase-messaging.js':`export function getMessaging(){return {};} export async function getToken(){return '';} export function onMessage(){return ()=>{};} export async function isSupported(){return false;}`,
