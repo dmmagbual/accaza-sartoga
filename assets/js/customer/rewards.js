@@ -47,6 +47,8 @@ function callables() {
       startSignup: httpsCallable(functions, "startLoyaltySignup"),
       completeSignup: httpsCallable(functions, "completeLoyaltySignup"),
       getMemberCard: httpsCallable(functions, "getLoyaltyMemberCard"),
+      getQuest: httpsCallable(functions, "getDragonQuest"),
+      enrollQuest: httpsCallable(functions, "enrollDragonQuest"),
       // Linking this phone to an existing membership. These four need a customer session,
       // so they sit behind ensureSession(); signup and the badge itself never do.
       getMyCard: httpsCallable(functions, "getMyLoyaltyCard"),
@@ -187,6 +189,91 @@ function paintCard(card) {
   paintRedeemable(card);
 }
 
+let questAccess = null;
+
+function questDate(ms) {
+  if (!Number(ms)) return "";
+  return new Date(Number(ms)).toLocaleDateString("en-PH", {month: "short", day: "numeric", year: "numeric"});
+}
+
+// A chapter is readable only when the server marks it ready, active or complete.
+// Admin-authored text always enters the page through textContent.
+function paintDragonQuest(quest) {
+  const panel = el("dragonQuest"), missions = el("dragonMissions"), enroll = el("dragonEnrollBtn");
+  if (!panel || !missions || !enroll) return;
+  panel.hidden = false;
+  missions.innerHTML = "";
+  const season = (quest && quest.season) || {};
+  setText("dragonTitle", season.name || "Dragon Brew Quest");
+  if (!quest || quest.state === "not_configured") {
+    setText("dragonKicker", "The dragon is stirring");
+    setText("dragonStory", "Deep beneath the coffee house, an ancient flame has begun to glow. The first chapter of Dragon Brew Quest is being prepared. Keep your Rewards badge close—the call to adventure is coming.");
+    setText("dragonStatus", "A quest season has not been published yet.");
+    enroll.hidden = true;
+    return;
+  }
+  setText("dragonKicker", quest.status === "completed" ? "Quest complete" : quest.enrolled ? "Your active adventure" : "A story you can play");
+  setText("dragonStory", season.story || "A trail of coffee, courage and hidden rewards awaits.");
+  if (!quest.available) {
+    setText("dragonStatus", quest.state === "scheduled" ? "The gate opens " + questDate(season.startAt) + "." : quest.state === "paused" ? "The dragon is resting. Your progress is safe, and the quest will continue when the season resumes." : "This quest season has ended.");
+    enroll.hidden = true;
+  } else {
+    setText("dragonStatus", quest.reviewRequired ? quest.reviewMessage : quest.status === "completed" ? "You completed every chapter. The dragon remembers your name." : quest.enrolled ? "Only your active mission can collect progress. Completed in-store purchases update it automatically." : "Join once, then show your Rewards badge whenever you order in store.");
+    enroll.hidden = !!quest.enrolled;
+  }
+  (quest.missions || []).forEach((mission) => {
+    const card = document.createElement("article");
+    card.className = "rw-mission " + (mission.status || "locked");
+    const head = document.createElement("div"); head.className = "rw-mission-head";
+    const title = document.createElement("h4"); title.textContent = "Chapter " + mission.sequence + ": " + (mission.name || "Untitled mission");
+    const state = document.createElement("span"); state.className = "rw-mission-state"; state.textContent = mission.status === "completed" ? "Complete ✓" : mission.status === "active" ? "Active" : mission.status === "ready" ? "First mission" : "Locked";
+    head.appendChild(title); head.appendChild(state); card.appendChild(head);
+    const story = document.createElement("p"); story.textContent = mission.story || "Complete the previous mission to reveal this chapter."; card.appendChild(story);
+    const rule = document.createElement("p"); rule.className = "rw-mission-rule"; rule.textContent = "Mission: " + (mission.requirementText || "Locked"); card.appendChild(rule);
+    const reward = document.createElement("p"); reward.className = "rw-mission-reward"; reward.textContent = "Treasure: " + (mission.rewardName || "Hidden until unlocked"); card.appendChild(reward);
+    if (["active", "completed"].includes(mission.status)) {
+      const bar = document.createElement("div"); bar.className = "rw-quest-progress";
+      const fill = document.createElement("i"); fill.style.width = Math.min(100, Math.round((Number(mission.progress) || 0) / Math.max(1, Number(mission.target) || 1) * 100)) + "%";
+      bar.appendChild(fill); card.appendChild(bar);
+      const count = document.createElement("p"); count.textContent = (Number(mission.progress) || 0) + " of " + (Number(mission.target) || 1) + " complete"; card.appendChild(count);
+    }
+    missions.appendChild(card);
+  });
+}
+
+async function questPayload(access) {
+  if (access && access.member) return {memberId: access.member.memberId, code: await badgeCode(access.member.memberId, access.member.badgeSecret, Date.now())};
+  const api = await callables(); await api.ensureSession(); return {};
+}
+
+async function refreshDragonQuest(access, quiet) {
+  questAccess = access;
+  try {
+    if (!quiet) setText("dragonStatus", "Opening the quest map…");
+    const api = await callables(), payload = await questPayload(access);
+    const result = await api.getQuest(payload);
+    paintDragonQuest(result.data || {});
+  } catch (error) {
+    const panel = el("dragonQuest"); if (panel) panel.hidden = false;
+    setText("dragonStatus", errorMessage(error));
+  }
+}
+
+async function enrollDragonQuest() {
+  const button = el("dragonEnrollBtn"); if (!button || !questAccess) return;
+  button.disabled = true; button.textContent = "Opening the first chapter…";
+  try {
+    const api = await callables(), payload = await questPayload(questAccess);
+    const result = await api.enrollQuest(payload);
+    paintDragonQuest(result.data || {});
+    setTimeout(() => { const active = document.querySelector(".rw-mission.active"); if (active) active.scrollIntoView({behavior: "smooth", block: "center"}); }, 80);
+  } catch (error) {
+    setText("dragonStatus", errorMessage(error));
+  } finally {
+    button.disabled = false; button.textContent = "Accept the Dragon’s Call";
+  }
+}
+
 // Rewards already granted to this member. Names are admin-entered, so they go in through
 // textContent, never innerHTML.
 function paintClaimedRewards(rewards) {
@@ -280,11 +367,16 @@ function goto(screen) {
 }
 
 // Badge mode: this device holds the secret, so it can show the rotating QR.
-async function showBadge(member) {
+async function showBadge(member, welcomeToQuest) {
   goto("screenBadge");
   badgeChrome(true);
   await paintBadge(member);
   await refreshCard(member, false);
+  await refreshDragonQuest({member}, true);
+  if (welcomeToQuest) {
+    const panel = el("dragonQuest");
+    if (panel) { panel.classList.add("rw-quest-welcome"); panel.scrollIntoView({behavior: "smooth", block: "start"}); setTimeout(() => panel.classList.remove("rw-quest-welcome"), 3800); }
+  }
 }
 
 // Linked mode: this phone is tied to the membership but does not hold the badge secret,
@@ -298,6 +390,7 @@ function showLinkedCard(card) {
   setText("badgePhone", card.maskedPhone || "");
   if (badgeTimer) { clearInterval(badgeTimer); badgeTimer = null; }
   paintCard(card);
+  refreshDragonQuest({linked: true}, true);
 }
 
 // The badge-only furniture: QR, rolling code, countdown and the "show this at the
@@ -369,7 +462,7 @@ async function onVerify(event) {
       return;
     }
     pendingSignup = null;
-    await showBadge(member);
+    await showBadge(member, true);
   } catch (error) {
     setText("otpError", errorMessage(error));
   } finally {
@@ -535,11 +628,12 @@ function boot() {
   const recoverForm = el("recoverForm"); if (recoverForm) recoverForm.addEventListener("submit", onRecoverSend);
   const recoverBack = el("recoverBackBtn"); if (recoverBack) recoverBack.addEventListener("click", onStartOver);
   const unlink = el("unlinkBtn"); if (unlink) unlink.addEventListener("click", onUnlink);
+  const dragonEnroll = el("dragonEnrollBtn"); if (dragonEnroll) dragonEnroll.addEventListener("click", enrollDragonQuest);
   const refreshBtn = el("refreshBtn");
   if (refreshBtn) refreshBtn.addEventListener("click", () => {
     const member = loadMember();
     // A badge device refreshes with its own badge proof; a linked phone refreshes by session.
-    if (member) refreshCard(member, false); else restoreLinkedCard();
+    if (member) { refreshCard(member, false); refreshDragonQuest({member}, true); } else restoreLinkedCard();
   });
 
   const member = loadMember();

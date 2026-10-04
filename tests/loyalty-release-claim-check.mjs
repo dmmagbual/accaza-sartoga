@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
-const source = fs.readFileSync(new URL('../src/functions/26-loyalty.js', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL('../src/functions/26-loyalty.js', import.meta.url), 'utf8') + '\n' + fs.readFileSync(new URL('../src/functions/26-loyalty2-admin.js', import.meta.url), 'utf8');
 const section = (name) => {
   const start = source.indexOf(`exports.${name} = onCall(`);
   assert.ok(start > -1, `${name} is missing`);

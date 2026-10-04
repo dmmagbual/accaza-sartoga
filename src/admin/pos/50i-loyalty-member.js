@@ -230,7 +230,7 @@ function posLoyaltyClaimRow() {
 function posLoyaltyRedeemButton() {
   if (!posLoyaltyMember || posLoyaltyClaim) return '';
   if (posLoyaltyMember.verifiedBy === 'phone_lookup') return '';
-  var offers = posLoyaltyMember.redeemable || [];
+  var offers = posLoyaltyOffers();
   if (!offers.length) return '';
   return '<button class="pz-btn sec" id="posLoyaltyRedeemBtn" style="width:100%;margin-bottom:0.4rem;font-size:0.8rem;">🎁 Redeem reward (' + offers.length + ')</button>';
 }
@@ -248,10 +248,27 @@ function posLoyaltyIsFreeItem(reward) {
   return reward && (reward.grantType === 'free_item_capped' || reward.grantType === 'free_item_no_sub');
 }
 
+// Quest rewards are already-issued entitlements; stamp rewards are catalog
+// offers issued only after selection. The instance id keeps an earned reward
+// single-use without charging the member's stamp balance.
+function posLoyaltyOffers() {
+  if (!posLoyaltyMember) return [];
+  var earned = (posLoyaltyMember.availableRewards || []).filter(function (reward) {
+    return reward && reward.status === 'available' && reward.reviewRequired !== true;
+  }).map(function (reward) {
+    return Object.assign({}, reward, {rewardInstanceId: reward.id, earnedReward: true});
+  });
+  return earned.concat(posLoyaltyMember.redeemable || []);
+}
+
+function posLoyaltyOfferKey(reward) {
+  return reward ? (reward.rewardInstanceId || ('catalog:' + reward.rewardId)) : '';
+}
+
 function openLoyaltyRedeemModal() {
   if (!posLoyaltyMember) return alert('Attach a Rewards member first.');
   if (!Object.keys(posCart).length) return alert('Ring the whole order first, then apply the reward. The discount is worked out from the finished order.');
-  var offers = (posLoyaltyMember.redeemable || []);
+  var offers = posLoyaltyOffers();
   if (!offers.length) return alert('This member has no reward they can claim yet.');
 
   var mask = document.createElement('div');
@@ -271,9 +288,9 @@ function openLoyaltyRedeemModal() {
       + posLoyaltyStampsText(posLoyaltyMember) + '</div>'
       + (blocked ? '<div style="font-size:0.78rem;color:#8a6d00;background:#fff6e5;border:1px solid #f0dcae;border-radius:6px;padding:0.5rem;margin-bottom:0.5rem;">This sale already has a Senior / PWD or manual discount. A loyalty reward cannot be combined with it — remove the other discount first.</div>' : '')
       + offers.map(function (r, ix) {
-        var on = chosen && chosen.rewardId === r.rewardId;
+        var on = chosen && posLoyaltyOfferKey(chosen) === posLoyaltyOfferKey(r);
         return '<button class="pz-btn ' + (on ? 'ok' : 'sec') + '" data-rd="' + ix + '" style="width:100%;text-align:left;margin-bottom:0.3rem;font-size:0.82rem;">'
-          + esc(r.name) + '<div style="font-size:0.72rem;opacity:.8;">costs ' + r.costQty + ' × ' + esc(String(r.costCurrencyLabel || r.costCurrency)) + '</div></button>';
+          + esc(r.name) + '<div style="font-size:0.72rem;opacity:.8;">' + (r.earnedReward ? 'earned in Dragon Brew Quest' : 'costs ' + r.costQty + ' × ' + esc(String(r.costCurrencyLabel || r.costCurrency))) + '</div></button>';
       }).join('');
 
     // A free-item reward is worth whatever drink it is put against, so the cashier picks
@@ -315,7 +332,7 @@ function openLoyaltyRedeemModal() {
     var call = posLoyaltyCallable('claimLoyaltyReward');
     if (!call) { say('Refresh the POS to load the Rewards service.', true); return; }
     say('Claiming…');
-    call(Object.assign({memberId: posLoyaltyMember.memberId, rewardId: chosen.rewardId, itemPrice: free ? basis : null, orderNet: free ? null : basis}, proof))
+    call(Object.assign({memberId: posLoyaltyMember.memberId, rewardId: chosen.rewardId, rewardInstanceId: chosen.rewardInstanceId || null, itemPrice: free ? basis : null, orderNet: free ? null : basis}, proof))
       .then(function (r) {
         var d = r.data || {};
         posLoyaltyClaim = {rewardInstanceId: d.rewardInstanceId, rewardId: chosen.rewardId, name: d.name || chosen.name, discountAmount: Number(d.discountAmount) || 0, memberId: posLoyaltyMember.memberId, basis: basis, cartKey: free ? chosen.cartKey : null};
@@ -332,7 +349,7 @@ function openLoyaltyRedeemModal() {
     mask.querySelectorAll('[data-rd]').forEach(function (b) {
       b.onclick = function () {
         var picked = offers[+b.getAttribute('data-rd')];
-        chosen = (chosen && chosen.rewardId === picked.rewardId) ? null : Object.assign({}, picked);
+        chosen = (chosen && posLoyaltyOfferKey(chosen) === posLoyaltyOfferKey(picked)) ? null : Object.assign({}, picked);
         draw();
       };
     });

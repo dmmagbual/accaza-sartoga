@@ -66,12 +66,41 @@
   .rw-progress-note{display:block;font-size:.76rem;color:#8a978c;}
   .rw-how{margin-top:1.6rem;}
   .rw-how li{margin-bottom:.45rem;line-height:1.55;}
+  .rw-quest{margin:1.5rem 0 0;padding:1.2rem;border-radius:16px;background:linear-gradient(145deg,#18251b,#2d4634);color:#f6f2ea;box-shadow:0 12px 28px rgba(25,36,27,.2);}
+  .rw-quest.rw-quest-welcome{animation:questGlow 1.8s ease-out 2;}
+  .rw-quest-kicker{margin:0 0 .3rem;color:#e2bd79;text-transform:uppercase;letter-spacing:.12em;font-size:.7rem;font-weight:600;}
+  .rw-quest h3{margin:0 0 .55rem;font-family:'Playfair Display',serif;font-size:1.35rem;color:#fff3d8;}
+  .rw-quest-story{margin:0 0 1rem;font-size:.88rem;line-height:1.62;color:#e6e9e4;}
+  .rw-missions{display:grid;gap:.65rem;}
+  .rw-mission{padding:.85rem;border:1px solid rgba(255,255,255,.15);border-radius:12px;background:rgba(255,255,255,.06);}
+  .rw-mission.active{border-color:#e2bd79;background:rgba(226,189,121,.12);}
+  .rw-mission.completed{border-color:#79bd88;background:rgba(121,189,136,.1);}
+  .rw-mission.locked{opacity:.68;}
+  .rw-mission-head{display:flex;justify-content:space-between;gap:.6rem;align-items:flex-start;}
+  .rw-mission h4{margin:0;color:#fff;font-size:.92rem;}
+  .rw-mission-state{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:#e2bd79;white-space:nowrap;}
+  .rw-mission p{margin:.42rem 0 0;font-size:.78rem;line-height:1.5;color:#dce2dc;}
+  .rw-mission-rule{font-weight:600;color:#fff3d8!important;}
+  .rw-mission-reward{color:#bde0c5!important;}
+  .rw-quest-progress{height:7px;margin:.6rem 0 .1rem;background:rgba(255,255,255,.13);border-radius:999px;overflow:hidden;}
+  .rw-quest-progress i{display:block;height:100%;background:#e2bd79;border-radius:999px;}
+  .rw-quest .rw-btn{margin-top:1rem;background:#e2bd79;color:#19241b;}
+  .rw-quest-status{min-height:1em;margin:.6rem 0 0;font-size:.76rem;color:#f1d9a8;}
+  @keyframes questGlow{50%{box-shadow:0 0 0 5px rgba(226,189,121,.26),0 15px 32px rgba(25,36,27,.3)}}
+  @media (prefers-reduced-motion:reduce){.rw-quest.rw-quest-welcome{animation:none;}}
+  .rw-mechanics{margin-top:1.25rem;display:grid;gap:1rem;}
+  .rw-mechanic-card{background:#fff;border:1px solid #e4e8e3;border-radius:16px;padding:1.25rem 1.2rem;box-shadow:0 8px 22px rgba(25,36,27,.06);}
+  .rw-mechanic-card h2{font-family:'Playfair Display',serif;margin:0 0 .45rem;color:#19241b;font-size:1.25rem;}
+  .rw-mechanic-card p,.rw-mechanic-card li{font-size:.84rem;color:#5c6b5e;line-height:1.58;}
+  .rw-mechanic-card ol{margin:.7rem 0 0;padding-left:1.2rem;}
+  .rw-mechanic-card li+li{margin-top:.42rem;}
 </style>
 <body data-order-availability-mode="once">
 <nav>
   <a class="nav-logo" href="index.html">Accaza Coffee House</a>
   <ul class="nav-links">
-    <li><a href="index.html">Home</a></li><li><a href="index.html#menu">Menu</a></li><li><a href="reservations.html">Reservations</a></li><li><a href="rewards.html" class="active">Rewards</a></li><li><a href="about.html">About</a></li><li><a href="contact.html">Contact</a></li>
+    <li><a href="index.html">Home</a></li><li><a href="index.html#menu">Menu</a></li><li><a href="reservations.html">Reservations</a></li>
+    <li class="nav-has-sub"><a href="about.html" class="active">About ▾</a><ul class="nav-sub"><li><a href="about.html">About Us</a></li><li><a href="rewards.html" aria-current="page">Rewards &amp; Dragon Quest</a></li><li><a href="index.html#reel">Reel</a></li><li><a href="index.html#reviews">Reviews</a></li><li><a href="index.html#feedback">Feedback</a></li><li><a href="index.html#gallery">Gallery</a></li></ul></li><li><a href="contact.html">Contact</a></li>
     <li><a class="nav-cta order-availability-checking" data-order-availability href="index.html#order">Order Now</a></li>
     <li id="navAvail" style="display:none;"><a href="index.html#availSection" style="color:#c9a36a;font-weight:500;">&#128260; Availability</a></li>
     <li id="navComments" style="display:none;"><a href="index.html#commentsSection" style="color:#c9a36a;font-weight:500;">&#128233; Comments</a></li>
@@ -81,8 +110,8 @@
 </nav>
 <header class="page-hero"><div class="ph-inner">
   <p class="section-label">Accaza Rewards</p>
-  <h1>Red &amp; Yellow Stamps</h1>
-  <p>Collect a stamp every time you visit. Turn them into free drinks and discounts.</p>
+  <h1>Rewards &amp; Dragon Brew Quest</h1>
+  <p>Collect stamps, enter a story you can play, complete missions and unlock rewards.</p>
 </div></header>
 <main style="background:var(--cr);">
 <div class="rw-wrap">
@@ -182,6 +211,17 @@
     <!-- One tile per configured stamp, filled by paintStampBalances from the server's own
          stamp list, so a new stamp type appears here without an edit to this page. -->
     <div class="rw-stamps" id="stampBalances"></div>
+    <!-- The story, mission order and rewards come from the published Admin season. The
+         customer can see only the active chapter's full details; purchase evidence is
+         evaluated from completed POS orders by the server. -->
+    <section class="rw-quest" id="dragonQuest" hidden aria-live="polite">
+      <p class="rw-quest-kicker" id="dragonKicker">A new adventure</p>
+      <h3 id="dragonTitle">Dragon Brew Quest</h3>
+      <p class="rw-quest-story" id="dragonStory"></p>
+      <div class="rw-missions" id="dragonMissions"></div>
+      <button class="rw-btn" id="dragonEnrollBtn" type="button" hidden>Accept the Dragon&rsquo;s Call</button>
+      <p class="rw-quest-status" id="dragonStatus"></p>
+    </section>
     <!-- Rewards already granted to this member, each with its own expiry. -->
     <div class="rw-rewards" id="rewardsBlock" hidden>
       <h3>Your rewards, ready to use</h3>
@@ -209,6 +249,29 @@
     <button class="rw-btn ghost" id="unlinkBtn" type="button" hidden>Unlink this phone</button>
     <p class="rw-note" id="tenureNote"></p>
     <p class="rw-note" id="badgeNote">Show this screen at the counter. The code changes every minute, so a screenshot will not work. Keep this page on your phone &mdash; it is your badge.</p>
+  </section>
+
+  <section class="rw-mechanics" aria-labelledby="mechanicsTitle">
+    <article class="rw-mechanic-card">
+      <h2 id="mechanicsTitle">How Accaza Rewards works</h2>
+      <ol>
+        <li>Register free with your name and mobile number. We send a one-time code to confirm the number is yours.</li>
+        <li>Your Rewards badge appears on this page—no app download is required. Show it before paying at the counter.</li>
+        <li>Eligible completed purchases earn stamps. Your stamp wallet and ready-to-use rewards appear here.</li>
+        <li>When you redeem, staff scan your live badge or send a code to your registered number. Cancelled claims are safely returned.</li>
+      </ol>
+    </article>
+    <article class="rw-mechanic-card">
+      <h2>How Dragon Brew Quest works</h2>
+      <p>Dragon Brew Quest is an optional, limited-time game for Accaza Rewards members. Each season tells a new story, and every mission is a chapter you complete through real café visits.</p>
+      <ol>
+        <li>Tap <strong>Accept the Dragon&rsquo;s Call</strong> to enter the current season as a Brew Keeper. Mission 1 unlocks first.</li>
+        <li>Read the active mission before ordering. It may ask you to explore different drinks, pair a drink with food, collect a quantity, or return on different days.</li>
+        <li>Show your Rewards badge before payment. Only completed in-store purchases count, and only the active mission receives progress.</li>
+        <li>Complete the mission to reveal the next chapter. If that chapter has a reward, it appears in your Rewards wallet for staff to redeem.</li>
+        <li>Returned, voided or corrected qualifying purchases may place the quest reward under review so progress and giveaways stay fair.</li>
+      </ol>
+    </article>
   </section>
 
 </div>
