@@ -20,7 +20,7 @@ const snapshot = (key, value) => ({key, exists: () => value != null, val: () => 
 const context = {
   window: win, document: {getElementById: () => null}, console, requestAnimationFrame: (fn) => fn(), setTimeout,
   todayStr: () => '2026-09-16',
-  initializeApp: () => ({}), getDatabase: () => ({}), getAuth: () => ({currentUser: {email: 'owner@example.com'}}), getFunctions: () => ({}),
+  initializeApp: () => ({}), initializeAccazaAppCheck: () => ({}), getDatabase: () => ({}), getAuth: () => ({currentUser: {email: 'owner@example.com'}}), getFunctions: () => ({}),
   httpsCallable: () => async () => ({data: {}}),
   ref: (_db, path) => ({path: String(path).replace(/^\//, '')}),
   query: (target, ...constraints) => ({path: target.path, constraints}),

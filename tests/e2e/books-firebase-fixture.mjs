@@ -6,6 +6,7 @@ const FIREBASE_ORIGIN='https://www.gstatic.com/firebasejs/10.12.0/';
 
 const buildModules=(data={})=>({
   'firebase-app.js':`export function initializeApp(){return {};} export function getApp(){return {};} export function getApps(){return [{}];}`,
+  'firebase-app-check.js':`const instance={}; export class ReCaptchaEnterpriseProvider{constructor(key){this.key=key;}} export function initializeAppCheck(){return instance;} export async function getToken(){return {token:'app-check-test-token'};}`,
   'firebase-auth.js':`
     const user={uid:'books-test-owner',email:'owner@example.test',getIdToken:async()=> 'books-test-token',getIdTokenResult:async()=>({authTime:new Date().toUTCString(),claims:{}})};
     const auth={currentUser:user};

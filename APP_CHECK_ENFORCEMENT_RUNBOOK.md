@@ -6,11 +6,11 @@
 ---
 
 ## 0. Where we are now
-- App Check is **initialized** on both surfaces: the customer site (always) and Admin/POS (since **build v411**, PR #328). Both send reCAPTCHA Enterprise tokens from the app `accaza-web-LIVE`.
+- App Check is initialized through one shared helper on every active browser Firebase app. Admin/POS, Finance Books, manager-approval sign-in, the main customer app, Rewards, and the standalone order-availability reader all register reCAPTCHA Enterprise before using Authentication, Realtime Database, or Cloud Functions. This coverage repair is Admin **v641**, Customer **v92**, Books **v141**, cache **v629**; it is not production-active until merged and published.
 - Enforcement is **OFF** on every callable: both committed defaults in `src/functions/00-app-check-flags.js` are `"false"`. Missing or invalid tokens are **logged but not rejected** (monitor mode).
 - The two flags are **independent**. `ENFORCE_APP_CHECK` gates the 96 staff callables; `ENFORCE_APP_CHECK_ORDERS` gates only the 2 public order callables (`createOnlineOrder`, `confirmOrderReceived`). Turning the staff flag on no longer turns the order flag on.
 - Every online order logs `appCheck: Boolean(request.app)` server-side, so token presence is observable without the console.
-- Deploy runs #411 and #412 both failed on a transient Cloud Functions API error with 176 of 177 functions already updated; #412 attempt 2 succeeded at 2026-09-30T15:13:42Z. Both deploy steps now retry once after 60 seconds, so a single straggler no longer fails a run. The 7-day log gate therefore runs **2026-09-30 → review 2026-10-08**.
+- Deploy runs #411 and #412 both failed on a transient Cloud Functions API error with 176 of 177 functions already updated; #412 attempt 2 succeeded at 2026-09-30T15:13:42Z. Both deploy steps now retry once after 60 seconds, so a single straggler no longer fails a run. The earlier **2026-09-30 → 2026-10-08** gate was invalidated when the coverage audit found legitimate unverified Finance Books, manager-approval, and standalone order-availability clients. Start a fresh 7-day gate after v641/v92/v141/v629 is published.
 
 ## 1. The lever — READ THIS FIRST
 **The only control that reaches production is the committed default in `src/functions/00-app-check-flags.js`:**
@@ -34,7 +34,7 @@ The optional `process.env` override still works for a one-off experiment on your
 The gate is instead **no legitimate traffic in the Unverified bucket**, proven by all three of:
 1. Cloud Functions logs for `createOnlineOrder` show `appCheck: true` on **every** real order for 7 consecutive days (filter `resource.labels.function_name="createOnlineOrder"`, search `appCheck`).
 2. Realtime Database row compared over 24h vs 30d: bursty spikes = bot sweeps (expected, ignore); a **steady drip** = a blocked or broken real client — investigate before proceeding (old cached build, unsupported browser, key/domain mismatch).
-3. A cold-cache test order (Ctrl+Shift+R) and one POS sale from a real device both succeed.
+3. A cold-cache test order (Ctrl+Shift+R), one POS sale, one Finance Books sign-in, and one independent manager approval from real devices all succeed.
 
 For the staff surface specifically, also confirm from a real cashier device: sign in to Admin/POS, ring one sale, and open Finance Books. Then check that no `permission-denied` or `unauthenticated` entries appeared for those callables.
 
@@ -59,7 +59,7 @@ Still owner-owned and worth one check in the GCP console: that site key `6LdQ6Hs
 Enforcement is gatekeeping only — no data migration, so rollback is just turning it back off:
 1. Set the `ENFORCE_APP_CHECK` default back to `"false"` in `src/functions/00-app-check-flags.js`, commit, merge. The CI deploy is the rollback; it takes effect the moment it completes.
 2. Confirm a POS sale and an admin sign-in succeed again.
-3. Then diagnose which device or browser lacked a token before retrying. Check the client `initializeAppCheck` path first — it is a try/catch that only `console.warn`s, with no retry and no telemetry, so a silent failure there looks identical to a bot in the metrics.
+3. Then diagnose which device or browser lacked a token before retrying. Check `window.__accazaAppCheckStatus`: the shared helper records initialization and token-exchange status per client surface while leaving the existing server-side `request.app` logging authoritative.
 
 If a deploy is needed in a hurry and CI is unavailable: `firebase deploy --only "functions" --project "accaza-sartoga"`. Never use `firebase deploy --only hosting` for this repository — there is no Hosting target.
 
@@ -81,4 +81,4 @@ Keep the `String(process.env.X || "false")` coercion. A `defineBoolean` paramete
 Enforcement complements, and does not replace, the existing order defenses.
 
 ## 7. Definition of done
-7 consecutive days of `appCheck: true` on every real `createOnlineOrder` log line, RTDB unverified traffic confirmed bursty rather than a steady drip, and a cold-cache test order plus a real-device POS sale both passing → set the `ENFORCE_APP_CHECK` committed default to `"true"` → PR merged and Functions redeployed → POS sale, admin sign-in and Finance Books all pass → no legitimate rejections in the logs for 24h. Realtime Database stays unenforced and the order path stays in monitor. Record the date and the App Check metrics screenshot in the operations log.
+After v641/v92/v141/v629 is published: 7 consecutive days of `appCheck: true` on every real `createOnlineOrder` log line, RTDB unverified traffic confirmed bursty rather than a steady drip, and a cold-cache test order, POS sale, Finance Books sign-in, and independent manager approval all passing → set the `ENFORCE_APP_CHECK` committed default to `"true"` → PR merged and Functions redeployed → POS sale, admin sign-in and Finance Books all pass → no legitimate rejections in the logs for 24h. Realtime Database stays unenforced and the order path stays in monitor. Record the date and the App Check metrics screenshot in the operations log.

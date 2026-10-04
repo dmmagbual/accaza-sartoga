@@ -1,8 +1,10 @@
 import{initializeApp,getApps}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,get,onValue}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{initializeAccazaAppCheck}from"../shared/firebase-app-check.mjs";
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=getApps()[0]||initializeApp(firebaseConfig);
+initializeAccazaAppCheck(app,'Order availability');
 const buttons=[...document.querySelectorAll('[data-order-availability]')];
 let acceptingOrders=null;
 

@@ -20,8 +20,6 @@
 import qrcode from "./qr-encoder.mjs";
 
 const firebaseConfig = {apiKey: "AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM", authDomain: "accaza-sartoga.firebaseapp.com", databaseURL: "https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "accaza-sartoga", storageBucket: "accaza-sartoga.firebasestorage.app", messagingSenderId: "315522485228", appId: "1:315522485228:web:64ed3b7facef5a39148ec9"};
-const APP_CHECK_SITE_KEY = "6LdQ6HstAAAAAGvaa0exDw5aAHxNsrPKCtdlCeis"; // Public reCAPTCHA Enterprise site key, same one the main site registers.
-
 // Firebase loads ON DEMAND, never at module load. The badge is the one thing that has
 // to keep working when the signal drops at the counter, and it needs nothing but the
 // secret already on this device plus the QR encoder sitting next to this file - both
@@ -33,14 +31,14 @@ let callablesPromise = null;
 function callables() {
   if (callablesPromise) return callablesPromise;
   callablesPromise = (async () => {
-    const [{initializeApp}, {getFunctions, httpsCallable}, {initializeAppCheck, ReCaptchaEnterpriseProvider}, {getAuth, signInAnonymously}] = await Promise.all([
+    const [{initializeApp}, {getFunctions, httpsCallable}, {initializeAccazaAppCheck}, {getAuth, signInAnonymously}] = await Promise.all([
       import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"),
       import("https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js"),
-      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js"),
+      import("../shared/firebase-app-check.mjs"),
       import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"),
     ]);
     const app = initializeApp(firebaseConfig);
-    try { initializeAppCheck(app, {provider: new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY), isTokenAutoRefreshEnabled: true}); } catch (e) { console.warn("App Check init failed", e); }
+    initializeAccazaAppCheck(app, "Rewards");
     const functions = getFunctions(app, "asia-southeast1");
     const auth = getAuth(app);
     return {
