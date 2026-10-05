@@ -4,6 +4,7 @@ import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/
 import{getAuth,signInAnonymously,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import{initializeAccazaAppCheck}from"../shared/firebase-app-check.mjs";
+import{installChatbot}from"./chatbot.mjs";
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);

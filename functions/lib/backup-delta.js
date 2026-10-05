@@ -52,6 +52,13 @@ const TRACKED_PATHS = Object.freeze([
   "reviews",
   "feedbacks",
   "packages",
+  // Oct 2026: per-sale loyalty, Dragon Quest and QR ticket history (forces one full backup on
+  // the first run after deploy, as every tracked-list change does).
+  "loyaltyLedger",
+  "loyaltyRewards",
+  "dragonQuestLedger",
+  "dragonQuestOrderIndex",
+  "archivedQrTickets",
 ]);
 const DIRTY_ROOT = "backupDirty";
 const MAX_BASE_AGE_MS = 8 * 86400000;

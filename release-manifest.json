@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 645,
+    "admin": 646,
     "books": 142,
-    "customer": 95,
-    "serviceWorkerCache": 634
+    "customer": 96,
+    "serviceWorkerCache": 635
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -73,6 +73,7 @@
     "assets/js/books/suspense-advance.mjs",
     "assets/js/books/accounting-periods.mjs",
     "assets/js/customer/core.mjs",
+    "assets/js/customer/chatbot.mjs",
     "assets/js/customer/order-availability.mjs",
     "assets/js/customer/rewards.js",
     "src/customer/core/00-firebase-auth.mjs",
@@ -175,6 +176,7 @@
     "assets/js/shared/sales-authority.js",
     "assets/css/admin-backoffice.css",
     "assets/js/admin/core.mjs",
+    "assets/js/admin/order-archive-panel.mjs",
     "assets/js/admin/staff-access.js",
     "assets/js/admin/accaza-ai.js",
     "assets/js/admin/manager-approval.mjs",
@@ -229,6 +231,9 @@
     "tests/customer-public-read-scope-check.mjs",
     "tests/production-assurance-check.mjs",
     "tests/performance-budget-check.mjs",
+    "tests/ai-record-download-guard-check.mjs",
+    "tests/firebase-load-guards-check.mjs",
+    "tests/order-archive-panel-check.mjs",
     "tests/cash-balance-summary-check.mjs",
     "tests/recovery-certification-check.mjs",
     "tests/dependency-certification-check.mjs",
@@ -291,6 +296,7 @@
     "src/admin/register/90-shift-review-export.js",
     "src/admin/register/99-voids-refunds.js",
     "assets/js/admin/analytics.js",
+    "assets/js/admin/daily-report-output.mjs",
     "src/admin/analytics/00-bootstrap-subscriptions.js",
     "src/admin/analytics/10-sales-model-history.js",
     "src/admin/analytics/20-sales-analytics.js",

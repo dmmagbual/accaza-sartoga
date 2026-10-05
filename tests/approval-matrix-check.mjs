@@ -5,7 +5,7 @@ const root=process.cwd();
 const read=(...parts)=>fs.readFileSync(path.join(root,...parts),'utf8');
 const functionsSource=read('functions','index.js');
 const managerSource=read('assets','js','admin','manager-approval.mjs');
-const coreSource=read('assets','js','admin','core.mjs');
+const coreSource=read('assets','js','admin','core.mjs')+'\n'+read('assets','js','admin','order-archive-panel.mjs');
 const registerSource=read('assets','js','admin','register.js');
 const posSource=read('assets','js','admin','pos.js');
 const analyticsSource=read('assets','js','admin','analytics.js');
