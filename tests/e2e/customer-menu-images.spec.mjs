@@ -53,3 +53,23 @@ test('the hero photo is requested first and fonts and photos connect early',asyn
   await expect(page.locator('link[rel="preconnect"][href="https://fonts.gstatic.com"]')).toHaveAttribute('crossorigin','');
   await expect(page.locator('link[rel="preconnect"][href="https://i.postimg.cc"]')).not.toHaveAttribute('crossorigin',/.*/);
 });
+
+test('site photos load from the site itself as small WebP files and the lightbox follows the cards',async({page})=>{
+  await installCustomerFirebaseFixture(page);
+  const remote=[],local=[];
+  page.on('request',request=>{const url=request.url();if(/postimg\.cc\/(g2vgBmhF|8zM97Trf|g0qrJsnX|TwtsR8Gd|5yPsM8BH|wMbQrgz3|BvGckmr5|sXJJz5YV|B6mT84jW|yxJZk9qq|CxpqxzcB|Pq2pyKTr|sxZMVrSZ)\//.test(url))remote.push(url);});
+  page.on('response',async response=>{if(/\/assets\/img\/gallery\//.test(response.url()))local.push({url:response.url(),status:response.status(),bytes:(await response.body()).length});});
+  await page.goto('/',{waitUntil:'load'});
+  await expect.poll(()=>page.locator('.hero-bg img').evaluate(img=>img.complete&&img.naturalWidth)).toBeGreaterThan(0);
+  expect(await page.locator('.hero-bg img').evaluate(img=>img.currentSrc)).toMatch(/\/assets\/img\/gallery\/hero-wallpaper(-640)?\.webp$/);
+  await page.locator('.gallery-grid').scrollIntoViewIfNeeded();
+  const cards=page.locator('.gallery-card img');
+  await expect(cards).toHaveCount(11);
+  for(let i=0;i<11;i++){await cards.nth(i).scrollIntoViewIfNeeded();await expect.poll(()=>cards.nth(i).evaluate(img=>img.complete&&img.naturalWidth)).toBeGreaterThan(0);}
+  await page.locator('.gallery-card').nth(4).click();
+  await expect(page.locator('#lightbox-img')).toHaveAttribute('src','assets/img/gallery/gallery-05.webp');
+  await expect.poll(()=>page.locator('#lightbox-img').evaluate(img=>img.complete&&img.naturalWidth)).toBeGreaterThan(0);
+  expect(remote).toEqual([]);
+  expect(local.length).toBeGreaterThan(0);
+  for(const photo of local){expect(photo.status).toBe(200);expect(photo.bytes).toBeLessThan(260_000);}
+});
