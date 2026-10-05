@@ -230,6 +230,7 @@
     "tests/customer-public-read-scope-check.mjs",
     "tests/production-assurance-check.mjs",
     "tests/performance-budget-check.mjs",
+    "tests/bundle-coverage-check.mjs",
     "tests/ai-record-download-guard-check.mjs",
     "tests/firebase-load-guards-check.mjs",
     "tests/order-archive-panel-check.mjs",
