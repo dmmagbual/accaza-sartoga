@@ -17,6 +17,7 @@ const posSale=read('src','admin','pos','50f-sale-persistence.js');
 const offlineSync=read('functions','lib','offline-sync.js');
 const rules=read('database.rules.json');
 const pwa=read('assets','js','pwa-register.js');
+const registerSettings=read('src','admin','register','70-settings-staff.js');
 
 check(menu.includes("location.replace('index.html?qr=1#order')"),'The general QR URL must open menu-only ordering mode.');
 check(manifest.name==='Accaza Menu'&&manifest.start_url==='/menu.html','The dedicated menu PWA must reopen the general QR menu.');
@@ -35,5 +36,7 @@ for(const marker of ['qrTicketChime','New QR order ·','navigator.vibrate','Open
 for(const marker of ["order.orderEntryMethod='customer_qr'","order.qrTicketId=posQrTicket.id","order.qrQueueNumber=posQrTicket.queueNumber","order.qrTicketClaimToken=posQrTicket.claimToken"] )check(posSale.includes(marker),`Final POS sale is missing QR source linkage: ${marker}`);
 for(const marker of ['row.status==="converting"','qrTicketClaimToken','delete order.qrTicketClaimToken','archivedQrTickets','activeQrTickets/${qrTicket.id}`]=null','convert_qr_order_to_pos_sale'])check(offlineSync.includes(marker),`Single-use QR sale conversion is missing: ${marker}`);
 check(rules.includes('"activeQrTickets"')&&rules.includes('"qrOrderCounters"')&&rules.includes('"archivedQrTickets"'),'Database rules must expose active QR tickets only to authorized POS users and keep server nodes private.');
+for(const marker of ["CUSTOMER_MENU_QR_URL='https://accazacoffee.com/menu.html'","assets/js/customer/qr-encoder.mjs","Download Customer QR Code","accaza-customer-menu-qr.png","canvas.width=1600","image/png","Test customer menu"])check(registerSettings.includes(marker),`Settings customer QR download is missing: ${marker}`);
+check(!registerSettings.includes('api.qrserver')&&!registerSettings.includes('chart.googleapis.com'),'Customer QR generation must stay local and must not depend on an external QR service.');
 
 console.log('QR dine-in menu, cashier alert, POS handoff, and single-posting checks passed.');
