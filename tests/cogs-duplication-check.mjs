@@ -76,13 +76,12 @@ check(/A cost of sales account may only offset a costing correction/.test(inv),'
 check(/A costing correction must offset the cost of sales account it was charged to/.test(inv),'the server refuses a costing correction sent to wastage or reconciliation');
 check(/A costing correction must be posted as a stock adjustment/.test(inv),'a revaluation cannot reach a cost-of-sales account');
 
-const ui=fs.readFileSync('src/admin/pos/31-recipe-temperature-repair.js','utf8');
-check(/cogsFixPost/.test(ui),'the admin screen offers the correction');
-check(/5905/.test(ui)&&/residualValue/.test(ui),'the screen tells the user the leftover entry to post by hand');
-check(/skipped/.test(ui),'the screen surfaces the lines it refused to correct');
-check(/cogs-duplication-audit\.js/.test(fs.readFileSync('admin.html','utf8')),'admin.html loads the audit');
-check(/cogs-duplication-audit\.js/.test(fs.readFileSync('sw.js','utf8')),'the service worker caches the audit');
-check(/cogsFixPost/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the correction');
+/* The duplicated-COGS correction screen (posted early Sep 2026) was removed from the Recipes tab
+   on 6 Sep 2026 and its unreachable code deleted on 6 Oct 2026. The audit above and the server
+   guards stay: a future correction is posted as a stock adjustment the server checks. */
+check(!/cogs-duplication-audit\.js/.test(fs.readFileSync('admin.html','utf8')),'admin.html no longer loads the audit');
+check(!/cogs-duplication-audit\.js/.test(fs.readFileSync('sw.js','utf8')),'the service worker no longer caches the audit');
+check(!/cogsFixPost/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle no longer carries the retired correction screen');
 
 console.log(failures?`\n${failures} check(s) failed.`:'\nAll COGS duplication checks passed.');
 process.exit(failures?1:0);

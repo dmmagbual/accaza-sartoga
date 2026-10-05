@@ -80,7 +80,6 @@ function treeUsesIngredient(value,id){if(!value||typeof value!=='object')return 
 function recipeUsesInventory(id){var item=inventoryMap[id]||{};return item.recipeItem===true||ingType(item)==='consumable'||treeUsesIngredient(recipesMap,id)||treeUsesIngredient(optRecipesMap,id)||treeUsesIngredient(optCostStore(),id);}
 function recipeHasIngredientRows(rec){return !!(rec&&((rec.base||[]).length||(rec.sharedBase||[]).length||Object.keys(rec.choiceAdd||{}).some(function(g){return Object.keys(rec.choiceAdd[g]||{}).some(function(k){return !!(((rec.choiceAdd[g]||{})[k]||{}).ings||[]).length;});})));}
 function skuDisplay(s){return ((s&&s.brand)||'Unnamed brand')+((s&&s.supplier)?' · '+s.supplier:'');}
-function ingName(id){var i=inventoryMap[id];return i?i.name:'(deleted)';}
 function ingUnit(id){var i=inventoryMap[id];return i?(i.unit||''):'';}
 function ingCost(id){var i=inventoryMap[id];return i?(Number(i.cost)||0):0;}
 /* P3: Standard cost (pricing lens) vs Actual COGS (weighted-average, unchanged).
@@ -104,20 +103,7 @@ var ITEM_COST_ACCOUNTS=[['5000','COGS — Coffee & Beans'],['5010','COGS — Mil
 function itemAccountOptions(selected,kind){var rows=kind==='inventory'?ITEM_INVENTORY_ACCOUNTS:ITEM_COST_ACCOUNTS;return '<option value="">— Unmapped —</option>'+rows.map(function(p){return '<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[0]+' · '+esc((kind==='inventory'?'Inventory — ':'')+p[1])+'</option>';}).join('');}
 function invItemAccounts(i){return{inventoryAccount:String(i&&i.inventoryAccount||''),costAccount:String(i&&(i.costAccount||i.cogsAccount)||'')};}
 function seedInvCats(){ if(Object.keys(invCatsMap()).length)return; var a=A(); if(!a)return; var seed={}; [['Coffee','cogs'],['Milk','cogs'],['Syrup','cogs'],['Powder','cogs'],['Tea','cogs'],['Packaging','cogs'],['Food & Pastries','cogs'],['Cleaning','overhead'],['Office','overhead']].forEach(function(p,i){seed['cat_'+p[0].toLowerCase().replace(/[^a-z0-9]+/g,'_')]={name:p[0],kind:p[1],order:i};}); a.update(a.ref(a.db,'posSettings/invCategories'),seed).catch(function(){}); }
-/* consumables applicable to a menu category+size */
 function catType(cat){var m=(window.__posSettings&&window.__posSettings.catType)||{};return m[cat]||'';}
-function consumablesFor(cat,size){
-  var t=catType(cat); if(t!=='drink'&&t!=='food')return [];
-  return ings().filter(function(i){
-    if(ingType(i)!=='consumable')return false;
-    if(ingIsArchived(i))return false;   /* retired consumables stop being deducted per order */
-    var sv=i.serves||'both';
-    if(t==='drink'&&sv==='food')return false;
-    if(t==='food'&&sv==='drink')return false;
-    if(i.size&&i.size!==size)return false;   /* size-specific (e.g. cups) only fire for their size */
-    return true;
-  });
-}
 /* per-size base quantity, with legacy (qty × sizeMult) fallback */
 function baseQtyForSize(rec,b,size){
   var per=b['qty'+size];
@@ -142,9 +128,6 @@ function optRecipeFor(rec,label){
    Falls back to legacy optRecipeFor (single flat qty by label) when no entry exists,
    so existing add-on costs and historical (snapshotted) orders are unaffected. */
 function optCostStore(){return (window.__posSettings&&window.__posSettings.optionCosts)||{};}
-/* Which option groups may carry per-drink extra ingredients (choiceAdd). Default = Temperature only.
-   Stored in posSettings.choiceAddGroups (no rule change). Empty array = none allowed. */
-function caAllowGroups(){var s=(window.__posSettings&&window.__posSettings.choiceAddGroups);return Array.isArray(s)?s:['og_temp'];}
 function groupIdForLabel(item,label){
   var groups=(item&&A()&&A().getItemOptionGroups)?A().getItemOptionGroups(item):[];
   for(var i=0;i<(groups||[]).length;i++){var cs=groups[i].choices||[];for(var j=0;j<cs.length;j++){if(cs[j].label===label)return groups[i].id;}}

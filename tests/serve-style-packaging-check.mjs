@@ -139,7 +139,7 @@ check(/itemStyleId\(key\)/.test(ui)&&/updates\['packagingRules\/'\+custId\]=clea
 check(/packSnapshot/.test(ui)&&/packRestore/.test(ui),'the screen takes a restore point and can undo from it');
 check(/packSnapshotData/.test(ui)&&/recipes:packDraftClone\(recipesMap\|\|\{\}\)/.test(ui)&&!/a\.get\(a\.ref\(a\.db,'recipes'\)\)/.test(ui),'the restore point reuses the fully loaded live costing data instead of issuing failure-prone duplicate Firebase reads');
 check(/data-pack-addrow/.test(ui)&&/data-pack-delrow/.test(ui)&&/quantities/.test(ui),'inherited packaging contents remain editable, removable and addable in the shared packaging set');
-check(/packApply/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the packaging screen');
+check(/function renderServeStylePackaging\(/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the packaging screen');
 check(/serve-style-plan\.js/.test(fs.readFileSync('admin.html','utf8')),'admin.html loads the planner');
 check(/serve-style-plan\.js/.test(fs.readFileSync('sw.js','utf8')),'the service worker caches the planner');
 

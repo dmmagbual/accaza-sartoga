@@ -162,7 +162,9 @@ assert.ok(live.includes('query(base,orderByChild("status"),endBefore("reviewed")
 assert.ok(live.includes('query(ref(db,"/cashCustody"),orderByChild("remaining"),startAt(0.005))'), 'Cash Flow reads only custody that still holds cash');
 assert.ok(live.includes('orderByChild("depositMovementId"),equalTo(null)'), 'Cash Flow reads only payouts not yet deposited');
 assert.ok(live.includes('query(ref(db,"/purchaseInvoices"),orderByChild("date"),startAt('), 'the Purchases register reads the selected period');
-assert.ok((read('src/admin/pos/20-purchasing.js')+read('src/admin/pos/20a-purchase-posting.js')+read('src/admin/pos/20b-ingredient-maintenance.js')).includes("a.orderByChild('ing'),a.equalTo(id)"), 'brand breakdown reads one item\'s receipts');
+// The brand breakdown dialog (an indexed per-item stockReceipts read) lost its caller and was
+// deleted on 6 Oct 2026, so there is no per-item receipts reader left to check here.
+assert.ok(!read('assets/js/admin/pos.js').includes('function brandBreakdown('), 'the retired brand breakdown dialog must not return without its indexed read');
 // Admin Cash Flow attaches custody through the remaining index.
 {
   const attached = [];

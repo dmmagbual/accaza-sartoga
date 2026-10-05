@@ -80,7 +80,6 @@ function treeUsesIngredient(value,id){if(!value||typeof value!=='object')return 
 function recipeUsesInventory(id){var item=inventoryMap[id]||{};return item.recipeItem===true||ingType(item)==='consumable'||treeUsesIngredient(recipesMap,id)||treeUsesIngredient(optRecipesMap,id)||treeUsesIngredient(optCostStore(),id);}
 function recipeHasIngredientRows(rec){return !!(rec&&((rec.base||[]).length||(rec.sharedBase||[]).length||Object.keys(rec.choiceAdd||{}).some(function(g){return Object.keys(rec.choiceAdd[g]||{}).some(function(k){return !!(((rec.choiceAdd[g]||{})[k]||{}).ings||[]).length;});})));}
 function skuDisplay(s){return ((s&&s.brand)||'Unnamed brand')+((s&&s.supplier)?' · '+s.supplier:'');}
-function ingName(id){var i=inventoryMap[id];return i?i.name:'(deleted)';}
 function ingUnit(id){var i=inventoryMap[id];return i?(i.unit||''):'';}
 function ingCost(id){var i=inventoryMap[id];return i?(Number(i.cost)||0):0;}
 /* P3: Standard cost (pricing lens) vs Actual COGS (weighted-average, unchanged).
@@ -104,20 +103,7 @@ var ITEM_COST_ACCOUNTS=[['5000','COGS — Coffee & Beans'],['5010','COGS — Mil
 function itemAccountOptions(selected,kind){var rows=kind==='inventory'?ITEM_INVENTORY_ACCOUNTS:ITEM_COST_ACCOUNTS;return '<option value="">— Unmapped —</option>'+rows.map(function(p){return '<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[0]+' · '+esc((kind==='inventory'?'Inventory — ':'')+p[1])+'</option>';}).join('');}
 function invItemAccounts(i){return{inventoryAccount:String(i&&i.inventoryAccount||''),costAccount:String(i&&(i.costAccount||i.cogsAccount)||'')};}
 function seedInvCats(){ if(Object.keys(invCatsMap()).length)return; var a=A(); if(!a)return; var seed={}; [['Coffee','cogs'],['Milk','cogs'],['Syrup','cogs'],['Powder','cogs'],['Tea','cogs'],['Packaging','cogs'],['Food & Pastries','cogs'],['Cleaning','overhead'],['Office','overhead']].forEach(function(p,i){seed['cat_'+p[0].toLowerCase().replace(/[^a-z0-9]+/g,'_')]={name:p[0],kind:p[1],order:i};}); a.update(a.ref(a.db,'posSettings/invCategories'),seed).catch(function(){}); }
-/* consumables applicable to a menu category+size */
 function catType(cat){var m=(window.__posSettings&&window.__posSettings.catType)||{};return m[cat]||'';}
-function consumablesFor(cat,size){
-  var t=catType(cat); if(t!=='drink'&&t!=='food')return [];
-  return ings().filter(function(i){
-    if(ingType(i)!=='consumable')return false;
-    if(ingIsArchived(i))return false;   /* retired consumables stop being deducted per order */
-    var sv=i.serves||'both';
-    if(t==='drink'&&sv==='food')return false;
-    if(t==='food'&&sv==='drink')return false;
-    if(i.size&&i.size!==size)return false;   /* size-specific (e.g. cups) only fire for their size */
-    return true;
-  });
-}
 /* per-size base quantity, with legacy (qty × sizeMult) fallback */
 function baseQtyForSize(rec,b,size){
   var per=b['qty'+size];
@@ -142,9 +128,6 @@ function optRecipeFor(rec,label){
    Falls back to legacy optRecipeFor (single flat qty by label) when no entry exists,
    so existing add-on costs and historical (snapshotted) orders are unaffected. */
 function optCostStore(){return (window.__posSettings&&window.__posSettings.optionCosts)||{};}
-/* Which option groups may carry per-drink extra ingredients (choiceAdd). Default = Temperature only.
-   Stored in posSettings.choiceAddGroups (no rule change). Empty array = none allowed. */
-function caAllowGroups(){var s=(window.__posSettings&&window.__posSettings.choiceAddGroups);return Array.isArray(s)?s:['og_temp'];}
 function groupIdForLabel(item,label){
   var groups=(item&&A()&&A().getItemOptionGroups)?A().getItemOptionGroups(item):[];
   for(var i=0;i<(groups||[]).length;i++){var cs=groups[i].choices||[];for(var j=0;j<cs.length;j++){if(cs[j].label===label)return groups[i].id;}}
@@ -957,91 +940,6 @@ function importInventoryXlsx(file,purpose){
   };
   rd.readAsArrayBuffer(file);
 }
-/* ══════════ RECEIVE STOCK (single item) ══════════
-   A delivery of one item, received from the Inventory list without opening the full
-   Purchases sheet. It does NOT post anything itself: it builds a one-line purchase
-   draft and hands it to postPurchases(), the same function the Purchases workspace
-   uses. That is deliberate — this dialog previously posted the stock movement first
-   and then called payment/payable services that could never succeed from here
-   (a stock-receipt id where the server expects a purchase invoice id, and an inventory
-   payable type the server refuses outside Purchases), so a receipt raised stock and
-   weighted-average cost with no liability, no receipt record and nothing in Books.
-   Everything now goes through one path: one supplier master, one invoice, one set of
-   guards, one Finance Books treatment, and the same safe-to-retry semantics. */
-function receiveStock(id){
-  var i=inventoryMap[id]; if(!i)return;
-  var recipeRequired=recipeUsesInventory(id), activeSkus=activeSkusFor(id);
-  if(recipeRequired&&!activeSkus.length){alert('“'+i.name+'” is a recipe SKU with no active approved brand. Add a brand before receiving stock.');openSkuManager(id);return;}
-  var before=Number(i.stock)||0, oldCost=Number(i.cost)||0, unit=i.unit||'';
-  var cf=window.__cf; var accs=(cf&&cf.accounts&&cf.accounts())||[],payAccs=accs.filter(function(x){return !x.disabled;});
-  var accOpts='<option value="">— choose cash / bank / e-wallet —</option>'+accs.map(function(x){return '<option value="'+esc(x.id)+'"'+(x.disabled?' disabled':'')+'>'+esc(x.name)+' · '+peso(x.balance)+(x.disabled?' · unavailable for purchases':'')+'</option>';}).join('');
-  function supplierOptions(selected){return '<option value="">— select supplier —</option>'+purchaseSuppliers().map(function(x){return '<option value="'+esc(x.id)+'"'+(selected===x.id?' selected':'')+'>'+esc(x.name)+'</option>';}).join('');}
-  var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
-  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
-    +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Receive stock — '+esc(i.name)+'</div>'
-    +'<p class="pz-sub" style="margin:0.2rem 0 0.7rem;">On hand: <b>'+num(before)+' '+esc(unit)+'</b> · current cost '+peso(oldCost)+' / '+esc(unit||'unit')+'</p>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><div><span class="pz-lbl">Quantity received ('+esc(unit||'units')+')</span><input class="pz-in" id="rcQty" type="number" step="any" style="width:120px;"/></div><div><span class="pz-lbl">Unit cost ₱ (per '+esc(unit||'unit')+')</span><input class="pz-in" id="rcCost" type="number" step="any" value="'+(oldCost||'')+'" style="width:120px;"/></div></div>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div style="flex:1;min-width:190px;"><span class="pz-lbl">Supplier</span><div style="display:flex;gap:.3rem;"><select class="pz-in" id="rcSup">'+supplierOptions('')+'</select><button type="button" class="pz-btn sec" id="rcNewSup">＋</button></div></div><div><span class="pz-lbl">Invoice / ref</span><input class="pz-in" id="rcRef" style="width:130px;"/></div></div>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Date</span><input class="pz-in" id="rcDate" type="date" value="'+window.AccazaDate.key()+'"/></div><div style="flex:1;min-width:140px;"><span class="pz-lbl">Received by</span><input class="pz-in" id="rcBy" value="'+esc((window.__posShift&&window.__posShift.staff)||'Admin')+'"/></div></div>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div class="purchase-sku-cell '+(recipeRequired?'required':'optional')+'" style="flex:1;min-width:180px;"><span class="pz-lbl">Approved brand '+(recipeRequired?'<b>required</b>':'(optional)')+'</span><select class="pz-in" id="rcSku"><option value="">— '+(recipeRequired?'select brand':'no approved brand / legacy receipt')+' —</option>'+activeSkus.map(function(s,ix){return '<option value="'+esc(s.id)+'"'+(recipeRequired&&activeSkus.length===1&&ix===0?' selected':'')+'>'+esc(skuDisplay(s))+'</option>';}).join('')+'</select></div><div style="flex:1;min-width:120px;"><span class="pz-lbl">Brand</span><input class="pz-in" id="rcBrand" placeholder="e.g. Arla"'+(recipeRequired?' readonly':'')+'/></div><div><span class="pz-lbl">Expiry (opt.)</span><input class="pz-in" id="rcExpiry" type="date"/></div><div><span class="pz-lbl">Lot # (opt.)</span><input class="pz-in" id="rcLot" style="width:90px;"/></div></div>'
-    +'<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.5rem;"><span class="pz-lbl">How was it paid?</span>'
-      +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="pending" checked/> Invoice pending — records a provisional supplier obligation</label>'
-      +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="paid"'+(payAccs.length?'':' disabled')+'/> Paid now'+(payAccs.length?'':' <span style="color:var(--tl);">(no available Balance Sheet cash account)</span>')+'</label>'
-      +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="account"/> On account — creates a Payable</label>'
-      +'<div id="rcPayDetail" style="margin-top:0.35rem;"></div>'
-    +'</div>'
-    +'<div id="rcPrev" style="margin-top:0.6rem;font-size:0.82rem;color:var(--tm);"></div>'
-    +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="rcOk">Receive</button><button class="pz-btn sec" id="rcCancel">Cancel</button></div></div>';
-  document.body.appendChild(mask);
-  function close(){if(mask.parentNode)document.body.removeChild(mask);}
-  function prev(){var q=Number(mask.querySelector('#rcQty').value)||0;var c=Number(mask.querySelector('#rcCost').value)||0;var tot=Math.round(q*c*100)/100;var navg=(before+q>0)?((before*oldCost+q*c)/(before+q)):c;mask.querySelector('#rcPrev').innerHTML=q?('New stock: <b>'+num(before+q)+' '+esc(unit)+'</b> · total '+peso(tot)+(c>0?(' · new avg cost '+peso(Math.round(navg*100)/100)+' / '+esc(unit||'unit')):'')):'';}
-  mask.querySelector('#rcQty').oninput=prev; mask.querySelector('#rcCost').oninput=prev;
-  function syncReceiptSku(){var sid=mask.querySelector('#rcSku').value,sk=inventorySkuMap[sid];if(sk)mask.querySelector('#rcBrand').value=sk.brand||'';else if(recipeRequired)mask.querySelector('#rcBrand').value='';}
-  mask.querySelector('#rcSku').onchange=syncReceiptSku; syncReceiptSku();
-  /* The cash account and the due date each belong to one settlement option, so each is
-     rendered only while that option is selected. Nesting them inside another option's
-     label is what let an operator pick a bank account while "Invoice pending" stayed on. */
-  var payDetail=mask.querySelector('#rcPayDetail');
-  function renderPayDetail(){
-    var pay=(mask.querySelector('input[name=rcPay]:checked')||{}).value||'pending';
-    if(pay==='paid'&&payAccs.length)payDetail.innerHTML='<span class="pz-lbl">Paid from</span><select class="pz-in" id="rcAcct">'+accOpts+'</select>';
-    else if(pay==='account')payDetail.innerHTML='<span class="pz-lbl">Due date</span><input class="pz-in" id="rcDue" type="date"/>';
-    else payDetail.innerHTML='';
-  }
-  mask.querySelectorAll('input[name=rcPay]').forEach(function(r){r.onchange=renderPayDetail;});
-  renderPayDetail();
-  mask.querySelector('#rcNewSup').onclick=function(){createPurchaseSupplier('').then(function(x){supplierMap[x.supplierId]=Object.assign({},supplierMap[x.supplierId]||{},{name:x.name,active:true});var sel=mask.querySelector('#rcSup');sel.innerHTML=supplierOptions(x.supplierId);sel.value=x.supplierId;}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not create supplier: '+((e&&e.message)||e));});};
-  mask.querySelector('#rcCancel').onclick=close;
-  mask.querySelector('#rcOk').onclick=function(){
-    var q=Number(mask.querySelector('#rcQty').value)||0; if(!(q>0)){alert('Enter the quantity received.');return;}
-    var c=Number(mask.querySelector('#rcCost').value)||0;
-    var supplierId=mask.querySelector('#rcSup').value||'', master=purchaseSupplierById(supplierId);
-    if(!master){alert('Select an active supplier from the shared supplier database, or create one with ＋. Stock cannot be received without a supplier.');return;}
-    var ref=(mask.querySelector('#rcRef').value||'').trim();
-    var date=mask.querySelector('#rcDate').value||window.AccazaDate.key(); var by=(mask.querySelector('#rcBy').value||'').trim();
-    var pay=(mask.querySelector('input[name=rcPay]:checked')||{}).value||'pending';
-    var acctEl=mask.querySelector('#rcAcct'), dueEl=mask.querySelector('#rcDue');
-    if(pay==='paid'&&!(acctEl&&acctEl.value)){alert('Choose the cash, bank or e-wallet account the money came from.');return;}
-    var skuId=mask.querySelector('#rcSku').value||'', selectedSku=inventorySkuMap[skuId];
-    if(recipeRequired&&(!selectedSku||selectedSku.masterId!==id||selectedSku.active===false)){alert('Select an active approved brand before receiving this recipe item.');return;}
-    var brand=selectedSku?(selectedSku.brand||''):(mask.querySelector('#rcBrand').value||'').trim();
-    if(window.__purchPosting){alert('A purchase is still posting. Wait for it to finish before receiving this delivery.');return;}
-    /* Hand the delivery to the Purchases workspace as a one-line draft. Whatever draft the
-       user already had open there is put back afterwards, posted or not. */
-    var keptDraft=window.__purch||null;
-    window.__purch={supplierId:master.id,supplier:master.name,ref:ref,date:date,by:by||'Admin',description:'Received from the inventory list',
-      pay:pay,acct:pay==='paid'?acctEl.value:'',advanceId:'',due:pay==='account'?((dueEl&&dueEl.value)||''):'',ownerName:'',ownerTreatment:'capital',
-      lines:[Object.assign(purchBlank(),{mode:'existing',ing:id,skuId:selectedSku?skuId:'',brand:brand,recvUnit:unit,qty:q,costMode:'unit',unitCost:c,expiry:mask.querySelector('#rcExpiry').value||'',lot:(mask.querySelector('#rcLot').value||'').trim()})]};
-    postPurchases();
-    var settle=setInterval(function(){
-      if(window.__purchPosting)return;
-      clearInterval(settle);
-      var posted=window.__purch===null;   /* postPurchases clears the draft only after a successful post */
-      window.__purch=keptDraft;
-      if(posted){if(window.__posLog)window.__posLog('stock-receive',i.name,num(q)+' '+unit+' · '+peso(Math.round(q*c*100)/100)+' · '+pay);close();}
-    },120);
-  };
-}
 /* ══════════ PURCHASES (Goods-Received Note) ══════════
    Function model: receive stock into existing generic items (blends weighted-avg cost)
    or create a new item. Measurement units are dimension-guarded; discrete packaging
@@ -1057,7 +955,6 @@ function purchaseSupplierKey(value){return String(value||'').trim().replace(/\s+
 function purchaseSuppliers(){return Object.keys(supplierMap).map(function(id){return Object.assign({id:id},supplierMap[id]);}).filter(function(x){return x.active!==false&&!x.mergedInto;}).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),undefined,{sensitivity:'base'});});}
 function purchaseSupplierResolvedId(id){var x=String(id||''),seen={};while(x&&supplierMap[x]&&supplierMap[x].mergedInto){if(seen[x])return '';seen[x]=1;x=String(supplierMap[x].mergedInto||'');}return x;}
 function purchaseSupplierById(id){var x=purchaseSupplierResolvedId(id),row=x&&supplierMap[x];return row&&row.active!==false&&!row.mergedInto?Object.assign({id:x},row):null;}
-function purchaseSupplierNames(){return purchaseSuppliers().map(function(x){return x.name;});}
 function purchaseFundingLabel(id){var cf=window.__cf,accs=(cf&&cf.accounts&&cf.accounts())||[],found=accs.find(function(x){return x.id===(id||'undeposited');});return found?found.name:'Undeposited Collection';}
 function allSuppliersForList(){return Object.keys(supplierMap).map(function(id){return Object.assign({id:id},supplierMap[id]);}).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),undefined,{sensitivity:'base'});});}
 function showSupplierList(){
@@ -1426,30 +1323,6 @@ function editIngredient(id){
     A().update(A().ref(A().db,'inventory/'+id),upd).then(close).catch(function(e){alert('Could not save: '+((e&&e.message)||e)+'.');});
   };
   return;
-}
-/* Brand breakdown for a pooled generic item: shows each brand received + the
-   weighted-average cost recipes actually use. On-hand is pooled (one figure). */
-function brandBreakdown(id){
-  var i=inventoryMap[id]; if(!i)return; var a=A();
-  a.get(a.query(a.ref(a.db,'stockReceipts'),a.orderByChild('ing'),a.equalTo(id))).then(function(s){
-    var all=s.val()||{}; var byBrand={}; var totQ=0,totV=0;
-    Object.keys(all).forEach(function(k){var r=all[k]; if(!r||r.ing!==id)return; var b=(r.brand||'').trim()||'(no brand noted)'; if(!byBrand[b])byBrand[b]={qty:0,value:0,n:0,last:''}; byBrand[b].qty+=Number(r.qty)||0; byBrand[b].value+=Number(r.total)||0; byBrand[b].n++; totQ+=Number(r.qty)||0; totV+=Number(r.total)||0; var d=r.date||''; if(d>byBrand[b].last)byBrand[b].last=d;});
-    var brands=Object.keys(byBrand).sort();
-    var rows=brands.length?brands.map(function(b){var x=byBrand[b];var avg=x.qty>0?x.value/x.qty:0;return '<tr><td>'+esc(b)+'</td><td class="r">'+num(Math.round(x.qty*1000)/1000)+' '+esc(i.unit||'')+'</td><td class="r">'+peso(x.value)+'</td><td class="r">'+peso(Math.round(avg*100000)/100000)+'</td><td class="r" style="color:var(--tl);">'+x.n+'</td><td class="r" style="color:var(--tl);">'+esc(x.last||'')+'</td></tr>';}).join(''):'<tr><td colspan="6" style="color:var(--tl);padding:0.6rem;">No purchases recorded for this item yet. Receive stock via the Purchases tab and note the brand per line.</td></tr>';
-    var histAvg=totQ>0?(totV/totQ):0;
-    var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
-    mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:620px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">🏷 Brands — '+esc(i.name)+'</div><button class="pz-btn sec" id="bbClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
-      +'<p class="pz-sub" style="margin:0.3rem 0 0.6rem;">Recipes reference <b>'+esc(i.name)+'</b> and cost at its <b>current weighted-average: '+peso(Number(i.cost)||0)+' / '+esc(i.unit||'')+'</b> · on hand (pooled) '+num(Number(i.stock)||0)+' '+esc(i.unit||'')+'.</p>'
-      +'<table class="pz-tbl"><thead><tr><th>Brand</th><th class="r">Received</th><th class="r">Total ₱</th><th class="r">Avg ₱/unit</th><th class="r">Buys</th><th class="r">Last</th></tr></thead><tbody>'+rows+'</tbody></table>'
-      +(brands.length?'<div style="text-align:right;font-size:0.8rem;color:var(--tl);margin-top:0.3rem;">Lifetime purchase avg across brands: <b>'+peso(Math.round(histAvg*100000)/100000)+' / '+esc(i.unit||'')+'</b></div>':'')
-      +'<p class="pz-sub" style="margin-top:0.6rem;font-size:0.72rem;">This is purchase history <b>by brand</b>. On-hand stock is pooled into one figure — per-brand remaining isn’t tracked once pooled (that’s the trade-off of pooling). The recipe always uses the current weighted-average cost shown above.</p>'
-      +'<div style="margin-top:0.8rem;"><button class="pz-btn sec" id="bbClose2">Close</button></div></div>';
-    document.body.appendChild(mask);
-    function close(){document.body.removeChild(mask);}
-    var c1=mask.querySelector('#bbClose'); if(c1)c1.onclick=close; var c2=mask.querySelector('#bbClose2'); if(c2)c2.onclick=close;
-    mask.addEventListener('click',function(e){if(e.target===mask)close();});
-  }).catch(function(e){ alert('Could not load brand history: '+((e&&e.code)||e)+'. If PERMISSION_DENIED, log in with your admin email.'); });
 }
 function delIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
@@ -1923,27 +1796,6 @@ function ocDraw(){
     invalid=invalid||sharedChoiceScopeError(clean,tempGroup);if(invalid){alert(invalid+' Nothing was saved.');return;}saveSharedChoiceCosts(button,original,clean);
   };
 }
-function renderConsumables(){
-  var root=document.getElementById('consumRoot'); if(!root)return;
-  var cats=(A().getCats?A().getCats():[]).map(function(c){return c.id;});
-  if(!cats.length){var catSet={};menuList().forEach(function(it){if(it.cat)catSet[it.cat]=1;});cats=Object.keys(catSet).sort();}
-  var ctMap=(window.__posSettings&&window.__posSettings.catType)||{};
-  var catRows=cats.length?cats.map(function(nm){var t=ctMap[nm]||'';var label=(A().getCatLabel?A().getCatLabel(nm):nm);
-    return '<tr><td>'+esc(label)+'</td><td><select class="pz-in" data-cattype="'+esc(nm)+'"><option value=""'+(t===''?' selected':'')+'>— untagged —</option><option'+(t==='drink'?' selected':'')+'>drink</option><option'+(t==='food'?' selected':'')+'>food</option></select></td></tr>';
-  }).join(''):'<tr><td colspan="2" style="color:var(--tl);padding:0.6rem;">No categories found.</td></tr>';
-  var cons=ingsByType('consumable');
-  var cRows=cons.length?cons.map(function(i){return '<tr><td>'+esc(i.name)+'</td><td>'+esc(i.serves||'both')+'</td><td>'+esc(i.size||'all')+'</td><td>'+num(i.qtyPerOrder||1)+' '+esc(i.unit||'')+'</td><td>'+(i.cost?peso(i.cost):'—')+'</td><td style="font-weight:600;">'+peso((Number(i.qtyPerOrder)||1)*(Number(i.cost)||0))+'</td></tr>';}).join(''):'<tr><td colspan="6" style="color:var(--tl);padding:0.6rem;">No consumables yet — add them in the Inventory tab with Type = Consumable.</td></tr>';
-  root.innerHTML=
-    '<p class="pz-sub">Tag each category Drink or Food; items in it then auto-consume the matching consumables per order. Cups are size-aware (set a cup’s size = S/M/L); stirrers, sleeves, tissue stay size-independent. Extra water cups = an inventory Adjustment (variance), not a sale.</p>'
-    +'<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Category types (drink / food)</div><table class="pz-tbl"><thead><tr><th>Category</th><th>Type</th></tr></thead><tbody>'+catRows+'</tbody></table></div>'
-    +'<div class="pz-card"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Consumable items</div><table class="pz-tbl"><thead><tr><th>Item</th><th>Serves</th><th>Size</th><th>Per order</th><th>Cost</th><th>Cost/order</th></tr></thead><tbody>'+cRows+'</tbody></table><p class="pz-sub" style="margin-top:0.5rem;">Add or edit these in the Inventory tab (Type = Consumable). A drink order pulls its size-cup + all non-size drink/both consumables; food pulls food/both consumables (no stirrer).</p></div>';
-  root.querySelectorAll('[data-cattype]').forEach(function(sel){sel.onchange=function(){
-    var nm=sel.getAttribute('data-cattype'); var v=sel.value; var a=A();
-    var cur=Object.assign({},(window.__posSettings&&window.__posSettings.catType)||{});
-    if(v)cur[nm]=v; else delete cur[nm];
-    a.update(a.ref(a.db,'posSettings'),{catType:cur});
-  };});
-}
 
 /* ══════════ INTERNAL USAGE (Staff consumption + R&D) ══════════ */
 function recipeChoicePackagingRows(raw){
@@ -1979,273 +1831,22 @@ function saveSharedChoiceCosts(button,original,clean){
    A "Hot" choice written as the complete hot recipe was ADDED to the base, so every hot
    drink was costed and drawn from stock twice. This screen takes a restore point first,
    shows exactly what moves, then rewrites those choices as differences from the base. */
-var recTempSnapshotTaken=false, recTempPlanCache=null, recTempBusy=false;
 
-function recTempEngine(){
-  if(!window.AccazaRecipeTempPlan)throw new Error('The recipe repair planner did not load. Refresh the portal and try again.');
-  return window.AccazaRecipeTempPlan;
-}
-function recTempBuildPlan(){
-  recTempPlanCache=recTempEngine().plan(recipesMap,inventoryMap,(A()&&A().menuItemsMap)||{});
-  return recTempPlanCache;
-}
-function recTempCost(map,key,size,labels){
-  var result=Costing().costOrder(costingContext({recipes:map,lineItems:[{itemKey:key,size:size,qty:1,optLabels:labels||[]}]}));
-  return result.totalCost;
-}
-function recTempName(key){var m=(A()&&A().menuItemsMap)||{};return (m[key]&&m[key].name)||key;}
 function recTempSeal(value){
   function stable(v){if(Array.isArray(v))return v.map(stable);if(!v||typeof v!=='object')return v;return Object.keys(v).sort().reduce(function(o,k){o[k]=stable(v[k]);return o;},{});}
   return crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(stable(value)))).then(function(buf){
     return Array.prototype.map.call(new Uint8Array(buf),function(b){return ('0'+b.toString(16)).slice(-2);}).join('');
   });
 }
-function recTempDownloadRestorePoint(){
-  var btn=document.getElementById('recTempSnapshot'); if(btn){btn.disabled=true;btn.textContent='Preparing…';}
-  var a=A();
-  a.get(a.ref(a.db,'recipes')).then(function(snap){
-    var recipes=snap.val()||{};
-    return recTempSeal(recipes).then(function(hash){
-      var takenAt=Date.now();
-      var envelope={version:'accaza-recipes-restore-v1',kind:'accaza-recipe-restore-point',takenAt:takenAt,
-        takenAtISO:new Date(takenAt).toISOString(),recipeCount:Object.keys(recipes).length,
-        integrity:{algorithm:'sha256',canonical:'sorted-json-v1',dataSha256:hash},
-        note:'Every recipe exactly as it stood before the temperature repair. Load this file back on the same screen to undo the repair completely.',
-        recipes:recipes};
-      var blob=new Blob([JSON.stringify(envelope)],{type:'application/json'}),url=URL.createObjectURL(blob);
-      var stamp=new Date(takenAt).toISOString().slice(0,19).replace(/[:T]/g,'-');
-      var link=document.createElement('a');link.href=url;link.download='accaza-recipes-before-repair-'+stamp+'.json';
-      document.body.appendChild(link);link.click();document.body.removeChild(link);
-      setTimeout(function(){URL.revokeObjectURL(url);},4000);
-      recTempSnapshotTaken=true;
-      renderRecipeRepair();
-      alert('Restore point saved ('+Object.keys(recipes).length+' recipes).\n\nKeep that file until you are happy with the repair. Loading it back on this screen puts every recipe back exactly as it is right now.');
-    });
-  }).catch(function(e){
-    if(btn){btn.disabled=false;btn.textContent='⬇ Save a restore point';}
-    alert('Could not build the restore point: '+((e&&e.message)||e)+'\n\nNothing was changed.');
-  });
-}
-function recTempRestoreFromFile(file){
-  if(!file)return;
-  var reader=new FileReader();
-  reader.onload=function(){
-    var envelope;
-    try{envelope=JSON.parse(String(reader.result));}catch(e){alert('That file is not a restore point. Nothing was changed.');return;}
-    if(!envelope||envelope.version!=='accaza-recipes-restore-v1'||!envelope.recipes){alert('That file is not an Accaza recipe restore point. Nothing was changed.');return;}
-    recTempSeal(envelope.recipes).then(function(hash){
-      var sealed=envelope.integrity&&envelope.integrity.dataSha256;
-      if(sealed&&sealed!==hash){alert('That restore point has been altered since it was saved (its fingerprint does not match). Nothing was changed.');return;}
-      var count=Object.keys(envelope.recipes).length;
-      if(!confirm('Put every recipe back to '+new Date(envelope.takenAt||0).toLocaleString()+'?\n\n'+count+' recipes will replace what is in the system now. Anything you changed since then is lost.'))return;
-      var a=A();
-      a.set(a.ref(a.db,'recipes'),envelope.recipes).then(function(){
-        recTempPlanCache=null;
-        alert('Restored. '+count+' recipes are back exactly as they were at '+new Date(envelope.takenAt||0).toLocaleString()+'.');
-        setTimeout(renderRecipes,300);
-      }).catch(function(e){
-        alert('The restore did NOT go through: '+((e&&e.code)||(e&&e.message)||e)+'\n\nNothing was changed. Log in with your admin email and try again.');
-      });
-    });
-  };
-  reader.onerror=function(){alert('That file could not be read. Nothing was changed.');};
-  reader.readAsText(file);
-}
-function recTempApplyRepair(){
-  if(recTempBusy)return;
-  var plan=recTempPlanCache||recTempBuildPlan();
-  var paths=Object.keys(plan.updates||{});
-  if(!paths.length){alert('There is nothing to repair.');return;}
-  if(!recTempSnapshotTaken){alert('Save a restore point first. That file is how you undo this.');return;}
-  if(!confirm('Repair '+plan.drinks.length+' drink'+(plan.drinks.length===1?'':'s')+'?\n\n'
-    +'Their Hot and Iced choices are rewritten as the difference from the base recipe. Base recipes are not touched.\n\n'
-    +'Orders already rung up keep the cost they were posted with — this changes future orders only.'))return;
-  recTempBusy=true;
-  var btn=document.getElementById('recTempApply'); if(btn){btn.disabled=true;btn.textContent='Repairing…';}
-  var a=A();
-  a.update(a.ref(a.db,'/'),plan.updates).then(function(){
-    recTempBusy=false;recTempPlanCache=null;
-    alert('Repaired '+plan.drinks.length+' drink'+(plan.drinks.length===1?'':'s')+'.\n\nA hot drink now costs the hot recipe once, and draws its ingredients once. Ring up one hot drink and check the cost before you close for the day.');
-    setTimeout(renderRecipes,400);
-  }).catch(function(e){
-    recTempBusy=false;
-    if(btn){btn.disabled=false;btn.textContent='✓ Repair these recipes';}
-    alert('The repair was NOT applied: '+((e&&e.code)||(e&&e.message)||e)+'\n\nEvery recipe is unchanged. Log in with your admin email and try again.');
-  });
-}
-function recTempRow(d){
-  var before=recipesMap,after=recTempEngine().applyToRecipes(recipesMap,{drinks:[d]});
-  var hotBefore=recTempCost(before,d.key,'M',['Hot']),hotAfter=recTempCost(after,d.key,'M',['Hot']);
-  var icedBefore=recTempCost(before,d.key,'M',['Iced']),icedAfter=recTempCost(after,d.key,'M',['Iced']);
-  var why=d.kind==='full-copy'?'Hot repeated the whole recipe':'';
-  if(d.duplicateIce)why=why?why+'; ice counted twice on Iced':'Ice counted twice on Iced';
-  return '<tr><td>'+esc(recTempName(d.key))+'</td><td style="color:var(--tl);font-size:0.8rem;">'+esc(why)+'</td>'
-    +'<td class="r">'+peso(hotBefore)+'</td><td class="r" style="font-weight:600;">'+peso(hotAfter)+'</td>'
-    +'<td class="r" style="color:'+(hotAfter<hotBefore?'#1C6B54':'var(--tl)')+';">'+peso(hotAfter-hotBefore)+'</td>'
-    +'<td class="r">'+peso(icedBefore)+'</td><td class="r" style="font-weight:600;">'+peso(icedAfter)+'</td></tr>';
-}
-function renderRecipeRepair(){
-  var host=document.getElementById('recRepairRoot'); if(!host)return;
-  var plan;
-  try{plan=recTempBuildPlan();}
-  catch(e){host.innerHTML='<div class="pz-card" style="border-color:#f1b7b7;background:#fff5f5;color:#8b1e1e;">'+esc((e&&e.message)||e)+'</div>';return;}
-  var drinks=plan.drinks||[];
-  var swing=drinks.reduce(function(sum,d){
-    var after=recTempEngine().applyToRecipes(recipesMap,{drinks:[d]});
-    return sum+(recTempCost(recipesMap,d.key,'M',['Hot'])-recTempCost(after,d.key,'M',['Hot']));
-  },0);
-  var html='';
-  html+='<p class="pz-sub">A drink’s Hot or Iced choice is meant to say what is <b>different</b> about it. On some drinks the whole recipe was typed into the Hot choice instead, and the system adds that on top of the base — so a hot drink was costed twice and pulled its ingredients from stock twice. This screen fixes that, and only that.</p>';
-
-  html+='<div class="pz-card" style="margin-bottom:1rem;border-left:4px solid #1C6B54;">'
-    +'<div style="font-weight:700;color:var(--bd);">Step 1 — Save a restore point</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin:0.35rem 0 0.6rem;">Downloads every recipe exactly as it stands right now. If anything looks wrong afterwards, load that file back below and you are where you started. The repair stays locked until you do this.</div>'
-    +'<button class="pz-btn" id="recTempSnapshot"'+(recTempSnapshotTaken?' disabled':'')+'>'+(recTempSnapshotTaken?'✓ Restore point saved':'⬇ Save a restore point')+'</button>'
-    +'</div>';
-
-  if(!drinks.length){
-    html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:#1C6B54;">✓ Nothing to repair</div>'
-      +'<div style="font-size:0.85rem;color:var(--tm);margin-top:0.35rem;">Every temperature choice already reads as a difference from its base recipe.</div></div>';
-  }else{
-    html+='<div class="pz-card" style="margin-bottom:1rem;">'
-      +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.15rem;">Step 2 — What changes</div>'
-      +'<div style="font-size:0.85rem;color:var(--tm);margin-bottom:0.6rem;">'+drinks.length+' drink'+(drinks.length===1?'':'s')+'. Costs shown at size M. Base recipes are not touched, so a drink’s plain cost cannot move.</div>'
-      +'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Drink</th><th>What was wrong</th><th class="r">Hot now</th><th class="r">Hot after</th><th class="r">Change</th><th class="r">Iced now</th><th class="r">Iced after</th></tr></thead><tbody>'
-      +drinks.map(recTempRow).join('')+'</tbody></table></div>'
-      +'<div style="font-size:0.85rem;margin-top:0.6rem;padding:0.5rem 0.7rem;background:#f6f8f6;border-radius:6px;">Overcharge removed from one size-M hot order of each drink: <b>'+peso(swing)+'</b>. Orders already rung up keep the cost they were posted with — the books are not rewritten.</div>'
-      +'</div>';
-    html+='<div class="pz-card" style="margin-bottom:1rem;">'
-      +'<div style="font-weight:700;color:var(--bd);">Step 3 — Repair</div>'
-      +'<div style="font-size:0.85rem;color:var(--tm);margin:0.35rem 0 0.6rem;">'+(recTempSnapshotTaken?'Writes all '+Object.keys(plan.updates).length+' changes in one go — either every one lands or none does.':'Save the restore point above first.')+'</div>'
-      +'<button class="pz-btn ok" id="recTempApply"'+(recTempSnapshotTaken?'':' disabled')+'>✓ Repair these recipes</button>'
-      +'</div>';
-  }
-
-  html+='<div class="pz-card" style="margin-bottom:1rem;border-left:4px solid #8a6d3b;">'
-    +'<div style="font-weight:700;color:var(--bd);">Cost of sales already posted twice</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin:0.35rem 0 0.6rem;">Repairing the recipes fixes tomorrow. This looks at what is already in the books and puts the stock back.</div>'
-    +'<div id="cogsFixRoot"></div>'
-    +'</div>';
-  html+='<div class="pz-card" style="border-left:4px solid #b5651d;">'
-    +'<div style="font-weight:700;color:var(--bd);">Undo — restore from a saved file</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin:0.35rem 0 0.6rem;">Puts every recipe back to the moment that file was saved. Use it any time, not just today.</div>'
-    +'<input type="file" accept="application/json,.json" id="recTempRestore" class="pz-in" style="max-width:420px;"/>'
-    +'</div>';
-  host.innerHTML=html;
-  var snap=document.getElementById('recTempSnapshot'); if(snap&&!recTempSnapshotTaken)snap.onclick=recTempDownloadRestorePoint;
-  var apply=document.getElementById('recTempApply'); if(apply)apply.onclick=recTempApplyRepair;
-  var restore=document.getElementById('recTempRestore'); if(restore)restore.onchange=function(){recTempRestoreFromFile(restore.files&&restore.files[0]);};
-  cogsFixRun();
-}
 
 /* ---- Correcting the COGS that was already posted twice ---------------------------------- */
-var cogsFixOrders=null, cogsFixResult=null, cogsFixBusy=false;
 
-function cogsFixEngine(){
-  if(!window.AccazaCogsDuplicationAudit)throw new Error('The COGS audit did not load. Refresh the portal and try again.');
-  return window.AccazaCogsDuplicationAudit;
-}
-function cogsFixLoadArchived(cursor,rows){
-  var a=A(),p={mode:cursor?'before':'latest',purpose:'cogs_audit',limit:100};if(cursor)p.cursor=cursor;
-  return a.readHistoricalOrders(p).then(function(page){Object.assign(rows,page.orders||{});return page.hasMore?cogsFixLoadArchived(page.cursor,rows):rows;});
-}
-function cogsFixLoadOrders(){
-  if(cogsFixOrders)return Promise.resolve(cogsFixOrders);
-  var a=A();
-  return Promise.all([
-    cogsFixLoadArchived(null,{}),
-    /* download-ok: bounded live orders only (archived at shift close) */a.get(a.ref(a.db,'orders')).then(function(s){return s.val()||{};}).catch(function(){return {};})
-  ]).then(function(parts){
-    var all={};
-    parts.forEach(function(set){Object.keys(set).forEach(function(id){all[id]=set[id];});});
-    cogsFixOrders=all;return all;
-  });
-}
-function cogsFixRun(){
-  var host=document.getElementById('cogsFixRoot'); if(!host)return;
-  host.innerHTML='<div style="color:var(--tl);font-size:0.85rem;">Reading every posted order…</div>';
-  cogsFixLoadOrders().then(function(orders){
-    var engine=cogsFixEngine();
-    var audit=engine.audit(orders);
-    cogsFixResult=engine.movements(audit,inventoryMap,{actorName:(window.__posShift&&window.__posShift.staff)||'Admin'});
-    cogsFixResult.audit=audit;
-    cogsFixRender();
-  }).catch(function(e){
-    host.innerHTML='<div style="color:#8b1e1e;font-size:0.85rem;">Could not read the posted orders: '+esc((e&&e.message)||e)+'</div>';
-  });
-}
-function cogsFixRender(){
-  var host=document.getElementById('cogsFixRoot'); if(!host||!cogsFixResult)return;
-  var r=cogsFixResult,a=r.audit;
-  if(!r.schedule.length){
-    host.innerHTML='<div style="font-weight:700;color:#1C6B54;">✓ Nothing to correct</div>'
-      +'<div style="font-size:0.85rem;color:var(--tm);margin-top:0.35rem;">'+a.ordersRead+' posted orders read. No order was charged for the same ingredient twice.</div>';
-    return;
-  }
-  var months={};r.schedule.forEach(function(s){months[s.month]=(months[s.month]||0)+s.expensed;});
-  var html='';
-  html+='<div style="font-size:0.85rem;color:var(--tm);margin-bottom:0.6rem;">Read '+a.ordersRead+' posted orders. '+a.linesCorrected+' drink line'+(a.linesCorrected===1?'':'s')+' paid for the same ingredient twice — once from the base recipe and again from the Hot choice. The stock never left the shelf, so it goes back and the cost of sales comes down.</div>';
-  html+='<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Month</th><th>Ingredient</th><th class="r">Put back</th><th class="r">Charged</th><th class="r">Value today</th><th class="r">Cost drift</th></tr></thead><tbody>';
-  r.schedule.forEach(function(s){
-    html+='<tr><td>'+esc(s.month)+'</td><td>'+esc(s.name)+'</td>'
-      +'<td class="r">'+esc(String(Math.round(s.qty*1000)/1000)+' '+s.unit)+'</td>'
-      +'<td class="r">'+peso(s.expensed)+'</td><td class="r" style="font-weight:600;">'+peso(s.restored)+'</td>'
-      +'<td class="r" style="color:var(--tl);">'+peso(s.residual)+'</td></tr>';
-  });
-  html+='</tbody></table></div>';
-  html+='<div style="font-size:0.85rem;margin-top:0.7rem;padding:0.6rem 0.75rem;background:#f6f8f6;border-radius:6px;line-height:1.7;">'
-    +'<b>What gets posted</b><br/>'
-    +'Debit 1200 Inventory <b>'+peso(r.restoredValue)+'</b> · Credit 5000 Cost of Sales <b>'+peso(r.restoredValue)+'</b>'
-    +'<br/><span style="color:var(--tm);">One stock adjustment per ingredient per month, dated into that month, so each period carries its own correction.</span>'
-    +'<br/><br/><b>Left over: '+peso(r.residualValue)+'</b><br/>'
-    +'<span style="color:var(--tm);">Charged at '+peso(r.historicCost)+' when it was rung up, worth '+peso(r.restoredValue)+' at today’s weighted average. That gap is real — the stock lost value while it sat wrongly expensed. It is <b>not</b> posted here. Post it in Books as a manual entry: debit 5905 Inventory Reconciliation, credit 5000 Cost of Sales, '+peso(r.residualValue)+'.</span>'
-    +'</div>';
-  if((a.review||[]).length){
-    var reviewTotal=a.review.reduce(function(sum,x){return sum+x.cost;},0);
-    var reviewDrinks={};a.review.forEach(function(x){reviewDrinks[x.drink]=(reviewDrinks[x.drink]||0)+x.cost;});
-    html+='<div style="font-size:0.82rem;margin-top:0.6rem;padding:0.55rem 0.7rem;background:#fff8ec;border:1px solid #e6cfa4;border-radius:6px;">'
-      +'<b>'+a.review.length+' more line'+(a.review.length===1?'':'s')+', worth '+peso(reviewTotal)+', need your eye.</b> '
-      +'The shared option library and the drink\'s own copy of the same choice both charged. The record says which <i>source</i> a row came from, not which <i>choice</i> — so on an order with more than one choice these cannot be told apart, and I will not post them blind. '
-      +esc(Object.keys(reviewDrinks).sort(function(x,y){return reviewDrinks[y]-reviewDrinks[x];}).slice(0,5).map(function(d){return d;}).join(', '))
-      +'. Tidying the option library stops it recurring.</div>';
-  }
-  if(a.skipped.length){
-    html+='<div style="font-size:0.82rem;margin-top:0.6rem;padding:0.55rem 0.7rem;background:#fff8ec;border:1px solid #e6cfa4;border-radius:6px;">'
-      +'<b>'+a.skipped.length+' line'+(a.skipped.length===1?'':'s')+' left alone.</b> The customer also chose an extra, so the second helping of that ingredient may have been genuine. Worth '+peso(a.skipped.reduce(function(s,x){return s+x.cost;},0))+' — check by hand: '
-      +esc(a.skipped.slice(0,4).map(function(x){return x.drink+' ('+x.labels+')';}).join('; '))+(a.skipped.length>4?' …':'')+'</div>';
-  }
-  html+='<div style="margin-top:0.8rem;"><button class="pz-btn ok" id="cogsFixPost">✓ Post the correction — '+peso(r.restoredValue)+'</button>'
-    +'<span style="font-size:0.78rem;color:var(--tl);margin-left:0.6rem;">Safe to press twice; a correction already posted is never posted again.</span></div>';
-  host.innerHTML=html;
-  var btn=document.getElementById('cogsFixPost'); if(btn)btn.onclick=cogsFixPost;
-}
-function cogsFixPost(){
-  if(cogsFixBusy||!cogsFixResult)return;
-  var r=cogsFixResult;
-  if(!confirm('Post '+r.movements.length+' stock corrections?\n\n'
-    +'Debit 1200 Inventory '+peso(r.restoredValue)+'\nCredit 5000 Cost of Sales '+peso(r.restoredValue)+'\n\n'
-    +'Each one is dated into the month it belongs to. The '+peso(r.residualValue)+' cost drift is NOT included — post that in Books yourself.'))return;
-  cogsFixBusy=true;
-  var btn=document.getElementById('cogsFixPost'); if(btn){btn.disabled=true;btn.textContent='Posting…';}
-  postMovements(r.movements.slice()).then(function(out){
-    cogsFixBusy=false;cogsFixOrders=null;
-    alert('Posted '+out.count+' correction'+(out.count===1?'':'s')+'.'
-      +(out.duplicates?'\n'+out.duplicates+' were already posted earlier and were skipped.':'')
-      +'\n\nInventory is up '+peso(r.restoredValue)+' and cost of sales is down the same. Check Books → Journal for the entries.'
-      +'\n\nStill to do by hand: debit 5905, credit 5000, '+peso(r.residualValue)+' for the cost drift.');
-    cogsFixRun();
-  }).catch(function(e){
-    cogsFixBusy=false;
-    if(btn){btn.disabled=false;btn.textContent='✓ Post the correction — '+peso(r.restoredValue);}
-    alert('Nothing was posted: '+((e&&e.message)||(e&&e.code)||e)+'\n\nThe books are unchanged.');
-  });
-}
 
 /* Packaging by serve style.
    A cup, lid and straw depend on how a drink is served, not on which drink it is. This screen
    collapses the packaging scattered through the recipes into three serve styles, shows what
    every drink costs before and after, and only then writes. A restore point is required first. */
-var packStyleSnapshotTaken=false, packStylePlan=null, packStyleBusy=false, packStyleRules=null;
+var packStyleSnapshotTaken=false, packStylePlan=null;
 /* Per-item packaging overrides. An item can be customized to add/remove packaging just for
    itself; that customization is stored as its own private packagingRules entry (id "item_<key>")
    and is never merged into, or read from, a shared serve style. packItemDrafts holds unsaved
@@ -2331,28 +1932,6 @@ function packStyleRestore(file){
     });
   };
   reader.readAsText(file);
-}
-function packStyleCost(plan,key,size,labels,useStyles){
-  var recipes=recipesMap,menu=(A()&&A().menuItemsMap)||{},groups=(A()&&A().optionGroupsMap)||{},rules={};
-  if(useStyles){
-    recipes=JSON.parse(JSON.stringify(recipesMap));menu=JSON.parse(JSON.stringify(menu));groups=JSON.parse(JSON.stringify(groups));
-    rules=packDraftInit(plan);
-    Object.keys(plan.updates).forEach(function(path){
-      var parts=path.split('/'),value=plan.updates[path];
-      if(parts[0]==='recipes'){
-        var recipe=recipes[parts[1]];if(!recipe)return;
-        if(parts[2]==='base')recipe.base=value;
-        else{var group=(recipe.choiceAdd||{})[parts[3]];if(!group)return;if(value)group[parts[4]]=value;else delete group[parts[4]];}
-      }else if(parts[0]==='menuItems'){(menu[parts[1]]=menu[parts[1]]||{}).serveStyle=value;}
-    });
-    Object.keys(plan.choiceUpdates).forEach(function(gid){
-      var group=groups[gid];if(!group||!Array.isArray(group.choices))return;
-      group.choices.forEach(function(choice){var s=plan.choiceUpdates[gid][choice.label];if(s)choice.serveStyle=s;});
-    });
-  }
-  var out=Costing().costOrder(costingContext({recipes:recipes,menuItems:menu,optionGroups:groups,packagingRules:rules,
-    lineItems:[{itemKey:key,size:size,qty:1,optLabels:labels||[]}]}));
-  return out.totalCost;
 }
 
 /* ---- The serve styles are yours to edit -------------------------------------------------
@@ -2762,247 +2341,6 @@ function renderServeStylePackaging(){
   var save=document.getElementById('packSaveAssignments');if(save){save.onclick=savePackagingAssignments;save.disabled=packAssignmentSaving;}
   var snap=document.getElementById('packSnapshot');if(snap)snap.onclick=packStyleSnapshot;
   var restore=document.getElementById('packRestore');if(restore)restore.onchange=function(){packStyleRestore(restore.files&&restore.files[0]);};
-}
-function packStyleApply(){
-  if(packStyleBusy)return;
-  var plan=packStylePlan||packStyleBuild();
-  if(!packStyleSnapshotTaken){alert('Save a restore point first. That file is how you undo this.');return;}
-  if(!confirm('Move packaging to serve styles?\n\n'
-    +Object.keys(plan.styles).length+' serve styles created\n'
-    +plan.stripped.length+' recipes have their packaging rows removed\n'
-    +'Every drink is told how it is served\n\n'
-    +'Completed orders keep the cost they were posted with. Future orders carry the true packaging cost.'))return;
-  packStyleBusy=true;
-  var btn=document.getElementById('packApply'); if(btn){btn.disabled=true;btn.textContent='Applying…';}
-  var a=A(),groups=(A()&&A().optionGroupsMap)||{},updates={};
-  Object.keys(plan.updates).forEach(function(path){updates[path]=plan.updates[path];});
-  Object.keys(plan.choiceUpdates).forEach(function(gid){
-    var group=groups[gid];if(!group||!Array.isArray(group.choices))return;
-    var choices=JSON.parse(JSON.stringify(group.choices));
-    choices.forEach(function(choice){var style=plan.choiceUpdates[gid][choice.label];if(style)choice.serveStyle=style;});
-    updates['optionGroups/'+gid+'/choices']=choices;
-  });
-  a.update(a.ref(a.db,'/'),updates).then(function(){
-    packStyleBusy=false;packStylePlan=null;
-    alert('Done. Packaging now comes from '+Object.keys(plan.styles).length+' serve styles.\n\nRing up one hot drink and one iced drink and check the cup shows in the cost.');
-    setTimeout(renderRecipes,400);
-  }).catch(function(e){
-    packStyleBusy=false;
-    if(btn){btn.disabled=false;btn.textContent='✓ Move packaging to serve styles';}
-    alert('Nothing was changed: '+((e&&e.code)||(e&&e.message)||e)+'\n\nLog in with your admin email and try again.');
-  });
-}
-
-/* Moving customer choices into the shared library.
-   A syrup is the same syrup whichever drink it goes in, yet each drink spells it out for itself.
-   This lifts the definition most drinks agree on into one shared entry and removes the copies
-   that match it. It is NOT free of consequence: a shared definition applies to every drink that
-   offers the choice, including drinks that never had one. So it is chosen one choice at a time,
-   with what each one costs shown, and nothing is written until a restore point has been saved. */
-var optLibPlan=null, optLibPicked=null, optLibSnapshotTaken=false, optLibBusy=false, optLibImpact=null;
-
-function optLibEngine(){
-  if(!window.AccazaOptionLibraryPlan)throw new Error('The option library planner did not load. Refresh the portal and try again.');
-  return window.AccazaOptionLibraryPlan;
-}
-function optLibBuild(){
-  optLibPlan=optLibEngine().plan(recipesMap,inventoryMap,(A()&&A().menuItemsMap)||{},{optionCosts:optCostStore()||{}});
-  if(!optLibPicked){optLibPicked={};}
-  return optLibPlan;
-}
-function optLibSnapshot(){
-  var btn=document.getElementById('optLibSnap'); if(btn){btn.disabled=true;btn.textContent='Preparing…';}
-  var a=A();
-  Promise.all([
-    a.get(a.ref(a.db,'recipes')).then(function(s){return s.val()||{};}),
-    a.get(a.ref(a.db,'posSettings/optionCosts')).then(function(s){return s.val()||{};}).catch(function(){return {};})
-  ]).then(function(parts){
-    var payload={recipes:parts[0],optionCosts:parts[1]};
-    return recTempSeal(payload).then(function(hash){
-      var takenAt=Date.now();
-      var envelope={version:'accaza-option-library-restore-v1',kind:'accaza-option-library-restore-point',
-        takenAt:takenAt,takenAtISO:new Date(takenAt).toISOString(),
-        counts:{recipes:Object.keys(payload.recipes).length},
-        integrity:{algorithm:'sha256',canonical:'sorted-json-v1',dataSha256:hash},
-        note:'Recipes and the shared option library exactly as they stood before choices were moved into the library. Load this back on the same screen to undo it.',
-        data:payload};
-      var blob=new Blob([JSON.stringify(envelope)],{type:'application/json'}),url=URL.createObjectURL(blob);
-      var stamp=new Date(takenAt).toISOString().slice(0,19).replace(/[:T]/g,'-');
-      var link=document.createElement('a');link.href=url;link.download='accaza-options-before-'+stamp+'.json';
-      document.body.appendChild(link);link.click();document.body.removeChild(link);
-      setTimeout(function(){URL.revokeObjectURL(url);},4000);
-      optLibSnapshotTaken=true;renderOptionLibrary();
-      alert('Restore point saved. Keep that file until you are happy with the result.');
-    });
-  }).catch(function(e){
-    if(btn){btn.disabled=false;btn.textContent='⬇ Save a restore point';}
-    alert('Could not build the restore point: '+((e&&e.message)||e)+'\n\nNothing was changed.');
-  });
-}
-function optLibRestore(file){
-  if(!file)return;
-  var reader=new FileReader();
-  reader.onload=function(){
-    var envelope;
-    try{envelope=JSON.parse(String(reader.result));}catch(e){alert('That file is not a restore point. Nothing was changed.');return;}
-    if(!envelope||envelope.version!=='accaza-option-library-restore-v1'||!envelope.data){alert('That file is not an Accaza option restore point. Nothing was changed.');return;}
-    recTempSeal(envelope.data).then(function(hash){
-      var sealed=envelope.integrity&&envelope.integrity.dataSha256;
-      if(sealed&&sealed!==hash){alert('That restore point has been altered since it was saved. Nothing was changed.');return;}
-      if(!confirm('Put the recipes and the option library back to '+new Date(envelope.takenAt||0).toLocaleString()+'?\n\nAnything changed since then is lost.'))return;
-      var a=A();
-      a.update(a.ref(a.db,'/'),{recipes:envelope.data.recipes,'posSettings/optionCosts':envelope.data.optionCosts||null}).then(function(){
-        optLibPlan=null;optLibPicked=null;optLibImpact=null;
-        alert('Restored to '+new Date(envelope.takenAt||0).toLocaleString()+'.');
-        setTimeout(renderRecipes,300);
-      }).catch(function(e){alert('The restore did NOT go through: '+((e&&e.code)||(e&&e.message)||e)+'\n\nNothing was changed.');});
-    });
-  };
-  reader.readAsText(file);
-}
-/* What one choice would do to the menu if it moved into the library, on its own. */
-function optLibMeasure(entry){
-  var menu=(A()&&A().menuItemsMap)||{},groups=(A()&&A().optionGroupsMap)||{},costs=optCostStore()||{};
-  var after=optLibEngine().applyTo(recipesMap,{updates:entry.updates});
-  var library={};library[entry.gid]={};library[entry.gid][entry.key]={label:entry.label,ings:entry.rows};
-  var newlyCosted=0,newlyValue=0,moved=0,movedValue=0,refused=0,drinks=[];
-  Object.keys(recipesMap).forEach(function(key){
-    var item=menu[key];if(!item)return;
-    if(!Array.isArray(item.options)||item.options.indexOf(entry.gid)<0)return;
-    var group=groups[entry.gid]||{},choices=Array.isArray(group.choices)?group.choices:[];
-    var label=null;
-    choices.forEach(function(c){if(Costing().optKey(c.label)===entry.key)label=c.label;});
-    if(!label)return;
-    ['S','M','L'].forEach(function(size){
-      var before=Costing().costOrder(costingContext({recipes:recipesMap,optionCosts:costs,packagingRules:{},lineItems:[{itemKey:key,size:size,qty:1,optLabels:[label]}]}));
-      var now=Costing().costOrder(costingContext({recipes:after,optionCosts:library,packagingRules:{},lineItems:[{itemKey:key,size:size,qty:1,optLabels:[label]}]}));
-      var plain=Costing().costOrder(costingContext({recipes:recipesMap,optionCosts:costs,packagingRules:{},lineItems:[{itemKey:key,size:size,qty:1,optLabels:[]}]}));
-      if(now.errors.length&&!before.errors.length){refused++;return;}
-      var delta=now.totalCost-before.totalCost;
-      if(Math.abs(delta)<0.011)return;
-      var wasFree=Math.abs(before.totalCost-plain.totalCost)<0.011;
-      if(wasFree){newlyCosted++;newlyValue+=delta;}else{moved++;movedValue+=delta;}
-      if(size==='M'&&drinks.length<6)drinks.push(String(item.name||key)+' '+peso(before.totalCost)+' → '+peso(now.totalCost));
-    });
-  });
-  return {newlyCosted:newlyCosted,newlyValue:newlyValue,moved:moved,movedValue:movedValue,refused:refused,drinks:drinks};
-}
-function optLibMeasureAll(plan){
-  optLibImpact={};
-  plan.entries.forEach(function(entry){
-    try{optLibImpact[entry.id]=optLibMeasure(entry);}
-    catch(e){optLibImpact[entry.id]={error:String((e&&e.message)||e)};}
-  });
-  return optLibImpact;
-}
-function renderOptionLibrary(){
-  var host=document.getElementById('optLibraryRoot'); if(!host)return;
-  var plan;
-  try{plan=optLibBuild();}
-  catch(e){host.innerHTML='<div class="pz-card" style="border-color:#f1b7b7;background:#fff5f5;color:#8b1e1e;">'+esc((e&&e.message)||e)+'</div>';return;}
-  var html='';
-  html+='<p class="pz-sub">A syrup is the same syrup whichever drink it goes in — yet each drink spells it out for itself. <b>'+plan.summary.definitions+'</b> choices are stored <b>'+plan.summary.copies+'</b> times, and <b>'+plan.summary.disagreeing+'</b> of them disagree with themselves from one drink to the next. Move a choice into the shared library and there is one definition to keep right instead of twenty.</p>';
-  html+='<div class="pz-card" style="margin-bottom:1rem;border-left:4px solid #8a6d3b;font-size:0.85rem;color:var(--tm);">'
-    +'<b>Read this before ticking anything.</b> A shared definition applies to <i>every</i> drink that offers the choice — including drinks that never had that choice costed. For some that is the whole point: a syrup should cost the syrup. For others it is wrong: adding sweetener to a drink whose recipe already includes it counts it twice. Each row below shows exactly what it would do.</div>';
-  html+='<div class="pz-card" style="margin-bottom:1rem;border-left:4px solid #1C6B54;">'
-    +'<div style="font-weight:700;color:var(--bd);">Step 1 — Save a restore point</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin:0.35rem 0 0.6rem;">The recipes and the option library as they stand. Loading it back below undoes everything on this screen.</div>'
-    +'<button class="pz-btn" id="optLibSnap"'+(optLibSnapshotTaken?' disabled':'')+'>'+(optLibSnapshotTaken?'✓ Restore point saved':'⬇ Save a restore point')+'</button></div>';
-
-  if(!optLibImpact){
-    html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);">Step 2 — Work out what each choice would do</div>'
-      +'<div style="font-size:0.85rem;color:var(--tm);margin:0.35rem 0 0.6rem;">Prices every drink that offers each choice, at all three sizes, before and after. Takes a moment.</div>'
-      +'<button class="pz-btn" id="optLibMeasure">Work it out</button></div>';
-    host.innerHTML=html;
-    var s1=document.getElementById('optLibSnap'); if(s1&&!optLibSnapshotTaken)s1.onclick=optLibSnapshot;
-    var m1=document.getElementById('optLibMeasure');
-    if(m1)m1.onclick=function(){m1.disabled=true;m1.textContent='Working…';setTimeout(function(){optLibMeasureAll(plan);renderOptionLibrary();},50);};
-    return;
-  }
-
-  var pickedCount=0;
-  html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.15rem;">Step 2 — Choose which ones move</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin-bottom:0.6rem;">Nothing is ticked to begin with. Tick only the ones you are happy with.</div>'
-    +'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th></th><th>Choice</th><th class="r">Copies</th><th class="r">Agree</th><th class="r">Keep own</th><th>Shared definition</th><th>What it would do</th></tr></thead><tbody>';
-  plan.entries.slice().sort(function(a,b){return b.copies-a.copies;}).forEach(function(entry){
-    var impact=optLibImpact[entry.id]||{},picked=!!optLibPicked[entry.id];
-    if(picked)pickedCount++;
-    var note;
-    if(impact.error)note='<span style="color:#8b1e1e;">could not be worked out: '+esc(impact.error)+'</span>';
-    else if(impact.refused)note='<span style="color:#8b1e1e;font-weight:600;">'+impact.refused+' combinations would be refused — do not move this one</span>';
-    else if(!impact.newlyCosted&&!impact.moved)note='<span style="color:#1C6B54;">nothing changes — safe</span>';
-    else{
-      note='';
-      if(impact.newlyCosted)note+='<span style="color:#8a5a00;">'+impact.newlyCosted+' combinations start costing '+peso(impact.newlyValue)+' in total</span>';
-      if(impact.moved)note+=(note?'<br/>':'')+'<span style="color:var(--tm);">'+impact.moved+' already costed and move '+peso(impact.movedValue)+'</span>';
-      if(impact.drinks&&impact.drinks.length)note+='<br/><span style="font-size:0.72rem;color:var(--tl);">'+esc(impact.drinks.join(' · '))+'</span>';
-    }
-    html+='<tr><td><input type="checkbox" data-optlib="'+esc(entry.id)+'"'+(picked?' checked':'')+(impact.refused?' disabled':'')+'/></td>'
-      +'<td><b>'+esc(entry.label)+'</b><br/><span style="font-size:0.72rem;color:var(--tl);">'+esc(entry.gid)+'</span></td>'
-      +'<td class="r">'+entry.copies+'</td><td class="r">'+entry.agreed+'</td>'
-      +'<td class="r">'+(entry.overrides.length?'<span title="'+esc(entry.overrides.map(function(d){return d.name;}).join(', '))+'">'+entry.overrides.length+'</span>':'—')+'</td>'
-      +'<td style="font-size:0.78rem;">'+esc(entry.rows.map(function(r){var inv=inventoryMap[r.ing]||{};return (r.op==='reduce'?'less ':'')+(inv.name||r.ing)+' '+r.qtyM;}).join(', '))+'</td>'
-      +'<td style="font-size:0.78rem;">'+note+'</td></tr>';
-  });
-  html+='</tbody></table></div>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem;">'
-    +'<button class="pz-btn sec" id="optLibPickSafe" style="padding:0.25rem 0.7rem;">Tick only the ones that change nothing</button>'
-    +'<button class="pz-btn sec" id="optLibPickNone" style="padding:0.25rem 0.7rem;">Untick everything</button>'
-    +'<button class="pz-btn sec" id="optLibRemeasure" style="padding:0.25rem 0.7rem;">↻ Work it out again</button></div>'
-    +'</div>';
-
-  html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);">Step 3 — Move them</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin:0.35rem 0 0.6rem;">'
-    +(optLibSnapshotTaken?(pickedCount?pickedCount+' choice'+(pickedCount===1?'':'s')+' ticked. Their shared definition is written and the matching copies are removed from the recipes. A drink that spells the choice out differently keeps its own — it overrides the library.':'Tick at least one choice above.'):'Save the restore point above first.')
-    +'</div>'
-    +'<button class="pz-btn ok" id="optLibApply"'+(optLibSnapshotTaken&&pickedCount?'':' disabled')+'>✓ Move '+(pickedCount||'')+' into the library</button></div>';
-
-  html+='<div class="pz-card" style="border-left:4px solid #b5651d;"><div style="font-weight:700;color:var(--bd);">Undo — restore from a saved file</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin:0.35rem 0 0.6rem;">Puts the recipes and the option library back to the moment that file was saved.</div>'
-    +'<input type="file" accept="application/json,.json" id="optLibRestoreFile" class="pz-in" style="max-width:420px;"/></div>';
-
-  host.innerHTML=html;
-  var snap=document.getElementById('optLibSnap'); if(snap&&!optLibSnapshotTaken)snap.onclick=optLibSnapshot;
-  host.querySelectorAll('[data-optlib]').forEach(function(box){
-    box.onchange=function(){optLibPicked[box.getAttribute('data-optlib')]=box.checked;renderOptionLibrary();};
-  });
-  var safe=document.getElementById('optLibPickSafe');
-  if(safe)safe.onclick=function(){
-    optLibPicked={};
-    plan.entries.forEach(function(e){var i=optLibImpact[e.id]||{};if(!i.error&&!i.refused&&!i.newlyCosted&&!i.moved)optLibPicked[e.id]=true;});
-    renderOptionLibrary();
-  };
-  var none=document.getElementById('optLibPickNone');
-  if(none)none.onclick=function(){optLibPicked={};renderOptionLibrary();};
-  var again=document.getElementById('optLibRemeasure');
-  if(again)again.onclick=function(){optLibImpact=null;optLibPlan=null;renderOptionLibrary();};
-  var apply=document.getElementById('optLibApply'); if(apply)apply.onclick=optLibApply;
-  var restore=document.getElementById('optLibRestoreFile'); if(restore)restore.onchange=function(){optLibRestore(restore.files&&restore.files[0]);};
-}
-function optLibApply(){
-  if(optLibBusy)return;
-  var plan=optLibPlan||optLibBuild();
-  var picked=Object.keys(optLibPicked||{}).filter(function(id){return optLibPicked[id];});
-  if(!picked.length){alert('Tick at least one choice first.');return;}
-  if(!optLibSnapshotTaken){alert('Save a restore point first. That file is how you undo this.');return;}
-  var composed=optLibEngine().updatesFor(plan,picked);
-  var names=plan.entries.filter(function(e){return optLibPicked[e.id];}).map(function(e){return e.label;});
-  if(!confirm('Move '+picked.length+' choice'+(picked.length===1?'':'s')+' into the shared library?\n\n'
-    +names.join(', ')+'\n\n'
-    +'Their definition is written once and the matching copies come out of the recipes. A drink that spells a choice out differently keeps its own.\n\n'
-    +'Completed orders keep the cost they were posted with.'))return;
-  optLibBusy=true;
-  var btn=document.getElementById('optLibApply'); if(btn){btn.disabled=true;btn.textContent='Moving…';}
-  var a=A();
-  a.update(a.ref(a.db,'/'),composed.updates).then(function(){
-    optLibBusy=false;optLibPlan=null;optLibPicked=null;optLibImpact=null;
-    alert('Moved '+picked.length+' choice'+(picked.length===1?'':'s')+' into the shared library.\n\nEdit them from now on in this tab — one place, not one per drink.');
-    setTimeout(renderRecipes,400);
-  }).catch(function(e){
-    optLibBusy=false;
-    if(btn){btn.disabled=false;btn.textContent='✓ Move '+picked.length+' into the library';}
-    alert('Nothing was changed: '+((e&&e.code)||(e&&e.message)||e)+'\n\nLog in with your admin email and try again.');
-  });
 }
 function usageCost(usage){var c=0;Object.keys(usage||{}).forEach(function(ing){c+=usage[ing]*ingCost(ing);});return c;}
 function usageMovements(usage,sign,type,sourceId,note,usageAccount,usageKind){return Object.keys(usage||{}).map(function(ing){return {movementId:movementId(type,sourceId,ing),itemId:ing,type:type,qty:sign*(Number(usage[ing])||0),unitCost:ingCost(ing),sourceType:'internal-usage',sourceId:sourceId,note:note||'',usageAccount:usageAccount||'',usageKind:usageKind||'',actorName:(window.__posShift&&window.__posShift.staff)||'Admin',occurredAt:Date.now()};});}
@@ -3421,8 +2759,6 @@ function posRcvRead(){var counts={},total=0;document.querySelectorAll('[data-prd
 function mergeDenoms(a,b){var o=Object.assign({},a||{});Object.keys(b||{}).forEach(function(k){o[k]=(Number(o[k])||0)+(Number(b[k])||0);});return o;}
 function posKeepTip(change){var k=document.getElementById('posKeep');if(!k||!k.checked)return 0;change=Math.round((Number(change)||0)*100)/100;var amt=Number((document.getElementById('posKeepAmt')||{}).value);if(!(amt>0))amt=change;return Math.min(Math.max(0,Math.round(amt*100)/100),change);}
 function makeChange(amount,avail){var rem=Math.round(amount*100);var give={};POS_DENOMS.forEach(function(d){if(rem<=0)return;var cents=Math.round(d.v*100);var have=Number(avail[d.k])||0;var use=Math.min(Math.floor(rem/cents),have);if(use>0){give[d.k]=use;rem-=use*cents;}});return {denoms:give,ok:rem<=0,short:rem/100};}
-function changeStr(denoms){var m={};POS_DENOMS.forEach(function(d){m[d.k]=d.lbl;});return Object.keys(denoms||{}).map(function(k){return denoms[k]+'×'+m[k];}).join(', ')||'—';}
-function changeRows(denoms){return POS_DENOMS.filter(function(d){return denoms&&denoms[d.k];}).map(function(d){return '<div style="color:#155724;">'+denoms[d.k]+' × '+d.lbl+'</div>';}).join('');}
 function posDenomPadHtml(){
   return '<span class="pz-lbl">Cash received — enter note/coin counts</span>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:0.3rem;margin-top:0.3rem;">'

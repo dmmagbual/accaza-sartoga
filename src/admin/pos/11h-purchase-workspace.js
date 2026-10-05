@@ -13,7 +13,6 @@ function purchaseSupplierKey(value){return String(value||'').trim().replace(/\s+
 function purchaseSuppliers(){return Object.keys(supplierMap).map(function(id){return Object.assign({id:id},supplierMap[id]);}).filter(function(x){return x.active!==false&&!x.mergedInto;}).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),undefined,{sensitivity:'base'});});}
 function purchaseSupplierResolvedId(id){var x=String(id||''),seen={};while(x&&supplierMap[x]&&supplierMap[x].mergedInto){if(seen[x])return '';seen[x]=1;x=String(supplierMap[x].mergedInto||'');}return x;}
 function purchaseSupplierById(id){var x=purchaseSupplierResolvedId(id),row=x&&supplierMap[x];return row&&row.active!==false&&!row.mergedInto?Object.assign({id:x},row):null;}
-function purchaseSupplierNames(){return purchaseSuppliers().map(function(x){return x.name;});}
 function purchaseFundingLabel(id){var cf=window.__cf,accs=(cf&&cf.accounts&&cf.accounts())||[],found=accs.find(function(x){return x.id===(id||'undeposited');});return found?found.name:'Undeposited Collection';}
 function allSuppliersForList(){return Object.keys(supplierMap).map(function(id){return Object.assign({id:id},supplierMap[id]);}).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),undefined,{sensitivity:'base'});});}
 function showSupplierList(){

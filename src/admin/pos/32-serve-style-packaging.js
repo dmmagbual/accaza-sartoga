@@ -3,7 +3,7 @@
    A cup, lid and straw depend on how a drink is served, not on which drink it is. This screen
    collapses the packaging scattered through the recipes into three serve styles, shows what
    every drink costs before and after, and only then writes. A restore point is required first. */
-var packStyleSnapshotTaken=false, packStylePlan=null, packStyleBusy=false, packStyleRules=null;
+var packStyleSnapshotTaken=false, packStylePlan=null;
 /* Per-item packaging overrides. An item can be customized to add/remove packaging just for
    itself; that customization is stored as its own private packagingRules entry (id "item_<key>")
    and is never merged into, or read from, a shared serve style. packItemDrafts holds unsaved
@@ -89,28 +89,6 @@ function packStyleRestore(file){
     });
   };
   reader.readAsText(file);
-}
-function packStyleCost(plan,key,size,labels,useStyles){
-  var recipes=recipesMap,menu=(A()&&A().menuItemsMap)||{},groups=(A()&&A().optionGroupsMap)||{},rules={};
-  if(useStyles){
-    recipes=JSON.parse(JSON.stringify(recipesMap));menu=JSON.parse(JSON.stringify(menu));groups=JSON.parse(JSON.stringify(groups));
-    rules=packDraftInit(plan);
-    Object.keys(plan.updates).forEach(function(path){
-      var parts=path.split('/'),value=plan.updates[path];
-      if(parts[0]==='recipes'){
-        var recipe=recipes[parts[1]];if(!recipe)return;
-        if(parts[2]==='base')recipe.base=value;
-        else{var group=(recipe.choiceAdd||{})[parts[3]];if(!group)return;if(value)group[parts[4]]=value;else delete group[parts[4]];}
-      }else if(parts[0]==='menuItems'){(menu[parts[1]]=menu[parts[1]]||{}).serveStyle=value;}
-    });
-    Object.keys(plan.choiceUpdates).forEach(function(gid){
-      var group=groups[gid];if(!group||!Array.isArray(group.choices))return;
-      group.choices.forEach(function(choice){var s=plan.choiceUpdates[gid][choice.label];if(s)choice.serveStyle=s;});
-    });
-  }
-  var out=Costing().costOrder(costingContext({recipes:recipes,menuItems:menu,optionGroups:groups,packagingRules:rules,
-    lineItems:[{itemKey:key,size:size,qty:1,optLabels:labels||[]}]}));
-  return out.totalCost;
 }
 
 /* ---- The serve styles are yours to edit -------------------------------------------------
@@ -520,33 +498,4 @@ function renderServeStylePackaging(){
   var save=document.getElementById('packSaveAssignments');if(save){save.onclick=savePackagingAssignments;save.disabled=packAssignmentSaving;}
   var snap=document.getElementById('packSnapshot');if(snap)snap.onclick=packStyleSnapshot;
   var restore=document.getElementById('packRestore');if(restore)restore.onchange=function(){packStyleRestore(restore.files&&restore.files[0]);};
-}
-function packStyleApply(){
-  if(packStyleBusy)return;
-  var plan=packStylePlan||packStyleBuild();
-  if(!packStyleSnapshotTaken){alert('Save a restore point first. That file is how you undo this.');return;}
-  if(!confirm('Move packaging to serve styles?\n\n'
-    +Object.keys(plan.styles).length+' serve styles created\n'
-    +plan.stripped.length+' recipes have their packaging rows removed\n'
-    +'Every drink is told how it is served\n\n'
-    +'Completed orders keep the cost they were posted with. Future orders carry the true packaging cost.'))return;
-  packStyleBusy=true;
-  var btn=document.getElementById('packApply'); if(btn){btn.disabled=true;btn.textContent='Applying…';}
-  var a=A(),groups=(A()&&A().optionGroupsMap)||{},updates={};
-  Object.keys(plan.updates).forEach(function(path){updates[path]=plan.updates[path];});
-  Object.keys(plan.choiceUpdates).forEach(function(gid){
-    var group=groups[gid];if(!group||!Array.isArray(group.choices))return;
-    var choices=JSON.parse(JSON.stringify(group.choices));
-    choices.forEach(function(choice){var style=plan.choiceUpdates[gid][choice.label];if(style)choice.serveStyle=style;});
-    updates['optionGroups/'+gid+'/choices']=choices;
-  });
-  a.update(a.ref(a.db,'/'),updates).then(function(){
-    packStyleBusy=false;packStylePlan=null;
-    alert('Done. Packaging now comes from '+Object.keys(plan.styles).length+' serve styles.\n\nRing up one hot drink and one iced drink and check the cup shows in the cost.');
-    setTimeout(renderRecipes,400);
-  }).catch(function(e){
-    packStyleBusy=false;
-    if(btn){btn.disabled=false;btn.textContent='✓ Move packaging to serve styles';}
-    alert('Nothing was changed: '+((e&&e.code)||(e&&e.message)||e)+'\n\nLog in with your admin email and try again.');
-  });
 }

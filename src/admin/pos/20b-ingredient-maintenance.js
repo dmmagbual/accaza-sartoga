@@ -56,30 +56,6 @@ function editIngredient(id){
   };
   return;
 }
-/* Brand breakdown for a pooled generic item: shows each brand received + the
-   weighted-average cost recipes actually use. On-hand is pooled (one figure). */
-function brandBreakdown(id){
-  var i=inventoryMap[id]; if(!i)return; var a=A();
-  a.get(a.query(a.ref(a.db,'stockReceipts'),a.orderByChild('ing'),a.equalTo(id))).then(function(s){
-    var all=s.val()||{}; var byBrand={}; var totQ=0,totV=0;
-    Object.keys(all).forEach(function(k){var r=all[k]; if(!r||r.ing!==id)return; var b=(r.brand||'').trim()||'(no brand noted)'; if(!byBrand[b])byBrand[b]={qty:0,value:0,n:0,last:''}; byBrand[b].qty+=Number(r.qty)||0; byBrand[b].value+=Number(r.total)||0; byBrand[b].n++; totQ+=Number(r.qty)||0; totV+=Number(r.total)||0; var d=r.date||''; if(d>byBrand[b].last)byBrand[b].last=d;});
-    var brands=Object.keys(byBrand).sort();
-    var rows=brands.length?brands.map(function(b){var x=byBrand[b];var avg=x.qty>0?x.value/x.qty:0;return '<tr><td>'+esc(b)+'</td><td class="r">'+num(Math.round(x.qty*1000)/1000)+' '+esc(i.unit||'')+'</td><td class="r">'+peso(x.value)+'</td><td class="r">'+peso(Math.round(avg*100000)/100000)+'</td><td class="r" style="color:var(--tl);">'+x.n+'</td><td class="r" style="color:var(--tl);">'+esc(x.last||'')+'</td></tr>';}).join(''):'<tr><td colspan="6" style="color:var(--tl);padding:0.6rem;">No purchases recorded for this item yet. Receive stock via the Purchases tab and note the brand per line.</td></tr>';
-    var histAvg=totQ>0?(totV/totQ):0;
-    var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
-    mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:620px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">🏷 Brands — '+esc(i.name)+'</div><button class="pz-btn sec" id="bbClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
-      +'<p class="pz-sub" style="margin:0.3rem 0 0.6rem;">Recipes reference <b>'+esc(i.name)+'</b> and cost at its <b>current weighted-average: '+peso(Number(i.cost)||0)+' / '+esc(i.unit||'')+'</b> · on hand (pooled) '+num(Number(i.stock)||0)+' '+esc(i.unit||'')+'.</p>'
-      +'<table class="pz-tbl"><thead><tr><th>Brand</th><th class="r">Received</th><th class="r">Total ₱</th><th class="r">Avg ₱/unit</th><th class="r">Buys</th><th class="r">Last</th></tr></thead><tbody>'+rows+'</tbody></table>'
-      +(brands.length?'<div style="text-align:right;font-size:0.8rem;color:var(--tl);margin-top:0.3rem;">Lifetime purchase avg across brands: <b>'+peso(Math.round(histAvg*100000)/100000)+' / '+esc(i.unit||'')+'</b></div>':'')
-      +'<p class="pz-sub" style="margin-top:0.6rem;font-size:0.72rem;">This is purchase history <b>by brand</b>. On-hand stock is pooled into one figure — per-brand remaining isn’t tracked once pooled (that’s the trade-off of pooling). The recipe always uses the current weighted-average cost shown above.</p>'
-      +'<div style="margin-top:0.8rem;"><button class="pz-btn sec" id="bbClose2">Close</button></div></div>';
-    document.body.appendChild(mask);
-    function close(){document.body.removeChild(mask);}
-    var c1=mask.querySelector('#bbClose'); if(c1)c1.onclick=close; var c2=mask.querySelector('#bbClose2'); if(c2)c2.onclick=close;
-    mask.addEventListener('click',function(e){if(e.target===mask)close();});
-  }).catch(function(e){ alert('Could not load brand history: '+((e&&e.code)||e)+'. If PERMISSION_DENIED, log in with your admin email.'); });
-}
 function delIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
   if(i.ledgerVersion){alert('Cannot delete "'+i.name+'" after ledger initialization. Its movement history must remain linked to a real item. Create a replacement item and stop using this one instead.');return;}

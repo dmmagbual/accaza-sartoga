@@ -48,6 +48,9 @@ export const BUNDLE_BUDGETS=Object.freeze({
   // Oct 2026 lifeline safeguard: reviewed at 575,062 bytes. The 650 KB envelope includes the
   // protected 50 KB reserve above, giving normal releases a 600 KB hard limit and 24,938 bytes
   // of usable growth at review time. Changing the reserve requires an explicit test update.
+  // Oct 2026 (admin 647): unreachable code from the Recipes screens retired on 6 Sep (option
+  // library, repair & restore incl. the COGS correction, consumables) and the Receive Stock and
+  // brand-breakdown dialogs was deleted, 584,513 -> 527,670 bytes. Ceiling and reserve unchanged.
   'assets/js/admin/pos.js':650000,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
   // +1.4 KB (Sep 2026): receipt images load on demand from pettyCashReceipts instead of riding
