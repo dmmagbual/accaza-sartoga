@@ -9,6 +9,10 @@
 // A hard reserve is protected capacity inside a ceiling. Normal growth fails at the usable
 // limit (ceiling minus reserve), so the reserve cannot be silently consumed by feature work.
 export const BUDGET_WARN_ROOM=0.025;
+// Any tracked runtime script at or above this size must have a ceiling below.
+export const BUDGET_COVERAGE_MIN_BYTES=10000;
+// Modules carved out of a guarded bundle keep a ceiling whatever their size.
+export const SPLIT_MODULES=Object.freeze(['assets/js/admin/daily-report-output.mjs','assets/js/admin/order-archive-panel.mjs','assets/js/customer/chatbot.mjs']);
 export const usableBudget=(maximum,reserve=0)=>maximum-reserve;
 export const budgetState=(bytes,maximum,reserve=0)=>{
   const usable=usableBudget(maximum,reserve);
@@ -114,5 +118,32 @@ export const BUNDLE_BUDGETS=Object.freeze({
   // Sep 2026 re-baseline under the budget policy above: reviewed 223,307 bytes (books 132).
   'assets/js/books/app.js':234500,
   // Build 110 isolates the owner-only supplier AP cutover form from the core Books bundle.
-  'src/books/opening-payables.js':7500
+  'src/books/opening-payables.js':7500,
+  // Oct 2026 coverage (tests/bundle-coverage-check.mjs): every runtime script of 10 KB or more,
+  // and every module split out of a guarded bundle, carries its own ceiling, so growth cannot
+  // escape review by living in an unbudgeted file. Set ~5% above the reviewed size (rounded up
+  // to 100 bytes) under the budget policy above.
+  'assets/js/admin/rewards.js':94000, // reviewed 89,504
+  'assets/js/admin/operations-dashboard.js':72400, // reviewed 68,880
+  'assets/js/customer/qr-encoder.mjs':55400, // reviewed 52,722
+  'assets/js/admin/catalog-admin.mjs':43800, // reviewed 41,684
+  'assets/js/admin/overview-insights.mjs':42100, // reviewed 40,065
+  'assets/js/admin/realtime-hub.mjs':36700, // reviewed 34,948
+  'assets/js/customer/rewards.js':34700, // reviewed 32,991
+  'assets/js/admin/sales-history.js':30000, // reviewed 28,541
+  'assets/js/admin/reservations.mjs':28300, // reviewed 26,945
+  'assets/js/books/live-pos.mjs':28300, // reviewed 26,882
+  'assets/js/admin/undeposited.js':28100, // reviewed 26,670
+  'assets/js/admin/staff-access.js':26600, // reviewed 25,250
+  'assets/js/shared/costing.js':23400, // reviewed 22,196
+  'assets/js/admin/historical-period-store.mjs':20900, // reviewed 19,832
+  'assets/js/admin/accaza-ai.js':19100, // reviewed 18,117
+  'assets/js/admin/packages.js':17500, // reviewed 16,576
+  'assets/js/admin/admin-orders.mjs':15100, // reviewed 14,295
+  'assets/js/admin/uncosted-sales.js':13600, // reviewed 12,896
+  'assets/js/admin/channel-pricing.js':13400, // reviewed 12,727
+  'assets/js/shared/serve-style-plan.js':13200, // reviewed 12,543
+  'assets/js/admin/daily-report-output.mjs':11600, // reviewed 11,033
+  'assets/js/admin/order-archive-panel.mjs':5600, // reviewed 5,278
+  'assets/js/customer/chatbot.mjs':6100, // reviewed 5,717
 });
