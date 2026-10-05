@@ -723,9 +723,48 @@ function renderShiftCard(){
 // POS Settings tab (Settings ▸ POS Settings): Staff & PINs, cash/reconciliation
 // settings, and payment methods — moved out of Register Operations.
 
+var CUSTOMER_MENU_QR_URL='https://accazacoffee.com/menu.html';
+var customerMenuQrEncoderPromise=null;
+function loadCustomerMenuQrEncoder(){
+  if(!customerMenuQrEncoderPromise){
+    var moduleUrl=new URL('assets/js/customer/qr-encoder.mjs',document.baseURI).href;
+    customerMenuQrEncoderPromise=import(moduleUrl).then(function(module){return module.default||module.qrcode;}).catch(function(error){customerMenuQrEncoderPromise=null;throw error;});
+  }
+  return customerMenuQrEncoderPromise;
+}
+function renderCustomerMenuQr(){
+  var holder=document.getElementById('customerMenuQrPreview'),download=document.getElementById('customerMenuQrDownload');
+  if(!holder)return;
+  holder.setAttribute('aria-busy','true');holder.innerHTML='<span>Preparing QR preview...</span>';if(download)download.disabled=true;
+  loadCustomerMenuQrEncoder().then(function(createQr){
+    var qr=createQr(0,'H');qr.addData(CUSTOMER_MENU_QR_URL);qr.make();
+    holder.innerHTML=qr.createSvgTag({scalable:true,margin:8,alt:'QR code for the Accaza customer dine-in menu',title:'Accaza customer menu QR code'});
+    var svg=holder.querySelector('svg');if(svg){svg.setAttribute('width','100%');svg.setAttribute('height','100%');}
+    holder.setAttribute('aria-busy','false');if(download)download.disabled=false;
+  }).catch(function(){holder.setAttribute('aria-busy','false');holder.innerHTML='<span class="customer-menu-qr-error">QR preview could not be prepared. Refresh Settings and try again.</span>';});
+}
+function downloadCustomerMenuQr(){
+  var button=document.getElementById('customerMenuQrDownload'),svg=document.querySelector('#customerMenuQrPreview svg');
+  if(!svg){renderCustomerMenuQr();return;}
+  if(button){button.disabled=true;button.textContent='Preparing download...';}
+  try{
+    var source=new XMLSerializer().serializeToString(svg),svgBlob=new Blob([source],{type:'image/svg+xml;charset=utf-8'}),svgUrl=URL.createObjectURL(svgBlob),image=new Image();
+    image.onload=function(){
+      var canvas=document.createElement('canvas');canvas.width=1600;canvas.height=1600;var ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.imageSmoothingEnabled=false;ctx.drawImage(image,0,0,canvas.width,canvas.height);URL.revokeObjectURL(svgUrl);
+      canvas.toBlob(function(blob){
+        if(!blob){if(button){button.disabled=false;button.textContent='Download Customer QR Code';}alert('The QR image could not be created. Refresh Settings and try again.');return;}
+        var url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='accaza-customer-menu-qr.png';document.body.appendChild(link);link.click();document.body.removeChild(link);setTimeout(function(){URL.revokeObjectURL(url);},4000);
+        if(button){button.disabled=false;button.textContent='Download Customer QR Code';}if(window.accazaToast)window.accazaToast('Customer QR code downloaded.','ok');
+      },'image/png');
+    };
+    image.onerror=function(){URL.revokeObjectURL(svgUrl);if(button){button.disabled=false;button.textContent='Download Customer QR Code';}alert('The QR image could not be created. Refresh Settings and try again.');};
+    image.src=svgUrl;
+  }catch(error){if(button){button.disabled=false;button.textContent='Download Customer QR Code';}alert('The QR image could not be created: '+((error&&error.message)||error));}
+}
 function renderPosSettings(){
   var root=document.getElementById('posSettingsRoot');if(!root)return;
   var html='';
+  html+='<div class="az-sec">Customer menu QR code</div><div class="pz-card customer-menu-qr-settings" style="margin-bottom:1rem;"><div class="customer-menu-qr-copy"><h3>General dine-in QR code</h3><p>Download and print this permanent code for customers. It opens the menu-only ordering page and sends unpaid dine-in tickets to the POS.</p><div class="customer-menu-qr-url">'+esc(CUSTOMER_MENU_QR_URL)+'</div><div class="customer-menu-qr-actions"><button class="pz-btn ok" type="button" id="customerMenuQrDownload" disabled>Preparing QR code...</button><a class="pz-btn sec" href="'+esc(CUSTOMER_MENU_QR_URL)+'" target="_blank" rel="noopener">Test customer menu</a></div><small>No table number is requested. Customers proceed to the cashier with their name and queue number.</small></div><div class="customer-menu-qr-preview" id="customerMenuQrPreview" role="status" aria-live="polite"><span>Preparing QR preview...</span></div></div>';
   html+='<div class="az-sec">Staff &amp; PINs</div><div class="pz-card" style="margin-bottom:1rem;"><div style="display:grid;grid-template-columns:1.5fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
     +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="stName" placeholder="e.g. Maria"/></div>'
     +'<div><span class="pz-lbl">4-digit PIN</span><input class="pz-in" id="stPin" inputmode="numeric" maxlength="6" placeholder="1234"/></div>'
@@ -746,6 +785,8 @@ function renderPosSettings(){
   var ff=document.getElementById('opsFloat');if(ff){var a5=A();a5.get(a5.ref(a5.db,'posSettings')).then(function(s){var v=s.val()||{};ff.value=(v.fixedFloat!=null?v.fixedFloat:'');});ff.onchange=function(){var a=A();var raw=String(ff.value).trim();a.update(a.ref(a.db,'posSettings'),{fixedFloat:raw===''?null:(Number(raw)||0)});};}
   var bk=document.getElementById('bkDownload');
   if(bk){var a6=A();a6.get(a6.ref(a.db,'posSettings/offsiteBackup')).then(function(s){renderBackupStatus((s.val()||{}).lastAt);}).catch(function(){renderBackupStatus(0);});bk.onclick=exportDataBackup;}
+  var customerQrDownload=document.getElementById('customerMenuQrDownload');if(customerQrDownload)customerQrDownload.onclick=downloadCustomerMenuQr;
+  renderCustomerMenuQr();
   renderPayMethods();
 }
 function kpi(l,v){return '<div class="az-kpi"><div class="v">'+v+'</div><div class="l">'+esc(l)+'</div></div>';}
