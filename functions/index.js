@@ -9665,6 +9665,7 @@ async function accazaAiWithFallback(providers,context){
     if(limit<ACCAZA_AI_MIN_ATTEMPT_MS){failures.push({provider:provider.name,reason:"Skipped: not enough time left."});continue;}
     try{
       const result=await provider.ask(limit);
+      console.info(JSON.stringify({event:"accaza_ai_provider_answered",provider:provider.name,surface:accazaAiText(context&&context.surface,40)||"unknown",fallbackDepth:failures.length,routedModel:accazaAiText(result&&result.routedModel,120)||null}));
       if(failures.length)await accazaAiRecordProviderHealth(context,provider.name,failures);
       return{provider:provider.name,result,failures};
     }catch(error){if(!(error&&error.details&&error.details.providerFailure))throw error;failures.push({provider:provider.name,reason:error.message});}
