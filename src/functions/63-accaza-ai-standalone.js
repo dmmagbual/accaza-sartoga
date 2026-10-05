@@ -37,7 +37,7 @@ async function releaseAccazaAiGuestMessage(db,uid,day){
     return Object.assign({},current,{total:Math.max(0,Number(current.total||0)-1),users:Object.assign({},users,{[uid]:Object.assign({},users[uid],{count:mine-1})})});
   },undefined,false);}catch(_error){/* best effort: a failed refund only costs the guest one message */}
 }
-exports.askAccazaAIStandalone=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY,CEREBRAS_API_KEY,GROQ_API_KEY,OPENROUTER_API_KEY]},async request=>{
+exports.askAccazaAIStandalone=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY,CEREBRAS_API_KEY,GROQ_API_KEY,OPENROUTER_API_KEY,ORCAROUTER_API_KEY]},async request=>{
   const db=getDatabase(),guest=accazaAiStandaloneIsGuest(request);
   let actor;
   if(guest)actor={uid:request.auth.uid,role:"guest"};

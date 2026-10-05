@@ -32,6 +32,14 @@ const ACCAZA_AI_GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const ACCAZA_AI_GROQ_MODEL = "openai/gpt-oss-120b";
 const ACCAZA_AI_GROQ_OPTIONS = {maxTokens:1500,body:{reasoning_effort:"low"}};
 function accazaAiGroqKey(){return accazaAiOllamaHeaderValue(GROQ_API_KEY.value());}
+// OrcaRouter free tier (Oct 2026): OpenAI-compatible, best-effort general-chat backup.
+// The stable orcarouter/free alias lets OrcaRouter rotate free models without an Accaza deploy.
+// Keep it out of fact-pack and record-reading modes because lower free tiers impose an unpublished
+// per-request prompt cap; an oversized prompt is a non-retryable 400.
+const ACCAZA_AI_ORCAROUTER_URL = "https://api.orcarouter.ai/v1/chat/completions";
+const ACCAZA_AI_ORCAROUTER_MODEL = "orcarouter/free";
+const ACCAZA_AI_ORCAROUTER_OPTIONS = {maxTokens:1200};
+function accazaAiOrcaRouterKey(){return accazaAiOllamaHeaderValue(ORCAROUTER_API_KEY.value());}
 // Jev Router is an experimental OpenRouter fallback (Danilo, 27 Sep 2026). It is kept
 // behind the established providers, receives only general chat or the bounded fact pack,
 // and is forced onto zero-retention, no-data-collection endpoints. The selected downstream
@@ -127,6 +135,10 @@ async function askGroqGeneralChat(question,history,timeoutMs){
   const messages=[{role:"system",content:ACCAZA_AI_GENERAL_CHAT_INSTRUCTION},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}];
   return{answer:await askOpenAiCompatibleChat("Groq",ACCAZA_AI_GROQ_URL,accazaAiGroqKey(),ACCAZA_AI_GROQ_MODEL,messages,0.35,timeoutMs,ACCAZA_AI_GROQ_OPTIONS),sources:[]};
 }
+async function askOrcaRouterGeneralChat(question,history,timeoutMs){
+  const messages=[{role:"system",content:ACCAZA_AI_GENERAL_CHAT_INSTRUCTION},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}];
+  return{answer:await askOpenAiCompatibleChat("OrcaRouter",ACCAZA_AI_ORCAROUTER_URL,accazaAiOrcaRouterKey(),ACCAZA_AI_ORCAROUTER_MODEL,messages,0.35,timeoutMs,ACCAZA_AI_ORCAROUTER_OPTIONS),sources:[]};
+}
 async function askCerebrasGeneralChat(question,history,timeoutMs){
   const messages=[{role:"system",content:ACCAZA_AI_GENERAL_CHAT_INSTRUCTION},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}];
   return{answer:await askOpenAiCompatibleChat("Cerebras",ACCAZA_AI_CEREBRAS_URL,accazaAiCerebrasKey(),ACCAZA_AI_CEREBRAS_MODEL,messages,0.35,timeoutMs,ACCAZA_AI_CEREBRAS_OPTIONS),sources:[]};
@@ -179,6 +191,7 @@ function accazaAiAnalysisProviders(question,facts,history){return[
 function accazaAiGeneralChatProviders(question,history){return[
   {name:"gemini",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiWebChat(question,history,timeoutMs)},
   {name:"groq",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiGroqKey()),ask:timeoutMs=>askGroqGeneralChat(question,history,timeoutMs)},
+    {name:"orcarouter",enabled:()=>Boolean(accazaAiOrcaRouterKey()),ask:timeoutMs=>askOrcaRouterGeneralChat(question,history,timeoutMs),maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS},
   {name:"cerebras",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiCerebrasKey()),ask:timeoutMs=>askCerebrasGeneralChat(question,history,timeoutMs)},
   {name:"deepseek",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:timeoutMs=>askDeepSeekGeneralChat(question,history,timeoutMs)},
   {name:"jev",maxMs:ACCAZA_AI_JEV_TIMEOUT_MS,enabled:()=>Boolean(accazaAiJevKey()),ask:timeoutMs=>askJevGeneralChat(question,history,timeoutMs)},
@@ -215,7 +228,7 @@ async function accazaAiWithFallback(providers,context){
   await accazaAiRecordProviderHealth(context,null,failures);
   throw new HttpsError("unavailable",context&&context.general?"The AI service is temporarily unavailable. Please try again in a few minutes.":"Accaza AI is temporarily unavailable. Please try again in a few minutes.");
 }
-exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY,CEREBRAS_API_KEY,GROQ_API_KEY,OPENROUTER_API_KEY]},async request=>{
+exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY,CEREBRAS_API_KEY,GROQ_API_KEY,OPENROUTER_API_KEY,ORCAROUTER_API_KEY]},async request=>{
   const db=getDatabase(),actor=await requirePortalUser(db,request);if(!ACCAZA_AI_QUERY_ROLES.includes(actor.role))throw new HttpsError("permission-denied","Accaza AI is available to authorized portal accounts only.");
   const question=accazaAiText(request.data&&request.data.question,800),mode=request.data&&request.data.mode==="web"?"web":"accaza",history=accazaAiHistory(request.data&&request.data.history);if(question.length<3)throw new HttpsError("invalid-argument","Enter a question for Accaza AI.");
   if(mode==="web"&&accazaAiWebQuestionBlocked(question))throw new HttpsError("failed-precondition","Use Accaza analysis for Accaza business or app questions. Web chat never receives Accaza data.");
