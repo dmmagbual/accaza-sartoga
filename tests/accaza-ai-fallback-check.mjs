@@ -34,6 +34,12 @@ const failure=message=>()=>Promise.reject(new HttpsError('unavailable',message,{
 // 1. Primary answers: no health write.
 {const db=fakeDb(),r=await lib.accazaAiWithFallback([provider('gemini',ok('A'))],{db,general:true});
 assert.equal(r.provider,'gemini');assert.equal(Object.keys(db.store).length,0,'a normal primary answer writes nothing');}
+// 1a. Provider-selection diagnostics are server-side and contain no prompt or answer text.
+assert.ok(source.includes('event:"accaza_ai_provider_answered"'));
+assert.ok(source.includes('provider:provider.name'));
+assert.ok(source.includes('fallbackDepth:failures.length'));
+assert.ok(!source.includes('event:"accaza_ai_provider_answered",question'));
+assert.ok(!source.includes('event:"accaza_ai_provider_answered",answer'));
 // 2. Primary fails, backup answers: recorded as a backup answer.
 {const db=fakeDb(),r=await lib.accazaAiWithFallback([provider('gemini',failure('quota')),provider('deepseek',ok('B'))],{db,general:true});
 assert.equal(r.provider,'deepseek');const h=db.store['/accazaAiProviderHealth/2026-09-25'];assert.equal(h.backupAnswers.deepseek,1);assert.equal(h.providerFailures.gemini,1);assert.equal(h.failedQuestions,0);assert.equal(h.lastEvent.failures[0].reason,'quota');}
