@@ -1,4 +1,5 @@
 import{reconcileInventoryBooks,journalBasisThrough,canPostOpeningBalance,canPostReconciliationAdjustment}from'./inventory-books-reconciliation.mjs?v=547';
+import{printDailyReport,exportDailyXlsx}from'./daily-report-output.mjs?v=646';
 import{createOperatingYearWeekly}from'./weekly-sales.mjs?v=616';
 (function(){
 'use strict';

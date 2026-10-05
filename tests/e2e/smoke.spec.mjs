@@ -41,6 +41,24 @@ test('customer page has usable landmarks, labels, and keyboard focus',async({pag
   await expect(page.locator('a[href*="PLACEHOLDER"]')).toHaveCount(0);
 });
 
+test('customer help chat answers from its own module and falls back to contact links',async({page})=>{
+  await installCustomerFirebaseFixture(page);
+  const pageErrors=[];
+  page.on('pageerror',error=>pageErrors.push(error.message));
+  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await expect(page.locator('#menuGrid .menu-card').first()).toBeVisible({timeout:20000});
+  await page.locator('.chat-toggle-btn').click();
+  await expect(page.locator('#chatWindow')).toHaveClass(/open/);
+  await expect(page.locator('#chatMessages .chat-msg.bot').first()).toContainText('Welcome to Accaza Coffee House');
+  await page.locator('.chat-quick-btn',{hasText:'Hours'}).click();
+  await expect(page.locator('#chatMessages .chat-msg.user').last()).toHaveText('Opening hours?');
+  await expect(page.locator('#chatMessages .chat-msg.bot').last()).toContainText('6:00 AM to 12:00 Midnight');
+  await page.locator('#chatInput').fill('can I bring my dog');
+  await page.evaluate(()=>window.sendChat());
+  await expect(page.locator('#chatMessages a[href^="mailto:admin@accazacoffee.com"]')).toBeVisible();
+  expect(pageErrors).toEqual([]);
+});
+
 test('customer live runtime initializes ordering, tracker, reservations, and reviews',async({page})=>{
   await installCustomerFirebaseFixture(page);
   const pageErrors=[];

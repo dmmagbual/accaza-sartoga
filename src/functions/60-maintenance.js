@@ -61,6 +61,30 @@ exports.pruneEphemeralNodes = onSchedule(
     const monitorHistory = (await db.ref("/systemHealth/productionMonitor/history").get()).val() || {};
     Object.keys(monitorHistory).forEach((day) => { if (day < cutoffDay) mark(`systemHealth/productionMonitor/history/${day}`); });
 
+    // Loyalty, QR and AI scratch state (Oct 2026). None of it is history: OTP challenges and
+    // SMS throttles expire in minutes, a QR duplicate-submit lock lives minutes, a daily stamp
+    // cap or QR queue counter only matters on its own business day, and the AI usage/health
+    // counters are kept a month for review. Indexed or key-range reads touch only stale rows.
+    const staleOtp = (await db.ref("/loyaltyOtp").orderByChild("expiresAt").endAt(now - DAY).get()).val() || {};
+    Object.keys(staleOtp).forEach((token) => mark(`loyaltyOtp/${token}`));
+    const staleThrottle = (await db.ref("/loyaltyLinkThrottle").orderByChild("lastAt").endAt(now - 2 * DAY).get()).val() || {};
+    Object.keys(staleThrottle).forEach((key) => mark(`loyaltyLinkThrottle/${key}`));
+    const qrLocks = /* download-ok: bounded pruned by this daily job */(await db.ref("/qrOrderLocks").get()).val() || {};
+    Object.keys(qrLocks).forEach((uid) => Object.keys(qrLocks[uid] || {}).forEach((sig) => {
+      if (now - Number((qrLocks[uid][sig] && qrLocks[uid][sig].t) || 0) > 2 * DAY) mark(`qrOrderLocks/${uid}/${sig}`);
+    }));
+    const keepDays = (days) => financeDateFromTimestamp(now - days * DAY);
+    const pruneDayKeys = async (root, days) => {
+      const cutoff = keepDays(days), rows = (await db.ref(`/${root}`).orderByKey().endAt(cutoff).get()).val() || {};
+      Object.keys(rows).forEach((day) => { if (day < cutoff) mark(`${root}/${day}`); });
+    };
+    await pruneDayKeys("qrOrderCounters", 7);
+    await pruneDayKeys("accazaAiGuestUsage", 30);
+    await pruneDayKeys("accazaAiProviderHealth", 30);
+    const counterCutoff = keepDays(3);
+    const counters = /* download-ok: bounded pruned by this daily job to three business days per member */(await db.ref("/loyaltyDailyCounters").get()).val() || {};
+    Object.keys(counters).forEach((memberId) => Object.keys(counters[memberId] || {}).forEach((day) => { if (day < counterCutoff) mark(`loyaltyDailyCounters/${memberId}/${day}`); }));
+
     const paths = Object.keys(deletions);
     for (let i = 0; i < paths.length; i += 400) {
       const chunk = {};
@@ -106,7 +130,7 @@ exports.autoCompleteReadyOnlineOrders = onSchedule(
 // (active-order projections, locks, rate windows, status-command claims, offline
 // sync scratch, daily telemetry) are excluded — a restore rebuilds those. This
 // is the safety net behind a corrupt write, a bad delete, or human error.
-const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "orderCorrectionCommands", "offlinePosSync", "clientTelemetryDaily", BackupDelta.DIRTY_ROOT]);
+const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "qrOrderLocks", "loyaltyOtp", "loyaltyLinkThrottle", "rateLimits", "orderStatusCommands", "orderCorrectionCommands", "offlinePosSync", "clientTelemetryDaily", BackupDelta.DIRTY_ROOT]);
 // Keys of a node without downloading its values (REST shallow read with the
 // function's own credential).
 async function shallowDatabaseKeys(db, path) {
@@ -249,6 +273,13 @@ exports.markBackupDirtyAppCustomers = backupDirtyTrigger("appCustomers");
 exports.markBackupDirtyReviews = backupDirtyTrigger("reviews");
 exports.markBackupDirtyFeedbacks = backupDirtyTrigger("feedbacks");
 exports.markBackupDirtyPackages = backupDirtyTrigger("packages");
+// Oct 2026: loyalty, Dragon Quest and QR ticket history grow with every member sale or QR
+// order, so the nightly backup copies them incrementally instead of re-reading them in full.
+exports.markBackupDirtyLoyaltyLedger = backupDirtyTrigger("loyaltyLedger");
+exports.markBackupDirtyLoyaltyRewards = backupDirtyTrigger("loyaltyRewards");
+exports.markBackupDirtyDragonQuestLedger = backupDirtyTrigger("dragonQuestLedger");
+exports.markBackupDirtyDragonQuestOrderIndex = backupDirtyTrigger("dragonQuestOrderIndex");
+exports.markBackupDirtyArchivedQrTickets = backupDirtyTrigger("archivedQrTickets");
 
 exports.backupDatabaseDaily = onSchedule(
   {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "512MiB"},

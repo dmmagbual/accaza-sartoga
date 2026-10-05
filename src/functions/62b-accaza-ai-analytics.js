@@ -32,6 +32,20 @@ async function accazaAiClaimFirestoreReads(ctx,count){
   if(!allowed)throw new Error(`today's AI analytics read allowance (${ACCAZA_AI_FIRESTORE_DAILY_READ_CAP} reads) is used up; try again tomorrow`);
   ctx.firestoreReads=Math.max(0,(ctx.firestoreReads||0)+count);
 }
+// Realtime Database download allowance for the record tools (see ACCAZA_AI_RTDB_DAILY_BYTES in
+// the record-tools section). It shares this feature's Firestore day counter.
+function accazaAiRtdbUsageRef(){return getFirestore().collection("aiAnalyticsUsage").doc(financeDateFromTimestamp(Date.now()));}
+function accazaAiRtdbDayBytes(ctx){
+  if(!ctx.dayBytes)ctx.dayBytes=accazaAiRtdbUsageRef().get().then(snap=>Number(snap.exists&&snap.get("rtdbBytes")||0)).catch(()=>0);
+  return ctx.dayBytes;
+}
+// Called once when a question ends (answered or not). Never throws: the guard is best effort and
+// must not turn an answered question into an error.
+async function accazaAiCommitRtdbUsage(ctx){
+  if(!ctx||!(ctx.rtdbBytes>0))return;
+  try{await accazaAiRtdbUsageRef().set({day:financeDateFromTimestamp(Date.now()),rtdbBytes:FieldValue.increment(ctx.rtdbBytes),updatedAt:Date.now()},{merge:true});}catch(error){logger.warn("Accaza AI download usage was not recorded",{error:String(error)});}
+}
+
 async function accazaAiSalesMonthDocs(ctx,months){
   ctx.salesMonths=ctx.salesMonths||{};const missing=months.filter(month=>!(month in ctx.salesMonths));
   if(missing.length){await accazaAiClaimFirestoreReads(ctx,missing.length);const firestore=getFirestore(),snaps=await firestore.getAll(...missing.map(month=>firestore.collection(HistoricalArchive.MONTH_COLLECTION).doc(month)));snaps.forEach((snap,index)=>{ctx.salesMonths[missing[index]]=snap.exists?snap.data()||{}:null;});}

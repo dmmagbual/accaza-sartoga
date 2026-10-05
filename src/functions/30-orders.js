@@ -265,6 +265,12 @@ async function enforceOrderRateLimit(db, uid) {
   if (limited) throw new HttpsError("resource-exhausted", "Too many order attempts. Please wait one minute and try again.");
 }
 const QR_TICKET_TTL_MS = 15 * 60 * 1000;
+// Public order paths only need to know whether a shift is open and which one. /posActiveShift
+// grows with every sale (drawer and offlineSyncApplied), so read just its id and status.
+async function readActiveShiftHead(db) {
+  const [id, status] = await Promise.all([db.ref("/posActiveShift/id").get(), db.ref("/posActiveShift/status").get()]);
+  return id.exists() ? {id: id.val(), status: status.val()} : null;
+}
 function qrBusinessDay(now) {
   return new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date(now));
 }
@@ -301,10 +307,11 @@ exports.createQrOrderTicket = onCall(
     if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Customer session is not ready. Refresh and try again.");
     if (!request.app) logger.warn("createQrOrderTicket called without App Check", {uid: request.auth.uid});
     const db = getDatabase(), uid = request.auth.uid, input = request.data || {}, now = Date.now();
-    const [shiftSnap, statusSnap] = await Promise.all([db.ref("/posActiveShift").get(), /* download-ok: bounded single public ordering status record required before accepting a QR ticket */ db.ref("/publicOrderStatus").get()]);
-    const shift = shiftSnap.val() || null, publicStatus = statusSnap.val() || {};
-    if (!shift || shift.status === "closed" || publicStatus.acceptingOrders !== true) throw new HttpsError("failed-precondition", "Dine-in ordering is closed right now. Please order directly at the cashier.");
+    // Rate limit first, then read only the two shift fields and the one ordering flag this needs:
+    // a repeated or abusive call must not download the whole active-shift record each time.
     await enforceOrderRateLimit(db, uid);
+    const [shift, acceptingSnap] = await Promise.all([readActiveShiftHead(db), db.ref("/publicOrderStatus/acceptingOrders").get()]);
+    if (!shift || shift.status === "closed" || acceptingSnap.val() !== true) throw new HttpsError("failed-precondition", "Dine-in ordering is closed right now. Please order directly at the cashier.");
     const name = textField(input.name, "Name", 100, true);
     if (name.length < 2) throw new HttpsError("invalid-argument", "Enter your name so the cashier can find the ticket.");
     const current = await currentQrPrice(db, input.lineItems, input.expectedTotal);
@@ -334,7 +341,7 @@ exports.manageQrOrderTicket = onCall(
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["orders", "pos"]), input = request.data || {}, now = Date.now();
     const action = textField(input.action, "Action", 20, true).toLowerCase(), ticketId = textField(input.ticketId, "Ticket ID", 120, true);
     if (!["claim", "release", "reject"].includes(action)) throw new HttpsError("invalid-argument", "Unsupported QR ticket action.");
-    const shift = (await db.ref("/posActiveShift").get()).val() || null;
+    const shift = await readActiveShiftHead(db);
     if (!shift || shift.status === "closed") throw new HttpsError("failed-precondition", "Open a POS shift before handling QR orders.");
     const ref = db.ref(`/activeQrTickets/${ticketId}`), first = (await ref.get()).val();
     if (!first) throw new HttpsError("not-found", "This QR order is no longer pending.");
@@ -385,9 +392,9 @@ exports.createOnlineOrder = onCall(
     const uid = request.auth.uid;
     const input = request.data || {};
     const db = getDatabase();
-    const shift = (await db.ref("/posActiveShift").get()).val() || null;
-    if (!shift || shift.status === "closed") throw new HttpsError("failed-precondition", "Online orders are closed right now. Please try again when the shop is accepting orders.");
     await enforceOrderRateLimit(db, uid);
+    const shift = await readActiveShiftHead(db);
+    if (!shift || shift.status === "closed") throw new HttpsError("failed-precondition", "Online orders are closed right now. Please try again when the shop is accepting orders.");
     const name = textField(input.name, "Name", 100, true);
     const phone = textField(input.phone, "Phone", 40, true);
     if (phone.replace(/\D/g, "").length < 10) throw new HttpsError("invalid-argument", "Enter a valid phone number.");

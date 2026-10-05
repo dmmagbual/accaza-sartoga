@@ -56,7 +56,6 @@ let myReservationIds=storedIdList('accaza_my_reservations',CUSTOMER_LIVE_RESERVA
 let calBlocks={};
 let calYear,calMonth,selectedDate=null,selectedTime=null;
 let adminCalYear,adminCalMonth,adminSelectedDate=null;
-let chatOpen=false,chatStarted=false;
 let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=window.__accazaQrOrderMode?'coffee':null;
 

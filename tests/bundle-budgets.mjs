@@ -22,9 +22,12 @@ export const BUNDLE_HARD_RESERVES=Object.freeze({
 export const BUNDLE_BUDGETS=Object.freeze({
   // Also enforced by the Phase 6 customer-runtime guard in tests/static/10-syntax-rendering.mjs.
   // Sep 2026 re-baseline under the budget policy: reviewed 110,089 bytes (customer 85).
+  // Oct 2026 (customer 96): the help chat moved to customer/chatbot.mjs (115,002 -> ~109,750 bytes).
   'assets/js/customer/core.mjs':115600,
   // Also enforced by the Phase 4C core guard in tests/static/30-server-release.mjs (formerly a
   // separate, tighter 126,000 ceiling). Sep 2026 re-baseline: reviewed 120,880 bytes (admin 611).
+  // Oct 2026 (admin 646): Order Archive panel moved to order-archive-panel.mjs and 109 garbled
+  // (double-encoded) characters repaired, 126,976 -> ~121,970 bytes. Ceiling unchanged.
   'assets/js/admin/core.mjs':127000,
   // Build 491 adds stock-item archiving: a retire path for ledger items that cannot be deleted,
   // with the guards, pickers and filter that go with it.
@@ -92,6 +95,8 @@ export const BUNDLE_BUDGETS=Object.freeze({
   // peak-hour bars and weekday trend lines without adding another data read.
   // Reviewed generated size: 180,306 bytes; the module remains Analytics-only.
   // Sep 2026 re-baseline under the budget policy above: reviewed 180,598 bytes (admin 611).
+  // Oct 2026 (admin 646): Daily Report print view and Excel export moved to
+  // daily-report-output.mjs, 187,556 -> 177,411 bytes. Ceiling unchanged.
   'assets/js/admin/analytics.js':189700,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.

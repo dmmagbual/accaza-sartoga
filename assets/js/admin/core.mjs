@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=645";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=646";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -14,6 +14,7 @@ import{createCustomerOrderTracker}from"./customer-order-tracker.mjs";
 import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
 import{sortArchivedOrders,summarizeArchivedOrders}from"./archive-order-sort.mjs";
+import{createOrderArchivePanel}from"./order-archive-panel.mjs";
 
 const {getPaymentProof:getPaymentProofCall,getCurrentCashBalances:getCurrentCashBalancesCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,manageFixedAsset:manageFixedAssetCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,manageAccountingPeriod:manageAccountingPeriodCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,reopenDiscrepancy:reopenDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,setUndepositedOpeningBalance:setUndepositedOpeningBalanceCall,repairPettyVoucherFinancial:repairPettyVoucherFinancialCall,retireRevolvingFund:retireRevolvingFundCall,repairClosedShiftTurnover:repairClosedShiftTurnoverCall,repairShiftDeclaredTips:repairShiftDeclaredTipsCall,repairReversedPayoutDeposit:repairReversedPayoutDepositCall,reconcileUndepositedCustody:reconcileUndepositedCustodyCall,runFinancialClose:runFinancialCloseCall,archiveActivityLog:archiveActivityLogCall}=callables;
 window.__accazaAuth=auth;
@@ -22,7 +23,7 @@ const readHistoricalSalesRollup=function(payload){return callables.readHistorica
 const subscriptionHub=createSubscriptionHub(db,{ref,onValue,onChildAdded,onChildChanged,onChildRemoved,query,orderByChild,limitToLast,startAt,endAt,endBefore,get,readHistoricalOrders,cacheScope:function(){return auth&&auth.currentUser&&auth.currentUser.uid||'';}});
 window.__accazaLiveStats=function(){return subscriptionHub.stats();};
 const renderHistoryPager=createHistoryPager(subscriptionHub);
-window.__fbForgot=function(){var current=(document.getElementById('adminUser').value||'').trim();if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh and try again.');return;}window.AccazaFormDialog.run({title:'Reset portal password',subtitle:'Firebase will send the reset link to this account.',submitLabel:'Send reset link',busyLabel:'Sendingâ€¦',fields:[{name:'email',label:'Firebase account email',type:'email',required:true,value:current,validate:function(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)?'':'Enter a valid email address.';}}]},function(v){return sendPasswordResetEmail(auth,v.email).then(function(){return v;});}).then(function(v){alert('Password reset link sent to '+v.email+'. Check inbox and spam.');}).catch(function(e){if(e&&e.code!=='cancelled')alert('Could not send reset: '+((e&&e.code)||e));});};
+window.__fbForgot=function(){var current=(document.getElementById('adminUser').value||'').trim();if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh and try again.');return;}window.AccazaFormDialog.run({title:'Reset portal password',subtitle:'Firebase will send the reset link to this account.',submitLabel:'Send reset link',busyLabel:'Sending…',fields:[{name:'email',label:'Firebase account email',type:'email',required:true,value:current,validate:function(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)?'':'Enter a valid email address.';}}]},function(v){return sendPasswordResetEmail(auth,v.email).then(function(){return v;});}).then(function(v){alert('Password reset link sent to '+v.email+'. Check inbox and spam.');}).catch(function(e){if(e&&e.code!=='cancelled')alert('Could not send reset: '+((e&&e.code)||e));});};
 const VAPID_KEY="BIIVf-1RYIQger0yqeYlyV6-tQpH8YfytIgQK6-7IJg87HVITcNkYv4RYcKjyCmJBJKR1EXjJqRuiHzkFJjSvlE";
 function _pushToastWire(messaging){onMessage(messaging,function(payload){var d=(payload&&(payload.data||payload.notification))||{};try{if(navigator.vibrate)navigator.vibrate([400,150,400,150,400,150,400]);}catch(e){}try{customerOrderTracker.playChime();}catch(e){}try{navigator.serviceWorker.ready.then(function(reg){reg.showNotification(d.title||'Accaza Coffee House',{body:d.body||'',icon:'/favicon_192x192.png',badge:'/favicon_192x192.png',vibrate:[400,150,400,150,400,150,400],requireInteraction:true,renotify:true,tag:'accaza-order',data:{link:(d.link||'/')}});});}catch(e){}try{(window.accazaToast||function(){})((d.title?d.title+': ':'')+(d.body||'New notification'),'ok');}catch(e){}});}
 async function registerPushToken(){
@@ -34,7 +35,7 @@ async function registerPushToken(){
     var reg=await navigator.serviceWorker.ready;
     var messaging=getMessaging(app);
     var token=await getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:reg});
-    if(token){var u=appCustomerSession.getUser();var au=auth.currentUser;if(u&&au){try{await update(ref(db,'appCustomers/'+au.uid),{pushToken:token,pushTokenAt:Date.now()});if(!window.__pushToasted){window.__pushToasted=true;(window.accazaToast||function(){})('ðŸ”” Notifications on for this device','ok');}}catch(e){}}}
+    if(token){var u=appCustomerSession.getUser();var au=auth.currentUser;if(u&&au){try{await update(ref(db,'appCustomers/'+au.uid),{pushToken:token,pushTokenAt:Date.now()});if(!window.__pushToasted){window.__pushToasted=true;(window.accazaToast||function(){})('🔔 Notifications on for this device','ok');}}catch(e){}}}
     _pushToastWire(messaging);
   }catch(e){}
 }
@@ -51,11 +52,11 @@ function refreshNotifyPrompt(){
   if(!appCustomerSession.isAppMode()||!('Notification' in window)){b.style.display='none';return;}
   if(Notification.permission==='granted'){b.style.display='none';return;}
   b.style.display='block';
-  b.textContent=(Notification.permission==='denied')?'ðŸ”” Notifications blocked â€” tap for help':'ðŸ”” Enable order-ready notifications';
+  b.textContent=(Notification.permission==='denied')?'🔔 Notifications blocked — tap for help':'🔔 Enable order-ready notifications';
 }
 window.enableNotifications=async function(){
   if(!('Notification' in window))return;
-  if(Notification.permission==='denied'){(window.accazaToast||window.alert)('Notifications are turned off for Accaza. Please enable them in your browser/app settings (Site settings â†’ Notifications), then reopen the app.');return;}
+  if(Notification.permission==='denied'){(window.accazaToast||window.alert)('Notifications are turned off for Accaza. Please enable them in your browser/app settings (Site settings → Notifications), then reopen the app.');return;}
   await setupPush();
   refreshNotifyPrompt();
 };
@@ -135,12 +136,12 @@ let staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRo
 const CAFE_PHONE='639276924831',CAFE_EMAIL='admin@accazacoffee.com';
 
 const DEFAULT_CATS=[
-  {id:'coffee',label:'Coffee Based',icon:'â˜•',order:0},
-  {id:'noncaf',label:'Non-Coffee Based',icon:'ðŸŒ¿',order:1},
-  {id:'frappe',label:'Iced Blended Coffee',icon:'ðŸ¥¤',order:2},
-  {id:'nonfrappe',label:'Iced Blended Non-Coffee',icon:'ðŸ§Š',order:3},
-  {id:'soda',label:'Soda-Based Refreshers',icon:'ðŸ‹',order:4},
-  {id:'pastry',label:'Pastries',icon:'ðŸž',order:5}
+  {id:'coffee',label:'Coffee Based',icon:'☕',order:0},
+  {id:'noncaf',label:'Non-Coffee Based',icon:'🌿',order:1},
+  {id:'frappe',label:'Iced Blended Coffee',icon:'🥤',order:2},
+  {id:'nonfrappe',label:'Iced Blended Non-Coffee',icon:'🧊',order:3},
+  {id:'soda',label:'Soda-Based Refreshers',icon:'🍋',order:4},
+  {id:'pastry',label:'Pastries',icon:'🍞',order:5}
 ];
 
 const DRINK_CATS=['coffee','noncaf','frappe','nonfrappe','soda'];
@@ -199,11 +200,11 @@ setTimeout(()=>document.getElementById('fbSync').style.display='none',4000);
 
 function getCats(){return Object.values(categoriesMap).sort((a,b)=>(a.order||0)-(b.order||0));}
 function getCatLabel(id){const c=categoriesMap[id];return c?c.icon+' '+c.label:id;}
-function getCatIcon(id){const c=categoriesMap[id];return c?c.icon:'â˜•';}
+function getCatIcon(id){const c=categoriesMap[id];return c?c.icon:'☕';}
 function getMenuItems(){return Object.entries(menuItemsMap).map(([k,v])=>({...v,key:k}));}
 function isAvail(name){return availability[name]!==false;}
 function isDrink(cat){return DRINK_CATS.includes(cat);}
-function formatPrice(item){if(item.priceM&&item.priceL)return'S â‚±'+item.priceS+' Â· M â‚±'+item.priceM+' Â· L â‚±'+item.priceL;return'â‚±'+item.priceS;}
+function formatPrice(item){if(item.priceM&&item.priceL)return'S ₱'+item.priceS+' · M ₱'+item.priceM+' · L ₱'+item.priceL;return'₱'+item.priceS;}
 
 function seedTabsFromDefaults(){
   const cats=DEFAULT_CATS;
@@ -381,7 +382,7 @@ function notifyNewOrders(fresh){
   unseenOrders+=fresh.length;
   var last=fresh[fresh.length-1];
   document.getElementById('orderToastTitle').textContent=unseenOrders>1?unseenOrders+' new orders received!':'New order from '+(last&&last.name?last.name:'a customer')+'!';
-  document.getElementById('orderToastSub').textContent=(last&&last.total?'â‚±'+last.total.toLocaleString()+' Â· ':'')+'Tap to view orders';
+  document.getElementById('orderToastSub').textContent=(last&&last.total?'₱'+last.total.toLocaleString()+' · ':'')+'Tap to view orders';
   document.getElementById('orderToast').style.display='flex';
   var b=document.getElementById('ordersBadge');
   if(b){b.textContent=unseenOrders;b.style.display='inline-block';}
@@ -418,10 +419,10 @@ subscriptionHub.subscribe('reviews',snap=>{
   if(saved){reviewsMap=saved;}
   else{
     const seed={
-      'rev_001':{name:'Maria Theresa & Quinn Isabella Margaux',stars:5,date:'June 2, 2026',text:'Accaza Coffee House is a hidden gem right along the roadside near SM DasmariÃ±as â€” easy to find whether you\'re commuting or driving. Inside, it\'s surprisingly spacious with a calm, serene atmosphere that\'s rare among today\'s cramped cafÃ©s.\n\nThe coffee is outstanding, with well-crafted flavors from bold to smooth. But what truly sets Accaza apart is how perfectly it serves both students and professionals â€” it\'s a productive sanctuary where you can focus, study, or work in peace.\n\nHighly recommended for anyone looking for great coffee and a place to get things done. â˜•âœ¨'},
-      'rev_002':{name:'Molina Page',stars:5,date:'June 2026',text:'The coffee was absolutely delightful â€” perfectly brewed, rich in flavor, and made with genuine care. Every sip spoke to your passion and quality.\n\nBeyond the coffee, your staff made the visit truly special. From the warm greeting to the attentive service, everyone made me feel genuinely valued. It\'s rare to find a team so professional yet so kind and approachable.'},
-      'rev_003':{name:'Camilla Andrea',stars:5,date:'April 6, 2026 Â· via Facebook',text:'Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok, na tila napunta ka na sa ibang lugar.\n\nGusto ko mang ipagdamot ang lugar para patuloy akong makatambay nang matiwasay, subalit tingin ko\'y kasalanan ito sa mga mahilig sa kape (at sa may-ari rin) kung hindi ito maibabahagi sa iba.'},
-      'rev_004':{name:'Cess Borja',stars:5,date:'July 2025',text:'"10/10 would recommend!! we will surely come back ðŸ¤Œ"'}
+      'rev_001':{name:'Maria Theresa & Quinn Isabella Margaux',stars:5,date:'June 2, 2026',text:'Accaza Coffee House is a hidden gem right along the roadside near SM Dasmariñas — easy to find whether you\'re commuting or driving. Inside, it\'s surprisingly spacious with a calm, serene atmosphere that\'s rare among today\'s cramped cafés.\n\nThe coffee is outstanding, with well-crafted flavors from bold to smooth. But what truly sets Accaza apart is how perfectly it serves both students and professionals — it\'s a productive sanctuary where you can focus, study, or work in peace.\n\nHighly recommended for anyone looking for great coffee and a place to get things done. ☕✨'},
+      'rev_002':{name:'Molina Page',stars:5,date:'June 2026',text:'The coffee was absolutely delightful — perfectly brewed, rich in flavor, and made with genuine care. Every sip spoke to your passion and quality.\n\nBeyond the coffee, your staff made the visit truly special. From the warm greeting to the attentive service, everyone made me feel genuinely valued. It\'s rare to find a team so professional yet so kind and approachable.'},
+      'rev_003':{name:'Camilla Andrea',stars:5,date:'April 6, 2026 · via Facebook',text:'Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok, na tila napunta ka na sa ibang lugar.\n\nGusto ko mang ipagdamot ang lugar para patuloy akong makatambay nang matiwasay, subalit tingin ko\'y kasalanan ito sa mga mahilig sa kape (at sa may-ari rin) kung hindi ito maibabahagi sa iba.'},
+      'rev_004':{name:'Cess Borja',stars:5,date:'July 2025',text:'"10/10 would recommend!! we will surely come back 🤌"'}
     };
     set(reviewsRef,seed);reviewsMap=seed;
   }
@@ -538,18 +539,18 @@ function renderMenuSection(){
     const imgHtml=i.img?'<img src="'+i.img+'" class="menu-card-img" style="'+(ok?'':'opacity:0.5;')+'" onerror="this.style.display=\'none\'"/>'
       :'<div class="menu-card-img-placeholder">'+getCatIcon(i.cat)+'</div>';
     const priceHtml=i.priceM&&i.priceL
-      ?'<span class="price-badge">S â‚±'+i.priceS+'</span><span class="price-badge">M â‚±'+i.priceM+'</span><span class="price-badge">L â‚±'+i.priceL+'</span>'
+      ?'<span class="price-badge">S ₱'+i.priceS+'</span><span class="price-badge">M ₱'+i.priceM+'</span><span class="price-badge">L ₱'+i.priceL+'</span>'
       :i.priceL&&i.labelS&&i.labelL
-      ?'<span class="price-badge">'+(i.labelS||'Opt 1')+' â‚±'+i.priceS+'</span><span class="price-badge">'+(i.labelL||'Opt 2')+' â‚±'+i.priceL+'</span>'
-      :'<span class="price-single">â‚±'+i.priceS+'</span>';
-    return'<div class="menu-card'+(ok?' clickable':'')+'"'+(ok?' data-goorder="'+i.key+'" data-gocat="'+i.cat+'"':'')+'>'+imgHtml+'<div class="menu-card-body"><span class="cat-tag">'+getCatLabel(i.cat)+'</span><h4 style="'+(ok?'':'text-decoration:line-through;opacity:0.6;')+'">'+i.name+'</h4><p class="desc">'+(i.desc||'')+'</p><div class="price-row">'+priceHtml+'</div><span class="avail-badge '+(ok?'avail-yes':'avail-no')+'">'+(ok?'âœ… Available':'âŒ Unavailable')+'</span>'+(ok?'<span class="tap-hint">ðŸ›’ Tap to order</span>':'')+'</div></div>';
+      ?'<span class="price-badge">'+(i.labelS||'Opt 1')+' ₱'+i.priceS+'</span><span class="price-badge">'+(i.labelL||'Opt 2')+' ₱'+i.priceL+'</span>'
+      :'<span class="price-single">₱'+i.priceS+'</span>';
+    return'<div class="menu-card'+(ok?' clickable':'')+'"'+(ok?' data-goorder="'+i.key+'" data-gocat="'+i.cat+'"':'')+'>'+imgHtml+'<div class="menu-card-body"><span class="cat-tag">'+getCatLabel(i.cat)+'</span><h4 style="'+(ok?'':'text-decoration:line-through;opacity:0.6;')+'">'+i.name+'</h4><p class="desc">'+(i.desc||'')+'</p><div class="price-row">'+priceHtml+'</div><span class="avail-badge '+(ok?'avail-yes':'avail-no')+'">'+(ok?'✅ Available':'❌ Unavailable')+'</span>'+(ok?'<span class="tap-hint">🛒 Tap to order</span>':'')+'</div></div>';
   }).join('');
   el.querySelectorAll('.menu-card[data-goorder]').forEach(function(card){card.addEventListener('click',function(){goToOrderItem(this.dataset.gocat,this.dataset.goorder);});});
 }
 
 function renderOrderSection(){
   const el=document.getElementById('orderItemList');if(!el)return;
-  if(!orderFilter){el.innerHTML='<div class="order-empty-state"><span class="big-icon">â˜•</span><h3>What are you craving today?</h3><p>Choose a category above to explore our handcrafted drinks and pastries.</p></div>';return;}
+  if(!orderFilter){el.innerHTML='<div class="order-empty-state"><span class="big-icon">☕</span><h3>What are you craving today?</h3><p>Choose a category above to explore our handcrafted drinks and pastries.</p></div>';return;}
   const items=getMenuItems().filter(i=>i.cat===orderFilter).sort((a,b)=>(a.order||0)-(b.order||0));
   if(!items.length){el.innerHTML='<div class="order-empty-state"><span class="big-icon">'+getCatIcon(orderFilter)+'</span><h3>No items yet.</h3></div>';return;}
   el.innerHTML=items.map(function(i){
@@ -583,14 +584,14 @@ window.openCustomize=function(itemKey){
   let html='';
   if(custItem.labelS&&custItem.labelL&&custItem.priceL){
     html+='<div class="cust-section"><div class="cust-section-title">Serving Size <span class="cust-badge cust-badge-required">Required</span></div><div class="cust-options">'
-      +'<label class="cust-option" data-action="size" data-val="S" data-price="'+custItem.priceS+'"><input type="radio" name="custSize"/><span class="cust-option-label">'+(custItem.labelS||'Option 1')+'</span><span class="cust-option-price">â‚±'+custItem.priceS+'</span></label>'
-      +'<label class="cust-option" data-action="size" data-val="L" data-price="'+custItem.priceL+'"><input type="radio" name="custSize"/><span class="cust-option-label">'+(custItem.labelL||'Option 2')+'</span><span class="cust-option-price">â‚±'+custItem.priceL+'</span></label>'
+      +'<label class="cust-option" data-action="size" data-val="S" data-price="'+custItem.priceS+'"><input type="radio" name="custSize"/><span class="cust-option-label">'+(custItem.labelS||'Option 1')+'</span><span class="cust-option-price">₱'+custItem.priceS+'</span></label>'
+      +'<label class="cust-option" data-action="size" data-val="L" data-price="'+custItem.priceL+'"><input type="radio" name="custSize"/><span class="cust-option-label">'+(custItem.labelL||'Option 2')+'</span><span class="cust-option-price">₱'+custItem.priceL+'</span></label>'
       +'</div></div>';
   } else if(custItem.priceM&&custItem.priceL){
     html+='<div class="cust-section"><div class="cust-section-title">Serving Size <span class="cust-badge cust-badge-required">Required</span></div><div class="cust-options">'
-      +'<label class="cust-option" data-action="size" data-val="S" data-price="'+custItem.priceS+'"><input type="radio" name="custSize"/><span class="cust-option-label">Small</span><span class="cust-option-price">â‚±'+custItem.priceS+'</span></label>'
-      +'<label class="cust-option" data-action="size" data-val="M" data-price="'+custItem.priceM+'"><input type="radio" name="custSize"/><span class="cust-option-label">Medium</span><span class="cust-option-price">â‚±'+custItem.priceM+'</span></label>'
-      +'<label class="cust-option" data-action="size" data-val="L" data-price="'+custItem.priceL+'"><input type="radio" name="custSize"/><span class="cust-option-label">Large</span><span class="cust-option-price">â‚±'+custItem.priceL+'</span></label>'
+      +'<label class="cust-option" data-action="size" data-val="S" data-price="'+custItem.priceS+'"><input type="radio" name="custSize"/><span class="cust-option-label">Small</span><span class="cust-option-price">₱'+custItem.priceS+'</span></label>'
+      +'<label class="cust-option" data-action="size" data-val="M" data-price="'+custItem.priceM+'"><input type="radio" name="custSize"/><span class="cust-option-label">Medium</span><span class="cust-option-price">₱'+custItem.priceM+'</span></label>'
+      +'<label class="cust-option" data-action="size" data-val="L" data-price="'+custItem.priceL+'"><input type="radio" name="custSize"/><span class="cust-option-label">Large</span><span class="cust-option-price">₱'+custItem.priceL+'</span></label>'
       +'</div></div>';
   }
   var itemGroups=getItemOptionGroups(custItem);
@@ -600,11 +601,11 @@ window.openCustomize=function(itemKey){
     html+='<div class="cust-section"><div class="cust-section-title">'+escHtml(g.name)+' <span class="cust-badge '+(req?'cust-badge-required':'cust-badge-optional')+'">'+(req?'Required':'Optional')+'</span></div><div class="cust-options">'
       +(g.choices||[]).map(function(c,ci){
         var pp=parseInt(c.price)||0;
-        return '<label class="cust-option" data-action="'+(isMulti?'optcheck':'optradio')+'" data-group="'+g.id+'" data-idx="'+ci+'"><input type="'+(isMulti?'checkbox':'radio')+'" name="og_'+g.id+'"/><span class="cust-option-label">'+escHtml(c.label)+'</span><span class="cust-option-price">'+(pp>0?'+â‚±'+pp:'Free')+'</span></label>';
+        return '<label class="cust-option" data-action="'+(isMulti?'optcheck':'optradio')+'" data-group="'+g.id+'" data-idx="'+ci+'"><input type="'+(isMulti?'checkbox':'radio')+'" name="og_'+g.id+'"/><span class="cust-option-label">'+escHtml(c.label)+'</span><span class="cust-option-price">'+(pp>0?'+₱'+pp:'Free')+'</span></label>';
       }).join('')
       +'</div></div>';
   });
-  html+='<div class="cust-section"><div class="cust-section-title">Quantity</div><div class="cust-qty"><button class="cust-qty-btn" id="custQtyMinus">âˆ’</button><span class="cust-qty-num" id="custQtyNum">1</span><button class="cust-qty-btn" id="custQtyPlus">+</button></div></div>';
+  html+='<div class="cust-section"><div class="cust-section-title">Quantity</div><div class="cust-qty"><button class="cust-qty-btn" id="custQtyMinus">−</button><span class="cust-qty-num" id="custQtyNum">1</span><button class="cust-qty-btn" id="custQtyPlus">+</button></div></div>';
   const body=document.getElementById('custBody');
   body.innerHTML=html;
   body.onclick=function(e){
@@ -646,7 +647,7 @@ function calcCustUnitTotal(){
   });
   return t;
 }
-function updateCustTotal(){document.getElementById('custTotalDisplay').textContent='â‚±'+(calcCustUnitTotal()*custQty).toLocaleString();}
+function updateCustTotal(){document.getElementById('custTotalDisplay').textContent='₱'+(calcCustUnitTotal()*custQty).toLocaleString();}
 
 function addCustomizedToCart(){
   const item=custItem;if(!item)return;
@@ -684,12 +685,12 @@ function updateCartDisplay(){
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
       +'<div style="flex:1;"><div style="font-size:0.85rem;color:var(--bd);font-weight:500;">'+item.name+'</div>'
       +(item.details?'<div style="font-size:0.72rem;color:var(--tl);">'+item.details+'</div>':'')
-      +'<div style="font-size:0.75rem;color:var(--tl);">â‚±'+item.unitTotal.toLocaleString()+' each</div></div>'
+      +'<div style="font-size:0.75rem;color:var(--tl);">₱'+item.unitTotal.toLocaleString()+' each</div></div>'
       +'<div style="display:flex;align-items:center;gap:0.4rem;margin-left:0.5rem;">'
-      +'<button data-cartkey="'+k+'" data-delta="-1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">âˆ’</button>'
+      +'<button data-cartkey="'+k+'" data-delta="-1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">−</button>'
       +'<span style="font-size:0.85rem;font-weight:500;min-width:18px;text-align:center;">'+item.qty+'</span>'
       +'<button data-cartkey="'+k+'" data-delta="1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">+</button>'
-      +'<span style="font-size:0.85rem;font-weight:500;color:var(--bl);min-width:50px;text-align:right;">â‚±'+line.toLocaleString()+'</span>'
+      +'<span style="font-size:0.85rem;font-weight:500;color:var(--bl);min-width:50px;text-align:right;">₱'+line.toLocaleString()+'</span>'
       +'</div></div></div>';
   }).join('');
   box.querySelectorAll('button[data-cartkey]').forEach(function(btn){
@@ -700,7 +701,7 @@ function updateCartDisplay(){
       updateCartDisplay();renderOrderSection();
     });
   });
-  document.getElementById('totalAmt').textContent='â‚±'+total.toLocaleString();
+  document.getElementById('totalAmt').textContent='₱'+total.toLocaleString();
   tot.style.display='flex';
   var _cb1=document.getElementById('cartCheckoutBtn');if(_cb1)_cb1.style.display='block';
 }
@@ -709,10 +710,10 @@ window.goToCheckout=function(e){if(e&&e.stopPropagation)e.stopPropagation();if(!
 window.setType=function(t){orderType=t;document.getElementById('btnPickup').classList.toggle('active',t==='pickup');document.getElementById('btnDelivery').classList.toggle('active',t==='delivery');document.getElementById('deliveryField').style.display=t==='delivery'?'block':'none';};
 window.showProof=function(src){var m=document.getElementById('proofModal');var im=document.getElementById('proofModalImg');if(im)im.src=src;if(m)m.style.display='flex';};
 window.showStoredProof=async function(orderId,button){
-  var old=button?button.textContent:'';if(button){button.disabled=true;button.textContent='Loading proofâ€¦';}
+  var old=button?button.textContent:'';if(button){button.disabled=true;button.textContent='Loading proof…';}
   try{var result=await getPaymentProofCall({orderId:orderId});var data=result&&result.data&&result.data.dataUrl;if(!data)throw new Error('The server returned no image.');window.showProof(data);}
   catch(e){try{if(window.AccazaTelemetry)window.AccazaTelemetry.error('proof_access');}catch(_e){}alert('Could not load payment proof: '+((e&&e.message)||e));}
-  finally{if(button){button.disabled=false;button.textContent=old||'ðŸ“Ž View payment proof';}}
+  finally{if(button){button.disabled=false;button.textContent=old||'📎 View payment proof';}}
 };
 window.setPayment=function(p){paymentType=p;
   document.getElementById('btnGcash').classList.toggle('active',p==='gcash');
@@ -765,9 +766,9 @@ window.placeOrder=async function(){
   const lineItemsArr=Object.values(cart).map(c=>({itemKey:c.itemKey||null,name:c.name,size:c.size||null,optLabels:c.optLabels||[],qty:c.qty,unitTotal:c.unitTotal}));
   const _sig=phone+'|'+itemsArr.join('~')+'|'+total;
   var _persist=(function(){try{var v=localStorage.getItem('accaza_lastsig');if(!v)return null;var ix=v.lastIndexOf('@@');return {sig:v.slice(0,ix),t:parseInt(v.slice(ix+2))||0};}catch(e){return null;}})();
-  if((window._lastOrderSig===_sig&&Date.now()-(window._lastOrderTime||0)<30000)||(_persist&&_persist.sig===_sig&&Date.now()-_persist.t<30000)){alert('Looks like you just placed this exact order â€” please try again after 30 seconds.');return;}
+  if((window._lastOrderSig===_sig&&Date.now()-(window._lastOrderTime||0)<30000)||(_persist&&_persist.sig===_sig&&Date.now()-_persist.t<30000)){alert('Looks like you just placed this exact order — please try again after 30 seconds.');return;}
   window._placingOrder=true;
-  const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='â³ Placing orderâ€¦';
+  const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
   try{
     var _sigKey=phone.replace(/[^0-9]/g,'')+'_'+_hashSig(_sig);
     var _lock=await runTransaction(ref(db,'orderLocks/'+_sigKey),function(cur){var now=Date.now();if(cur&&(now-(cur.t||0)<90000))return;return {t:Date.now(),id:'pending'};});
@@ -778,7 +779,7 @@ window.placeOrder=async function(){
   try{
     await set(ref(db,'orders/'+orderId),newOrder);
     try{ if(isAppMode()){ var _u=getAppUser(); var _ph=(_u&&_u.phone)||phone; var _k=_ph.replace(/[^0-9]/g,''); if(_k){ var _snap=await get(ref(db,'appCustomers/'+_k)); var _c=_snap.val()||{}; await update(ref(db,'appCustomers/'+_k),{name:(_u&&_u.name)||name,phone:_ph,orders:(_c.orders||0)+1,firstSeen:_c.firstSeen||Date.now(),lastOrder:Date.now(),lastOrderId:orderId}); } } }catch(_e){}
-    window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='âœ… Order Placed!';try{localStorage.setItem('accaza_lastsig',_sig+'@@'+Date.now());}catch(e){}
+    window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';try{localStorage.setItem('accaza_lastsig',_sig+'@@'+Date.now());}catch(e){}
     customerOrderTracker.addOrderId(orderId);
     document.getElementById('displayOrderId').textContent=orderId;document.getElementById('orderConfirm').style.display='block';
     document.querySelector('.btn-place-order').disabled=true;document.querySelector('.btn-place-order').style.opacity='0.5';
@@ -808,16 +809,16 @@ window.submitFeedback=async function(){
   if(!name||!message){alert('Please enter your name and message.');return;}
   try{await push(feedbacksRef,{name,contact:document.getElementById('fbContact').value.trim(),type,message,status:'Unread',date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()});
   document.getElementById('fbName').value='';document.getElementById('fbContact').value='';document.getElementById('fbMessage').value='';document.getElementById('fbCounter').textContent='0 / 800';
-  const msgs={Complaint:'ðŸ™ Thank you for letting us know. We sincerely apologize and will look into this right away.',Suggestion:'ðŸ’¡ Thank you for your suggestion!',Compliment:"â¤ï¸ Oh, this made our day! Thank you so much. â˜•ðŸ»",Other:'ðŸ’› Thank you for reaching out!'};
+  const msgs={Complaint:'🙏 Thank you for letting us know. We sincerely apologize and will look into this right away.',Suggestion:'💡 Thank you for your suggestion!',Compliment:"❤️ Oh, this made our day! Thank you so much. ☕🐻",Other:'💛 Thank you for reaching out!'};
   document.getElementById('fbConfirmMsg').textContent=msgs[type]||msgs.Other;document.getElementById('fbConfirm').style.display='block';setTimeout(function(){document.getElementById('fbConfirm').style.display='none';},6000);}catch(e){alert('Error: '+e.message);}
 };
 
-function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(reservationManager.getReservations()).length;document.getElementById('statRevenue').textContent='â‚±'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
+function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(reservationManager.getReservations()).length;document.getElementById('statRevenue').textContent='₱'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
 
 const orderAdmin=createOrderAdmin({getOrders:function(){return adminOrdersMap;},canArchiveOrder:function(o){var verifiedRole=window.__accazaAuthz&&window.__accazaAuthz.role,manager=['owner','superadmin','admin','manager'].indexOf(String(verifiedRole||'').toLowerCase())>=0,shift=window.__posShift;return manager&&(!o.shiftId||!shift||shift.id!==o.shiftId||shift.status==='closed');},escHtml:escHtml,safeImageSrc:safeImageSrc,showDeletePopup:showDeletePopup,printOrder:function(id){if(window.printOrder)return window.printOrder(id);},notifyCustomer:function(id){if(window.notifyCustomer)return window.notifyCustomer(id);}});
 const renderOrders=orderAdmin.renderOrders,patchOrderCards=orderAdmin.patchOrderCards;
 
-window.togglePwVis=function(inputId,btn){var inp=document.getElementById(inputId);if(!inp)return;var show=inp.type==='password';inp.type=show?'text':'password';btn.textContent=show?'ðŸ™ˆ':'ðŸ‘ï¸';};
+window.togglePwVis=function(inputId,btn){var inp=document.getElementById(inputId);if(!inp)return;var show=inp.type==='password';inp.type=show?'text':'password';btn.textContent=show?'🙈':'👁️';};
 window.changeAdminPassword=async function(){
   var cur=document.getElementById('cpCurrent').value;
   var nw=document.getElementById('cpNew').value;
@@ -843,7 +844,7 @@ function renderPublicReviews(){
   var el=document.getElementById('publicReviewsContainer');if(!el)return;
   var entries=Object.entries(reviewsMap);
   if(!entries.length){el.innerHTML='<p style="text-align:center;color:var(--tl);padding:2rem;">No reviews yet.</p>';return;}
-  function stars(n){return'â­'.repeat(Math.max(1,Math.min(5,parseInt(n)||5)));}
+  function stars(n){return'⭐'.repeat(Math.max(1,Math.min(5,parseInt(n)||5)));}
   function card(r,featured){
     var initials=escHtml((r.name||'?').split(' ').map(function(w){return w[0];}).join('').substring(0,2).toUpperCase());
     return'<div class="review-card"'+(featured?' style="margin-bottom:1.25rem;"':'')+'>'+
@@ -886,7 +887,7 @@ function renderDashboard(){
   const startMonth=Date.parse(todayKey.slice(0,7)+'-01T00:00:00+08:00');
   function sumOrders(arr){return{rev:arr.reduce((s,o)=>s+window.AccazaSales.amounts(o).net,0),cnt:arr.length};}
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
-  function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='â‚±'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
+  function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='₱'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
   overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,historyComplete:subscriptionHub.historyStatus('orders').ready&&subscriptionHub.historyStatus('archivedOrders').ready,menuItems:menuItemsMap||{},catType:overviewCatType,drinkCategories:DRINK_CATS,cashAccounts:overviewCashAccounts||{}});
 }
@@ -918,16 +919,16 @@ window.downloadArchivePDF=function(){
   ctx.fillStyle='#e0d4c6';ctx.fillRect(0,0,pageW,totalH);
   ctx.fillStyle='#19241b';ctx.fillRect(0,0,pageW,headerH);
   ctx.fillStyle='#c9a36a';ctx.font='bold 28px Georgia,serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House',pageW/2,55);
-  ctx.fillStyle='rgba(224,212,198,0.7)';ctx.font='14px Inter,sans-serif';ctx.fillText('Saratoga Ave, La Mediterranea, DasmariÃ±as, Cavite',pageW/2,82);
+  ctx.fillStyle='rgba(224,212,198,0.7)';ctx.font='14px Inter,sans-serif';ctx.fillText('Saratoga Ave, La Mediterranea, Dasmariñas, Cavite',pageW/2,82);
   ctx.fillStyle='#fff';ctx.font='bold 18px Georgia,serif';ctx.fillText('Order Archive Report',pageW/2,118);
   const dateRange=fromVal&&toVal?fromVal+' to '+toVal:fromVal?'From '+fromVal:toVal?'Up to '+toVal:'All Time';
   ctx.fillStyle='rgba(224,212,198,0.6)';ctx.font='12px Inter,sans-serif';ctx.fillText(dateRange,pageW/2,140);
   ctx.fillStyle='rgba(255,255,255,0.1)';ctx.fillRect(40,156,pageW-80,48);
   ctx.fillStyle='#c9a36a';ctx.font='bold 14px Inter,sans-serif';ctx.textAlign='left';ctx.fillText('Total Orders: '+orders.length,60,178);
-  ctx.textAlign='center';ctx.fillText('Completed: '+archiveTotals.completedCount+' Â· Revenue: â‚±'+totalRev.toLocaleString(),pageW/2,174);
-  ctx.textAlign='right';ctx.fillText('Refunded: '+archiveTotals.refundedCount+' Â· â‚±'+archiveTotals.refundedAmount.toLocaleString(),pageW-60,174);
-  ctx.textAlign='left';ctx.fillText('Voided: '+archiveTotals.voidedCount+' Â· â‚±'+archiveTotals.voidedAmount.toLocaleString(),60,194);
-  ctx.textAlign='right';ctx.fillText('Rejected / other: '+rejCnt+' Â· GCash: '+gcashCnt+' Â· Bank: '+bankCnt,pageW-60,194);
+  ctx.textAlign='center';ctx.fillText('Completed: '+archiveTotals.completedCount+' · Revenue: ₱'+totalRev.toLocaleString(),pageW/2,174);
+  ctx.textAlign='right';ctx.fillText('Refunded: '+archiveTotals.refundedCount+' · ₱'+archiveTotals.refundedAmount.toLocaleString(),pageW-60,174);
+  ctx.textAlign='left';ctx.fillText('Voided: '+archiveTotals.voidedCount+' · ₱'+archiveTotals.voidedAmount.toLocaleString(),60,194);
+  ctx.textAlign='right';ctx.fillText('Rejected / other: '+rejCnt+' · GCash: '+gcashCnt+' · Bank: '+bankCnt,pageW-60,194);
   ctx.fillStyle='rgba(224,212,198,0.4)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Generated: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),pageW/2,220);
   let y=headerH+16;
   ctx.fillStyle='#19241b';ctx.font='bold 11px Inter,sans-serif';ctx.textAlign='left';
@@ -937,29 +938,29 @@ window.downloadArchivePDF=function(){
   orders.forEach(function(o,idx){
     if(idx%2===0){ctx.fillStyle='rgba(176,141,87,0.06)';ctx.fillRect(40,y-14,pageW-80,rowH);}
     ctx.fillStyle='#1c2420';ctx.font='11px Inter,sans-serif';ctx.textAlign='left';
-    ctx.fillText((o.id||'â€”'),40,y+4);
-    ctx.fillText((o.name||'â€”').slice(0,14),120,y+4);
-    ctx.fillText(((o.items||'').length>35?o.items.slice(0,35)+'â€¦':o.items||'â€”'),240,y+4);
-    ctx.fillStyle=o.prevStatus==='Rejected'?'#c0392b':'#b08d57';ctx.font='bold 11px Inter,sans-serif';ctx.fillText((o.prevStatus==='Rejected'?'âœ— ':'')+'â‚±'+(o.total||0).toLocaleString(),530,y+4);
+    ctx.fillText((o.id||'—'),40,y+4);
+    ctx.fillText((o.name||'—').slice(0,14),120,y+4);
+    ctx.fillText(((o.items||'').length>35?o.items.slice(0,35)+'…':o.items||'—'),240,y+4);
+    ctx.fillStyle=o.prevStatus==='Rejected'?'#c0392b':'#b08d57';ctx.font='bold 11px Inter,sans-serif';ctx.fillText((o.prevStatus==='Rejected'?'✗ ':'')+'₱'+(o.total||0).toLocaleString(),530,y+4);
     ctx.fillStyle='#1c2420';ctx.font='11px Inter,sans-serif';
-    ctx.fillText(o.payment==='GCash'?'GCash':'Bank',610,y+4);ctx.fillText(o.type||'â€”',680,y+4);ctx.fillText(o.archivedDate||'â€”',730,y+4);
+    ctx.fillText(o.payment==='GCash'?'GCash':'Bank',610,y+4);ctx.fillText(o.type||'—',680,y+4);ctx.fillText(o.archivedDate||'—',730,y+4);
     ctx.strokeStyle='#cdbda7';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(40,y+rowH-14);ctx.lineTo(pageW-40,y+rowH-14);ctx.stroke();
     y+=rowH;
   });
   ctx.fillStyle='#19241b';ctx.fillRect(0,totalH-40,pageW,40);
-  ctx.fillStyle='rgba(224,212,198,0.5)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House Â· Confidential Â· For internal use only',pageW/2,totalH-14);
+  ctx.fillStyle='rgba(224,212,198,0.5)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House · Confidential · For internal use only',pageW/2,totalH-14);
   const link=document.createElement('a');link.download='Accaza_Archive_'+new Date().toISOString().slice(0,10)+'.png';link.href=canvas.toDataURL('image/png');link.click();
 };
 
 function renderComments(){
   const types=['Contact','Complaint','Suggestion','Compliment','Other'];
-  const empty={Contact:'No website messages yet.',Complaint:'No complaints yet. ðŸŽ‰',Suggestion:'No suggestions yet.',Compliment:'No compliments yet.',Other:'No other feedback yet.'};
+  const empty={Contact:'No website messages yet.',Complaint:'No complaints yet. 🎉',Suggestion:'No suggestions yet.',Compliment:'No compliments yet.',Other:'No other feedback yet.'};
   const color={Contact:'#2f6f8f',Complaint:'#c0392b',Suggestion:'#f39c12',Compliment:'#2d9e5f',Other:'#888'};
   types.forEach(function(type){
     const el=document.getElementById('fbList'+type);if(!el)return;
     const items=Object.entries(feedbacksMap).filter(function(e){return e[1].type===type;});
     if(!items.length){el.innerHTML='<p style="color:var(--tl);padding:1rem;background:#fff;border-radius:8px;text-align:center;font-size:0.85rem;">'+empty[type]+'</p>';return;}
-    el.innerHTML=items.map(function(e){const f=e[1]||{},key=escHtml(e[0]),status=f.status==='Resolved'?'Resolved':'Unread',name=escHtml(f.name),contact=escHtml(f.contact),date=escHtml(f.date),message=escHtml(f.message);return'<div style="background:#fff;border:1px solid #cdbda7;border-left:4px solid '+color[type]+';border-radius:8px;padding:1rem;margin-bottom:0.75rem;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;"><div><div style="font-weight:500;font-size:0.9rem;color:#19241b;">'+name+'</div><div style="font-size:0.75rem;color:#79806f;">'+(contact?contact+' Â· ':'')+date+'</div></div><span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:'+(status==='Resolved'?'#d4edda':'#fef3cd')+';color:'+(status==='Resolved'?'#155724':'#856404')+';">'+status+'</span></div><p style="font-size:0.85rem;color:#44523f;font-style:italic;margin:0.4rem 0;">"'+message+'"</p><div class="staff-hide" style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">'+(status==='Unread'?'<button data-markfb="'+key+'" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;">âœ… Mark Resolved</button>':'')+(status==='Resolved'?'<button data-delfb="'+key+'" data-delfbname="'+name+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">ðŸ—‘ï¸ Delete</button>':'')+'</div></div>';}).join('');
+    el.innerHTML=items.map(function(e){const f=e[1]||{},key=escHtml(e[0]),status=f.status==='Resolved'?'Resolved':'Unread',name=escHtml(f.name),contact=escHtml(f.contact),date=escHtml(f.date),message=escHtml(f.message);return'<div style="background:#fff;border:1px solid #cdbda7;border-left:4px solid '+color[type]+';border-radius:8px;padding:1rem;margin-bottom:0.75rem;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;"><div><div style="font-weight:500;font-size:0.9rem;color:#19241b;">'+name+'</div><div style="font-size:0.75rem;color:#79806f;">'+(contact?contact+' · ':'')+date+'</div></div><span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:'+(status==='Resolved'?'#d4edda':'#fef3cd')+';color:'+(status==='Resolved'?'#155724':'#856404')+';">'+status+'</span></div><p style="font-size:0.85rem;color:#44523f;font-style:italic;margin:0.4rem 0;">"'+message+'"</p><div class="staff-hide" style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">'+(status==='Unread'?'<button data-markfb="'+key+'" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;">✅ Mark Resolved</button>':'')+(status==='Resolved'?'<button data-delfb="'+key+'" data-delfbname="'+name+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>':'')+'</div></div>';}).join('');
     el.querySelectorAll('button[data-markfb]').forEach(function(btn){btn.addEventListener('click',function(){update(ref(db,'feedbacks/'+this.dataset.markfb),{status:'Resolved'});});});
     el.querySelectorAll('button[data-delfb]').forEach(function(btn){btn.addEventListener('click',function(){showDeletePopup(this.dataset.delfbname,async function(){await remove(ref(db,'feedbacks/'+btn.dataset.delfb));});});});
   });
@@ -968,7 +969,7 @@ function renderComments(){
 function renderAdminReviews(){
   const el=document.getElementById('adminReviewsList'),entries=Object.entries(reviewsMap);
   if(!entries.length){el.innerHTML='<div class="empty-state">No reviews added yet.</div>';return;}
-  el.innerHTML=entries.map(function(e){const key=escHtml(e[0]),r=e[1]||{},name=escHtml(r.name),date=escHtml(r.date),review=escHtml(r.text),stars=Math.max(0,Math.min(5,parseInt(r.stars)||0));return'<div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;">'+'<div><div class="order-admin-name">'+name+' '+'â­'.repeat(stars)+'</div>'+'<div class="order-admin-meta">'+date+'</div>'+'<div class="order-admin-items">"'+review+'"</div></div>'+(staffLoggedIn?'':'<button data-delrev="'+key+'" data-delrevname="'+name+'" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;flex-shrink:0;">Remove</button>')+'</div>';}).join('');
+  el.innerHTML=entries.map(function(e){const key=escHtml(e[0]),r=e[1]||{},name=escHtml(r.name),date=escHtml(r.date),review=escHtml(r.text),stars=Math.max(0,Math.min(5,parseInt(r.stars)||0));return'<div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;">'+'<div><div class="order-admin-name">'+name+' '+'⭐'.repeat(stars)+'</div>'+'<div class="order-admin-meta">'+date+'</div>'+'<div class="order-admin-items">"'+review+'"</div></div>'+(staffLoggedIn?'':'<button data-delrev="'+key+'" data-delrevname="'+name+'" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;flex-shrink:0;">Remove</button>')+'</div>';}).join('');
   el.querySelectorAll('button[data-delrev]').forEach(function(btn){btn.addEventListener('click',function(){showDeletePopup(this.dataset.delrevname,async function(){await remove(ref(db,'reviews/'+btn.dataset.delrev));});});});
 }
 
@@ -992,22 +993,9 @@ window.savePayment=async function(){
 };
 
 let archivePanelOpen=false;
-window.toggleArchivePanel=function(){archivePanelOpen=!archivePanelOpen;document.getElementById('archivePanel').style.display=archivePanelOpen?'block':'none';var ordersList=document.getElementById('ordersList');if(ordersList){if(archivePanelOpen)ordersList.style.display='none';else ordersList.style.removeProperty('display');}var btn=document.getElementById('archiveToggleBtn');var hdg=document.getElementById('ordersHeading');if(btn){btn.textContent=archivePanelOpen?'â† Back to Orders':'ðŸ“¦ View Archive';}if(hdg){hdg.textContent=archivePanelOpen?'Order Archive':'Active Orders';}subscriptionHub.activate(archivePanelOpen?'archive':'orders');if(archivePanelOpen)renderArchive();};
-function renderArchive(){_paintArchive();}
-function _paintArchive(){
-  const el=document.getElementById('archiveList'),sumEl=document.getElementById('archiveSummary');if(!el)return;
-  const fromVal=document.getElementById('archiveFrom').value,toVal=document.getElementById('archiveTo').value;
-  let orders=sortArchivedOrders(Object.values(archivedOrdersMap));
-  if(fromVal)orders=orders.filter(o=>new Date(o.archivedAt||0)>=new Date(fromVal));
-  if(toVal)orders=orders.filter(o=>new Date(o.archivedAt||0)<=new Date(toVal+'T23:59:59'));
-  const archiveTotals=summarizeArchivedOrders(orders),totalRev=archiveTotals.completedRevenue;
-  var hs=subscriptionHub.historyStatus('archivedOrders');
-  sumEl.innerHTML='<div style="width:100%;font-size:0.72rem;color:var(--tl);">Loaded '+hs.loaded+' most recent archived order(s), sorted by order date and time (newest first). Revenue includes completed orders only; refunds, voids, and rejected/cancelled orders are excluded.</div><div><span class="archive-sum-num">'+archiveTotals.totalCount+'</span><span class="archive-sum-lbl">All archived orders</span></div><div><span class="archive-sum-num">'+archiveTotals.completedCount+' Â· â‚±'+totalRev.toLocaleString()+'</span><span class="archive-sum-lbl">Completed Â· Revenue</span></div><div><span class="archive-sum-num">'+archiveTotals.refundedCount+' Â· â‚±'+archiveTotals.refundedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Refunded Â· Amount refunded</span></div><div><span class="archive-sum-num">'+archiveTotals.voidedCount+' Â· â‚±'+archiveTotals.voidedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Voided Â· Excluded value</span></div><div><span class="archive-sum-num">'+archiveTotals.excludedCount+' Â· â‚±'+archiveTotals.excludedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Rejected / Cancelled Â· Excluded</span></div>';
-  var cards=orders.length?orders.map(function(o){var oid=escHtml(o.id),age=Date.now()-Number(o.archivedAt||0),canDelete=o.prevStatus==='Rejected'&&age>=90*24*60*60*1000,outcome=archiveOutcome(o);return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+escHtml(o.name)+' <span style="font-size:0.72rem;color:var(--tl);">#'+oid+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+escHtml(o.date)+' Â· '+escHtml(o.time)+'</div></div><span class="badge" style="'+outcome.style+'">'+outcome.icon+' '+escHtml(outcome.label)+'</span></div><div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">ðŸ›’ '+escHtml(o.items)+'</div><div style="font-size:0.78rem;color:var(--tl);">â‚±'+(Number(o.total)||0).toLocaleString()+' Â· '+escHtml(o.payment)+' Â· '+escHtml(o.type)+'</div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+escHtml(o.archivedDate||'â€”')+'</div>'+(adminLoggedIn?'<div style="margin-top:0.5rem;text-align:right;">'+(canDelete?'<button data-delarch="'+oid+'" style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.74rem;cursor:pointer;font-weight:600;">ðŸ—‘ Delete rejected order</button>':'<span style="font-size:0.7rem;color:var(--tl);">ðŸ”’ Retained audit record</span>')+'</div>':'')+'</div>';}).join(''):'<p style="color:var(--tl);text-align:center;padding:1.5rem;font-size:0.88rem;">No archived orders in the loaded pages for this range.</p>';
-  el.innerHTML=cards+'<div style="text-align:center;padding:0.8rem;"><button id="archiveLoadOlder" class="pz-btn sec"'+(hs.hasOlder?'':' disabled')+'>'+(hs.hasOlder?'Load 100 older orders':'All loaded orders reached')+'</button></div>';
-  var more=document.getElementById('archiveLoadOlder');if(more&&hs.hasOlder)more.onclick=async function(){more.disabled=true;more.textContent='Loading older ordersâ€¦';try{await subscriptionHub.loadOlder('archivedOrders');}catch(e){more.textContent='Could not load older orders';more.disabled=false;}};
-  el.querySelectorAll('button[data-delarch]').forEach(function(btn){btn.addEventListener('click',function(){var oid=this.getAttribute('data-delarch'),o=archivedOrdersMap[oid];showDeletePopup('PERMANENTLY delete eligible rejected order #'+oid+(o&&o.name?' ('+o.name+')':'')+'. Super Admin, Admin, or Manager approval is required.',async function(){try{var ap=await requestManagerApproval('delete_archived_order',oid,Number(o&&o.total)||0,'Delete rejected order after retention period');await manageOrderArchiveCall({action:'delete',orderId:oid,approvalId:ap.approvalId});delete archivedOrdersMap[oid];renderArchive();}catch(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not delete order: '+((e&&e.message)||e));}});});});
-}
+window.toggleArchivePanel=function(){archivePanelOpen=!archivePanelOpen;document.getElementById('archivePanel').style.display=archivePanelOpen?'block':'none';var ordersList=document.getElementById('ordersList');if(ordersList){if(archivePanelOpen)ordersList.style.display='none';else ordersList.style.removeProperty('display');}var btn=document.getElementById('archiveToggleBtn');var hdg=document.getElementById('ordersHeading');if(btn){btn.textContent=archivePanelOpen?'← Back to Orders':'📦 View Archive';}if(hdg){hdg.textContent=archivePanelOpen?'Order Archive':'Active Orders';}subscriptionHub.activate(archivePanelOpen?'archive':'orders');if(archivePanelOpen)renderArchive();};
+const orderArchivePanel=createOrderArchivePanel({getArchivedOrders:()=>archivedOrdersMap,archiveOutcome,hub:subscriptionHub,isAdmin:()=>adminLoggedIn,showDeletePopup:(label,fn)=>showDeletePopup(label,fn),requestManagerApproval,manageOrderArchive:command=>manageOrderArchiveCall(command)});
+function renderArchive(){orderArchivePanel.render();}
 
 function showDeletePopup(label,onConfirm){
   document.getElementById('deleteLabel').textContent=label;
@@ -1178,19 +1166,19 @@ window.showTabGroup=function(g,btn){
 };
 
 const botReplies=[
-  {keys:['hour','open','close','time','schedule'],reply:'ðŸ• We are open every day â€” <strong>Monday to Sunday, 6:00 AM to 12:00 Midnight</strong>. â˜•'},
-  {keys:['location','address','where','find'],reply:"ðŸ“ <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, DasmariÃ±as, Cavite</strong>. Near SM DasmariÃ±as! ðŸ˜Š"},
-  {keys:['gcash','pay','payment','bank','bdo'],reply:'ðŸ’³ We accept <strong>GCash, BDO, and UnionBank</strong>. GCash: <strong>0927 692 4831</strong> (ACCAZA).'},
-  {keys:['delivery','deliver'],reply:'ðŸ›µ We deliver within <strong>DasmariÃ±as, Cavite</strong> only. Outside? Try <strong>ðŸŸ  foodpanda</strong> or <strong>ðŸŸ¢ GrabFood</strong>.'},
-  {keys:['menu','food','drink','coffee','frappe','pastry'],reply:'ðŸ½ï¸ We serve <strong>Coffee, Non-Coffee, Iced Blended, Soda Refreshers, and Pastries</strong>. Check our menu above! â˜•'},
-  {keys:['reserve','reservation','book','table'],reply:'ðŸ“… Use our <strong>Reservations section</strong> â€” pick a date, time slot, and fill in your details. Our staff will confirm! ðŸ˜Š'},
-  {keys:['wifi','internet'],reply:'ðŸ“¶ Yes, we have free WiFi! Ask our staff for the password. ðŸ˜Š'},
-  {keys:['price','cost','how much'],reply:'ðŸ’° Prices start from <strong>â‚±95 for pastries</strong> and <strong>â‚±155 for coffee</strong>. Check our menu! â˜•'},
-  {keys:['parking','park'],reply:'ðŸš— Yes, we have free parking! ðŸ˜Š'},
+  {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 6:00 AM to 12:00 Midnight</strong>. ☕'},
+  {keys:['location','address','where','find'],reply:"📍 <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, Dasmariñas, Cavite</strong>. Near SM Dasmariñas! 😊"},
+  {keys:['gcash','pay','payment','bank','bdo'],reply:'💳 We accept <strong>GCash, BDO, and UnionBank</strong>. GCash: <strong>0927 692 4831</strong> (ACCAZA).'},
+  {keys:['delivery','deliver'],reply:'🛵 We deliver within <strong>Dasmariñas, Cavite</strong> only. Outside? Try <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>.'},
+  {keys:['menu','food','drink','coffee','frappe','pastry'],reply:'🍽️ We serve <strong>Coffee, Non-Coffee, Iced Blended, Soda Refreshers, and Pastries</strong>. Check our menu above! ☕'},
+  {keys:['reserve','reservation','book','table'],reply:'📅 Use our <strong>Reservations section</strong> — pick a date, time slot, and fill in your details. Our staff will confirm! 😊'},
+  {keys:['wifi','internet'],reply:'📶 Yes, we have free WiFi! Ask our staff for the password. 😊'},
+  {keys:['price','cost','how much'],reply:'💰 Prices start from <strong>₱95 for pastries</strong> and <strong>₱155 for coffee</strong>. Check our menu! ☕'},
+  {keys:['parking','park'],reply:'🚗 Yes, we have free parking! 😊'},
   {keys:['fresco','outdoor'],reply:'🌿 Yes, we have al fresco seating! 😊'},
-  {keys:['hello','hi','hey','kumusta'],reply:'Hello! ðŸ‘‹ Welcome to <strong>Accaza Coffee House</strong>! How can I help you today? â˜•'},
-  {keys:['thank','thanks','salamat'],reply:"You're very welcome! ðŸ˜Š See you at Accaza! â˜•ðŸ»"},
-  {keys:['sms','text'],reply:'ðŸ“© You can reach us via SMS at <strong>0927 692 4831</strong>. ðŸ˜Š'},
+  {keys:['hello','hi','hey','kumusta'],reply:'Hello! 👋 Welcome to <strong>Accaza Coffee House</strong>! How can I help you today? ☕'},
+  {keys:['thank','thanks','salamat'],reply:"You're very welcome! 😊 See you at Accaza! ☕🐻"},
+  {keys:['sms','text'],reply:'📩 You can reach us via SMS at <strong>0927 692 4831</strong>. 😊'},
 ];
 function getBotReply(msg){const l=msg.toLowerCase();for(const r of botReplies){if(r.keys.some(k=>l.includes(k)))return r.reply;}return null;}
 function addBotMsg(text){const m=document.getElementById('chatMessages'),d=document.createElement('div');d.className='chat-msg bot';d.innerHTML=text;m.appendChild(d);m.scrollTop=m.scrollHeight;}
@@ -1198,17 +1186,17 @@ function addUserMsg(text){const m=document.getElementById('chatMessages'),d=docu
 function showContactOptions(msg){
   const encoded=encodeURIComponent('Hi Accaza Coffee! I have a question: '+msg);
   const d=document.createElement('div');d.className='chat-msg bot';
-  d.innerHTML='<p style="margin-bottom:0.6rem;">ðŸ¤” Sorry, I\'m not sure about that! Reach us directly:</p>'
+  d.innerHTML='<p style="margin-bottom:0.6rem;">🤔 Sorry, I\'m not sure about that! Reach us directly:</p>'
     +'<div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem;">'
-    +'<a href="https://wa.me/'+CAFE_PHONE+'?text='+encoded+'" target="_blank" rel="noopener noreferrer" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">ðŸ’¬ WhatsApp</a>'
-    +'<a href="viber://chat?number=%2B'+CAFE_PHONE+'&text='+encoded+'" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">ðŸ“± Viber</a>'
-    +'<a href="sms:+'+CAFE_PHONE+'?body='+encoded+'" style="background:#44523f;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">ðŸ“© SMS</a>'
-    +'<a href="mailto:'+CAFE_EMAIL+'?subject=Customer Inquiry&body='+encoded+'" style="background:#b08d57;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">ðŸ“§ Email</a>'
-    +'</div><p style="font-size:0.72rem;color:#79806f;border-top:1px solid #cdbda7;padding-top:0.5rem;">ðŸ“± WhatsApp, Viber & SMS work best on mobile. On desktop? Use Email.</p>';
+    +'<a href="https://wa.me/'+CAFE_PHONE+'?text='+encoded+'" target="_blank" rel="noopener noreferrer" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">💬 WhatsApp</a>'
+    +'<a href="viber://chat?number=%2B'+CAFE_PHONE+'&text='+encoded+'" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📱 Viber</a>'
+    +'<a href="sms:+'+CAFE_PHONE+'?body='+encoded+'" style="background:#44523f;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📩 SMS</a>'
+    +'<a href="mailto:'+CAFE_EMAIL+'?subject=Customer Inquiry&body='+encoded+'" style="background:#b08d57;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📧 Email</a>'
+    +'</div><p style="font-size:0.72rem;color:#79806f;border-top:1px solid #cdbda7;padding-top:0.5rem;">📱 WhatsApp, Viber & SMS work best on mobile. On desktop? Use Email.</p>';
   document.getElementById('chatMessages').appendChild(d);document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
 }
-window.toggleChat=function(){chatOpen=!chatOpen;document.getElementById('chatWindow').classList.toggle('open',chatOpen);document.getElementById('chatNotif').style.display='none';if(chatOpen&&!chatStarted){chatStarted=true;setTimeout(function(){addBotMsg("ðŸ‘‹ Hi! Welcome to <strong>Accaza Coffee House</strong>! Ask me about our hours, menu, delivery, reservations, and more! â˜•");},400);}};
-window.sendChat=function(){const input=document.getElementById('chatInput'),msg=input.value.trim();if(!msg)return;input.value='';addUserMsg(msg);const typing=document.createElement('div');typing.className='chat-msg bot';typing.id='typing';typing.innerHTML='<span style="letter-spacing:2px;">â€¢â€¢â€¢</span>';document.getElementById('chatMessages').appendChild(typing);document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;setTimeout(function(){const t=document.getElementById('typing');if(t)t.remove();const reply=getBotReply(msg);if(reply)addBotMsg(reply);else showContactOptions(msg);},900);};
+window.toggleChat=function(){chatOpen=!chatOpen;document.getElementById('chatWindow').classList.toggle('open',chatOpen);document.getElementById('chatNotif').style.display='none';if(chatOpen&&!chatStarted){chatStarted=true;setTimeout(function(){addBotMsg("👋 Hi! Welcome to <strong>Accaza Coffee House</strong>! Ask me about our hours, menu, delivery, reservations, and more! ☕");},400);}};
+window.sendChat=function(){const input=document.getElementById('chatInput'),msg=input.value.trim();if(!msg)return;input.value='';addUserMsg(msg);const typing=document.createElement('div');typing.className='chat-msg bot';typing.id='typing';typing.innerHTML='<span style="letter-spacing:2px;">•••</span>';document.getElementById('chatMessages').appendChild(typing);document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;setTimeout(function(){const t=document.getElementById('typing');if(t)t.remove();const reply=getBotReply(msg);if(reply)addBotMsg(reply);else showContactOptions(msg);},900);};
 window.quickMsg=function(msg){document.getElementById('chatInput').value=msg;sendChat();};
 setTimeout(function(){if(!chatOpen)document.getElementById('chatNotif').style.display='block';},3000);
 

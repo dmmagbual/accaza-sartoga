@@ -26,7 +26,7 @@ const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp, getApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
-const {getFirestore, FieldPath} = require("firebase-admin/firestore");
+const {getFirestore, FieldPath, FieldValue} = require("firebase-admin/firestore");
 const {getMessaging} = require("firebase-admin/messaging");
 const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
@@ -5269,6 +5269,12 @@ async function enforceOrderRateLimit(db, uid) {
   if (limited) throw new HttpsError("resource-exhausted", "Too many order attempts. Please wait one minute and try again.");
 }
 const QR_TICKET_TTL_MS = 15 * 60 * 1000;
+// Public order paths only need to know whether a shift is open and which one. /posActiveShift
+// grows with every sale (drawer and offlineSyncApplied), so read just its id and status.
+async function readActiveShiftHead(db) {
+  const [id, status] = await Promise.all([db.ref("/posActiveShift/id").get(), db.ref("/posActiveShift/status").get()]);
+  return id.exists() ? {id: id.val(), status: status.val()} : null;
+}
 function qrBusinessDay(now) {
   return new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date(now));
 }
@@ -5305,10 +5311,11 @@ exports.createQrOrderTicket = onCall(
     if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Customer session is not ready. Refresh and try again.");
     if (!request.app) logger.warn("createQrOrderTicket called without App Check", {uid: request.auth.uid});
     const db = getDatabase(), uid = request.auth.uid, input = request.data || {}, now = Date.now();
-    const [shiftSnap, statusSnap] = await Promise.all([db.ref("/posActiveShift").get(), /* download-ok: bounded single public ordering status record required before accepting a QR ticket */ db.ref("/publicOrderStatus").get()]);
-    const shift = shiftSnap.val() || null, publicStatus = statusSnap.val() || {};
-    if (!shift || shift.status === "closed" || publicStatus.acceptingOrders !== true) throw new HttpsError("failed-precondition", "Dine-in ordering is closed right now. Please order directly at the cashier.");
+    // Rate limit first, then read only the two shift fields and the one ordering flag this needs:
+    // a repeated or abusive call must not download the whole active-shift record each time.
     await enforceOrderRateLimit(db, uid);
+    const [shift, acceptingSnap] = await Promise.all([readActiveShiftHead(db), db.ref("/publicOrderStatus/acceptingOrders").get()]);
+    if (!shift || shift.status === "closed" || acceptingSnap.val() !== true) throw new HttpsError("failed-precondition", "Dine-in ordering is closed right now. Please order directly at the cashier.");
     const name = textField(input.name, "Name", 100, true);
     if (name.length < 2) throw new HttpsError("invalid-argument", "Enter your name so the cashier can find the ticket.");
     const current = await currentQrPrice(db, input.lineItems, input.expectedTotal);
@@ -5338,7 +5345,7 @@ exports.manageQrOrderTicket = onCall(
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["orders", "pos"]), input = request.data || {}, now = Date.now();
     const action = textField(input.action, "Action", 20, true).toLowerCase(), ticketId = textField(input.ticketId, "Ticket ID", 120, true);
     if (!["claim", "release", "reject"].includes(action)) throw new HttpsError("invalid-argument", "Unsupported QR ticket action.");
-    const shift = (await db.ref("/posActiveShift").get()).val() || null;
+    const shift = await readActiveShiftHead(db);
     if (!shift || shift.status === "closed") throw new HttpsError("failed-precondition", "Open a POS shift before handling QR orders.");
     const ref = db.ref(`/activeQrTickets/${ticketId}`), first = (await ref.get()).val();
     if (!first) throw new HttpsError("not-found", "This QR order is no longer pending.");
@@ -5389,9 +5396,9 @@ exports.createOnlineOrder = onCall(
     const uid = request.auth.uid;
     const input = request.data || {};
     const db = getDatabase();
-    const shift = (await db.ref("/posActiveShift").get()).val() || null;
-    if (!shift || shift.status === "closed") throw new HttpsError("failed-precondition", "Online orders are closed right now. Please try again when the shop is accepting orders.");
     await enforceOrderRateLimit(db, uid);
+    const shift = await readActiveShiftHead(db);
+    if (!shift || shift.status === "closed") throw new HttpsError("failed-precondition", "Online orders are closed right now. Please try again when the shop is accepting orders.");
     const name = textField(input.name, "Name", 100, true);
     const phone = textField(input.phone, "Phone", 40, true);
     if (phone.replace(/\D/g, "").length < 10) throw new HttpsError("invalid-argument", "Enter a valid phone number.");
@@ -8525,6 +8532,30 @@ exports.pruneEphemeralNodes = onSchedule(
     const monitorHistory = (await db.ref("/systemHealth/productionMonitor/history").get()).val() || {};
     Object.keys(monitorHistory).forEach((day) => { if (day < cutoffDay) mark(`systemHealth/productionMonitor/history/${day}`); });
 
+    // Loyalty, QR and AI scratch state (Oct 2026). None of it is history: OTP challenges and
+    // SMS throttles expire in minutes, a QR duplicate-submit lock lives minutes, a daily stamp
+    // cap or QR queue counter only matters on its own business day, and the AI usage/health
+    // counters are kept a month for review. Indexed or key-range reads touch only stale rows.
+    const staleOtp = (await db.ref("/loyaltyOtp").orderByChild("expiresAt").endAt(now - DAY).get()).val() || {};
+    Object.keys(staleOtp).forEach((token) => mark(`loyaltyOtp/${token}`));
+    const staleThrottle = (await db.ref("/loyaltyLinkThrottle").orderByChild("lastAt").endAt(now - 2 * DAY).get()).val() || {};
+    Object.keys(staleThrottle).forEach((key) => mark(`loyaltyLinkThrottle/${key}`));
+    const qrLocks = /* download-ok: bounded pruned by this daily job */(await db.ref("/qrOrderLocks").get()).val() || {};
+    Object.keys(qrLocks).forEach((uid) => Object.keys(qrLocks[uid] || {}).forEach((sig) => {
+      if (now - Number((qrLocks[uid][sig] && qrLocks[uid][sig].t) || 0) > 2 * DAY) mark(`qrOrderLocks/${uid}/${sig}`);
+    }));
+    const keepDays = (days) => financeDateFromTimestamp(now - days * DAY);
+    const pruneDayKeys = async (root, days) => {
+      const cutoff = keepDays(days), rows = (await db.ref(`/${root}`).orderByKey().endAt(cutoff).get()).val() || {};
+      Object.keys(rows).forEach((day) => { if (day < cutoff) mark(`${root}/${day}`); });
+    };
+    await pruneDayKeys("qrOrderCounters", 7);
+    await pruneDayKeys("accazaAiGuestUsage", 30);
+    await pruneDayKeys("accazaAiProviderHealth", 30);
+    const counterCutoff = keepDays(3);
+    const counters = /* download-ok: bounded pruned by this daily job to three business days per member */(await db.ref("/loyaltyDailyCounters").get()).val() || {};
+    Object.keys(counters).forEach((memberId) => Object.keys(counters[memberId] || {}).forEach((day) => { if (day < counterCutoff) mark(`loyaltyDailyCounters/${memberId}/${day}`); }));
+
     const paths = Object.keys(deletions);
     for (let i = 0; i < paths.length; i += 400) {
       const chunk = {};
@@ -8570,7 +8601,7 @@ exports.autoCompleteReadyOnlineOrders = onSchedule(
 // (active-order projections, locks, rate windows, status-command claims, offline
 // sync scratch, daily telemetry) are excluded — a restore rebuilds those. This
 // is the safety net behind a corrupt write, a bad delete, or human error.
-const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "orderCorrectionCommands", "offlinePosSync", "clientTelemetryDaily", BackupDelta.DIRTY_ROOT]);
+const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "qrOrderLocks", "loyaltyOtp", "loyaltyLinkThrottle", "rateLimits", "orderStatusCommands", "orderCorrectionCommands", "offlinePosSync", "clientTelemetryDaily", BackupDelta.DIRTY_ROOT]);
 // Keys of a node without downloading its values (REST shallow read with the
 // function's own credential).
 async function shallowDatabaseKeys(db, path) {
@@ -8713,6 +8744,13 @@ exports.markBackupDirtyAppCustomers = backupDirtyTrigger("appCustomers");
 exports.markBackupDirtyReviews = backupDirtyTrigger("reviews");
 exports.markBackupDirtyFeedbacks = backupDirtyTrigger("feedbacks");
 exports.markBackupDirtyPackages = backupDirtyTrigger("packages");
+// Oct 2026: loyalty, Dragon Quest and QR ticket history grow with every member sale or QR
+// order, so the nightly backup copies them incrementally instead of re-reading them in full.
+exports.markBackupDirtyLoyaltyLedger = backupDirtyTrigger("loyaltyLedger");
+exports.markBackupDirtyLoyaltyRewards = backupDirtyTrigger("loyaltyRewards");
+exports.markBackupDirtyDragonQuestLedger = backupDirtyTrigger("dragonQuestLedger");
+exports.markBackupDirtyDragonQuestOrderIndex = backupDirtyTrigger("dragonQuestOrderIndex");
+exports.markBackupDirtyArchivedQrTickets = backupDirtyTrigger("archivedQrTickets");
 
 exports.backupDatabaseDaily = onSchedule(
   {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "512MiB"},
@@ -9800,8 +9838,8 @@ exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHEC
   const question=accazaAiText(request.data&&request.data.question,800),mode=request.data&&request.data.mode==="web"?"web":"accaza",history=accazaAiHistory(request.data&&request.data.history),requestedProvider=accazaAiText(request.data&&request.data.provider,24).toLowerCase()||"auto";if(question.length<3)throw new HttpsError("invalid-argument","Enter a question for Accaza AI.");
   if(mode==="web"&&accazaAiWebQuestionBlocked(question))throw new HttpsError("failed-precondition","Use Accaza analysis for Accaza business or app questions. Web chat never receives Accaza data.");
   const now=Date.now();let answer,sources=[],provider="gemini",routedModel="",toolCtx=null;
-  if(mode==="web"){const response=await accazaAiWithFallback(accazaAiSelectedProviders(accazaAiGeneralChatProviders(question,history),requestedProvider,actor),{db,surface:"admin_general",general:true});provider=response.provider;answer=response.result.answer;sources=response.result.sources;routedModel=accazaAiText(response.result.routedModel,120);}else{const facts=await accazaAiFactPack(db,question,now);toolCtx=ACCAZA_AI_TOOL_ROLES.includes(actor.role)?accazaAiToolContext(db):null;const response=await accazaAiWithFallback(accazaAiSelectedProviders(toolCtx?accazaAiAgentProviders(question,facts,history,toolCtx,now):accazaAiAnalysisProviders(question,facts,history),requestedProvider,actor),{db,surface:toolCtx?"admin_analysis_records":"admin_analysis",general:false});provider=response.provider;answer=typeof response.result==="string"?response.result:response.result.answer;routedModel=typeof response.result==="string"?"":accazaAiText(response.result.routedModel,120);sources=(facts.sources||[]).concat(toolCtx?accazaAiToolSources(toolCtx):[]);}
-  const auditId=`${now}_${crypto.randomUUID()}`;await db.ref(`/operationalAudit/${auditId}`).set(operationalAuditRecord("ask_accaza_ai","accazaAI",auditId,actor,{mode,provider,requestedProvider,routedModel:routedModel||null,questionHash:crypto.createHash("sha256").update(question).digest("hex"),sources:mode==="web"?sources.map(source=>source.url):sources,recordToolCalls:toolCtx?toolCtx.calls.slice(0,24).map(call=>({tool:call.tool,args:JSON.stringify(call.args).slice(0,200),records:call.records,failed:call.failed===true})):null,recordsRead:toolCtx?toolCtx.recordsRead:0,firestoreReads:toolCtx?Number(toolCtx.firestoreReads||0):0,accounting:"Read-only AI analysis only; no order, inventory movement, subledger, Finance movement, or Books journal changed."}));
+  if(mode==="web"){const response=await accazaAiWithFallback(accazaAiSelectedProviders(accazaAiGeneralChatProviders(question,history),requestedProvider,actor),{db,surface:"admin_general",general:true});provider=response.provider;answer=response.result.answer;sources=response.result.sources;routedModel=accazaAiText(response.result.routedModel,120);}else{const facts=await accazaAiFactPack(db,question,now);toolCtx=ACCAZA_AI_TOOL_ROLES.includes(actor.role)?accazaAiToolContext(db):null;const response=await accazaAiWithFallback(accazaAiSelectedProviders(toolCtx?accazaAiAgentProviders(question,facts,history,toolCtx,now):accazaAiAnalysisProviders(question,facts,history),requestedProvider,actor),{db,surface:toolCtx?"admin_analysis_records":"admin_analysis",general:false}).finally(()=>accazaAiCommitRtdbUsage(toolCtx));provider=response.provider;answer=typeof response.result==="string"?response.result:response.result.answer;routedModel=typeof response.result==="string"?"":accazaAiText(response.result.routedModel,120);sources=(facts.sources||[]).concat(toolCtx?accazaAiToolSources(toolCtx):[]);}
+  const auditId=`${now}_${crypto.randomUUID()}`;await db.ref(`/operationalAudit/${auditId}`).set(operationalAuditRecord("ask_accaza_ai","accazaAI",auditId,actor,{mode,provider,requestedProvider,routedModel:routedModel||null,questionHash:crypto.createHash("sha256").update(question).digest("hex"),sources:mode==="web"?sources.map(source=>source.url):sources,recordToolCalls:toolCtx?toolCtx.calls.slice(0,24).map(call=>({tool:call.tool,args:JSON.stringify(call.args).slice(0,200),records:call.records,failed:call.failed===true})):null,recordsRead:toolCtx?toolCtx.recordsRead:0,rtdbBytes:toolCtx?toolCtx.rtdbBytes:0,firestoreReads:toolCtx?Number(toolCtx.firestoreReads||0):0,accounting:"Read-only AI analysis only; no order, inventory movement, subledger, Finance movement, or Books journal changed."}));
   return {answer,sources,mode,provider,routedModel:routedModel||null,releaseVersion:ACCAZA_AI_RELEASE_VERSION};
 });
 exports.manageAccazaAiKnowledge=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB"},async request=>{
@@ -9864,6 +9902,15 @@ const ACCAZA_AI_TOOL_RECORD_BUDGET = 2500;
 const ACCAZA_AI_TOOL_RESULT_CHARS = 14000;
 const ACCAZA_AI_TOOL_MAX_DAYS = 7;
 const ACCAZA_AI_TOOL_SALES_MAX_DAYS = 3;
+// Realtime Database download guard (Oct 2026). Every record-tool read goes through a metered
+// handle that adds the JSON size of each returned snapshot (what the database sends). A question
+// stops reading at 8 MB, and all questions together stop at 50 MB per Manila day (about 14% of
+// the 360 MB daily download allowance the alert watches). The day total lives on this feature's
+// existing Firestore counter (aiAnalyticsUsage/{day}.rtdbBytes): one read per question to load
+// it and one increment write when the question ends.
+const ACCAZA_AI_RTDB_QUESTION_BYTES = 8 * 1024 * 1024;
+const ACCAZA_AI_RTDB_DAILY_BYTES = 50 * 1024 * 1024;
+const ACCAZA_AI_SALES_ROW_CAP = 600;
 const ACCAZA_AI_MANILA_OFFSET_MS = 8 * 3600000;
 // Fields that never leave the server: credentials, contact details, images, raw sale payloads.
 // Also dropped: hashes and coin/bill denomination counts (the counted totals are kept).
@@ -9898,10 +9945,32 @@ function accazaAiCountsOut(map){return Object.fromEntries(Object.entries(map).so
 function accazaAiValues(snap){const value=snap&&snap.val();return value&&typeof value==="object"?Object.entries(value).map(([id,row])=>Object.assign({id},row&&typeof row==="object"?row:{value:row})):[];}
 function accazaAiInRange(row,range){return Object.keys(row).some(key=>/(at|ts|timestamp)$/i.test(key)&&Number(row[key])>=range.start&&Number(row[key])<range.end);}
 
+const ACCAZA_AI_SALES_FIELDS = ["timestamp","total","status","voided","channel","source","payment","paymentMethod","shiftId","soldBy","cashier","soldByStaffId"];
+async function accazaAiArchivedSales(db,range,ctx){
+  if(!(await historicalSalesAtReady(db))){
+    // Replica not backfilled yet: keep the earlier Realtime Database read so answers stay complete.
+    return accazaAiValues(await db.ref("/archivedOrders").orderByChild("timestamp").startAt(range.start).endAt(range.end-1).limitToFirst(ACCAZA_AI_SALES_ROW_CAP).get());
+  }
+  await accazaAiClaimFirestoreReads(ctx,ACCAZA_AI_SALES_ROW_CAP);
+  const snap=await getFirestore().collection(HistoricalArchive.COLLECTION).where("salesAt",">=",range.start).where("salesAt","<",range.end).orderBy("salesAt").limit(ACCAZA_AI_SALES_ROW_CAP).select(...ACCAZA_AI_SALES_FIELDS.map(field=>`order.${field}`)).get();
+  if(snap.size<ACCAZA_AI_SALES_ROW_CAP)await accazaAiClaimFirestoreReads(ctx,snap.size-ACCAZA_AI_SALES_ROW_CAP).catch(()=>{});
+  return snap.docs.map(doc=>Object.assign({},doc.get("order")||{},{id:doc.id}));
+}
+// A Realtime Database handle that measures what each get() downloads. References and queries
+// returned by ref/child/orderBy*/startAt/endAt/equalTo/limitTo* are wrapped the same way.
+function accazaAiMeteredDb(db,meter){
+  const wrap=target=>new Proxy(target,{get(obj,prop){
+    const value=obj[prop];if(typeof value!=="function")return value;
+    if(prop==="get")return(...args)=>value.apply(obj,args).then(snap=>{meter.rtdbBytes+=Buffer.byteLength(JSON.stringify(snap&&snap.val())||"","utf8");return snap;});
+    return(...args)=>{const out=value.apply(obj,args);return out&&typeof out==="object"&&typeof out.get==="function"&&typeof out.orderByChild==="function"?wrap(out):out;};
+  }});
+  return{ref:path=>wrap(db.ref(path))};
+}
 const ACCAZA_AI_RECORD_TOOLS = {
   get_shifts:{
     description:"Shifts that opened in a Manila date range (plus the evening before, for overnight shifts): cashier, open/close/handover times, status, float, expected and counted cash, variance, Z report, handover state, shift crew and each till's sync health (pending, failed and oldest unsynced sale).",
     days:ACCAZA_AI_TOOL_MAX_DAYS,
+    reserve:80,
     async run(db,range){
       const shifts=accazaAiValues(await db.ref("/shifts").orderByChild("openAt").startAt(range.start-18*3600000).endAt(range.end-1).limitToLast(20).get());
       const detailed=await Promise.all(shifts.map(async shift=>{
@@ -9914,9 +9983,13 @@ const ACCAZA_AI_RECORD_TOOLS = {
   get_sales:{
     description:"Sales rung or received in a Manila date range (at most 3 days): count and PHP totals by status, channel, payment method, shift and seller, voided sales, sales per hour, first and last sale time, and the latest sales. Read from live orders and archived orders.",
     days:ACCAZA_AI_TOOL_SALES_MAX_DAYS,
-    async run(db,range){
-      const [live,archived]=await Promise.all([db.ref("/orders").orderByChild("timestamp").startAt(range.start).endAt(range.end-1).limitToFirst(600).get(),db.ref("/archivedOrders").orderByChild("timestamp").startAt(range.start).endAt(range.end-1).limitToFirst(600).get()]);
-      const byId={};accazaAiValues(archived).concat(accazaAiValues(live)).forEach(order=>{byId[order.id]=order;});
+    reserve:ACCAZA_AI_SALES_ROW_CAP*2,
+    async run(db,range,_args,ctx){
+      // Archived sales come from the Firestore reporting replica (same salesAt basis as Sales
+      // History), counted against the AI's 3,000-read daily Firestore allowance. Only today's
+      // unarchived sales are read from the Realtime Database.
+      const [live,archivedRows]=await Promise.all([db.ref("/orders").orderByChild("timestamp").startAt(range.start).endAt(range.end-1).limitToFirst(ACCAZA_AI_SALES_ROW_CAP).get(),accazaAiArchivedSales(db,range,ctx)]),archivedCount=archivedRows.length;
+      const byId={};archivedRows.concat(accazaAiValues(live)).forEach(order=>{byId[order.id]=order;});
       const orders=Object.values(byId).sort((a,b)=>Number(a.timestamp||0)-Number(b.timestamp||0));
       const status={},channel={},payment={},shift={},seller={},hour={};let total=0,voided=0;
       orders.forEach(order=>{
@@ -9927,12 +10000,13 @@ const ACCAZA_AI_RECORD_TOOLS = {
         accazaAiCount(hour,accazaAiManilaTime(order.timestamp).slice(0,13)+":00",cents);
       });
       const latest=orders.slice(-12).map(order=>({id:order.id,time:accazaAiManilaTime(order.timestamp),total:accazaAiCentavos(order.total)/100,status:order.voided===true?"voided":order.status,channel:order.channel||order.source||"",shiftId:order.shiftId||"",soldBy:order.soldBy||order.cashier||""}));
-      return{records:orders.length,result:{saleCount:orders.length-voided,voidedCount:voided,salesTotal:total/100,capped:live.numChildren()>=600||archived.numChildren()>=600,firstSale:orders.length?accazaAiManilaTime(orders[0].timestamp):null,lastSale:orders.length?accazaAiManilaTime(orders[orders.length-1].timestamp):null,byStatus:accazaAiCountsOut(status),byChannel:accazaAiCountsOut(channel),byPayment:accazaAiCountsOut(payment),byShift:accazaAiCountsOut(shift),bySeller:accazaAiCountsOut(seller),byHour:accazaAiCountsOut(hour),latestSales:latest}};
+      return{records:orders.length,result:{saleCount:orders.length-voided,voidedCount:voided,salesTotal:total/100,capped:live.numChildren()>=ACCAZA_AI_SALES_ROW_CAP||archivedCount>=ACCAZA_AI_SALES_ROW_CAP,firstSale:orders.length?accazaAiManilaTime(orders[0].timestamp):null,lastSale:orders.length?accazaAiManilaTime(orders[orders.length-1].timestamp):null,byStatus:accazaAiCountsOut(status),byChannel:accazaAiCountsOut(channel),byPayment:accazaAiCountsOut(payment),byShift:accazaAiCountsOut(shift),bySeller:accazaAiCountsOut(seller),byHour:accazaAiCountsOut(hour),latestSales:latest}};
     },
   },
   get_audit_log:{
     description:"The operational audit log for a Manila date range: every server-recorded action (sales sync, corrections, refunds, shift close and handover, recoveries, approvals, AI questions) with time, action, record and actor role. Optional 'contains' filters by words in the action or record.",
     days:ACCAZA_AI_TOOL_MAX_DAYS,
+    reserve:400,
     extra:{contains:{type:"string",description:"Optional word to filter actions or record IDs, e.g. shift, handover, refund, sync."}},
     async run(db,range,args){
       const rows=accazaAiValues(await db.ref("/operationalAudit").orderByChild("ts").startAt(range.start).endAt(range.end-1).limitToLast(400).get());
@@ -9945,6 +10019,7 @@ const ACCAZA_AI_RECORD_TOOLS = {
   get_pos_sync_issues:{
     description:"Till-to-server sync problems in a Manila date range: offline sale sync states, sales the server refused (with the refusal message and whether a manager recovered or dismissed them), background tasks that stopped retrying, and the day's app error counters.",
     days:ACCAZA_AI_TOOL_MAX_DAYS,
+    reserve:580,
     async run(db,range){
       const [offline,alerts,dead,...telemetry]=await Promise.all([db.ref("/offlinePosSync").orderByChild("updatedAt").startAt(range.start).endAt(range.end-1).limitToLast(400).get(),db.ref("/posSyncAlerts").orderByChild("state").limitToLast(120).get(),db.ref("/functionDeadLetters").orderByChild("abandonedAt").startAt(range.start).endAt(range.end-1).limitToLast(50).get(),...range.days.map(day=>db.ref(`/clientTelemetryDaily/${day}`).get())]);
       const offlineRows=accazaAiValues(offline),alertRows=accazaAiValues(alerts),inRangeAlerts=alertRows.filter(row=>accazaAiInRange(row,range)),deadRows=accazaAiValues(dead),states={};
@@ -9955,6 +10030,7 @@ const ACCAZA_AI_RECORD_TOOLS = {
   get_close_and_incidents:{
     description:"Shift close and control follow-up for a Manila date range: pending shift handovers (provisional Z), close follow-ups, the daily financial close status, and logged incidents.",
     days:ACCAZA_AI_TOOL_MAX_DAYS,
+    reserve:190,
     async run(db,range){
       const [pending,followUps,incidents,...closes]=await Promise.all([db.ref("/pendingShiftHandovers").orderByChild("at").limitToLast(50).get(),db.ref("/shiftCloseFollowUps").orderByChild("state").limitToLast(80).get(),db.ref("/incidents").orderByChild("createdAt").startAt(range.start).endAt(range.end-1).limitToLast(50).get(),...range.days.map(day=>db.ref(`/financialCloses/${day}/current`).get())]);
       const pendingRows=accazaAiValues(pending),followRows=accazaAiValues(followUps),incidentRows=accazaAiValues(incidents);
@@ -9964,6 +10040,7 @@ const ACCAZA_AI_RECORD_TOOLS = {
   get_cash_custody:{
     description:"Cash custody records closed in a Manila date range: which shift handed over how much cash, what is still awaiting deposit, and deposit status.",
     days:ACCAZA_AI_TOOL_MAX_DAYS,
+    reserve:100,
     async run(db,range){
       const rows=accazaAiValues(await db.ref("/cashCustody").orderByChild("closedAt").startAt(range.start).endAt(range.end-1).limitToLast(100).get());
       const handed=rows.reduce((sum,row)=>sum+accazaAiCentavos(row.amount!=null?row.amount:row.total),0),remaining=rows.reduce((sum,row)=>sum+accazaAiCentavos(row.remaining),0);
@@ -9972,6 +10049,7 @@ const ACCAZA_AI_RECORD_TOOLS = {
   },
   get_finance_month:{
     description:"Finance Books profit and loss for one month (YYYY-MM) from the posted ledger: revenue streams, cost of sales and operating expenses by account, with totals. Accounting amounts, not cash flow.",
+    reserve:2,
     params:{month:{type:"string",description:"Month as YYYY-MM."}},
     async run(db,_range,args){
       const month=String(args&&args.month||"").trim();if(!/^\d{4}-\d{2}$/.test(month))return{records:0,result:{error:"Use month as YYYY-MM."}};
@@ -9987,7 +10065,7 @@ function accazaAiToolSchema(name){
 }
 function accazaAiGeminiTools(){return[{functionDeclarations:Object.keys(ACCAZA_AI_RECORD_TOOLS).map(accazaAiToolSchema)}];}
 function accazaAiOpenAiTools(){return Object.keys(ACCAZA_AI_RECORD_TOOLS).map(name=>({type:"function",function:accazaAiToolSchema(name)}));}
-function accazaAiToolContext(db){return{db,recordsRead:0,calls:[],cache:{},names:null};}
+function accazaAiToolContext(db){const ctx={rawDb:db,recordsRead:0,reserved:0,rtdbBytes:0,dayBytes:null,calls:[],cache:{},names:null};ctx.db=accazaAiMeteredDb(db,ctx);return ctx;}
 // Firebase account IDs are unreadable in a reply, so they are shown as the linked staff name
 // (or "account …1234" when the account is not a POS staff profile).
 async function accazaAiStaffNames(ctx){
@@ -10001,11 +10079,17 @@ async function accazaAiRunRecordTool(ctx,name,args){
   const tool=ACCAZA_AI_RECORD_TOOLS[name],safeArgs=args&&typeof args==="object"?args:{},key=`${name}:${JSON.stringify(safeArgs)}`;
   if(!tool)return{error:`Unknown tool ${String(name).slice(0,40)}.`};
   if(ctx.cache[key])return ctx.cache[key];
-  if(ctx.recordsRead>=ACCAZA_AI_TOOL_RECORD_BUDGET)return{error:"The record budget for this question is used up. Answer from what you already have and say what could not be checked."};
   let range=null;if(!tool.params){range=accazaAiDateRange(safeArgs,tool.days);if(range.error)return{error:range.error};}
+  const dayBytes=await accazaAiRtdbDayBytes(ctx);
+  // Check and reserve with no await in between, so tool calls the model issues in parallel cannot
+  // all pass the same check: each one holds its maximum row count until it finishes.
+  const reserve=Number(tool.reserve||0),budgetMessage="The record budget for this question is used up. Answer from what you already have and say what could not be checked.";
+  if(ctx.recordsRead>=ACCAZA_AI_TOOL_RECORD_BUDGET||ctx.recordsRead+ctx.reserved+reserve>ACCAZA_AI_TOOL_RECORD_BUDGET||ctx.rtdbBytes>=ACCAZA_AI_RTDB_QUESTION_BYTES)return{error:budgetMessage};
+  if(reserve&&dayBytes+ctx.rtdbBytes>=ACCAZA_AI_RTDB_DAILY_BYTES)return{error:"Today's allowance for reading live records is used up. Answer from the FACT PACK and say that live records can be checked again tomorrow."};
+  ctx.reserved+=reserve;
   let output;
-  try{output=await tool.run(ctx.db,range,safeArgs,ctx);}catch(error){ctx.calls.push({tool:name,args:safeArgs,records:0,failed:true});return{error:`Could not read these records right now (${accazaAiText(error&&error.message,120)}).`};}
-  ctx.recordsRead+=Number(output.records||0);ctx.calls.push({tool:name,args:safeArgs,records:Number(output.records||0)});
+  try{output=await tool.run(ctx.db,range,safeArgs,ctx);}catch(error){ctx.reserved-=reserve;ctx.calls.push({tool:name,args:safeArgs,records:0,failed:true});return{error:`Could not read these records right now (${accazaAiText(error&&error.message,120)}).`};}
+  ctx.reserved-=reserve;ctx.recordsRead+=Number(output.records||0);ctx.calls.push({tool:name,args:safeArgs,records:Number(output.records||0)});
   const text=accazaAiNameAccounts(JSON.stringify(output.result),await accazaAiStaffNames(ctx));
   const result=text.length>ACCAZA_AI_TOOL_RESULT_CHARS?{truncated:true,note:"Result shortened; ask a narrower range or filter for detail.",partial:text.slice(0,ACCAZA_AI_TOOL_RESULT_CHARS)}:JSON.parse(text);
   ctx.cache[key]=result;return result;
@@ -10091,6 +10175,20 @@ async function accazaAiClaimFirestoreReads(ctx,count){
   if(!allowed)throw new Error(`today's AI analytics read allowance (${ACCAZA_AI_FIRESTORE_DAILY_READ_CAP} reads) is used up; try again tomorrow`);
   ctx.firestoreReads=Math.max(0,(ctx.firestoreReads||0)+count);
 }
+// Realtime Database download allowance for the record tools (see ACCAZA_AI_RTDB_DAILY_BYTES in
+// the record-tools section). It shares this feature's Firestore day counter.
+function accazaAiRtdbUsageRef(){return getFirestore().collection("aiAnalyticsUsage").doc(financeDateFromTimestamp(Date.now()));}
+function accazaAiRtdbDayBytes(ctx){
+  if(!ctx.dayBytes)ctx.dayBytes=accazaAiRtdbUsageRef().get().then(snap=>Number(snap.exists&&snap.get("rtdbBytes")||0)).catch(()=>0);
+  return ctx.dayBytes;
+}
+// Called once when a question ends (answered or not). Never throws: the guard is best effort and
+// must not turn an answered question into an error.
+async function accazaAiCommitRtdbUsage(ctx){
+  if(!ctx||!(ctx.rtdbBytes>0))return;
+  try{await accazaAiRtdbUsageRef().set({day:financeDateFromTimestamp(Date.now()),rtdbBytes:FieldValue.increment(ctx.rtdbBytes),updatedAt:Date.now()},{merge:true});}catch(error){logger.warn("Accaza AI download usage was not recorded",{error:String(error)});}
+}
+
 async function accazaAiSalesMonthDocs(ctx,months){
   ctx.salesMonths=ctx.salesMonths||{};const missing=months.filter(month=>!(month in ctx.salesMonths));
   if(missing.length){await accazaAiClaimFirestoreReads(ctx,missing.length);const firestore=getFirestore(),snaps=await firestore.getAll(...missing.map(month=>firestore.collection(HistoricalArchive.MONTH_COLLECTION).doc(month)));snaps.forEach((snap,index)=>{ctx.salesMonths[missing[index]]=snap.exists?snap.data()||{}:null;});}
