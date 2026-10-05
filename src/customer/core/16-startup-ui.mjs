@@ -40,7 +40,7 @@ if(archTo)archTo.value=nm.toISOString().slice(0,10);
 setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},1000);
 // ── Gallery Lightbox
 (function(){
-  var GALLERY = ["https://i.postimg.cc/g0qrJsnX/6.jpg", "https://i.postimg.cc/TwtsR8Gd/image.png", "https://i.postimg.cc/5yPsM8BH/image.png", "https://i.postimg.cc/wMbQrgz3/image.png", "https://i.postimg.cc/BvGckmr5/image.png", "https://i.postimg.cc/sXJJz5YV/image.png", "https://i.postimg.cc/B6mT84jW/image.png", "https://i.postimg.cc/yxJZk9qq/image.png", "https://i.postimg.cc/CxpqxzcB/image.png", "https://i.postimg.cc/Pq2pyKTr/image.png", "https://i.postimg.cc/sxZMVrSZ/image.png"];
+  var GALLERY = ["assets/img/gallery/gallery-01.webp", "assets/img/gallery/gallery-02.webp", "assets/img/gallery/gallery-03.webp", "assets/img/gallery/gallery-04.webp", "assets/img/gallery/gallery-05.webp", "assets/img/gallery/gallery-06.webp", "assets/img/gallery/gallery-07.webp", "assets/img/gallery/gallery-08.webp", "assets/img/gallery/gallery-09.webp", "assets/img/gallery/gallery-10.webp", "assets/img/gallery/gallery-11.webp"];
   var current = 0;
   function show(idx) {
     current = (idx + GALLERY.length) % GALLERY.length;
