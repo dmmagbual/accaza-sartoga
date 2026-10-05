@@ -69,23 +69,13 @@ const withSaved=Plan.plan(recipes,inventory,menuItems,{optionCosts:saved});
 check(near(withSaved.entries[0].rows[0].qtyM,0.6),'a definition already in the library is not overwritten by what the recipes say');
 check(withSaved.entries[0].overrides.length===3,'and every drink then keeps its own, because none of them match it');
 
-/* the screen must pick one choice at a time, and never before a restore point */
-const ui=fs.readFileSync('src/admin/pos/33-option-library.js','utf8');
-check(/optLibSnap/.test(ui)&&/optLibRestoreFile/.test(ui),'the screen takes a restore point and can undo from it');
-check(/optLibSnapshotTaken/.test(ui),'nothing can be moved until a restore point has been taken');
-check(/data-optlib/.test(ui),'each choice is ticked on its own');
-check(/optLibPicked=\{\}/.test(ui),'nothing is ticked to begin with');
-check(/would be refused/.test(ui),'a choice that would break an order says so');
-check(/disabled/.test(ui),'and cannot be ticked');
-check(/optLibPickSafe/.test(ui),'there is a way to take only the choices that change nothing');
-check(/newlyCosted/.test(ui)&&/start costing/.test(ui),'each choice shows how many combinations start costing, and how much');
-check(/updatesFor/.test(ui),'only the ticked choices are written');
-check(/optLibMeasure/.test(ui),'the effect is worked out from the real menu, not assumed');
+/* The Share choices screen was removed from the Recipes tab on 6 Sep 2026 and its unreachable
+   code deleted on 6 Oct 2026. The planner above stays for offline use (tools/option-library.mjs). */
 const shell=fs.readFileSync('admin.html','utf8');
-check(/option-library-plan\.js/.test(shell),'admin.html loads the planner');
-check(/option-library-plan\.js/.test(fs.readFileSync('sw.js','utf8')),'the service worker caches it');
-check(/optLibApply/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the screen');
-check(/optlibrary/.test((fs.readFileSync('src/admin/pos/30-recipes.js','utf8')+fs.readFileSync('src/admin/pos/30a-recipe-editor.js','utf8')+fs.readFileSync('src/admin/pos/30b-cost-sheet-and-consumables.js','utf8'))),'the Recipes tab offers it');
+check(!/option-library-plan\.js/.test(shell),'admin.html no longer loads the planner');
+check(!/option-library-plan\.js/.test(fs.readFileSync('sw.js','utf8')),'the service worker no longer caches it');
+check(!/optLibApply|renderOptionLibrary/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle no longer carries the retired screen');
+check(!fs.existsSync('src/admin/pos/33-option-library.js'),'the retired screen source is gone');
 
 console.log(failures?`\n${failures} check(s) failed.`:'\nAll option library checks passed.');
 process.exit(failures?1:0);

@@ -8,7 +8,7 @@ const posSource=fs.readFileSync(path.join(root,'assets','js','admin','pos.js'),'
 for(const unit of ['pack','box','ream','roll','set'])if(!posSource.includes("'"+unit+"'"))fail(`Purchases new-item unit list is missing discrete packaging unit ${unit}`);
 for(const marker of ['promptPurchaseItemMapping','Save mapping & continue','newInventoryAccount','newCostAccount','inventoryAccount:g.inventoryAccount','costAccount:g.costAccount'])if(!posSource.includes(marker))fail(`Purchases inline new-item accounting workflow is missing: ${marker}`);
 for(const marker of ["type==='operating_supply'","type==='office_supply'",'Operating / Cleaning Supply','Office / Administrative Supply','recipeItem:isSupplyType(type)?false'])if(!posSource.includes(marker))fail(`Non-recipe inventory supply classification is missing: ${marker}`);
-const editItemSource=(posSource.match(/function editIngredient\(id\)\{[\s\S]*?\/\* Brand breakdown/)||[])[0]||'';
+const editItemSource=(posSource.match(/function editIngredient\(id\)\{[\s\S]*?function delIngredient\(/)||[])[0]||'';
 for(const marker of ['Stock item master','Item details','Inventory control','Actual cost · weighted average','Planning cost','Consumption rule','Adjust stock','Save changes'])if(!editItemSource.includes(marker))fail(`Stock Items professional edit-card marker missing: ${marker}`);
 for(const marker of ['positive-stock item','Set unit cost','Restate the invoice-backed unit cost'])if(!posSource.includes(marker))fail(`Positive-stock zero-cost safeguard missing: ${marker}`);
 for(const marker of ['active · quote incomplete','Enter both pack size and purchase cost'])if(!posSource.includes(marker))fail(`Approved-brand quote completeness safeguard missing: ${marker}`);

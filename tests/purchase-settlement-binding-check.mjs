@@ -27,27 +27,11 @@ for (const file of ['assets/js/admin/pos.js', 'src/admin/pos/20-purchasing.js'])
   must(s, "if(P.pay!=='paid')P.acct='';if(P.pay!=='advance')P.advanceId='';if(P.pay!=='account')P.due='';",
     `${file}: changing the settlement option must clear the fields belonging to the option being left.`);
 }
-for (const file of ['assets/js/admin/pos.js', 'src/admin/pos/11g-stock-receiving.js']) {
-  const s = read(file);
-  must(s, "if(pay==='paid'&&payAccs.length)payDetail.innerHTML=",
-    `${file}: the receive dialog must render its cash account only while "Paid now" is selected.`);
-  must(s, "else if(pay==='account')payDetail.innerHTML=",
-    `${file}: the receive dialog must render its due date only while "On account" is selected.`);
-}
-/* The receive dialog must not post a delivery on its own. It previously posted the stock
-   movement first and then called payment/payable services that could never succeed from
-   there, leaving stock and weighted-average cost raised with no liability and nothing in
-   Books. It now builds a one-line purchase draft and hands it to the Purchases path. */
-{
-  const s = read('src/admin/pos/11g-stock-receiving.js');
-  must(s, 'postPurchases();',
-    'src/admin/pos/11g-stock-receiving.js: the receive dialog must post through postPurchases().');
-  must(s, 'purchaseSupplierById(supplierId)',
-    'src/admin/pos/11g-stock-receiving.js: the receive dialog must require a supplier from the shared master, not free text.');
-  for (const banned of ['postMovements(', '__cf.postOut', '__cf.addPayable', "stockReceipts/'+rid"]) {
-    if (s.includes(banned)) failures.push(`src/admin/pos/11g-stock-receiving.js: must not post a delivery itself (found ${banned}).`);
-  }
-}
+/* The single-item Receive Stock dialog (src/admin/pos/11g-stock-receiving.js) lost its last
+   caller on 10 Aug 2026 and was deleted on 6 Oct 2026. Deliveries are received only through the
+   Purchases workspace, which the checks above cover. */
+if (fs.existsSync(path.join(root, 'src/admin/pos/11g-stock-receiving.js')) || read('assets/js/admin/pos.js').includes('function receiveStock('))
+  failures.push('the retired single-item Receive Stock dialog must not return; receive deliveries through Purchases.');
 const bundle = read('assets/js/admin/pos.js');
 const placeholders = bundle.split('var accOpts=').length - 1;
 const guarded = bundle.split("var accOpts='<option value=\"\">").length - 1;

@@ -111,18 +111,17 @@ Object.keys(result.updates).forEach(function(path){
 });
 ok('the repair only writes temperature choices - the base recipe is never overwritten');
 
-/* the admin surface must offer the restore point before it offers the repair */
-const recipesUi=fs.readFileSync('src/admin/pos/31-recipe-temperature-repair.js','utf8')+(fs.readFileSync('src/admin/pos/30-recipes.js','utf8')+fs.readFileSync('src/admin/pos/30a-recipe-editor.js','utf8')+fs.readFileSync('src/admin/pos/30b-cost-sheet-and-consumables.js','utf8'));
-check(/recTempSnapshot/.test(recipesUi),'the repair screen offers a restore point download');
-check(/recTempRestore/.test(recipesUi),'the repair screen offers a restore from file');
-check(/recTempApply/.test(recipesUi),'the repair screen offers the repair itself');
-check(/recTempSnapshotTaken/.test(recipesUi),'the repair stays locked until a restore point has been taken');
+/* The Repair & restore screen was removed from the Recipes tab on 6 Sep 2026 and its
+   unreachable code deleted on 6 Oct 2026. The planner above stays for offline use
+   (tools/recipe-temperature-repair.mjs); the admin shell must not download it for nothing. */
+const recipesTab=fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
+check(/\['options','optlibrary','repair','consumables'\]\.indexOf\(recSub\)>=0\)recSub='base'/.test(recipesTab),'the Recipes tab no longer opens the repair screen');
 const bundle=fs.readFileSync('assets/js/admin/pos.js','utf8');
-check(/recTempApply/.test(bundle),'the built admin bundle carries the repair screen');
+check(!/recTempApply|renderRecipeRepair/.test(bundle),'the built admin bundle no longer carries the retired repair screen');
 const shell=fs.readFileSync('admin.html','utf8');
-check(/recipe-temperature-plan\.js/.test(shell),'admin.html loads the shared temperature planner');
+check(!/recipe-temperature-plan\.js/.test(shell),'admin.html no longer loads the planner');
 const sw=fs.readFileSync('sw.js','utf8');
-check(/recipe-temperature-plan\.js/.test(sw),'the service worker caches the shared temperature planner');
+check(!/recipe-temperature-plan\.js/.test(sw),'the service worker no longer caches the planner');
 
 console.log(failures?`\n${failures} check(s) failed.`:'\nAll temperature-repair checks passed.');
 process.exit(failures?1:0);
