@@ -14,7 +14,8 @@ test('customer shell exposes safe connection state and local payment assets',asy
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await expect(page).toHaveTitle(/Accaza Coffee House/i);
-  await expect(page.locator('#fbSync')).toContainText(/Firebase|Connecting/i);
+  await expect(page.locator('#fbSync')).toHaveCount(0);
+  await expect(page.locator('#orderServiceStatus')).toBeVisible();
   await expect(page.locator('#orderConnectionRetry')).toBeHidden();
   await expect(page.locator('#qrGcash img')).toHaveCount(0);
   await expect(page.locator('#qrBdo img')).toHaveCount(0);
