@@ -1,0 +1,29 @@
+name: Verify Admin Pages deployment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - admin.html
+      - assets/js/admin/accaza-ai.js
+      - release-manifest.json
+      - sw.js
+      - .github/workflows/verify-admin-pages.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out the release
+        uses: actions/checkout@v5
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Check the production Admin page and AI bundle
+        run: node tests/ai-deployment-check.mjs --live --wait
