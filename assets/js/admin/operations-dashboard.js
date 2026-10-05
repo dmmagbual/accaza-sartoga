@@ -16,7 +16,7 @@
   function age(v){var n=Date.now()-Number(v||0);if(!v)return'Unknown age';if(n<3600000)return Math.max(1,Math.round(n/60000))+'m ago';if(n<86400000)return Math.round(n/3600000)+'h ago';return Math.round(n/86400000)+'d ago';}
   function posCapacityState(value){
     var c=value||{},bytes=Number(c.bytes),warning=Number(c.warning),limit=Number(c.limit),reserve=Number(c.reserve),envelope=Number(c.envelope);
-    if(!Number.isFinite(bytes)||!Number.isFinite(warning)||!Number.isFinite(limit)||!Number.isFinite(reserve)||!Number.isFinite(envelope)||bytes<0||warning<=0||limit<warning||reserve<=0||envelope!==limit+reserve)return{level:'missing',word:'DATA UNAVAILABLE',color:'#7a5200',bg:'#fffaf0',bytes:0,warning:warning||585000,limit:limit||600000,reserve:reserve||50000,envelope:envelope||650000,headroom:0};
+    if(!Number.isFinite(bytes)||!Number.isFinite(warning)||!Number.isFinite(limit)||!Number.isFinite(reserve)||!Number.isFinite(envelope)||bytes<0||warning<=0||limit<warning||reserve<=0||envelope!==limit+reserve)return{level:'missing',word:'DATA UNAVAILABLE',color:'#7a5200',bg:'#fffaf0',bytes:0,warning:warning||594750,limit:limit||610000,reserve:reserve||50000,envelope:envelope||660000,headroom:0};
     var blocked=bytes>limit,watch=!blocked&&bytes>=warning;
     return{level:blocked?'blocked':watch?'watch':'good',word:blocked?'RELEASE BLOCKED':watch?'WATCH — PLAN POS SPLIT':'GOOD',color:blocked?'#8b1e1e':watch?'#7a5200':'#155724',bg:blocked?'#fff5f5':watch?'#fffaf0':'#f2fbf5',bytes:bytes,warning:warning,limit:limit,reserve:reserve,envelope:envelope,headroom:Math.max(0,limit-bytes)};
   }

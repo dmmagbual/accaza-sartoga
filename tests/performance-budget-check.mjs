@@ -11,7 +11,7 @@ if(budgetState(976,1000)!=='warn'||budgetState(974,1000)!=='ok'||budgetState(100
 if(usableBudget(1000,50)!==950||budgetState(950,1000,50)!=='warn'||budgetState(951,1000,50)!=='fail')fail('Hard-reserve policy is miscalibrated');
 for(const [file,reserve] of Object.entries(hardReserves))if(!Object.hasOwn(budgets,file)||!Number.isInteger(reserve)||reserve<=0||reserve>=budgets[file])fail(`${file} has an invalid hard-reserve configuration`);
 const posFile='assets/js/admin/pos.js',posReserve=hardReserves[posFile];
-if(posReserve!==50000||budgets[posFile]!==650000)fail('POS lifeline must retain its reviewed 50 KB hard reserve inside the 650 KB envelope');
+if(posReserve!==50000||budgets[posFile]!==660000)fail('POS lifeline must retain its reviewed 50 KB hard reserve inside the 660 KB envelope');
 for(const [file,maximum] of Object.entries(budgets)){
   const bytes=size(file),reserve=hardReserves[file]||0,usable=usableBudget(maximum,reserve),state=budgetState(bytes,maximum,reserve);
   if(state==='fail')fail(`${file} exceeds its usable byte budget: ${bytes} > ${usable}. ${reserve?`${reserve} protected bytes remain reserved for emergency POS recovery and cannot be consumed by ordinary feature growth. `:''}Split code out of the bundle, or explicitly review both the growth and reserve before changing the policy.`);

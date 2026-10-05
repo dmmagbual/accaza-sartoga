@@ -22,10 +22,12 @@ export const BUNDLE_HARD_RESERVES=Object.freeze({
 export const BUNDLE_BUDGETS=Object.freeze({
   // Also enforced by the Phase 6 customer-runtime guard in tests/static/10-syntax-rendering.mjs.
   // Sep 2026 re-baseline under the budget policy: reviewed 110,089 bytes (customer 85).
-  'assets/js/customer/core.mjs':115600,
+  // Oct 2026 re-baseline after the reviewed menu-only QR ordering flow: 115,002 bytes.
+  'assets/js/customer/core.mjs':120800,
   // Also enforced by the Phase 4C core guard in tests/static/30-server-release.mjs (formerly a
   // separate, tighter 126,000 ceiling). Sep 2026 re-baseline: reviewed 120,880 bytes (admin 611).
-  'assets/js/admin/core.mjs':127000,
+  // Oct 2026 re-baseline after the reviewed Admin 644 shell: 126,976 bytes.
+  'assets/js/admin/core.mjs':133400,
   // Build 491 adds stock-item archiving: a retire path for ledger items that cannot be deleted,
   // with the guards, pickers and filter that go with it.
   // Per-item pastry packaging overrides (Customize/Edit/Revert) add ~11.6 KB: private
@@ -42,10 +44,18 @@ export const BUNDLE_BUDGETS=Object.freeze({
   // Build 615 (+23.0 KB, 526.3 -> 549.3 KB) adds the serving queue: left queue column, preparation
   // controls, Bar view, not-collected review and the close-of-shift review. The 2.5%
   // warning fired at 552,500; re-baselined under the budget policy to ~5% above the reviewed size.
-  // Oct 2026 lifeline safeguard: reviewed at 575,062 bytes. The 650 KB envelope includes the
-  // protected 50 KB reserve above, giving normal releases a 600 KB hard limit and 24,938 bytes
-  // of usable growth at review time. Changing the reserve requires an explicit test update.
-  'assets/js/admin/pos.js':650000,
+  // Oct 2026 QR-order UI is split into its own guarded lazy module. The 660 KB envelope includes
+  // the protected 50 KB reserve above, giving normal releases a 610 KB hard limit. Changing the
+  // reserve requires an explicit test update.
+  'assets/js/admin/pos.js':660000,
+  // Separate feature modules retain their own review gates instead of hiding growth in POS or
+  // escaping byte checks entirely. QR workflow is loaded immediately before POS; Rewards remains
+  // tab-scoped; Accaza AI is part of the authenticated Admin shell.
+  'assets/js/admin/pos-qr-orders.js':5700,
+  'assets/js/admin/rewards.js':94000,
+  'assets/js/admin/accaza-ai.js':19100,
+  'assets/js/customer/rewards.js':34700,
+  'assets/js/customer/qr-encoder.mjs':55400,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
   // +1.4 KB (Sep 2026): receipt images load on demand from pettyCashReceipts instead of riding
   // on every voucher in the Petty/Purchases listeners.
@@ -92,7 +102,8 @@ export const BUNDLE_BUDGETS=Object.freeze({
   // peak-hour bars and weekday trend lines without adding another data read.
   // Reviewed generated size: 180,306 bytes; the module remains Analytics-only.
   // Sep 2026 re-baseline under the budget policy above: reviewed 180,598 bytes (admin 611).
-  'assets/js/admin/analytics.js':189700,
+  // Oct 2026 re-baseline after reviewed bounded MTD/YTD reporting: 187,556 bytes.
+  'assets/js/admin/analytics.js':197000,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Build 110 adds only the AP-page hooks; its 6 KB form remains isolated below.

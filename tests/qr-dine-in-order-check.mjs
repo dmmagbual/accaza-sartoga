@@ -12,7 +12,9 @@ const customerAuth=read('src','customer','core','00-firebase-auth.mjs');
 const functions=read('src','functions','30-orders.js');
 const posState=read('src','admin','pos','00-shared-state.js');
 const posShell=read('src','admin','pos','50a-register-shell.js');
-const posQr=read('src','admin','pos','50aa-qr-orders.js');
+const posQrAdapter=read('src','admin','pos','50aa-qr-orders.js');
+const posQr=read('src','admin','pos-qr','00-pos-qr-orders.js');
+const moduleLoader=read('assets','js','admin','module-loader.js');
 const posSale=read('src','admin','pos','50f-sale-persistence.js');
 const offlineSync=read('functions','lib','offline-sync.js');
 const rules=read('database.rules.json');
@@ -33,6 +35,7 @@ const inStore=posShell.indexOf('🏪 In-store'),qr=posShell.indexOf('📱 QR Ord
 check(inStore>=0&&inStore<qr&&qr<online&&online<shift,'QR Orders must sit between In-store and Online Orders, before Shift Orders.');
 for(const marker of ['posQrCount','renderQrOrders','updateQrOrderCount'])check(posShell.includes(marker),`POS QR tab is missing: ${marker}`);
 for(const marker of ['qrTicketChime','New QR order ·','navigator.vibrate','Open for Checkout','Finish, hold, or clear the current in-store sale','manageQrOrderTicket'])check(posQr.includes(marker),`Cashier QR alert/open workflow is missing: ${marker}`);
+check(posQrAdapter.includes('window.AccazaPosQrOrders.create')&&moduleLoader.includes("posqr:'pos-qr-orders.js'")&&moduleLoader.includes("load('posqr')"),'QR cashier workflow must load outside the POS lifeline bundle before POS starts.');
 for(const marker of ["order.orderEntryMethod='customer_qr'","order.qrTicketId=posQrTicket.id","order.qrQueueNumber=posQrTicket.queueNumber","order.qrTicketClaimToken=posQrTicket.claimToken"] )check(posSale.includes(marker),`Final POS sale is missing QR source linkage: ${marker}`);
 for(const marker of ['row.status==="converting"','qrTicketClaimToken','delete order.qrTicketClaimToken','archivedQrTickets','activeQrTickets/${qrTicket.id}`]=null','convert_qr_order_to_pos_sale'])check(offlineSync.includes(marker),`Single-use QR sale conversion is missing: ${marker}`);
 check(rules.includes('"activeQrTickets"')&&rules.includes('"qrOrderCounters"')&&rules.includes('"archivedQrTickets"'),'Database rules must expose active QR tickets only to authorized POS users and keep server nodes private.');

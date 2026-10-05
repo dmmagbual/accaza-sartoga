@@ -3,6 +3,7 @@ import path from 'node:path';
 
 const root=process.cwd();
 const bundles=[
+  {source:'src/admin/pos-qr',target:'assets/js/admin/pos-qr-orders.js'},
   {source:'src/admin/pos',target:'assets/js/admin/pos.js'},
   {source:'src/admin/register',target:'assets/js/admin/register.js'},
   {source:'src/admin/rewards',target:'assets/js/admin/rewards.js'},
