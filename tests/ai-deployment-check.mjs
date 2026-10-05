@@ -17,7 +17,7 @@ assert.ok(read('sw.js').toString('utf8').includes(`const CACHE='accaza-v${manife
 const bundlePath=scriptMatch[1];
 const bundle=read(bundlePath);
 const source=bundle.toString('utf8');
-for(const marker of ['id="accazaAiProvider"','OrcaRouter (Free)',"PROVIDER='auto'",'provider:PROVIDER',"role==='owner'||role==='superadmin'"]){
+for(const marker of ['id="accazaAiProvider"','Qwen / Ollama',"PROVIDER='auto'",'provider:PROVIDER',"role==='owner'||role==='superadmin'"]){
   assert.ok(source.includes(marker),`Admin AI bundle lacks model selector wiring: ${marker}`);
 }
 const expectedHash=createHash('sha256').update(bundle).digest('hex');

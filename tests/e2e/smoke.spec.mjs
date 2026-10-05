@@ -95,6 +95,17 @@ test('admin shell carries the coordinated release marker',async({page})=>{
   await expect(page.locator('body')).toContainText(/Accaza Coffee/i);
 });
 
+test('admin shell does not download the hidden customer-site photos',async({page})=>{
+  // admin.html keeps the customer site sections, hidden by portal.css. Before Oct 2026 their
+  // gallery and hero photos (~16.6 MB from postimg.cc) downloaded on every POS load and held
+  // the load event, so POS launch averaged 11-17 s. They must stay lazy so they never load.
+  const photos=[];
+  page.on('request',request=>{if(/postimg\.cc/.test(request.url()))photos.push(request.url());});
+  await page.goto('/admin.html',{waitUntil:'load'});
+  await page.waitForTimeout(500);
+  expect(photos).toEqual([]);
+});
+
 test('Finance Books starts from the assembled runtime without browser errors',async({page})=>{
   const pageErrors=[];
   page.on('pageerror',error=>pageErrors.push(error.message));

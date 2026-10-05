@@ -150,7 +150,7 @@ function buildOperationalExceptions(input, now = Date.now()) {
       at, "operations"));
   });
   // Accaza AI provider health (Sep 2026): a question nothing could answer is critical; an
-  // answer that only came from a backup provider (DeepSeek, Qwen on SUPERDAD, Ashna) is a
+  // answer that only came from a backup provider (Groq, Cerebras, Qwen on SUPERDAD) is a
   // warning, because it means the primary provider failed for that question.
   Object.keys(input.aiProviderHealth || {}).sort().reverse().forEach((day) => {
     const health = input.aiProviderHealth[day];
@@ -160,7 +160,7 @@ function buildOperationalExceptions(input, now = Date.now()) {
     const failed = Number(health.failedQuestions || 0), backup = health.backupAnswers && typeof health.backupAnswers === "object" ? health.backupAnswers : {};
     const backupCount = Object.keys(backup).reduce((total, key) => total + Number(backup[key] || 0), 0);
     if (failed > 0) exceptions.push(item("ai_provider", "critical", `ai_failed_${day}`, `Accaza AI could not answer ${failed} question${failed === 1 ? "" : "s"} on ${day}`,
-      `Every provider failed for ${failed === 1 ? "that question" : "those questions"}.${reasons ? ` Last failure: ${reasons}.` : ""} Check the Gemini and DeepSeek keys, and that SUPERDAD is awake with Ollama and the accaza-ollama tunnel running.`, at, "operations"));
+      `Every provider failed for ${failed === 1 ? "that question" : "those questions"}.${reasons ? ` Last failure: ${reasons}.` : ""} Check the Gemini, Groq and Cerebras keys, and that SUPERDAD is awake with Ollama and the accaza-ollama tunnel running.`, at, "operations"));
     if (backupCount > 0) exceptions.push(item("ai_provider", "warning", `ai_backup_${day}`, `Accaza AI needed a backup provider ${backupCount} time${backupCount === 1 ? "" : "s"} on ${day}`,
       `Answered by ${Object.keys(backup).map((key) => `${key} ${Number(backup[key] || 0)}`).join(", ")} after the primary provider failed.${reasons ? ` Last failure: ${reasons}.` : ""} Repeated warnings mean Gemini is down or its key or quota needs attention.`, at, "operations"));
   });
