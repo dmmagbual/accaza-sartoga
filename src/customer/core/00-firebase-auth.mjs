@@ -12,6 +12,7 @@ const db=getDatabase(app);
 const auth=getAuth(app);
 const functions=getFunctions(app,'asia-southeast1');
 const createOnlineOrderCall=httpsCallable(functions,'createOnlineOrder');
+const createQrOrderTicketCall=httpsCallable(functions,'createQrOrderTicket');
 const confirmOrderReceivedCall=httpsCallable(functions,'confirmOrderReceived');
 const CUSTOMER_LIVE_ORDER_LIMIT=20,CUSTOMER_LIVE_RESERVATION_LIMIT=12;
 var myOrdersMap={},_myOrdersSub={},customerUid=null,_customerIndexUnsub=null;

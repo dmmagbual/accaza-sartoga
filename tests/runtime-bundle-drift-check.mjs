@@ -54,6 +54,7 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageShiftHando
 // 24 Sep 2026: every close ends with a Z report; pending handovers are resolved by the server.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('managePosShiftCrew'),0,'resolvePendingShiftHandovers','onShiftEndResolveEarlierHandovers');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale')+1,0,'getSupplierAdvanceDetails');
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('createOnlineOrder'),0,'createQrOrderTicket','manageQrOrderTicket');
 // 29 Sep 2026: Loyalty Program (Red/Yellow Stamps) Phase 1 backend foundation —
 // signup/OTP, badge scan, earning-rules engine, redemption claims, admin CRUD/reports.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('managePosSaleRecovery')+1,0,'startLoyaltySignup','completeLoyaltySignup','scanLoyaltyBadge','getLoyaltyMemberCard','lookupLoyaltyMemberByPhone','onOrderLoyaltyEarning','claimLoyaltyReward','finalizeLoyaltyRedemption','releaseLoyaltyClaim','startLoyaltyRedeemOtp','manageLoyaltyEarningRule','manageLoyaltyRewardCatalog','manageLoyaltyMemberStatus','getLoyaltyReports');

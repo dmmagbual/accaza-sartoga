@@ -1,0 +1,15 @@
+{
+  "id": "/menu.html",
+  "name": "Accaza Menu",
+  "short_name": "Accaza Menu",
+  "description": "Accaza Coffee House dine-in menu and cashier ordering.",
+  "start_url": "/menu.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f0e8",
+  "theme_color": "#19241b",
+  "icons": [
+    {"src":"/favicon_192x192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"/favicon_512x512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}

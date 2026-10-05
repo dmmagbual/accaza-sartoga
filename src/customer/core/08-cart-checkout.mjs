@@ -3,7 +3,7 @@
 function updateCartDisplay(){
   const box=document.getElementById('cartItems'),tot=document.getElementById('cartTotal');
   const keys=Object.keys(cart);
-  if(!keys.length){box.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p>';tot.style.display='none';var _cb0=document.getElementById('cartCheckoutBtn');if(_cb0)_cb0.style.display='none';return;}
+  if(!keys.length){box.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p>';tot.style.display='none';var _cb0=document.getElementById('cartCheckoutBtn');if(_cb0)_cb0.style.display='none';syncQrOrderButton();return;}
   let total=0;
   box.innerHTML=keys.map(function(k){
     const item=cart[k],line=item.qty*item.unitTotal;total+=line;
@@ -33,6 +33,7 @@ function updateCartDisplay(){
   document.getElementById('totalAmt').textContent='₱'+total.toLocaleString();
   tot.style.display='flex';
   var _cb1=document.getElementById('cartCheckoutBtn');if(_cb1)_cb1.style.display='block';
+  syncQrOrderButton();
 }
 
 window.goToCheckout=function(e){if(e&&e.stopPropagation)e.stopPropagation();if(!Object.keys(cart).length)return;var f=document.querySelector('.form-box');if(f)f.scrollIntoView({behavior:'smooth',block:'start'});};

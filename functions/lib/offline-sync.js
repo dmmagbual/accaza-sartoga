@@ -159,8 +159,22 @@ async function syncOfflinePosSaleCommand(ctx) {
   const lateClosed = !!(ctx.lateRecovery && ownedShift && ownedShift.status === "closed" && Number(raw.timestamp) >= Number(ownedShift.openAt) && Number(raw.timestamp) <= Number(ownedShift.closeAt || 0));
   if (!ownedShift || (ownedShift.status === "closed" && !lateClosed)) throw new HttpsError("failed-precondition", "The POS shift is no longer open.");
   if(!seller)throw new HttpsError('permission-denied',`This sale belongs to ${ownedShift.staff||'another cashier'}'s shift. Join the shift before ringing sales.`);
+  let qrTicket=null,qrGateRef=null,qrSaleSaved=false;
   const syncToken=await claimShiftSync(db,shiftId,transactionId,now);
   try {
+  if(!existing&&raw.orderEntryMethod==="customer_qr"){
+    if(raw.channel!=="instore")throw new HttpsError("invalid-argument","QR tickets must be completed as in-store sales.");
+    const qrTicketId=textField(raw.qrTicketId,"QR ticket ID",120,true),claimToken=textField(raw.qrTicketClaimToken,"QR ticket claim",120,true);qrGateRef=db.ref(`/activeQrTickets/${qrTicketId}`);
+    const initialQrTicket=(await qrGateRef.get()).val(),qrTransactionState={seen:false};
+    const qrGate=await qrGateRef.transaction((row)=>{
+      row=row==null&&!qrTransactionState.seen?initialQrTicket:row;qrTransactionState.seen=true;
+      if(row&&row.status==="converting"&&row.conversionTransactionId===transactionId)return row;
+      if(!row||row.status!=="claimed"||row.claimToken!==claimToken||row.createdShiftId!==shiftId||row.claimedShiftId!==shiftId)return;
+      return Object.assign({},row,{status:"converting",conversionTransactionId:transactionId,conversionStartedAt:now});
+    },undefined,false);
+    if(!qrGate.committed)throw new HttpsError("failed-precondition","This QR ticket was released, changed, or already completed. Reopen QR Orders before charging it.");
+    qrTicket=qrGate.snapshot.val();
+  }else if(!existing&&(raw.qrTicketId||raw.qrTicketClaimToken))throw new HttpsError("invalid-argument","QR ticket details require the customer QR order entry method.");
   let handover = (await db.ref(`/shiftHandovers/${shiftId}`).get()).val();
   if (handover) {
     if(handover.state!=='pending'&&!lateClosed)throw new HttpsError('failed-precondition','The original shift has already been reconciled. Keep the sale queued and contact a manager.');
@@ -194,13 +208,13 @@ async function syncOfflinePosSaleCommand(ctx) {
   // Platform sales always carry an explicit settlement state so receivable readers can
   // use the indexed "unsettled" subset instead of downloading every archived order.
   const settlementDefault = platform && !raw.settlementStatus ? {settlementStatus: "unsettled"} : {};
-  const order = Object.assign({}, raw, settlementDefault, paymentControl, {id: orderId, shiftId, total, lineItems: lines, clientTxnId: transactionId, syncState: "synced", syncedAt: existing && existing.syncedAt ? existing.syncedAt : now, syncedByUid: actor.uid, soldByUid: seller.uid, soldByStaffId: seller.staffId, soldBy: seller.staff, soldByRole: seller.role, recoveredBy: ctx.recovery ? ctx.recovery.managerUid : null, schemaVersion: Math.max(2, Number(raw.schemaVersion) || 0)}); delete order.cashierVerificationIntent;
+  const order = Object.assign({}, raw, settlementDefault, paymentControl, {id: orderId, shiftId, total, lineItems: lines, clientTxnId: transactionId, syncState: "synced", syncedAt: existing && existing.syncedAt ? existing.syncedAt : now, syncedByUid: actor.uid, soldByUid: seller.uid, soldByStaffId: seller.staffId, soldBy: seller.staff, soldByRole: seller.role, recoveredBy: ctx.recovery ? ctx.recovery.managerUid : null, schemaVersion: Math.max(2, Number(raw.schemaVersion) || 0)}); delete order.cashierVerificationIntent;delete order.qrTicketClaimToken;
   // Serving queue (29 Sep 2026): the server, not the device, puts every newly accepted sale in the
   // serving queue. Management recovery of a past shift's sale is history, so it is not queued.
   delete order.service; if (!existing && !ctx.recovery && !lateClosed) order.service = OrderService.initialService(raw, now);
   const prepared=!existing&&ctx.prepareOrder?await ctx.prepareOrder(order,now):{order},durableOrder=prepared&&prepared.order||order;
   let shiftResult;if(prepaid&&!existing){const reservation=await db.ref(`/offlinePosSync/${transactionId}`).transaction((row)=>{if(row&&row.orderId&&row.orderId!==orderId)return;return row||{orderId,shiftId,state:"refund-reserved",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid};},undefined,false);if(!reservation.committed)throw new HttpsError("already-exists","This POS transaction is already linked to another order.");shiftResult=await db.ref(`/shifts/${shiftId}`).transaction((row)=>applyDrawerDelta(row,transactionId,delta,now,actor),undefined,false);if(!shiftResult.committed||!shiftResult.snapshot.exists())throw new HttpsError("failed-precondition","The drawer no longer has enough cash for this refund. Recheck the denominations.");}
-  if (!existing){const stamp=await Handover.stampInvoice(db, durableOrder);durableOrder.invoiceNumber=stamp.invoiceNumber;durableOrder.invoiceSeq=stamp.invoiceSeq;durableOrder.cumulativeGrandTotalCents=stamp.cumulativeGrandTotalCents;const writes={[`orders/${orderId}`]:durableOrder,[`activeOrders/${orderId}`]:activeOrderProjection(durableOrder),[`offlinePosSync/${transactionId}`]:{orderId,shiftId,state:"order-written",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid}};if(prepaid)writes[`operationalAudit/${now}_precompletion_cash_refund_${orderId}`]={action:"complete_instore_prepaid_cash_refund",sourceType:"order",sourceId:orderId,amount:prepaid.amount,confirmedElectronicAmount:prepaid.paidAmount,correctedOrderTotal:total,reason:prepaid.reason,customerAcknowledgement:prepaid.customerAcknowledgement,shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};if(prepared&&prepared.inventoryPlan)writes[`orderInventoryPlans/${orderId}`]=prepared.inventoryPlan;await db.ref().update(writes);}
+  if (!existing){const stamp=await Handover.stampInvoice(db, durableOrder);durableOrder.invoiceNumber=stamp.invoiceNumber;durableOrder.invoiceSeq=stamp.invoiceSeq;durableOrder.cumulativeGrandTotalCents=stamp.cumulativeGrandTotalCents;const writes={[`orders/${orderId}`]:durableOrder,[`activeOrders/${orderId}`]:activeOrderProjection(durableOrder),[`offlinePosSync/${transactionId}`]:{orderId,shiftId,state:"order-written",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid}};if(prepaid)writes[`operationalAudit/${now}_precompletion_cash_refund_${orderId}`]={action:"complete_instore_prepaid_cash_refund",sourceType:"order",sourceId:orderId,amount:prepaid.amount,confirmedElectronicAmount:prepaid.paidAmount,correctedOrderTotal:total,reason:prepaid.reason,customerAcknowledgement:prepaid.customerAcknowledgement,shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};if(qrTicket){writes[`archivedQrTickets/${qrTicket.id}`]=Object.assign({},qrTicket,{status:"converted",saleOrderId:orderId,saleTransactionId:transactionId,convertedAt:now,convertedBy:actor.uid,archivedAt:now});writes[`activeQrTickets/${qrTicket.id}`]=null;writes[`operationalAudit/${now}_qr_convert_${qrTicket.id}`]={action:"convert_qr_order_to_pos_sale",sourceType:"qrOrderTicket",sourceId:qrTicket.id,queueNumber:qrTicket.queueNumber,orderId,transactionId,amount:total,originalTicketTotal:Number(qrTicket.total)||0,shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};}if(prepared&&prepared.inventoryPlan)writes[`orderInventoryPlans/${orderId}`]=prepared.inventoryPlan;await db.ref().update(writes);qrSaleSaved=!!qrTicket;}
   if(!shiftResult&&lateClosed){await db.ref(`/shifts/${shiftId}/lateRecoveredSales/${transactionId}`).update({orderId,at:now,by:(ctx.recovery&&ctx.recovery.managerUid)||actor.uid});shiftResult={committed:true,snapshot:{exists:()=>true}};}
   if(!shiftResult)shiftResult = await db.ref(`/shifts/${shiftId}`).transaction((row) => applyDrawerDelta(row, transactionId, delta, now, actor), undefined, false);
   if (!shiftResult.committed || !shiftResult.snapshot.exists()) throw new HttpsError("failed-precondition", "The sale shift no longer exists. Keep this transaction pending and contact a manager.");
@@ -208,6 +222,6 @@ async function syncOfflinePosSaleCommand(ctx) {
   await db.ref(`/offlinePosSync/${transactionId}`).update({state: "synced", syncedAt: now, updatedAt: now});
   if(handover)await db.ref(`/shiftHandovers/${shiftId}/commands/${transactionId}`).update({syncedAt:now,lastError:""});
   return {transactionId, orderId, syncedAt: now, duplicate: !!existing};
-  } finally {await releaseShiftSync(db,shiftId,transactionId,syncToken);}
+  } finally {if(qrGateRef&&!qrSaleSaved)await qrGateRef.transaction((row)=>row&&row.status==="converting"&&row.conversionTransactionId===transactionId?Object.assign({},row,{status:"claimed",conversionTransactionId:null,conversionStartedAt:null}):row,undefined,false);await releaseShiftSync(db,shiftId,transactionId,syncToken);}
 }
 module.exports={POS_DENOM_KEYS,offlineTxnKey,offlineDrawerDelta,drawerDeltaValue,validatePaymentReconciliation,applyDrawerDelta,recoveryContext,endShiftCrew,recordSyncAlert,resolveSyncAlert,syncOfflinePosSaleCommand};

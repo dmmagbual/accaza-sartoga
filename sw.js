@@ -36,9 +36,9 @@ self.addEventListener('notificationclick',function(e){
 /* Versioned customer + POS app shells. Installation downloads only the customer
    shell. Admin explicitly warms its larger offline shell after opening Admin;
    authenticated POS cash sales use the durable IndexedDB continuity queue. */
-const CACHE='accaza-v630';
+const CACHE='accaza-v631';
 const ASSETS=[
-  '/index.html','/manifest.json',
+  '/index.html','/menu.html','/manifest.json','/manifest-menu.json',
   '/favicon.ico','/favicon_32x32.png','/favicon_180x180.png','/favicon_192x192.png',
   '/assets/js/pwa-register.js','/assets/js/shared/build-freshness.js','/assets/js/shared/firebase-app-check.mjs','/build-version.json','/assets/css/customer/app-shell.css','/assets/css/customer/retired-admin.css','/assets/css/customer/site.css','/assets/css/customer/packages.css',
   '/assets/js/customer/core.mjs','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/order-tracker.js','/assets/js/customer/packages.js','/assets/js/customer/order-availability.mjs',
