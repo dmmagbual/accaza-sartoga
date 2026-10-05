@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=647";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=648";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -536,7 +536,7 @@ function renderMenuSection(){
   if(!items.length){el.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:3rem;color:rgba(224,212,198,0.5);"><p style="font-size:2rem;">'+getCatIcon(menuFilter)+'</p><p style="margin-top:0.5rem;">No items yet.</p></div>';return;}
   el.innerHTML=items.map(function(i){
     const ok=isAvail(i.name);
-    const imgHtml=i.img?'<img src="'+i.img+'" class="menu-card-img" style="'+(ok?'':'opacity:0.5;')+'" onerror="this.style.display=\'none\'"/>'
+    const imgHtml=i.img?'<img loading="lazy" decoding="async" src="'+i.img+'" class="menu-card-img" style="'+(ok?'':'opacity:0.5;')+'" onerror="this.style.display=\'none\'"/>'
       :'<div class="menu-card-img-placeholder">'+getCatIcon(i.cat)+'</div>';
     const priceHtml=i.priceM&&i.priceL
       ?'<span class="price-badge">S ₱'+i.priceS+'</span><span class="price-badge">M ₱'+i.priceM+'</span><span class="price-badge">L ₱'+i.priceL+'</span>'
@@ -556,7 +556,7 @@ function renderOrderSection(){
   el.innerHTML=items.map(function(i){
     const ok=isAvail(i.name);
     const cartQty=Object.values(cart).filter(c=>c.name===i.name||c.name.startsWith(i.name+' (')).reduce((s,c)=>s+c.qty,0);
-    const imgHtml=i.img?'<img src="'+i.img+'" class="item-row-img" onerror="this.style.display=\'none\'"/>'
+    const imgHtml=i.img?'<img loading="lazy" decoding="async" src="'+i.img+'" class="item-row-img" onerror="this.style.display=\'none\'"/>'
       :'<div class="item-row-img-placeholder">'+getCatIcon(i.cat)+'</div>';
     return'<div class="item-row" data-itemkey="'+i.key+'" style="'+(ok?'':'opacity:0.45;pointer-events:none;')+'">'
       +imgHtml

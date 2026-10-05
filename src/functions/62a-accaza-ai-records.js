@@ -238,14 +238,10 @@ async function askOpenAiCompatibleAccazaAgent(label,url,key,model,question,facts
 }
 // Management analysis: trusted tool-capable providers can read records; bounded fact-pack
 // fallbacks can still answer without receiving record-tool access.
-// Order: Gemini -> Cerebras -> DeepSeek -> Jev -> Qwen -> Ashna. Jev and Qwen answer only
-// from the bounded FACT PACK: Jev is too new for trusted record-tool execution, and Qwen is
-// too slow on SUPERDAD for multi-step tool use. Order and reserve match the no-tool list.
+// Order: Gemini -> Cerebras -> Qwen (6 Oct 2026: DeepSeek, Jev and Ashna removed). Qwen answers
+// only from the bounded FACT PACK because it is too slow on SUPERDAD for multi-step tool use.
 function accazaAiAgentProviders(question,facts,history,ctx,now){return[
   {name:"gemini",maxMs:45000,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now)},
   {name:"cerebras",maxMs:30000,enabled:()=>Boolean(accazaAiCerebrasKey()),ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("Cerebras",ACCAZA_AI_CEREBRAS_URL,accazaAiCerebrasKey(),ACCAZA_AI_CEREBRAS_MODEL,question,facts,history,timeoutMs,ctx,now,ACCAZA_AI_CEREBRAS_OPTIONS)},
-  {name:"deepseek",maxMs:30000,enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("DeepSeek","https://api.deepseek.com/chat/completions",DEEPSEEK_API_KEY.value(),"deepseek-flash",question,facts,history,timeoutMs,ctx,now)},
-  {name:"jev",maxMs:ACCAZA_AI_JEV_TIMEOUT_MS,enabled:()=>Boolean(accazaAiJevKey()),ask:timeoutMs=>askJevAccazaAi(question,facts,history,timeoutMs)},
   {name:"ollama",maxMs:ACCAZA_AI_OLLAMA_TIMEOUT_MS,enabled:accazaAiOllamaConfigured,ask:timeoutMs=>askOllamaAccazaAi(question,facts,history,timeoutMs)},
-  {name:"ashna",maxMs:20000,reserveMs:20000,enabled:()=>Boolean(ASHNA_API_KEY.value()),ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("Ashna","https://api.ashna.ai/v1/api/chat/completions",accazaAiOllamaHeaderValue(ASHNA_API_KEY.value()),ACCAZA_AI_ASHNA_MODEL,question,facts,history,timeoutMs,ctx,now)},
 ];}
