@@ -15,6 +15,12 @@ dist/
 .cache/
 test-results/
 *.log
+_worktrees/
+
+# Accidental local artifacts carried by PR #681; recover from Git history if needed.
+design-mockups/rewards-reports-redesign.html
+docs/customer-menu-qr/accaza-customer-menu-qr.png
+tools/create-customer-menu-qr-notice.cjs
 
 # Private business data and database exports
 *backup*.json
