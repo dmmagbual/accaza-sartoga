@@ -69,12 +69,16 @@ assert.ok(clean.includes('(Note: accounting amounts are not cash flow.)'),'singl
 assert.ok(clean.includes('2*3*4'),'arithmetic asterisks are untouched');
 assert.ok(/cash flow\.\)\n\nObserved Facts\n\n• Revenue/.test(clean)&&/PHP 26,687\.71\n\nRecommendations/.test(clean),'lists are separated from surrounding text by a blank line');
 assert.throws(()=>format('  **  '),e=>e.details&&e.details.providerFailure===true);}
-// 12. Jev Router sends the privacy policy in the request and returns its selected model.
+// 12. OrcaRouter uses the stable free router and the shared OpenAI-compatible caller.
+assert.ok(source.includes('const ACCAZA_AI_ORCAROUTER_URL = "https://api.orcarouter.ai/v1/chat/completions"'));
+assert.ok(source.includes('const ACCAZA_AI_ORCAROUTER_MODEL = "orcarouter/free"'));
+assert.ok(source.includes('askOpenAiCompatibleChat("OrcaRouter",ACCAZA_AI_ORCAROUTER_URL,accazaAiOrcaRouterKey(),ACCAZA_AI_ORCAROUTER_MODEL'));
+// 13. Jev Router sends the privacy policy in the request and returns its selected model.
 {const jevCode=pick('async function askJevRouter(','async function askJevGeneralChat(');let outbound;
 const askJev=new Function('accazaAiJevKey','HttpsError','accazaAiFetchJson','accazaAiProviderFailure','accazaAiProviderMessage','accazaAiProseAnswer','accazaAiText','ACCAZA_AI_JEV_URL','ACCAZA_AI_JEV_MODEL',`${jevCode};return askJevRouter;`)(()=> 'sk-test',HttpsError,async(_label,_url,init)=>{outbound=JSON.parse(init.body);return{response:{ok:true},body:{model:'openai/gpt-test',choices:[{message:{content:'Safe answer.'}}]}};},message=>new HttpsError('unavailable',message,{providerFailure:true}),(body,fallback)=>body&&body.error&&body.error.message||fallback,value=>String(value).trim(),(value,max)=>String(value||'').slice(0,max),'https://openrouter.test/chat','typesafe/jev-router');
 const jev=await askJev([{role:'user',content:'hello'}],0.35,15000);
 assert.deepEqual(outbound.provider,{zdr:true,data_collection:'deny'});assert.equal(outbound.model,'typesafe/jev-router');assert.equal(jev.answer,'Safe answer.');assert.equal(jev.routedModel,'openai/gpt-test');}
-// 13. Record tools show staff names instead of account IDs, and never rewrite JSON keys.
+// 14. Record tools show staff names instead of account IDs, and never rewrite JSON keys.
 {const records=fs.readFileSync(path.join(root,'src/functions/62a-accaza-ai-records.js'),'utf8');const line=records.match(/function accazaAiNameAccounts[^\n]*/)[0];
 const nameAccounts=new Function(`${line};return accazaAiNameAccounts;`)();
 const out=JSON.parse(nameAccounts(JSON.stringify({averageDistinctItemsPerOrder:1.8,by:'HstyE8bcYwaVjBASmfi94YwHW7J2',who:'Zz9abcdefghijklmnopqrstuvwxy',note:'abcdefghijabcdefghijabcdefgh'}),{Zz9abcdefghijklmnopqrstuvwxy:'Maria'}));
