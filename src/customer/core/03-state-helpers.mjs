@@ -45,10 +45,8 @@ window.__custTaxLine=function(net){
 onValue(publicTaxInfoRef,function(snap){publicTaxInfo=snap.val()||null;if(typeof updateCartDisplay==='function')updateCartDisplay();},function(){publicTaxInfo=null;if(typeof updateCartDisplay==='function')updateCartDisplay();});
 onValue(ref(db,'.info/connected'),function(snap){
   customerLiveConnected=snap.val()===true;
-  var badge=document.getElementById('fbSync');
-  if(badge){badge.classList.toggle('online',customerLiveConnected);badge.textContent=customerLiveConnected?'Firebase connected':'Connecting to Firebase…';badge.style.display='block';}
   renderPublicOrderStatus();
-},function(){customerLiveConnected=false;var badge=document.getElementById('fbSync');if(badge){badge.classList.remove('online');badge.textContent='Firebase connection unavailable';badge.style.display='block';}renderPublicOrderStatus();});
+},function(){customerLiveConnected=false;renderPublicOrderStatus();});
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp';
