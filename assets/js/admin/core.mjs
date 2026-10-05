@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=642";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=643";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -85,6 +85,7 @@ window.__accaza={
   manageOrderArchive:function(command){return manageOrderArchiveCall(command);},
   updateOrderStatus:function(command){return updateOrderStatusCall(command);},
   acceptOnlineOrder:c=>callables.acceptOnlineOrder(c),
+  manageQrOrderTicket:c=>callables.manageQrOrderTicket(c),
   reviewDiscrepancy:function(command){return reviewDiscrepancyCall(command);},
   reopenDiscrepancy:function(command){return reopenDiscrepancyCall(command);},
   managePettyVoucher:function(command){return managePettyVoucherCall(command);},

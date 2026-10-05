@@ -5268,6 +5268,119 @@ async function enforceOrderRateLimit(db, uid) {
   });
   if (limited) throw new HttpsError("resource-exhausted", "Too many order attempts. Please wait one minute and try again.");
 }
+const QR_TICKET_TTL_MS = 15 * 60 * 1000;
+function qrBusinessDay(now) {
+  return new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date(now));
+}
+async function archiveExpiredQrTickets(db, now) {
+  const snap = await db.ref("/activeQrTickets").orderByChild("expiresAt").endAt(now).limitToFirst(20).get();
+  const writes = {};
+  for (const child of Object.values(snap.val() || {})) {
+    if (!child || child.status !== "pending" || Number(child.expiresAt || 0) > now) continue;
+    const transactionState = {seen: false};
+    const claim = await db.ref(`/activeQrTickets/${child.id}`).transaction((row) => {
+      row = transactionCurrent(row, child, transactionState);
+      return row && row.status === "pending" && Number(row.expiresAt || 0) <= now ? Object.assign({}, row, {status: "expired", expiredAt: now}) : undefined;
+    }, undefined, false);
+    if (!claim.committed) continue;
+    const expired = claim.snapshot.val();
+    writes[`archivedQrTickets/${child.id}`] = Object.assign({}, expired, {archivedAt: now});
+    writes[`activeQrTickets/${child.id}`] = null;
+  }
+  if (Object.keys(writes).length) await db.ref().update(writes);
+}
+async function currentQrPrice(db, rawLines, expectedTotal) {
+  const [availSnap, taxSnap] = await Promise.all([db.ref("/availability").get(), db.ref("/taxSettings").get()]);
+  const priced = await readCatalogKeyed(db, ["menuItems", "optionGroups", "packages"], (maps) => priceOrderLinesServer(rawLines, maps.menuItems, maps.optionGroups, availSnap.val() || {}, maps.packages));
+  const taxSettings = taxSnap.val() || {}, tax = Financial.effectiveTaxFor(taxSettings, Date.now());
+  let total = money(priced.total);
+  if (tax && tax.inclusive === false) total = money(total + Math.round(total * tax.rate) / 100);
+  if (priced.total <= 0 || total > 200000) throw new HttpsError("invalid-argument", "Calculated order total is outside the allowed range.");
+  if (expectedTotal != null && (!Number.isFinite(Number(expectedTotal)) || Math.abs(money(expectedTotal) - total) > 0.01)) throw new HttpsError("failed-precondition", `The menu price changed. The current total is PHP ${total.toFixed(2)}. Refresh the menu and review your order.`);
+  return {priced, total, tax: tax ? {mode: tax.mode, rate: tax.rate, inclusive: tax.inclusive !== false, tin: String(taxSettings.tin || ""), branchCode: String(taxSettings.branchCode || ""), ptu: String(taxSettings.ptu || "")} : null};
+}
+exports.createQrOrderTicket = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK_ORDERS, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Customer session is not ready. Refresh and try again.");
+    if (!request.app) logger.warn("createQrOrderTicket called without App Check", {uid: request.auth.uid});
+    const db = getDatabase(), uid = request.auth.uid, input = request.data || {}, now = Date.now();
+    const [shiftSnap, statusSnap] = await Promise.all([db.ref("/posActiveShift").get(), /* download-ok: bounded single public ordering status record required before accepting a QR ticket */ db.ref("/publicOrderStatus").get()]);
+    const shift = shiftSnap.val() || null, publicStatus = statusSnap.val() || {};
+    if (!shift || shift.status === "closed" || publicStatus.acceptingOrders !== true) throw new HttpsError("failed-precondition", "Dine-in ordering is closed right now. Please order directly at the cashier.");
+    await enforceOrderRateLimit(db, uid);
+    const name = textField(input.name, "Name", 100, true);
+    if (name.length < 2) throw new HttpsError("invalid-argument", "Enter your name so the cashier can find the ticket.");
+    const current = await currentQrPrice(db, input.lineItems, input.expectedTotal);
+    const signature = crypto.createHash("sha256").update(JSON.stringify({uid, shiftId: shift.id, lines: current.priced.lines, total: current.total})).digest("hex");
+    const lockRef = db.ref(`/qrOrderLocks/${uid}/${signature}`);
+    const lock = await lockRef.transaction((row) => row && now - Number(row.t || 0) < ORDER_LOCK_MS ? undefined : {t: now}, undefined, false);
+    if (!lock.committed) throw new HttpsError("already-exists", "This exact order was already sent. Please proceed to the cashier.");
+    const day = qrBusinessDay(now), counterRef = db.ref(`/qrOrderCounters/${day}`);
+    const counter = await counterRef.transaction((value) => Math.max(0, Number(value) || 0) + 1, undefined, false);
+    if (!counter.committed) { await lockRef.remove(); throw new HttpsError("internal", "A queue number could not be assigned. Please try again."); }
+    const queueNumber = `Q-${String(counter.snapshot.val()).padStart(3, "0")}`;
+    let ticketId = "QR-" + shortRefCode(now);
+    for (let i = 1; i < 8 && (await db.ref(`/activeQrTickets/${ticketId}`).get()).exists(); i++) ticketId = "QR-" + shortRefCode(now + i);
+    const itemText = current.priced.lines.map((line) => `${line.name}${line.size ? ` (${line.size})` : ""}${line.optLabels.length ? ` [${line.optLabels.join(", ")}]` : ""} x${line.qty}`).join(", ");
+    const ticket = {id: ticketId, ownerUid: uid, queueNumber, name, type: "Dine-in", status: "pending", paymentStatus: "unpaid", items: itemText, subtotal: money(current.priced.total), total: current.total, tax: current.tax, lineItems: current.priced.lines, packages: current.priced.packages, extraCost: current.priced.extraCost, source: "customer_qr", channel: "instore", orderEntryMethod: "customer_qr", createdAt: now, expiresAt: now + QR_TICKET_TTL_MS, createdShiftId: shift.id, pricingVersion: "server-v1", pricedAt: now, schemaVersion: 1};
+    try { await db.ref(`/activeQrTickets/${ticketId}`).set(ticket); await lockRef.update({id: ticketId, queueNumber}); }
+    catch (error) { await lockRef.remove(); logger.error("QR ticket write failed", {ticketId, uid, error: String(error)}); throw new HttpsError("internal", "The cashier ticket could not be saved. Please try again."); }
+    try { await archiveExpiredQrTickets(db, now); } catch (error) { logger.warn("Expired QR ticket cleanup failed", {error: String(error)}); }
+    logger.info("Unpaid QR ticket created", {ticketId, queueNumber, uid, shiftId: shift.id, total: current.total});
+    return {ticketId, queueNumber, total: current.total, expiresAt: ticket.expiresAt};
+  },
+);
+
+exports.manageQrOrderTicket = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["orders", "pos"]), input = request.data || {}, now = Date.now();
+    const action = textField(input.action, "Action", 20, true).toLowerCase(), ticketId = textField(input.ticketId, "Ticket ID", 120, true);
+    if (!["claim", "release", "reject"].includes(action)) throw new HttpsError("invalid-argument", "Unsupported QR ticket action.");
+    const shift = (await db.ref("/posActiveShift").get()).val() || null;
+    if (!shift || shift.status === "closed") throw new HttpsError("failed-precondition", "Open a POS shift before handling QR orders.");
+    const ref = db.ref(`/activeQrTickets/${ticketId}`), first = (await ref.get()).val();
+    if (!first) throw new HttpsError("not-found", "This QR order is no longer pending.");
+    if (first.createdShiftId !== shift.id) throw new HttpsError("failed-precondition", "This QR order belongs to a different POS shift.");
+    if (action === "claim") {
+      if (first.status === "claimed" && first.claimedBy === actor.uid) return {ticket: first, claimToken: first.claimToken, resumed: true};
+      if (first.status !== "pending") throw new HttpsError("already-exists", "Another cashier already opened this QR order.");
+      if (Number(first.expiresAt || 0) <= now) throw new HttpsError("deadline-exceeded", "This QR order expired. Ask the customer to order again.");
+      const current = await currentQrPrice(db, first.lineItems, null), claimToken = crypto.randomBytes(24).toString("hex");
+      const transactionState = {seen: false};
+      const result = await ref.transaction((row) => {
+        row = transactionCurrent(row, first, transactionState);
+        if (!row || row.status !== "pending" || row.createdShiftId !== shift.id || Number(row.expiresAt || 0) <= now) return;
+        return Object.assign({}, row, {status: "claimed", claimedAt: now, claimedBy: actor.uid, claimedByRole: actor.role, claimedShiftId: shift.id, claimToken, checkoutLineItems: current.priced.lines, subtotal: money(current.priced.total), total: current.total, tax: current.tax, packages: current.priced.packages, extraCost: current.priced.extraCost, priceChanged: Math.abs(Number(row.total || 0) - current.total) > 0.01, pricedAt: now});
+      }, undefined, false);
+      if (!result.committed) throw new HttpsError("already-exists", "Another cashier already opened this QR order.");
+      const ticket = result.snapshot.val();
+      await db.ref(`/operationalAudit/${now}_qr_claim_${ticketId}`).set({action: "claim_qr_order", sourceType: "qrOrderTicket", sourceId: ticketId, queueNumber: ticket.queueNumber, amount: ticket.total, shiftId: shift.id, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1});
+      return {ticket, claimToken, resumed: false};
+    }
+    if (action === "release") {
+      if (first.status !== "claimed" || first.claimedBy !== actor.uid || first.claimedShiftId !== shift.id) throw new HttpsError("permission-denied", "Only the cashier who opened this QR order can release it.");
+      const transactionState = {seen: false};
+      const result = await ref.transaction((row) => {
+        row = transactionCurrent(row, first, transactionState);
+        return row && row.status === "claimed" && row.claimedBy === actor.uid ? Object.assign({}, row, {status: "pending", expiresAt: now + 5 * 60 * 1000, releasedAt: now, releasedBy: actor.uid, claimedAt: null, claimedBy: null, claimedByRole: null, claimedShiftId: null, claimToken: null, checkoutLineItems: null}) : undefined;
+      }, undefined, false);
+      if (!result.committed) throw new HttpsError("aborted", "The QR order changed. Refresh the list.");
+      return {ticket: result.snapshot.val()};
+    }
+    if (first.status !== "pending" && !(first.status === "claimed" && first.claimedBy === actor.uid && first.claimedShiftId === shift.id)) throw new HttpsError("permission-denied", "Another cashier already opened this QR order.");
+    const transactionState = {seen: false};
+    const result = await ref.transaction((row) => {
+      row = transactionCurrent(row, first, transactionState);
+      return row && (row.status === "pending" || (row.status === "claimed" && row.claimedBy === actor.uid && row.claimedShiftId === shift.id)) ? Object.assign({}, row, {status: "rejected", rejectedAt: now, rejectedBy: actor.uid, rejectedByRole: actor.role}) : undefined;
+    }, undefined, false);
+    if (!result.committed) throw new HttpsError("aborted", "The QR order changed. Refresh the list.");
+    const rejected = result.snapshot.val();
+    await db.ref().update({[`archivedQrTickets/${ticketId}`]: Object.assign({}, rejected, {archivedAt: now}), [`activeQrTickets/${ticketId}`]: null, [`operationalAudit/${now}_qr_reject_${ticketId}`]: {action: "reject_qr_order", sourceType: "qrOrderTicket", sourceId: ticketId, queueNumber: rejected.queueNumber, amount: rejected.total, shiftId: shift.id, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}});
+    return {ticketId, status: "rejected"};
+  },
+);
 exports.createOnlineOrder = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK_ORDERS, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {

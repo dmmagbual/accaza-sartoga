@@ -478,6 +478,54 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 .hero-badge,.hero h1,.hero p,.hero-btns,.hero-social{animation:none!important;}
 }
 
+/* Dine-in QR ordering uses the existing live catalog and cart without exposing the
+   homepage, delivery, prepaid checkout, or customer-history surfaces. */
+.qr-order-intro,.qr-order-form{display:none;}
+.qr-order-confirm[hidden]{display:none!important;}
+html.qr-order-mode{scroll-padding-top:74px;background:#f5f0e8;}
+.qr-order-mode body{background:#f5f0e8;padding-bottom:0;}
+.qr-order-mode nav{position:sticky;top:0;background:#19241b;padding:.7rem clamp(1rem,4vw,2rem);min-height:58px;box-shadow:0 3px 18px rgba(25,36,27,.22);}
+.qr-order-mode nav .nav-links,.qr-order-mode nav .hamburger{display:none!important;}
+.qr-order-mode nav .nav-logo{font-size:clamp(1rem,4vw,1.3rem);}
+.qr-order-mode nav .order-service-status{margin-left:auto;}
+.qr-order-mode #home,.qr-order-mode #about,.qr-order-mode #reel,.qr-order-mode #menu,.qr-order-mode #orderTracker,.qr-order-mode #reserve,.qr-order-mode #reviews,.qr-order-mode #feedback,.qr-order-mode #gallery,.qr-order-mode #contact,.qr-order-mode .footer,.qr-order-mode #appTabBar,.qr-order-mode .chat-bubble,.qr-order-mode .chat-window{display:none!important;}
+.qr-order-mode #order{display:block!important;padding:1.35rem 1rem 3rem;background:#f5f0e8;}
+.qr-order-mode #order>.order-inner{max-width:1080px;}
+.qr-order-mode #order>.order-inner>div:first-child{margin:0 auto 1.4rem!important;}
+.qr-order-mode #order>.order-inner>div:first-child>.section-label,.qr-order-mode #order>.order-inner>div:first-child>h2,.qr-order-mode #order>.order-inner>div:first-child>p:not(.section-label),.qr-order-mode #order>.order-inner>div:first-child>div:not(.qr-order-intro){display:none!important;}
+.qr-order-mode .qr-order-intro{display:block;text-align:left;max-width:720px;margin:0 auto;}
+.qr-order-kicker{display:inline-flex;color:#6e5735;background:#eadcc7;border:1px solid #d4bd9a;border-radius:999px;padding:.32rem .7rem;font-size:.75rem;font-weight:700;}
+.qr-order-intro h2{font-family:'Playfair Display',serif;color:#19241b;font-size:clamp(2rem,9vw,3.5rem);line-height:1.03;margin:.75rem 0 .65rem;}
+.qr-order-intro p{color:#526052;font-size:.95rem;line-height:1.6;max-width:620px;}
+.qr-order-mode .order-layout{grid-template-columns:minmax(0,1.35fr) minmax(290px,.65fr);gap:1.1rem;align-items:start;}
+.qr-order-mode .order-tabs{position:sticky;top:72px;z-index:5;background:#f5f0e8;padding:.4rem 0 .65rem;}
+.qr-order-mode #qrSection{display:none!important;}
+.qr-order-mode .cart-box{cursor:default!important;border-color:#d4bd9a;box-shadow:0 8px 24px rgba(25,36,27,.08);}
+.qr-order-mode #cartCheckoutBtn{background:#b08d57!important;}
+.qr-order-mode .form-box>*:not(#qrOrderForm){display:none!important;}
+.qr-order-mode .qr-order-form{display:block;}
+.qr-order-form h3{font-family:'Playfair Display',serif;color:#19241b;font-size:1.25rem;margin:0 0 .35rem;}
+.qr-order-form>p{font-size:.82rem;color:#657064;line-height:1.5;margin:0 0 .85rem;}
+.qr-order-form label{display:block;color:#19241b;font-weight:700;font-size:.78rem;margin-bottom:.35rem;}
+.qr-order-form input{width:100%;box-sizing:border-box;border:1px solid #c9b99f;background:#fff;color:#19241b;border-radius:8px;padding:.82rem .9rem;font:inherit;}
+.qr-order-form input:focus-visible{outline:3px solid rgba(176,141,87,.35);border-color:#8f6f42;}
+#qrSendOrderBtn{width:100%;border:0;border-radius:9px;background:#19241b;color:#fff;padding:.9rem 1rem;margin-top:.8rem;font:700 .92rem/1.2 'Inter',sans-serif;cursor:pointer;}
+#qrSendOrderBtn:disabled{cursor:not-allowed;opacity:.55;}
+.qr-order-form .qr-order-payment-note{margin:.75rem 0!important;padding:.72rem .8rem;background:#fff5d9;border-left:4px solid #b08d57;color:#6f552c!important;}
+#qrMenuInstallBtn{width:100%;border:1px solid #19241b;border-radius:9px;background:transparent;color:#19241b;padding:.78rem 1rem;font:700 .82rem/1.2 'Inter',sans-serif;cursor:pointer;}
+#qrMenuInstallBtn:focus-visible,#qrSendOrderBtn:focus-visible,.qr-order-confirm button:focus-visible{outline:3px solid #c9a36a;outline-offset:3px;}
+.qr-order-confirm{position:fixed;inset:0;z-index:100005;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(13,22,15,.88);}
+.qr-order-confirm-card{width:min(100%,430px);background:#f5f0e8;color:#19241b;border:2px solid #b08d57;border-radius:18px;padding:1.5rem;text-align:center;box-shadow:0 22px 70px rgba(0,0,0,.42);}
+.qr-order-confirm-mark{display:grid;place-items:center;width:52px;height:52px;margin:0 auto .75rem;border-radius:50%;background:#2d6a4f;color:#fff;font-size:1.65rem;font-weight:800;}
+.qr-order-confirm h2{font-family:'Playfair Display',serif;font-size:1.55rem;margin:0 0 .6rem;}
+.qr-order-confirm p{font-size:.9rem;line-height:1.55;color:#526052;margin:.55rem 0;}
+.qr-order-queue-number{display:block;color:#19241b;font:600 clamp(2.7rem,15vw,4.6rem)/1 'Playfair Display',serif;letter-spacing:.06em;margin:.3rem 0 .6rem;}
+.qr-order-confirm-name{font-weight:800!important;color:#19241b!important;}
+.qr-order-unpaid-warning{background:#fff0cf;border:1px solid #dfc07f;color:#745420;border-radius:8px;padding:.65rem;margin:.8rem 0;font-size:.8rem;font-weight:700;}
+.qr-order-confirm button{width:100%;border:0;border-radius:9px;background:#19241b;color:#fff;padding:.85rem 1rem;font:700 .9rem/1.2 'Inter',sans-serif;cursor:pointer;}
+@media(max-width:760px){.qr-order-mode nav .order-service-status__note{display:none}.qr-order-mode .order-layout{grid-template-columns:1fr}.qr-order-mode .order-layout>div:last-child{display:flex;flex-direction:column;gap:.75rem}.qr-order-mode .cart-box,.qr-order-mode .form-box{position:static!important}.qr-order-mode #order{padding-inline:.75rem}.qr-order-mode .order-tabs{top:62px}.qr-order-mode .qr-order-intro{text-align:left}}
+@media(prefers-reduced-motion:reduce){.qr-order-confirm{scroll-behavior:auto}}
+
 /* ===== LIVE ORDER STATUS (stepper + alerts) ===== */
 .acz-steps{display:flex;align-items:flex-start;justify-content:space-between;gap:2px;padding:1rem 1.25rem 0.65rem;background:#fff;}
 .acz-step{flex:1;text-align:center;position:relative;}

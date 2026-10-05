@@ -32,14 +32,14 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/favicon_180x180.png"/>
 <link rel="icon" type="image/png" sizes="192x192" href="/favicon_192x192.png"/>
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
-<link rel="manifest" href="/manifest.json"/>
+<link rel="manifest" id="accazaManifest" href="/manifest.json"/>
 <meta name="theme-color" content="#19241b"/>
-<meta name="accaza-customer-build" content="93"/>
+<meta name="accaza-customer-build" content="94"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="Accaza"/>
-<script>(function(){var sa=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;if(sa&&location.search.indexOf('full=1')===-1)document.documentElement.classList.add('app-mode');})();</script>
+<script>(function(){var qr=new URLSearchParams(location.search).get('qr')==='1',sa=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;if(qr){document.documentElement.classList.add('qr-order-mode');window.__accazaQrOrderMode=true;var manifest=document.getElementById('accazaManifest');if(manifest)manifest.href='/manifest-menu.json';}if(sa&&location.search.indexOf('full=1')===-1)document.documentElement.classList.add('app-mode');})();</script>
 <link rel="stylesheet" href="assets/css/customer/app-shell.css"/>
 <link rel="canonical" href="https://accazacoffee.com/"/>
 <link rel="preconnect" href="https://i.postimg.cc"/>
@@ -109,7 +109,7 @@
 <link rel="stylesheet" href="assets/css/customer/site.css"/>
 </head>
 <body>
-<!-- accaza-index build v93 -->
+<!-- accaza-index build v94 -->
 <div class="fb-sync" id="fbSync" role="status" aria-live="polite">Connecting to Firebase…</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -277,6 +277,11 @@
 <section class="order-section" id="order">
   <div class="order-inner">
     <div style="text-align:center;margin-bottom:3rem;">
+      <div id="qrOrderIntro" class="qr-order-intro">
+        <span class="qr-order-kicker">Dine-in ordering</span>
+        <h2>Choose now. Pay at the cashier.</h2>
+        <p>Build your order, send it to the POS, then proceed immediately to the cashier with your name and queue number.</p>
+      </div>
       <p class="section-label" style="color:var(--bl);">Place Your Order</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Order Online</h2>
       <p style="color:var(--tm);max-width:480px;margin:0 auto;font-size:0.95rem;">Pick your items, customize, choose delivery or pick-up, then pay via GCash or bank transfer.</p>
@@ -356,11 +361,33 @@
             <p style="font-size:0.82rem;color:var(--tm);line-height:1.6;margin-bottom:0.5rem;">📱 We will contact you via your preferred method to confirm your order.</p>
             <p style="font-size:0.78rem;color:#856404;background:#fef3cd;border-radius:6px;padding:0.5rem 0.75rem;line-height:1.5;">⬇️ Scroll down to the Order Tracker to see your live order status!</p>
           </div>
+          <div id="qrOrderForm" class="qr-order-form">
+            <h3>3. Your name</h3>
+            <p>The cashier will find your unpaid ticket using your name and queue number.</p>
+            <label for="qrCustomerName">Customer name</label>
+            <input type="text" id="qrCustomerName" maxlength="100" autocomplete="name" placeholder="e.g. Maria Santos"/>
+            <button type="button" id="qrSendOrderBtn" onclick="sendQrOrderTicket()" disabled aria-disabled="true">Checking cashier availability…</button>
+            <p class="qr-order-payment-note"><strong>Pay at the cashier.</strong> Your order is not confirmed and preparation will not begin until POS checkout is completed.</p>
+            <button type="button" id="qrMenuInstallBtn" data-accaza-install data-install-copy="Add Accaza Menu to Home Screen" onclick="accazaInstallApp()">Add Accaza Menu to Home Screen</button>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </section>
+
+<div id="qrOrderConfirmModal" class="qr-order-confirm" role="dialog" aria-modal="true" aria-labelledby="qrOrderConfirmTitle" hidden>
+  <div class="qr-order-confirm-card">
+    <span class="qr-order-confirm-mark" aria-hidden="true">✓</span>
+    <h2 id="qrOrderConfirmTitle">Order sent to the cashier</h2>
+    <p>Your queue number is</p>
+    <strong id="qrOrderQueueNumber" class="qr-order-queue-number">Q-000</strong>
+    <p id="qrOrderConfirmName" class="qr-order-confirm-name"></p>
+    <p>Proceed immediately to the cashier and provide your name and queue number to complete payment.</p>
+    <div class="qr-order-unpaid-warning">Your order is not confirmed until payment is completed.</div>
+    <button type="button" onclick="dismissQrOrderConfirmation()">I’m going to the cashier</button>
+  </div>
+</div>
 
 <!-- ORDER TRACKER -->
 <section id="orderTracker" style="background:var(--cd);padding:5rem 2rem;">
@@ -530,7 +557,7 @@
     <div class="footer-logo">Accaza Coffee House</div>
     <p>Saratoga Ave, La Mediterranea, Dasmariñas, Cavite · Open daily 6AM–12MN</p>
     <div class="footer-links"><a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a><a href="rewards.html">Rewards</a><a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a><a href="about.html">About</a><a href="reservations.html">Reservations</a><a href="contact.html">Visit</a></div>
-    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 93</span></p>
+    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 94</span></p>
   </div>
 </footer>
 

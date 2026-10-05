@@ -3,9 +3,10 @@
   var installPrompt=null;
   function standalone(){return window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;}
   function isAdmin(){return /\/admin\.html(?:$|[?#])/i.test(location.pathname+location.search);}
-  function appName(){return isAdmin()?'Accaza POS':'Accaza Coffee';}
+  function menuMode(){return document.documentElement.classList.contains('qr-order-mode')||/[?&]qr=1(?:&|$)/.test(location.search);}
+  function appName(){return isAdmin()?'Accaza POS':(menuMode()?'Accaza Menu':'Accaza Coffee');}
   function buttons(){return Array.prototype.slice.call(document.querySelectorAll('[data-accaza-install],#heroInstallBtn'));}
-  function refreshButtons(){buttons().forEach(function(button){if(standalone()){button.textContent='✓ '+appName()+' Installed';button.disabled=true;button.style.opacity='0.7';}else{button.disabled=false;button.style.opacity='1';if(button.id!=='heroInstallBtn')button.textContent='📲 Install '+appName()+' App';}});}
+  function refreshButtons(){buttons().forEach(function(button){if(standalone()){button.textContent='✓ '+appName()+' Installed';button.disabled=true;button.style.opacity='0.7';}else{button.disabled=false;button.style.opacity='1';if(button.id!=='heroInstallBtn')button.textContent=button.getAttribute('data-install-copy')||('📲 Install '+appName()+' App');}});}
   function showHelp(title,html){
     var old=document.getElementById('accazaInstallHelp');if(old)old.remove();
     var mask=document.createElement('div');mask.id='accazaInstallHelp';mask.setAttribute('role','dialog');mask.setAttribute('aria-modal','true');mask.style.cssText='position:fixed;inset:0;z-index:30000;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:1rem;font-family:Inter,sans-serif;';

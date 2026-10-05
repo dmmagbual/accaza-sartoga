@@ -24,7 +24,7 @@ const HISTORY_TAB_PATHS={saleshistory:['orders','archivedOrders','financialMovem
 // in the always-live `critical` set below -- including offlineSyncApplied, which only grows
 // across the shift. Per-child listeners here fire per top-level field (drawer,
 // offlineSyncApplied, ...) instead, so an unrelated field on the record no longer rides along.
-const INCREMENTAL_PATHS={activeOrders:1,inventory:1,posActiveShift:1};
+const INCREMENTAL_PATHS={activeOrders:1,activeQrTickets:1,inventory:1,posActiveShift:1};
 // Bounded paths that were attached with onValue on their limitToLast query. Converting them
 // to per-child listeners on the same bounded query keeps the initial download identical and
 // makes each subsequent change a single record, instead of the client rebuilding up to N
@@ -100,7 +100,7 @@ function createSubscriptionHub(database,ops){
   }
   var critical={settings:1,activeOrders:1,posActiveShift:1,'.info/connected':1};
   var scopes={
-    categories:['dashboard','pos','menu','availability','recipes','analytics'],menuItems:['dashboard','pos','menu','availability','recipes','analytics'],optionGroups:['pos','menu','availability','recipes'],packages:['pos','menu','recipes','inventory'],availability:['dashboard','pos','menu','availability'],channelPrices:['pos','menu'],posStaff:['pos','ops','possettings'],posSettings:['pos','ops','possettings','recipes'],taxSettings:['pos','possettings'],
+    categories:['dashboard','pos','menu','availability','recipes','analytics'],menuItems:['dashboard','pos','menu','availability','recipes','analytics'],optionGroups:['pos','menu','availability','recipes'],packages:['pos','menu','recipes','inventory'],availability:['dashboard','pos','menu','availability'],channelPrices:['pos','menu'],posStaff:['pos','ops','possettings'],posSettings:['pos','ops','possettings','recipes'],taxSettings:['pos','possettings'],activeQrTickets:['pos'],
     orders:['dashboard','saleshistory','analytics','pnl','payouts','stockvalue','dailyreport','cashflow','receivables'],
     // Dashboard and Analytics use compact Firestore report summaries. They must
     // never attach the raw archived-order period just to draw aggregate cards.

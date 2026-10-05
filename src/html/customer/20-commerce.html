@@ -16,6 +16,11 @@
 <section class="order-section" id="order">
   <div class="order-inner">
     <div style="text-align:center;margin-bottom:3rem;">
+      <div id="qrOrderIntro" class="qr-order-intro">
+        <span class="qr-order-kicker">Dine-in ordering</span>
+        <h2>Choose now. Pay at the cashier.</h2>
+        <p>Build your order, send it to the POS, then proceed immediately to the cashier with your name and queue number.</p>
+      </div>
       <p class="section-label" style="color:var(--bl);">Place Your Order</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Order Online</h2>
       <p style="color:var(--tm);max-width:480px;margin:0 auto;font-size:0.95rem;">Pick your items, customize, choose delivery or pick-up, then pay via GCash or bank transfer.</p>
@@ -95,11 +100,33 @@
             <p style="font-size:0.82rem;color:var(--tm);line-height:1.6;margin-bottom:0.5rem;">📱 We will contact you via your preferred method to confirm your order.</p>
             <p style="font-size:0.78rem;color:#856404;background:#fef3cd;border-radius:6px;padding:0.5rem 0.75rem;line-height:1.5;">⬇️ Scroll down to the Order Tracker to see your live order status!</p>
           </div>
+          <div id="qrOrderForm" class="qr-order-form">
+            <h3>3. Your name</h3>
+            <p>The cashier will find your unpaid ticket using your name and queue number.</p>
+            <label for="qrCustomerName">Customer name</label>
+            <input type="text" id="qrCustomerName" maxlength="100" autocomplete="name" placeholder="e.g. Maria Santos"/>
+            <button type="button" id="qrSendOrderBtn" onclick="sendQrOrderTicket()" disabled aria-disabled="true">Checking cashier availability…</button>
+            <p class="qr-order-payment-note"><strong>Pay at the cashier.</strong> Your order is not confirmed and preparation will not begin until POS checkout is completed.</p>
+            <button type="button" id="qrMenuInstallBtn" data-accaza-install data-install-copy="Add Accaza Menu to Home Screen" onclick="accazaInstallApp()">Add Accaza Menu to Home Screen</button>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </section>
+
+<div id="qrOrderConfirmModal" class="qr-order-confirm" role="dialog" aria-modal="true" aria-labelledby="qrOrderConfirmTitle" hidden>
+  <div class="qr-order-confirm-card">
+    <span class="qr-order-confirm-mark" aria-hidden="true">✓</span>
+    <h2 id="qrOrderConfirmTitle">Order sent to the cashier</h2>
+    <p>Your queue number is</p>
+    <strong id="qrOrderQueueNumber" class="qr-order-queue-number">Q-000</strong>
+    <p id="qrOrderConfirmName" class="qr-order-confirm-name"></p>
+    <p>Proceed immediately to the cashier and provide your name and queue number to complete payment.</p>
+    <div class="qr-order-unpaid-warning">Your order is not confirmed until payment is completed.</div>
+    <button type="button" onclick="dismissQrOrderConfirmation()">I’m going to the cashier</button>
+  </div>
+</div>
 
 <!-- ORDER TRACKER -->
 <section id="orderTracker" style="background:var(--cd);padding:5rem 2rem;">

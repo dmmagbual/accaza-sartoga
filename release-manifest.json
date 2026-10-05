@@ -12,16 +12,18 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 642,
+    "admin": 643,
     "books": 142,
-    "customer": 93,
-    "serviceWorkerCache": 630
+    "customer": 94,
+    "serviceWorkerCache": 631
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
     "assets/js/admin/weekly-sales.mjs",
     "admin.html",
     "index.html",
+    "menu.html",
+    "manifest-menu.json",
     "about.html",
     "rewards.html",
     "reservations.html",
@@ -82,6 +84,7 @@
     "src/customer/core/06-menu-order-rendering.mjs",
     "src/customer/core/07-customization.mjs",
     "src/customer/core/08-cart-checkout.mjs",
+    "src/customer/core/09a-qr-dine-in.mjs",
     "src/customer/core/09-customer-session.mjs",
     "src/customer/core/10-order-tracker.mjs",
     "src/customer/core/11-reservations.mjs",
@@ -205,6 +208,7 @@
     "src/admin/pos/30b-cost-sheet-and-consumables.js",
     "src/admin/pos/40-internal-usage.js",
     "src/admin/pos/50a-register-shell.js",
+    "src/admin/pos/50aa-qr-orders.js",
     "src/admin/pos/50b-item-customization.js",
     "src/admin/pos/50c-cash-denominations.js",
     "src/admin/pos/50d-scoped-discounts.js",
@@ -333,6 +337,8 @@
     "notifyOnComplete",
     "notifyStaffOnOrder",
     "notifyStaffOnReservation",
+    "createQrOrderTicket",
+    "manageQrOrderTicket",
     "createOnlineOrder",
     "updateOrderStatus",
     "acceptOnlineOrder",
@@ -415,6 +421,10 @@
   ],
   "requiredProtectedNodes": [
     "activeOrders",
+    "activeQrTickets",
+    "archivedQrTickets",
+    "qrOrderCounters",
+    "qrOrderLocks",
     "orderLocks",
     "offlinePosSync",
     "shiftSyncGates",

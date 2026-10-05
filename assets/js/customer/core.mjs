@@ -12,6 +12,7 @@ const db=getDatabase(app);
 const auth=getAuth(app);
 const functions=getFunctions(app,'asia-southeast1');
 const createOnlineOrderCall=httpsCallable(functions,'createOnlineOrder');
+const createQrOrderTicketCall=httpsCallable(functions,'createQrOrderTicket');
 const confirmOrderReceivedCall=httpsCallable(functions,'confirmOrderReceived');
 const CUSTOMER_LIVE_ORDER_LIMIT=20,CUSTOMER_LIVE_RESERVATION_LIMIT=12;
 var myOrdersMap={},_myOrdersSub={},customerUid=null,_customerIndexUnsub=null;
@@ -170,6 +171,12 @@ function syncPlaceOrderButton(){
   button.disabled=!open;button.style.opacity='';button.setAttribute('aria-disabled',open?'false':'true');
   button.textContent=open?'Place Order':(customerAuthProblem?'Connection unavailable':(publicOrdersOpen===null||customerLiveConnected!==true||!auth.currentUser?'Checking order availability…':'Online Orders Closed'));
 }
+function syncQrOrderButton(){
+  var button=document.getElementById('qrSendOrderBtn');if(!button||window._sendingQrOrder)return;
+  var open=canOrder(),hasItems=Object.keys(cart).length>0;
+  button.disabled=!open||!hasItems;button.setAttribute('aria-disabled',button.disabled?'true':'false');
+  button.textContent=!open?(customerAuthProblem?'Connection unavailable':(publicOrdersOpen===null||customerLiveConnected!==true||!auth.currentUser?'Checking order availability…':'Dine-in ordering is closed')):(!hasItems?'Add an item first':'Send Order to Cashier');
+}
 // Nav "Order Now" mirrors the status light: CLOSED when orders are closed or offline.
 function syncOrderNowButtons(st,lbl){document.querySelectorAll('[data-order-availability]').forEach(function(b){b.classList.remove('order-availability-open','order-availability-closed','order-availability-checking');b.classList.add('order-availability-'+st);b.textContent=st=='open'?'Order Now':st=='closed'?'CLOSED':'Checking';b.title=lbl;b.setAttribute('aria-label',lbl);});}
 function renderPublicOrderStatus(){
@@ -179,12 +186,13 @@ function renderPublicOrderStatus(){
   var retry=document.getElementById('orderConnectionRetry');
   root.classList.toggle('is-open',open);
   root.classList.toggle('is-closed',!open&&!checking);
-  headline.textContent=offline?'CLOSED':(open?'OPEN FOR ONLINE ORDERS':(customerAuthProblem?'CONNECTION NEEDS ATTENTION':(checking?'CHECKING ORDER AVAILABILITY':'ONLINE ORDERS CLOSED')));
+  headline.textContent=offline?'CLOSED':(open?(window.__accazaQrOrderMode?'OPEN FOR DINE-IN ORDERS':'OPEN FOR ONLINE ORDERS'):(customerAuthProblem?'CONNECTION NEEDS ATTENTION':(checking?'CHECKING ORDER AVAILABILITY':(window.__accazaQrOrderMode?'DINE-IN ORDERING CLOSED':'ONLINE ORDERS CLOSED'))));
   note.textContent=offline?'Offline':(open?'Order now — we’re ready!':(customerAuthProblem?'We could not connect securely. Check your internet, then retry.':(checking?'Connecting to the shop…':'We’re not accepting orders right now.')));
   if(retry)retry.style.display=customerAuthProblem?'block':'none';
   root.setAttribute('aria-label',headline.textContent+'. '+note.textContent);
   syncOrderNowButtons(open?'open':checking?'checking':'closed',root.getAttribute('aria-label'));
   syncPlaceOrderButton();
+  syncQrOrderButton();
 }
 onValue(publicOrderStatusRef,function(snap){publicOrdersOpen=!!(snap.val()&&snap.val().acceptingOrders===true);renderPublicOrderStatus();},function(){publicOrdersOpen=false;renderPublicOrderStatus();});
 // Tax-exclusive pricing: publicTaxInfo mirrors only mode/rate/inclusive (no TIN or
@@ -216,7 +224,7 @@ let calYear,calMonth,selectedDate=null,selectedTime=null;
 let adminCalYear,adminCalMonth,adminSelectedDate=null;
 let chatOpen=false,chatStarted=false;
 let custItem=null,custSize=null,custSel={},custQty=1;
-let menuFilter='coffee',orderFilter=null;
+let menuFilter='coffee',orderFilter=window.__accazaQrOrderMode?'coffee':null;
 
 const now=new Date();
 calYear=now.getFullYear();calMonth=now.getMonth();
@@ -821,7 +829,7 @@ window.closeCustomize=function(){document.getElementById('customizePopup').class
 function updateCartDisplay(){
   const box=document.getElementById('cartItems'),tot=document.getElementById('cartTotal');
   const keys=Object.keys(cart);
-  if(!keys.length){box.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p>';tot.style.display='none';var _cb0=document.getElementById('cartCheckoutBtn');if(_cb0)_cb0.style.display='none';return;}
+  if(!keys.length){box.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p>';tot.style.display='none';var _cb0=document.getElementById('cartCheckoutBtn');if(_cb0)_cb0.style.display='none';syncQrOrderButton();return;}
   let total=0;
   box.innerHTML=keys.map(function(k){
     const item=cart[k],line=item.qty*item.unitTotal;total+=line;
@@ -851,6 +859,7 @@ function updateCartDisplay(){
   document.getElementById('totalAmt').textContent='₱'+total.toLocaleString();
   tot.style.display='flex';
   var _cb1=document.getElementById('cartCheckoutBtn');if(_cb1)_cb1.style.display='block';
+  syncQrOrderButton();
 }
 
 window.goToCheckout=function(e){if(e&&e.stopPropagation)e.stopPropagation();if(!Object.keys(cart).length)return;var f=document.querySelector('.form-box');if(f)f.scrollIntoView({behavior:'smooth',block:'start'});};
@@ -961,6 +970,45 @@ window.placeOrder=async function(){
   }catch(e){window._placingOrder=false;_btn.style.opacity='1';syncPlaceOrderButton();var msg=(e&&e.message)||'Unknown error';if(String(e&&e.code).indexOf('already-exists')>-1)msg='This exact order was already submitted. Please wait one minute before trying again.';alert('Could not place order: '+msg);}
 };
 window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}if(confirm('Reset your order?')){cart={};updateCartDisplay();renderOrderSection();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';setType('pickup');(function(){var gBtn=document.getElementById('btnGcash');var mBtn=document.getElementById('btnMaya');var bBtn=document.getElementById('btnBank');var first=gBtn&&gBtn.style.display!=='none'?'gcash':mBtn&&mBtn.style.display!=='none'?'maya':'bank';setPayment(first);})();document.getElementById('orderConfirm').style.display='none';syncPlaceOrderButton();}};
+
+function qrOrderLineItems(){
+  return Object.values(cart).map(function(c){return {itemKey:c.itemKey||null,size:c.size||null,optLabels:c.optLabels||[],qty:c.qty,stream:c.stream||null,pkg:c.pkgId||null,packageRole:c.packageRole||null};});
+}
+function qrOrderExpectedTotal(){
+  var net=Object.values(cart).reduce(function(sum,item){return sum+Number(item.qty||0)*Number(item.unitTotal||0);},0)+(window.__custPkgs||[]).reduce(function(sum,pkg){return sum+(Number(pkg.extraCost)||0);},0);
+  var taxLine=window.__custTaxLine?window.__custTaxLine(net):null;
+  return taxLine?taxLine.total:Math.round(net*100)/100;
+}
+window.dismissQrOrderConfirmation=function(){var modal=document.getElementById('qrOrderConfirmModal');if(modal)modal.hidden=true;};
+window.sendQrOrderTicket=async function(){
+  if(!window.__accazaQrOrderMode||window._sendingQrOrder)return;
+  if(!canOrder()){alert('Dine-in ordering is currently closed. Please order directly at the cashier.');return;}
+  var name=((document.getElementById('qrCustomerName')||{}).value||'').trim();
+  if(name.length<2){alert('Please enter your name so the cashier can find your ticket.');return;}
+  if(!Object.keys(cart).length){alert('Please add at least one item.');return;}
+  var lineItems=qrOrderLineItems(),expectedTotal=qrOrderExpectedTotal();
+  window._sendingQrOrder=true;var button=document.getElementById('qrSendOrderBtn');if(button){button.disabled=true;button.textContent='Sending to cashier…';}
+  try{
+    await ensureCustomerAuth(true);
+    var response;
+    try{response=await createQrOrderTicketCall({name:name,lineItems:lineItems,expectedTotal:expectedTotal});}
+    catch(firstError){if(String(firstError&&firstError.code).indexOf('unauthenticated')<0)throw firstError;await ensureCustomerAuth(true);response=await createQrOrderTicketCall({name:name,lineItems:lineItems,expectedTotal:expectedTotal});}
+    var result=response&&response.data;if(!result||!result.ticketId||!result.queueNumber)throw new Error('The cashier ticket was not created.');
+    var queue=document.getElementById('qrOrderQueueNumber'),confirmName=document.getElementById('qrOrderConfirmName'),modal=document.getElementById('qrOrderConfirmModal');
+    if(queue)queue.textContent=result.queueNumber;if(confirmName)confirmName.textContent=name;if(modal)modal.hidden=false;
+    cart={};window.__custPkgs=[];updateCartDisplay();renderOrderSection();
+    var input=document.getElementById('qrCustomerName');if(input)input.value='';
+  }catch(e){
+    var msg=(e&&e.message)||'Unknown error';if(String(e&&e.code).indexOf('already-exists')>-1)msg='This exact order was already sent. Please proceed to the cashier.';alert('Could not send the order: '+msg);
+  }finally{window._sendingQrOrder=false;syncQrOrderButton();}
+};
+function initQrDineInOrder(){
+  if(!window.__accazaQrOrderMode)return;
+  var name=document.getElementById('qrCustomerName');if(name)name.addEventListener('input',syncQrOrderButton);
+  var checkout=document.getElementById('cartCheckoutBtn');if(checkout)checkout.textContent='Continue to cashier details ↓';
+  syncQrOrderButton();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initQrDineInOrder);else initQrDineInOrder();
 
 // ── ORDER TRACKER ──
 const statusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff.'},Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Your order has been confirmed. We will start preparing it soon!'},Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Your order is currently being prepared. ☕'},Ready:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is now ready!'},Completed:{icon:'✅',color:'#155724',bg:'#d4edda',msg:'Your order is complete — thank you! ☕'},Received:{icon:'✅',color:'#1b5e20',bg:'#c8e6c9',msg:'You have confirmed receipt. Thank you! ☕🐻'},Rejected:{icon:'🔴',color:'#721c24',bg:'#f8d7da',msg:'Unfortunately, we could not verify your payment in our account, so this order has been rejected. If you believe this is a mistake, please contact us at 0927 692 4831 with your payment reference.'}};
