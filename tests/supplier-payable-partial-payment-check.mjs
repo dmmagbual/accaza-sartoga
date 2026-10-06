@@ -10,7 +10,7 @@ for(const marker of ['Supplier outstanding balance','Open invoices','Outstanding
 for(const marker of ['id="tp_amount"','Payment cannot exceed the outstanding balance','amount:value','Use Supplier Advances for an overpayment','settlements/${commandId}'])must(client+server,marker,'Partial supplier-payment control is incomplete');
 for(const marker of ['data.amount','exceeds the remaining payable','payablePayments/${commandId}','nextRemaining=isAr?0:Financial.money(remaining-value)','nextPaid=isAr?value:Financial.money(Number(doc.paidAmount||0)+value)'])must(server,marker,'Server partial-payment accounting is incomplete');
 for(const marker of ['data.paymentId || doc.settlementMovementId','settlements/${paymentId}/status','currentRemaining+value','preserve every other settlement'])must(server,marker,'Individual payment reversal is incomplete');
-for(const marker of ['payableSettlementClaims/${docId}','Another payment is being posted to this invoice','payableSettlementClaim={ref:lockRef,token}'])must(server,marker,'Concurrent payment protection is incomplete');
+const claimsSource=fs.readFileSync('src/functions/42-ap-settlement-claims.js','utf8');for(const marker of ['payableSettlementClaims/${id}','Another payment or correction is being posted to this bill'])must(claimsSource,marker,'Concurrent payment protection is incomplete');for(const marker of ['claimPayables(db, [docId], commandId, actor, apClaimSets)'])must(server,marker,'Concurrent payment protection is incomplete');
 must(period,"var state=normalize({mode:'current'});",'Finance Books must open on the current month instead of a stored historical filter');
 must(shell,'resetCurrentMonth()','Current-month reset control is missing');
 
