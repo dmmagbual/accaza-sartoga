@@ -21,7 +21,7 @@ assert.match(functions, /conversionMovementId: \["loan_repayment","staff_advance
 assert.match(entry, /list_customer_refund_payables/);
 assert.match(entry, /orderByChild\('status'\)\.equalTo\('open'\)\.limitToLast\(100\)/, 'refund-payable lookup must be bounded and indexed');
 assert.match(entry, /pay_payable_batch/);
-assert.match(entry, /payableSettlementClaims/);
+assert.match(entry, /claimPayables\(db,unique\.map\(\(row\)=>row\.documentId\),commandId,actor,apClaimSets\)/, 'batch payments must claim every bill before reading it');
 assert.match(books, /App\.txnPayBatch/);
 assert.match(books, /at least two bills/i);
 assert.match(books, /reverse_payable_batch_payment/);
