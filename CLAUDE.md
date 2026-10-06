@@ -60,3 +60,41 @@ Rules:
 10. Specialist recommendations are advisory. They must not override Accaza's existing permanent project rules, server-authority requirements, financial lifecycle safeguards, testing requirements or explicit user instructions.
 11. When specialists disagree, the primary agent reconciles the trade-offs against Accaza's existing project rules and explains any consequential decision.
 12. Avoid duplicate analysis: do not invoke one specialist when another already adequately covers the issue, unless independent review materially reduces risk.
+
+## Output and Token Efficiency
+
+These rules govern how work is reported and how effort is spent. They never override correctness, financial integrity, inventory integrity, security, authorization, auditability, testing requirements, server authority, the specialist-orchestration rules that make a specialist mandatory, or any other permanent Accaza safeguard. Where they conflict, the safeguard wins.
+
+1. Keep responses to Danilo concise and decision-focused by default.
+2. Perform whatever technical analysis is necessary internally, but do not reproduce all detailed reasoning in the final response.
+3. Use the minimum number of specialist agents necessary for the task.
+4. Do not invoke specialists for trivial or isolated changes unless required by an existing permanent project rule.
+5. For normal tasks, normally use no more than 1–2 relevant specialists.
+6. Use broader multi-specialist analysis only when justified by financial, inventory, security, database, architectural, migration, authorization, or other material cross-domain risk.
+7. Do not ask several specialists to perform substantially the same analysis unless independent verification is justified.
+8. Reuse findings already verified in the current task or project instead of rediscovering them.
+9. Read targeted files and relevant code paths first. Do not repeatedly scan the entire repository when narrower inspection is sufficient.
+10. Do not repeat project background, findings, or explanations already established unless they changed or are necessary for a decision.
+11. Give specialists only the context necessary for their assignment where practical.
+12. Keep specialist results focused on findings, risks and recommendations rather than long reports.
+13. Use targeted tests during development when safe, followed by the project's required full validation (`npm run test:ci`) at the appropriate checkpoint. Do not repeatedly run expensive full suites after inconsequential intermediate changes.
+14. Keep normal final responses to approximately 500 words or less. Exceed this only when a serious risk or necessary business decision genuinely requires more explanation.
+15. Keep detailed engineering analysis in an artifact or project document when useful rather than reproducing it in chat.
+
+Default final response format:
+
+- **What I found** — at most 3–5 important findings.
+- **What I recommend** — a clear recommendation.
+- **What changed** — only actual changes, with delivery state (local, branch, PR, merged, deployed).
+- **Decision needed** — only genuine decisions requiring Danilo.
+- **Next step** — one clear next action.
+- **Specialists used** — one concise line, only if specialists were used.
+
+The required handoff items in the existing rules (PowerShell block, build/cache numbers, exact delivery state) still apply and do not count as unnecessary length.
+
+## AP Remediation Working Rules
+
+- The AP Integrity Remediation Plan (project document `claude/ap-integrity-remediation-plan-2026-10-06.md`, approved 6 Oct 2026) is the engineering reference for AP work. Do not regenerate or repeat its analysis unless new evidence requires it.
+- Work through Phase 0 one approved step at a time.
+- Before each step, give Danilo only a concise implementation proposal: scope, reason, risk, affected areas, testing, rollback, and specialists required.
+- Wait for Danilo's approval before implementing each Phase 0 step.
