@@ -42,6 +42,7 @@ const expectedFunctionExports=[
 ];
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageStaffMessage')+1,0,'manageIncident');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('notifyOnContactMessage')+1,0,'updateBooksMonthlyNet');
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('apIntegrityBaseline')+1,0,'backfillPurchaseDocumentNumbers');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageAccountingPeriod'),0,'manageSupplier');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageOrderArchive'),0,'managePosStaffIdentity','openLinkedPosShift');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('openLinkedPosShift')+1,0,'managePortalAccount');

@@ -5876,6 +5876,14 @@ async function nextDocumentNumber(db, prefix, year) {
   if (!seq) return "";
   return `${prefix}-${year}-${String(seq).padStart(4, "0")}`;
 }
+// A purchase's own short reference, PUR-YYYY-NNNN, from the same counter as the finance
+// document numbers. Assigned once at post time; returns the existing one on any retry so a
+// number is never burned twice. The caller stamps it onto the purchase and its bill.
+async function purchaseDocumentNumber(db, invoice, dateStr) {
+  const existing = financeText(invoice && invoice.documentNo, 40); if (existing) return existing;
+  const year = (financeText(dateStr, 10) || financeDateFromTimestamp(Date.now())).slice(0, 4);
+  return await nextDocumentNumber(db, "PUR", year);
+}
 // Movements known to exist for the duration of one maintenance run (ensureFinancialLedger).
 // Financial movements are never deleted, so a movement present when the run started is
 // still present: the backfill skips one existence download per already-posted record
@@ -6504,6 +6512,7 @@ exports.postFinancialCommand = onCall(
       writes[`purchaseInvoices/${invoiceId}/ownerReimbursementId`] = ownerTreatment==="reimburse"?reimbursementId:"";
       writes[`purchaseInvoices/${invoiceId}/ownerFundedAt`] = now;
       writes[`purchaseInvoices/${invoiceId}/ownerFundedBy`] = actor.uid;
+      const purchaseNo=await purchaseDocumentNumber(db,invoice,date);if(purchaseNo){writes[`purchaseInvoices/${invoiceId}/documentNo`]=purchaseNo;if(ownerTreatment==="reimburse"&&writes[`payables/${reimbursementId}`])writes[`payables/${reimbursementId}`].documentNo=purchaseNo;}
     } else if (action === "purchase_paid") {
       const invoiceId = financeKey(data.invoiceId, "Purchase invoice ID"), invoice = (await db.ref(`/purchaseInvoices/${invoiceId}`).get()).val();
       if (!invoice) throw new HttpsError("not-found", "Purchase invoice was not found.");
@@ -6517,7 +6526,7 @@ exports.postFinancialCommand = onCall(
       if (advanceId) {const [shiftPayOuts,fundSnap]=await Promise.all([supplierAdvanceShiftPayOuts(db),db.ref(`/pettyCashVouchers/${advanceId}`).get()]);let found=null;for(const shiftId of Object.keys(shiftPayOuts)){const rows=shiftPayOuts[shiftId];const index=rows.findIndex((row)=>row&&row.id===advanceId&&row.type==="purchase_advance");if(index>=0){found={kind:"shift",shiftId,index,row:rows[index]};break;}}if(!found&&fundSnap.exists()){const row=fundSnap.val()||{};if(row.transactionType==="purchase_advance"&&row.status==="approved"&&!row.voided)found={kind:"revolving",row};}if(!found)throw new HttpsError("not-found","Purchase cash advance was not found.");const allocations=found.row.allocations||{};if(allocations[invoiceId])throw new HttpsError("already-exists","This purchase is already allocated to the selected cash advance.");const allocated=Financial.money(Object.values(allocations).reduce((sum,row)=>sum+Number(row&&row.amount||0),0)),remaining=Financial.money(Number(found.row.amount||0)-allocated);if(value>remaining+0.009)throw new HttpsError("failed-precondition",`Purchase exceeds the remaining cash advance of ${remaining}.`);const next=Financial.money(remaining-value),base=found.kind==="shift"?`shifts/${found.shiftId}/payOuts/${found.index}`:`pettyCashVouchers/${advanceId}`;cashAsset=`asset:purchase_cash_advance:${advanceId}`;writes[`${base}/allocations/${invoiceId}`]={purchaseInvoiceId:invoiceId,amount:value,supplier:financeText(invoice.supplier,120),ref:financeText(invoice.ref,120),allocatedAt:now,allocatedBy:actor.uid};writes[`${base}/allocatedAmount`]=Financial.money(allocated+value);writes[`${base}/remainingAmount`]=next;writes[`${base}/allocationStatus`]=next>0?"partially_allocated":"fully_allocated";if(!(next>0))writes[`${base}/completedAt`]=now;writes[`purchaseInvoices/${invoiceId}/purchaseAdvanceId`]=advanceId;writes[`purchaseInvoices/${invoiceId}/advanceSource`]=found.kind;}
       if(advanceId){const supplierAdvance=(await db.ref(`/pettyCashVouchers/${advanceId}`).get()).val();if(supplierAdvance){if(!supplierAdvance.supplierId||supplierAdvance.supplierId!==supplierMaster.id)throw new HttpsError("failed-precondition","The selected advance payment belongs to a different supplier master record.");}}
       movement = Financial.movement("purchase_cash", "purchaseInvoice", invoiceId, split.concat([Financial.line(cashAsset, 0, value, invoice.supplier || "Inventory purchase")]), {occurredAt: Date.parse(`${date}T00:00:00+08:00`) || now, actorName: actor.role,supplierId:supplierMaster.id,supplierName:supplierMaster.name, accountId:advanceId?"purchase_advance":accountId, custodyAllocations});
-      writes[`purchaseInvoices/${invoiceId}/paymentMovementId`]=commandId;writes[`purchaseInvoices/${invoiceId}/paymentAccountId`]=advanceId?"purchase_advance":accountId;writes[`purchaseInvoices/${invoiceId}/paymentPostedAt`]=now;
+      writes[`purchaseInvoices/${invoiceId}/paymentMovementId`]=commandId;writes[`purchaseInvoices/${invoiceId}/paymentAccountId`]=advanceId?"purchase_advance":accountId;writes[`purchaseInvoices/${invoiceId}/paymentPostedAt`]=now;const purchaseNo=await purchaseDocumentNumber(db,invoice,date);if(purchaseNo)writes[`purchaseInvoices/${invoiceId}/documentNo`]=purchaseNo;
       if (!advanceId) addCash(`fm_${commandId}`, {date, accountId, dir:"out", category:"Inventory purchase", amount:value, party:invoice.supplier, ref:invoice.ref, auto:true});
     } else if (action === "personal_business_cost") {
       const value=amount(data.amount),date=financeDate(data.date),ownerName=financeText(data.ownerName,120),ownerTreatment=financeText(data.ownerTreatment,20)==="reimburse"?"reimburse":"capital",reference=financeText(data.ref,120),selected=chartAccountFromLegacy(chart,data.category,"out"),category=financeText(selected.row.name,80),costAccount=`${selected.row.type}:${selected.id}`,reimbursementId=`owner_cost_${commandId}`;
@@ -6863,7 +6872,7 @@ exports.reconcilePurchasePayable = onCall(
     if (data.preview === true) return {invoiceId,amount,party,candidates};
     const requestedPayableId=financeText(data.linkPayableId,160);
     if (requestedPayableId) {
-      const selected=payables[financeKey(requestedPayableId,"Payable ID")],selectedId=financeKey(requestedPayableId,"Payable ID");if (!selected||selected.status!=="open") throw new HttpsError("failed-precondition","The selected payable is missing or is no longer open.");if (Financial.money(selected.amount)!==amount||financeText(selected.party,120).toLowerCase()!==party.toLowerCase()) throw new HttpsError("failed-precondition","The payable supplier or amount does not match this purchase.");if (selected.purchaseInvoiceId&&selected.purchaseInvoiceId!==invoiceId) throw new HttpsError("failed-precondition","The selected payable is already linked to another purchase.");const claimed=Object.keys(invoices).some((id)=>id!==invoiceId&&financeText(invoices[id]&&invoices[id].payableId,160)===selectedId);if (claimed) throw new HttpsError("failed-precondition","Another purchase already claims this payable.");const now=Date.now(),reason=financeText(data.reason,300);if (!reason) throw new HttpsError("invalid-argument","A linking reason is required.");const writes={[`purchaseInvoices/${invoiceId}/payMode`]:"account",[`purchaseInvoices/${invoiceId}/payableId`]:selectedId,[`purchaseInvoices/${invoiceId}/due`]:selected.due||invoice.due||"",[`purchaseInvoices/${invoiceId}/payableReconciledAt`]:now,[`payables/${selectedId}/purchaseInvoiceId`]:invoiceId,[`payables/${selectedId}/linkedAt`]:now,[`operationalAudit/${now}_purchase_link_${invoiceId}`]:{action:"link_existing_purchase_payable",sourceType:"purchaseInvoice",sourceId:invoiceId,payableId:selectedId,amount,reason,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}};(invoice.receiptIds||[]).forEach((id)=>{writes[`stockReceipts/${id}/payMode`]="account";writes[`stockReceipts/${id}/payableId`]=selectedId;});await db.ref().update(writes);return {invoiceId,payableId:selectedId,amount,result:"linked_existing"};
+      const selected=payables[financeKey(requestedPayableId,"Payable ID")],selectedId=financeKey(requestedPayableId,"Payable ID");if (!selected||selected.status!=="open") throw new HttpsError("failed-precondition","The selected payable is missing or is no longer open.");if (Financial.money(selected.amount)!==amount||financeText(selected.party,120).toLowerCase()!==party.toLowerCase()) throw new HttpsError("failed-precondition","The payable supplier or amount does not match this purchase.");if (selected.purchaseInvoiceId&&selected.purchaseInvoiceId!==invoiceId) throw new HttpsError("failed-precondition","The selected payable is already linked to another purchase.");const claimed=Object.keys(invoices).some((id)=>id!==invoiceId&&financeText(invoices[id]&&invoices[id].payableId,160)===selectedId);if (claimed) throw new HttpsError("failed-precondition","Another purchase already claims this payable.");const now=Date.now(),reason=financeText(data.reason,300);if (!reason) throw new HttpsError("invalid-argument","A linking reason is required.");const writes={[`purchaseInvoices/${invoiceId}/payMode`]:"account",[`purchaseInvoices/${invoiceId}/payableId`]:selectedId,[`purchaseInvoices/${invoiceId}/due`]:selected.due||invoice.due||"",[`purchaseInvoices/${invoiceId}/payableReconciledAt`]:now,[`payables/${selectedId}/purchaseInvoiceId`]:invoiceId,[`payables/${selectedId}/linkedAt`]:now,[`operationalAudit/${now}_purchase_link_${invoiceId}`]:{action:"link_existing_purchase_payable",sourceType:"purchaseInvoice",sourceId:invoiceId,payableId:selectedId,amount,reason,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}};const purchaseNo=await purchaseDocumentNumber(db,invoice,date);if(purchaseNo){writes[`purchaseInvoices/${invoiceId}/documentNo`]=purchaseNo;writes[`payables/${selectedId}/documentNo`]=purchaseNo;}(invoice.receiptIds||[]).forEach((id)=>{writes[`stockReceipts/${id}/payMode`]="account";writes[`stockReceipts/${id}/payableId`]=selectedId;});await db.ref().update(writes);return {invoiceId,payableId:selectedId,amount,result:"linked_existing"};
     }
     const linkedId = financeText(invoice.payableId, 160), exact = [], refConflicts = [];
     Object.keys(payables).forEach((id) => {const row = payables[id] || {}, open=row.status==="open", sameLink = open&&(id === canonicalId || id === linkedId || row.purchaseInvoiceId === invoiceId || row.movementId === movementId), sameRef = open&&ref&&financeText(row.ref, 120).toLowerCase() === ref.toLowerCase();if (sameLink || (sameRef && Financial.money(row.amount) === amount && financeText(row.party, 120).toLowerCase() === party.toLowerCase())) exact.push(id);else if (sameRef) refConflicts.push(id);});
@@ -6875,11 +6884,13 @@ exports.reconcilePurchasePayable = onCall(
       const payableId = unique[0], row = payables[payableId] || {};
       if (Financial.money(row.amount) !== amount) throw new HttpsError("failed-precondition", "The linked payable amount does not match the purchase invoice.");
       const linkedWrites = {[`purchaseInvoices/${invoiceId}/payableId`]:payableId,[`purchaseInvoices/${invoiceId}/payableReconciledAt`]:now,[`purchaseInvoices/${invoiceId}/due`]:due||row.due||"",[`payables/${payableId}/purchaseInvoiceId`]:invoiceId,[`operationalAudit/${auditId}`]:{action:"reconcile_purchase_payable",sourceType:"purchaseInvoice",sourceId:invoiceId,payableId,result:finalizing?"invoice_finalized":"linked_existing",amount,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}};
+      const purchaseNo=await purchaseDocumentNumber(db,invoice,date);if(purchaseNo){linkedWrites[`purchaseInvoices/${invoiceId}/documentNo`]=purchaseNo;linkedWrites[`payables/${payableId}/documentNo`]=purchaseNo;}
       if (finalizing) {const finalizeId=`purchase_grni_finalize_${invoiceId}`, movement=Financial.movement("grni_finalized","purchaseInvoice",invoiceId,[Financial.line(`liability:grni:${payableId}`,amount,0,"Clear goods received not invoiced"),Financial.line(`liability:payable:${payableId}`,0,amount,"Recognize supplier invoice")],{occurredAt:now,actorName:actor.role});Object.assign(linkedWrites,{[`purchaseInvoices/${invoiceId}/payMode`]:"account",[`purchaseInvoices/${invoiceId}/ref`]:ref,[`purchaseInvoices/${invoiceId}/invoiceFinalizedAt`]:now,[`payables/${payableId}/ref`]:ref,[`payables/${payableId}/due`]:due,[`payables/${payableId}/type`]:"inventory",[`payables/${payableId}/provisional`]:false,[`payables/${payableId}/invoiceFinalizedAt`]:now});await commitFinancial(db,finalizeId,movement,actor,linkedWrites);} else await db.ref().update(linkedWrites);
       return {invoiceId, payableId, amount, result: finalizing ? "invoice_finalized" : "linked_existing"};
     }
     const payable = {supplierId:supplierMaster.id,party,type:provisional?"inventory_pending_invoice":"inventory",amount,date,due,ref,status:"open",provisional,movementId,purchaseInvoiceId:invoiceId,ts:now,createdBy:actor.uid,recovered:data.recovery === true,schemaVersion:2};
     const writes = {[`payables/${canonicalId}`]:payable,[`purchaseInvoices/${invoiceId}/payableId`]:canonicalId,[`purchaseInvoices/${invoiceId}/payableReconciledAt`]:now,[`purchaseInvoices/${invoiceId}/due`]:due,[`purchaseInvoices/${invoiceId}/ref`]:ref,[`purchaseInvoices/${invoiceId}/payMode`]:legacyNoLiability?"account":invoice.payMode,[`operationalAudit/${auditId}`]:{action:"reconcile_purchase_payable",sourceType:"purchaseInvoice",sourceId:invoiceId,payableId:canonicalId,result:provisional?"grni_created":(legacyNoLiability?"legacy_liability_created":"created"),amount,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}};
+    const purchaseNo=await purchaseDocumentNumber(db,invoice,date);if(purchaseNo){writes[`purchaseInvoices/${invoiceId}/documentNo`]=purchaseNo;payable.documentNo=purchaseNo;}
     const movementSnap = await db.ref(`/financialMovements/${movementId}`).get();
     if (movementSnap.exists()) await db.ref().update(writes);
     else {const inventoryLines=await purchaseInventoryLines(db,invoice,false),movement = Financial.movement(provisional?"grni_created":"payable_created", "payable", canonicalId, inventoryLines.concat([Financial.line(provisional?`liability:grni:${canonicalId}`:`liability:payable:${canonicalId}`, 0, amount, party)]), {occurredAt:Number(Date.parse(`${date}T00:00:00+08:00`)||now),actorName:actor.role,supplierId:supplierMaster.id,supplierName:supplierMaster.name});await commitFinancial(db, movementId, movement, actor, writes);}
@@ -8045,6 +8056,49 @@ exports.apIntegrityBaseline = onCall(
     report.cashBalanceSource = cash.source || "";
     await db.ref(`/operationalAudit/${now}_ap_integrity_baseline`).set(operationalAuditRecord("ap_integrity_baseline", "apIntegrity", "baseline", actor, {counts: report.counts, issues: report.issues, scanned: report.scanned, readOnly: true}));
     return report;
+  },
+);
+
+// AP Integrity Remediation (simple references): a purchase's own short number, PUR-YYYY-NNNN.
+// New purchases are numbered at post time (reconcilePurchasePayable, purchase_cash,
+// purchase_owner_funded). This Super-Admin tool, run by hand from Finance Books -> Payables,
+// numbers purchases created before that, so the Purchases list and Payables stop showing the raw
+// internal key. It draws from the same counter as live posting, so every number is unique; run it
+// right after deploy, before posting new purchases, for clean chronological order. Idempotent: a
+// purchase that already has a number is skipped, and preview allocates nothing (no counter burn).
+// Two bounded reads (/purchaseInvoices, /payables) and one write; the number is mirrored onto the
+// bill whether it is linked by payableId or back-linked by purchaseInvoiceId.
+exports.backfillPurchaseDocumentNumbers = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "512MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalUser(db, request);
+    if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can number old purchases.");
+    const preview = !!(request.data && request.data.preview === true);
+    const invoices = (/* download-ok: manual Super-Admin purchase-reference backfill, run by hand from Finance Books */await db.ref("/purchaseInvoices").get()).val() || {};
+    const bills = (/* download-ok: manual Super-Admin purchase-reference backfill, mirrors the number onto each linked bill */await db.ref("/payables").get()).val() || {};
+    const billByPurchase = {};
+    for (const key of Object.keys(bills)) { const pid = financeText(bills[key] && bills[key].purchaseInvoiceId, 160); if (pid && !billByPurchase[pid]) billByPurchase[pid] = key; }
+    const ids = Object.keys(invoices).sort((a, b) => (Number(invoices[a] && invoices[a].ts) || 0) - (Number(invoices[b] && invoices[b].ts) || 0) || a.localeCompare(b));
+    const writes = {}; let numbered = 0, skipped = 0;
+    for (const id of ids) {
+      const inv = invoices[id] || {};
+      if (financeText(inv.documentNo, 40)) { skipped += 1; continue; }
+      if (preview) { numbered += 1; continue; }
+      const year = (financeText(financeDate(inv.date), 10) || financeDateFromTimestamp(Number(inv.ts) || Date.now())).slice(0, 4);
+      const no = await nextDocumentNumber(db, "PUR", year);
+      if (!no) continue;
+      writes[`purchaseInvoices/${id}/documentNo`] = no;
+      const billKey = billByPurchase[id] || financeText(inv.payableId, 160);
+      if (billKey && bills[billKey]) { try { writes[`payables/${financeKey(billKey, "Payable ID")}/documentNo`] = no; } catch (error) { /* skip a malformed legacy payable key */ } }
+      numbered += 1;
+    }
+    if (preview) return {numbered, skipped, preview: true};
+    if (Object.keys(writes).length) {
+      const now = Date.now();
+      writes[`operationalAudit/${now}_purchase_docno_backfill`] = operationalAuditRecord("backfill_purchase_document_numbers", "purchaseInvoice", "backfill", actor, {numbered, skipped});
+      await db.ref().update(writes);
+    }
+    return {numbered, skipped};
   },
 );
 const INVENTORY_MOVEMENT_TYPES = new Set([

@@ -44,7 +44,7 @@ export const SMALL_NODES = new Set([
 export const MANUAL_TOOLS = new Set([
   'ensureFinancialLedger', 'auditFinancialControls', 'apIntegrityBaseline', 'ensureBooksJournal', 'ensureInventoryLedger', 'repairFinanceDates',
   'repairPettyExpenseClassifications', 'reconcileUndepositedCustody', 'retireRevolvingFund', 'legacyOwnerCapitalReset',
-  'runDatabaseBackupNow', 'repairOrderInventoryMarker', 'runFinancialClose',
+  'runDatabaseBackupNow', 'repairOrderInventoryMarker', 'runFinancialClose', 'backfillPurchaseDocumentNumbers',
 ]);
 const BACKUP_FUNCTIONS = new Set(['backupDatabaseDaily', 'runDatabaseBackupNow']);
 const KINDS = new Set(['migration', 'fallback', 'manual', 'action', 'catalog', 'bounded', 'backup']);
