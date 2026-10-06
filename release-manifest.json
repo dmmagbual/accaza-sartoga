@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 650,
-    "books": 145,
+    "admin": 651,
+    "books": 146,
     "customer": 97,
-    "serviceWorkerCache": 642
+    "serviceWorkerCache": 643
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -139,6 +139,7 @@
     "src/functions/43h-platform-catchup.js",
     "src/functions/44-reconciliation.js",
     "src/functions/44b-ap-integrity.js",
+    "src/functions/44c-purchase-doc-numbers.js",
     "src/functions/50-inventory.js",
     "src/functions/60-maintenance.js",
     "src/functions/61-historical-archive.js",
@@ -323,6 +324,7 @@
   ],
   "requiredFunctionExports": [
     "apIntegrityBaseline",
+    "backfillPurchaseDocumentNumbers",
     "resolvePendingShiftHandovers",
     "onShiftEndResolveEarlierHandovers",
     "manageUncostedSales",

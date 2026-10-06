@@ -275,6 +275,14 @@ async function nextDocumentNumber(db, prefix, year) {
   if (!seq) return "";
   return `${prefix}-${year}-${String(seq).padStart(4, "0")}`;
 }
+// A purchase's own short reference, PUR-YYYY-NNNN, from the same counter as the finance
+// document numbers. Assigned once at post time; returns the existing one on any retry so a
+// number is never burned twice. The caller stamps it onto the purchase and its bill.
+async function purchaseDocumentNumber(db, invoice, dateStr) {
+  const existing = financeText(invoice && invoice.documentNo, 40); if (existing) return existing;
+  const year = (financeText(dateStr, 10) || financeDateFromTimestamp(Date.now())).slice(0, 4);
+  return await nextDocumentNumber(db, "PUR", year);
+}
 // Movements known to exist for the duration of one maintenance run (ensureFinancialLedger).
 // Financial movements are never deleted, so a movement present when the run started is
 // still present: the backfill skips one existence download per already-posted record
