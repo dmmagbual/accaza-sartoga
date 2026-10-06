@@ -373,4 +373,17 @@ function quarterCloseGate(closes) {
   return blocked.length ? {ok: false, reason: "CLOSES_NOT_RECONCILED", blocked: blocked.map((row) => safe(row.closeId || row.id))} : {ok: true};
 }
 
-module.exports = {BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};
+/* Money already paid, credited or otherwise settled against a payable (AP Integrity
+   Remediation Plan, step 0.1). paidAmount, the live settlement records and the gap between
+   amount and remainingAmount are all checked, so a legacy bill with only one of them set still
+   counts. A bill reversed as a whole carries remainingAmount 0 without being paid, so for it
+   only paidAmount and live settlements count. */
+function payableSettledAmount(row) {
+  if (!row) return 0;
+  const live = Object.values(row.settlements || {}).reduce((sum, entry) => (entry && entry.status !== "reversed" ? money(sum + money(entry.amount)) : sum), 0);
+  const gap = row.status === "reversed" ? 0 : money(money(row.amount) - money(row.remainingAmount != null ? row.remainingAmount : row.amount));
+  return money(Math.max(0, money(row.paidAmount), live, gap));
+}
+function payableHasSettlement(row) { return !!row && (row.status === "paid" || payableSettledAmount(row) > 0.009); }
+
+module.exports = {payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};
