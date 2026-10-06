@@ -348,6 +348,38 @@ async function custodyRowsForShift(db, shiftId) {
   if (own.exists()) rows[shiftId] = own.val();
   return custodyInKeyOrder(rows);
 }
+// Undeposited Collection custody pool claim (AP remediation step 0.5, AP-02). Custody rows are
+// allocated FIFO with absolute remaining writes, so every path that reads a row's remaining and
+// writes it back holds this one short claim from the read until its posting is saved. Paths that
+// only CREATE a row (shift close, Z report, cash returned to custody) never take it, so a shift
+// close is never blocked. A waiter retries briefly; a crashed holder expires after the lease; a
+// live claim is never taken over (not even by a retry of the same command); one call reuses a
+// claim it already holds.
+// Firebase cost: one tiny transaction to claim and one to release; nothing is downloaded.
+const CUSTODY_POOL_CLAIM_PATH = "/financialControlLocks/cashCustodyPool";
+const CUSTODY_POOL_LEASE_MS = 180000, CUSTODY_POOL_WAIT_MS = 250, CUSTODY_POOL_ATTEMPTS = 40;
+async function claimCustodyPool(db, ownerId, held) {
+  const existing = (held || []).find((set) => set && set.custodyPool === true && !set.released);
+  if (existing) return existing;
+  const ref = db.ref(CUSTODY_POOL_CLAIM_PATH), owner = financeText(ownerId, 200) || "custody";
+  for (let attempt = 0; attempt < CUSTODY_POOL_ATTEMPTS; attempt += 1) {
+    const token = crypto.randomBytes(12).toString("hex"), claimedAt = Date.now();
+    const result = await ref.transaction((current) => (!current || Number(current.claimedAt || 0) < claimedAt - CUSTODY_POOL_LEASE_MS ? {owner, token, claimedAt} : undefined), undefined, false);
+    if (result.committed && result.snapshot.exists() && result.snapshot.val().token === token) {
+      const set = {custodyPool: true, owner, token, released: false, release: async () => {
+        if (set.released) return; set.released = true;
+        try { await ref.transaction((current) => (current && current.token === token ? null : undefined), undefined, false); }
+        catch (error) { logger.error("Undeposited Collection claim release failed", {owner, message: String(error && error.message || error)}); }
+      }};
+      if (held) held.push(set);
+      return set;
+    }
+    await new Promise((resolve) => setTimeout(resolve, CUSTODY_POOL_WAIT_MS));
+  }
+  throw new HttpsError("aborted", "Undeposited Collection is being updated by another payment. Wait a moment, then try again.");
+}
+async function releaseCustodyClaims(held) { for (const set of held || []) if (set && set.custodyPool === true) await set.release(); }
+async function withCustodyPool(db, ownerId, work) { const held = []; try { await claimCustodyPool(db, ownerId, held); return await work(); } finally { await releaseCustodyClaims(held); } }
 async function poolCustodyOutflow(db, value) {
   const need0 = Financial.money(value); if (!(need0 > 0)) return {writes: {}, fromCustody: 0, shortfall: 0, allocations: {}};
   const custody = await openCustodyRows(db);

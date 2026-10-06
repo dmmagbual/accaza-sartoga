@@ -88,7 +88,7 @@ check(PAYABLE_CLAIM_LEASE_MS === 180000, 'The lease must outlast the slowest cal
 
 /* ---------- every bill-changing path claims before it reads ---------- */
 const entry = read('src/functions/42a-financial-command-entry.js'), close = read('src/functions/42d-financial-command-close.js'), purchase = read('src/functions/43b-purchase-corrections.js');
-check(entry.includes('const apClaimSets = []; try {') && close.includes('} finally { for (const set of apClaimSets) await set.release(); }'), 'postFinancialCommand must release every claim on every exit.');
+check(entry.includes('const apClaimSets = []; try {') && close.includes('} finally { for (const set of apClaimSets.slice().sort((a, b) => Number(b.custodyPool === true) - Number(a.custodyPool === true))) { try { await set.release(); } catch (error) { logger.error("Financial command claim release failed", {message: String(error && error.message || error)}); } } }'), 'postFinancialCommand must release every claim on every exit.');
 check(close.includes('apClaim = isAr ? null : await claimPayables(db, [docId], commandId, actor, apClaimSets), snap = isAr ?'), 'Single payments, refunds and bill reversals must claim before reading the bill.');
 check(!/if\(!isAr&&!customerRefund\)\{const lockRef/.test(close), 'The old read-then-claim block must be gone.');
 const payAt = close.indexOf('claimPayables(db, [docId], commandId, actor, apClaimSets), snap = isAr'), custodyAt = close.indexOf('poolCustodyOutflow(db,value)');
@@ -99,7 +99,7 @@ check((close.match(/claimPayables\(/g) || []).length >= 5, 'Close-to-capital, op
 check(entry.includes('claimPayables(db,unique.map((row)=>row.documentId),commandId,actor,apClaimSets)') && !entry.includes('const claimTokens=[]'), 'Batch payments must claim every bill before reading any.');
 check(/reverse_payable_batch_payment[\s\S]*apClaim=await claimPayables\(db,\[docId\]/.test(entry), 'Batch-allocation reversal must claim the bill.');
 const purchaseClaimAt = purchase.indexOf('purchaseClaim=await claimPayables('), stockAt = purchase.indexOf('await applyInventoryMovement(db,{movementId:`purchase_reverse_');
-check(purchaseClaimAt > 0 && purchaseClaimAt < stockAt && purchase.includes('}finally{if(purchaseClaim)await purchaseClaim.release();}'), 'Purchase reversal/Amend must claim the bill before moving stock and always release it.');
+check(purchaseClaimAt > 0 && purchaseClaimAt < stockAt && purchase.includes('}finally{await releaseCustodyClaims(custodyClaims);if(purchaseClaim)await purchaseClaim.release();}'), 'Purchase reversal/Amend must claim the bill before moving stock and always release it.');
 const controls = read('src/functions/42c-financial-command-controls.js');
 check(controls.includes('journalClaim=await claimPayables(db,[prepared.linkedPayableId]') && controls.includes('correctionClaim=(original.linkedPayableId||prepared.linkedPayableId)?await claimPayables(') && controls.includes('reimbursementClaim=reimbursementId?await claimPayables('), 'Manual journals, journal corrections and personal-funding reversals that change a bill must claim it.');
 check(close.includes('if (!isReverse && (await db.ref(`/financialMovements/${commandId}`).get()).exists()) return {documentId: docId, movementId: commandId, duplicate: true};') && entry.includes('if(alreadyPosted)return{movementId:commandId,duplicate:true};if(!reference)'), 'A retried payment that already posted must return duplicate, not an error.');

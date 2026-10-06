@@ -274,11 +274,13 @@ exports.repairPettyVoucherFinancial = onCall(
     const voucher = (await db.ref(`/pettyCashVouchers/${id}`).get()).val();
     if (!voucher || voucher.status !== "approved" || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active approved cash payment with a missing posting can be repaired.");
     const value = Financial.money(voucher.amount); if (!(value > 0)) throw new HttpsError("failed-precondition", "The approved cash payment amount is invalid.");
+    const custodyClaims = []; try { await claimCustodyPool(db, movementId, custodyClaims);
     const isAdvance = voucher.transactionType === "purchase_advance", posting = revolvingFundPosting(voucher), custodyOut = await poolCustodyOutflow(db, value);
     if (custodyOut.shortfall > 0.009) throw new HttpsError("failed-precondition", `Post the Undeposited Collection beginning balance first. Available cash is short by ${custodyOut.shortfall.toFixed(2)}.`);
     const movement = Financial.movement(isAdvance?"revolving_fund_purchase_advance":posting.movementType,"pettyVoucher",id,[Financial.line(isAdvance?`asset:purchase_cash_advance:${id}`:posting.account,value,0,isAdvance?(voucher.recipient||"Supplier payment pending allocation"):posting.label),Financial.line("asset:cash_awaiting_deposit",0,value,"Paid from Undeposited Collection")],{occurredAt:cashPaymentOccurredAt(voucher),approvedAt:Number(voucher.approvedAt||0),actorName:voucher.approvedBy||"Manager",voucherNo:financeText(voucher.voucherNo,60),category:financeText(voucher.category,80),payee:financeText(voucher.recipient||voucher.requesterName,160),purpose:financeText(voucher.purpose,300),custodyAllocations:custodyOut.allocations,repairedAt:Date.now(),repairedBy:actor.uid});
     const now=Date.now(),writes=Object.assign({},custodyOut.writes,{[`pettyCashVouchers/${id}/financialMovementId`]:movementId,[`pettyCashVouchers/${id}/financialRepairedAt`]:now,[`pettyCashVouchers/${id}/financialRepairedBy`]:actor.uid,[`operationalAudit/${now}_${id}_financial_repair`]:operationalAuditRecord("repair_petty_voucher_financial","pettyVoucher",id,actor,{amount:value,movementId,custodyAllocations:custodyOut.allocations})}),committed=await commitFinancial(db,movementId,movement,actor,writes);
     return {voucherId:id,movementId,amount:value,duplicate:committed.duplicate};
+    } finally { await releaseCustodyClaims(custodyClaims); }
   },
 );
 

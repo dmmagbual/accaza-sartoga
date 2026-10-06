@@ -151,3 +151,15 @@ The required handoff items in the existing rules (PowerShell block, build/cache 
 - Work through Phase 0 one approved step at a time.
 - Before each step, give Danilo only a concise implementation proposal: scope, reason, risk, affected areas, testing, rollback, and specialists required.
 - Wait for Danilo's approval before implementing each Phase 0 step.
+
+### Firebase Cost Discipline
+
+Every change must keep Firebase Realtime Database downloads, reads and Cloud Functions invocations to the minimum the feature genuinely needs. This rule never lowers correctness, financial or inventory integrity, security, authorization, auditability, server authority, or the app's speed and reliability. When they conflict, those win and the cheapest safe design is chosen instead.
+
+- Read only what the operation needs: one record by key, an indexed and bounded query (`orderByChild` on an indexed field, `limitToFirst`/`limitToLast`), or a maintained summary or index. Never read a whole collection on a routine path; an unavoidable full read must be a rare manual tool, marked `download-ok` with its reason.
+- Do server work inside a Cloud Function call that already happens (posting, approval, close). Add a new callable, trigger, listener, schedule or poll only when no existing call can carry the work.
+- Prefer one multi-path write over several writes. Keep locks and claims to one small node.
+- Client screens listen live only to small, bounded paths they actually show, and detach when the screen closes. Use one-time reads or cached data where live updates add nothing.
+- Add any new index to `database.rules.json` together with the query that uses it.
+- Every proposal and handoff that touches database access states its Firebase cost: reads, downloads and function calls added or removed.
+- Never save a read by dropping a check, weakening a control, or making a screen slower. A missing safeguard or a slow till costs more than the read.
