@@ -156,6 +156,7 @@ async function integration(){
   vm.createContext(ctx);
   const finance=fs.readFileSync('src/functions/40-sales-finance.js','utf8');
   vm.runInContext(finance.slice(finance.indexOf('function booksCodeAccount('),finance.indexOf('function assertNoOverlappingUpdatePaths(')),ctx);
+  vm.runInContext(finance.slice(finance.indexOf('const CUSTODY_POOL_CLAIM_PATH'),finance.indexOf('async function poolCustodyOutflow(')),ctx);
   vm.runInContext(['42a-financial-command-entry.js','42b-financial-command-transactions.js','42c-financial-command-controls.js','42d-financial-command-close.js'].map(f=>fs.readFileSync('src/functions/'+f,'utf8')).join('\n'),ctx);
   const data={action:'correct_manual_journal',commandId:'ui_edit',originalMovementId:'deposit',expectedRevision:0,date:'2026-09-01',memo:'Actual holiday deposit',ref:'SLIP1',reason:'Correct amount',lines:[{code:'1011',debit:6907,credit:0},{code:'1030',debit:0,credit:6907}]};
   const result=await ctx.exports.postFinancialCommand({data});

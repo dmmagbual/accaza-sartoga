@@ -58,7 +58,7 @@
         const lockRef=db.ref('/financialControlLocks/cashJournalEdit'),lockToken=crypto.randomBytes(12).toString('hex'),lock=await lockRef.transaction(current=>!current||Number(current.claimedAt||0)<now-120000?{token:lockToken,commandId,claimedAt:now,actorUid:actor.uid}:current,undefined,false);
         if(!lock.committed||!lock.snapshot.exists()||lock.snapshot.val().token!==lockToken)throw new HttpsError('aborted','Another cash correction is being saved. Wait a moment, refresh, and try again.');
         try{
-          const existingReceipt=(await db.ref(`/cashJournalEditCommands/${commandId}`).get()).val();
+          await claimCustodyPool(db,commandId,apClaimSets);const existingReceipt=(await db.ref(`/cashJournalEditCommands/${commandId}`).get()).val();
           if(existingReceipt){if(existingReceipt.signature!==CashJournalEdit.editSignature(input))throw new HttpsError('failed-precondition','This submission ID was already used for a different edit.');return{movementId:originalId,revision:existingReceipt.revision,editedInPlace:true,duplicate:true};}
           const shape=CashJournalEdit.shape(original.lines),primaryCashAccount=shape&&shape.kind==='cash_transfer'?shape.accounts[0]:shape&&shape.account,cashId=String(primaryCashAccount||'').startsWith('asset:cash_account:')?String(primaryCashAccount).slice(19):'register',oldDate=BooksBridge.businessDate(original.occurredAt||original.postedAt),dates=[...new Set([oldDate,prepared.date])];
           const [movementsSnap,custodySnap,ledgerSnap,journalSnap,cashMapSnap,periodsSnap,claimsSnap,linkSnap,accountsSnap,settingsSnap,shiftSnap,historySnap,depositRefsSnap,...indexSnaps]=await Promise.all([

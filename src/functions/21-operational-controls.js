@@ -81,7 +81,7 @@ exports.manageOrderArchive = onCall(
 function shiftVarianceTime(shift,row,fallback){const at=Number(shift&&shift.closeAt)||Number(row&&row.closedAt)||Number(row&&row.ts)||0;return at>0&&at<=fallback?at:fallback;}
 exports.reviewDiscrepancy = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
-  async (request) => {
+  async (request) => { const custodyClaims = []; try {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["discrepancy", "registerOps"]);
     const data = request.data || {}, id = financeKey(data.discrepancyId, "Discrepancy ID"), note = financeText(data.note, 500);
     if (!note) throw new HttpsError("invalid-argument", "A root-cause note is required.");
@@ -137,7 +137,7 @@ exports.reviewDiscrepancy = onCall(
           newLines.push(short?Financial.line(countAsset,v,0,"Correct understated cash count"):Financial.line(source,v,0,label),short?Financial.line(source,0,v,label):Financial.line(countAsset,0,v,"Correct overstated cash count"));record.details={evidence,correctedCount:Financial.money(d.correctedCount),cashAccount:legacyDrawer?"register":"undeposited"};
           if(!legacyDrawer&&short){const custodyId=`count_correction_${id}_${allocation.id}`;writes[`cashCustody/${custodyId}`]={shiftId,staff:`Recount correction · ${text(row.staff,80)||"Cashier"}`,amount:v,depositedAmount:0,remaining:v,retainedFloat:0,status:"awaiting_deposit",closedAt:varianceAt,movementId:`cash_difference_${id}_${revision}`,source:"cash_count_correction",reference:evidence.slice(0,120),discrepancyId:id,allocationId:allocation.id,schemaVersion:3};record.recountCustodyId=custodyId;}
           else if(!legacyDrawer){
-            countCustody.rows=countCustody.rows||await custodyRowsForShift(db,shiftId);const rows=countCustody.rows,key=Object.keys(rows).find((k)=>Financial.money((rows[k]&&rows[k].remaining!=null?rows[k].remaining:rows[k]&&rows[k].amount)||0)-Financial.money(countCustody.used[k]||0)>=v-.009);
+            if(!countCustody.rows)await claimCustodyPool(db,`review_discrepancy_${id}`,custodyClaims);countCustody.rows=countCustody.rows||await custodyRowsForShift(db,shiftId);const rows=countCustody.rows,key=Object.keys(rows).find((k)=>Financial.money((rows[k]&&rows[k].remaining!=null?rows[k].remaining:rows[k]&&rows[k].amount)||0)-Financial.money(countCustody.used[k]||0)>=v-.009);
             if(!key)throw new HttpsError("failed-precondition","This shift's handed-over cash has already been deposited, so the overstated count cannot be removed from Undeposited Collection here. Record the difference against the bank deposit instead.");
             const custodyRow=rows[key]||{},used=Financial.money((countCustody.used[key]||0)+v),remaining=Financial.money(Financial.money(custodyRow.remaining!=null?custodyRow.remaining:custodyRow.amount)-used),amountAfter=Financial.money(Financial.money(custodyRow.amount)-used);countCustody.used[key]=used;
             writes[`cashCustody/${key}/remaining`]=remaining;writes[`cashCustody/${key}/amount`]=amountAfter;if(!(remaining>0))writes[`cashCustody/${key}/status`]="deposited";writes[`cashCustody/${key}/countCorrections/${id}_${allocation.id}`]={amount:v,discrepancyId:id,allocationId:allocation.id,movementId:`cash_difference_${id}_${revision}`,approvalId:approval.id,correctedAt:now};record.recountCustodyId=key;
@@ -171,7 +171,7 @@ exports.reviewDiscrepancy = onCall(
         approval=await claimManagerApproval(db,data,"review_discrepancy",id,null,`review_discrepancy_${id}`);reviewedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole;
         const correctionLinkRef=db.ref(`/financialControlLinks/correctionMovements/${correctionKey}`),correctionLinkResult=await correctionLinkRef.transaction((current)=>{if(current&&current.discrepancyId!==id)return;return current||{discrepancyId:id,shiftId,amount:value,approvalId:approval.id,linkedAt:now,linkedBy:reviewedBy};},undefined,false);
         if(!correctionLinkResult.committed)throw new HttpsError("already-exists","That Finance movement is already linked to another discrepancy.");
-        const custodyRows=await custodyRowsForShift(db,shiftId),existingCustodyKey=Object.prototype.hasOwnProperty.call(custodyRows,shiftId)?shiftId:Object.keys(custodyRows).find((key)=>custodyRows[key]&&(custodyRows[key].shiftId===shiftId||custodyRows[key].movementId===`shift_custody_${shiftId}`)),custodyKey=existingCustodyKey||`shortage_recovery_${id}`,custodyRef=db.ref(`/cashCustody/${custodyKey}`);let custodyDuplicate=false,custodyCreated=false;
+        await claimCustodyPool(db,`review_discrepancy_${id}`,custodyClaims);const custodyRows=await custodyRowsForShift(db,shiftId),existingCustodyKey=Object.prototype.hasOwnProperty.call(custodyRows,shiftId)?shiftId:Object.keys(custodyRows).find((key)=>custodyRows[key]&&(custodyRows[key].shiftId===shiftId||custodyRows[key].movementId===`shift_custody_${shiftId}`)),custodyKey=existingCustodyKey||`shortage_recovery_${id}`,custodyRef=db.ref(`/cashCustody/${custodyKey}`);let custodyDuplicate=false,custodyCreated=false;
         const custodyResult=await custodyRef.transaction((current)=>{
           if(!current){custodyCreated=true;current={shiftId,staff:`Recovered cash · ${financeText(row.staff,80)||"Manager"}`,amount:0,depositedAmount:0,remaining:0,retainedFloat:0,status:"awaiting_deposit",closedAt:now,movementId:correctionKey,source:"cash_shortage_recovery",discrepancyId:id,schemaVersion:3};}
           const recoveries=current.recoveries||{};
@@ -205,7 +205,7 @@ exports.reviewDiscrepancy = onCall(
     if (!result.committed) throw new HttpsError("aborted", "This discrepancy was reviewed by another manager. Refresh the list.");
     await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord("review_discrepancy", "discrepancy", id, actor, {approvalId: approval.id})}));
     return {discrepancyId: id, reviewedAt: now, duplicate};
-  },
+  } finally { await releaseCustodyClaims(custodyClaims); } },
 );
 
 // Reviewed discrepancy records are never a dead end. They may be reopened
