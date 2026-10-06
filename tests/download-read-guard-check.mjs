@@ -42,7 +42,7 @@ export const SMALL_NODES = new Set([
 // Buttons an owner or manager presses on purpose to rebuild or audit history. They may read
 // history in full; they are listed so that no automatic path can reach the same code.
 export const MANUAL_TOOLS = new Set([
-  'ensureFinancialLedger', 'auditFinancialControls', 'ensureBooksJournal', 'ensureInventoryLedger', 'repairFinanceDates',
+  'ensureFinancialLedger', 'auditFinancialControls', 'apIntegrityBaseline', 'ensureBooksJournal', 'ensureInventoryLedger', 'repairFinanceDates',
   'repairPettyExpenseClassifications', 'reconcileUndepositedCustody', 'retireRevolvingFund', 'legacyOwnerCapitalReset',
   'runDatabaseBackupNow', 'repairOrderInventoryMarker', 'runFinancialClose',
 ]);

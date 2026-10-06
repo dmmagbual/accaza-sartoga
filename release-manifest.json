@@ -13,9 +13,9 @@
   },
   "builds": {
     "admin": 650,
-    "books": 144,
+    "books": 145,
     "customer": 97,
-    "serviceWorkerCache": 641
+    "serviceWorkerCache": 642
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -149,6 +149,7 @@
     "functions/lib/financial.js",
     "functions/lib/cash-balances.js",
     "functions/lib/financial-close.js",
+    "functions/lib/ap-integrity.js",
     "functions/lib/reconciliation-controls.js",
     "functions/lib/accounting-periods.js",
     "functions/lib/offline-sync.js",
@@ -319,6 +320,7 @@
     "RELEASE_7H_SKU_LINK_INTEGRITY_2026-08-10.md"
   ],
   "requiredFunctionExports": [
+    "apIntegrityBaseline",
     "resolvePendingShiftHandovers",
     "onShiftEndResolveEarlierHandovers",
     "manageUncostedSales",

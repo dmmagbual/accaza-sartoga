@@ -34,6 +34,7 @@ const AccountingPeriods = require("./lib/accounting-periods");
 const CashJournalEdit = require("./lib/cash-journal-edit");
 const JournalReclassification = require("./lib/journal-reclassification");
 const ReconciliationControls = require("./lib/reconciliation-controls");
+const ApIntegrity = require("./lib/ap-integrity");
 const RecoveryValidation = require("./lib/recovery-validation");
 const BackupDelta = require("./lib/backup-delta");
 const ProductionHealth = require("./lib/production-health");
