@@ -37,5 +37,26 @@ const placeholders = bundle.split('var accOpts=').length - 1;
 const guarded = bundle.split("var accOpts='<option value=\"\">").length - 1;
 if (placeholders !== guarded) failures.push(`assets/js/admin/pos.js: ${placeholders - guarded} cash account list(s) still pre-select an account instead of an explicit placeholder.`);
 
+/* Line preview (7 Oct 2026): live typing used a stock-only preview, so a one-time expense line
+   showed "+0 · new avg ₱0.00/ · line ₱…". One preview function must serve render and live typing. */
+{
+  const src = read('src/admin/pos/20a-purchase-posting.js') + read('src/admin/pos/20-purchasing.js');
+  const fnStart = src.indexOf('function purchaseLinePreview(');
+  if (fnStart < 0) failures.push('purchaseLinePreview() must exist as the single purchase-line preview authority.');
+  else {
+    const body = src.slice(fnStart, src.indexOf('\nfunction purchUpdatePrev(', fnStart));
+    const preview = new Function('peso', 'num', body + '\nreturn purchaseLinePreview;')((v) => '₱' + Number(v).toFixed(2), (v) => String(v));
+    const c = {lineTotal: 1371.42, stockAdd: 0, stockUnit: '', newCost: 0};
+    const expense = preview({mode: 'expense', expenseAccount: '6050', qty: 1}, c);
+    if (!/^Expense · ₱1371\.42 · charged to 6050 · no inventory created$/.test(expense)) failures.push(`An expense line preview must describe the expense, got "${expense}".`);
+    if (/new avg/.test(preview({mode: 'asset', qty: 1}, c))) failures.push('An equipment line preview must not show stock wording.');
+    if (!/new avg/.test(preview({mode: 'existing'}, {lineTotal: 10, stockAdd: 5, stockUnit: 'g', newCost: 2}))) failures.push('A stock line preview must still show the new average cost.');
+    if (preview({mode: 'expense'}, null) !== '') failures.push('An incomplete line must show no preview.');
+  }
+  if ((src.match(/new avg/g) || []).length !== 1) failures.push('Stock preview wording must live only in purchaseLinePreview(); the live-typing path must not build its own.');
+  if (!src.includes('el.textContent=purchaseLinePreview(ln,c)')) failures.push('Live typing must update the preview through purchaseLinePreview().');
+  if (!src.includes('var prev=esc(purchaseLinePreview(ln,c));')) failures.push('The full render must build the preview through purchaseLinePreview().');
+}
+
 if (failures.length) { console.error('Purchase settlement binding check FAILED:\n- ' + failures.join('\n- ')); process.exit(1); }
 console.log('PASS: purchase and receive settlement controls are bound to their own option and pre-select no cash account.');

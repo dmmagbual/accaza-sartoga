@@ -1,6 +1,14 @@
+/* One preview authority for a purchase line, used by the full render and by live typing, so an
+   expense or equipment line never shows the stock average-cost wording. Plain text; callers escape. */
+function purchaseLinePreview(ln,c){
+  if(!c)return '';
+  if(ln.mode==='asset')return 'Fixed asset · '+peso(c.lineTotal)+' · '+num(Number(ln.qty)||0)+' card(s) created after posting';
+  if(ln.mode==='expense')return 'Expense · '+peso(c.lineTotal)+(ln.expenseAccount?' · charged to '+ln.expenseAccount:'')+' · no inventory created';
+  return '+'+num(c.stockAdd)+' '+c.stockUnit+' · new avg '+peso(c.newCost)+'/'+c.stockUnit+' · line '+peso(c.lineTotal);
+}
 function purchUpdatePrev(){
   var P=window.__purch; if(!P)return; var tot=0;
-  P.lines.forEach(function(ln,i){var c=purchCalc(ln);if(c)tot+=c.lineTotal;var el=document.querySelector('[data-pprev="'+i+'"]');if(el)el.textContent=c?('+'+num(c.stockAdd)+' '+c.stockUnit+' · new avg '+peso(c.newCost)+'/'+c.stockUnit+' · line '+peso(c.lineTotal)):'';});
+  P.lines.forEach(function(ln,i){var c=purchCalc(ln);if(c)tot+=c.lineTotal;var el=document.querySelector('[data-pprev="'+i+'"]');if(el)el.textContent=purchaseLinePreview(ln,c);});
   var t=document.getElementById('purTotal');if(t)t.textContent=peso(Math.round((tot+Math.max(0,Number(P.inputVat)||0))*100)/100);
 }
 function postPurchases(){
