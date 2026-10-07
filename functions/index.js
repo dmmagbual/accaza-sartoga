@@ -2244,7 +2244,7 @@ exports.managePettyVoucher = onCall(
   async (request) => { const custodyClaims = []; try {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["petty"]);
     const data = request.data || {}, action = financeText(data.action, 20), id = financeKey(data.voucherId, "Voucher ID"), reason = financeText(data.reason, 500);
-    const ref = db.ref(`/pettyCashVouchers/${id}`), snap = await ref.get(); if (!snap.exists()) throw new HttpsError("not-found", "Revolving Fund voucher not found.");
+    const ref = db.ref(`/pettyCashVouchers/${id}`), snap = await ref.get(); if (!snap.exists()) throw new HttpsError("not-found", "Cash voucher not found.");
     const voucher = snap.val() || {}, value = Financial.money(voucher.amount), now = Date.now(), hasReceipt = await voucherHasReceipt(db, id, voucher); let approvalAction;
     // Editing a voucher changes the Admin subledger as well as its linked
     // Finance correction, so the voucher's own accounting month must be open.
@@ -2390,6 +2390,7 @@ exports.managePettyVoucher = onCall(
       if (voucher.transactionType === "staff_advance" && Object.values(voucher.settlements || {}).some((row) => row && !row.reversedAt)) throw new HttpsError("failed-precondition", "A liquidated staff advance cannot be voided. Reverse its settlements first.");
       if (!reason) throw new HttpsError("invalid-argument", "A void reason is required."); approvalAction = "void_petty_voucher";
     } else throw new HttpsError("invalid-argument", "Petty voucher action is invalid.");
+    const issuedVoucherNo = action === "approve" ? await cashVoucherNumber(db, voucher, id) : "";
     const approval = await claimManagerApproval(db, data, approvalAction, id, value, `${approvalAction}_${id}`);
     const approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
     if (action === "approve") {
@@ -2409,13 +2410,13 @@ exports.managePettyVoucher = onCall(
     let failure = "", duplicate = false; const transactionState = {seen: false};
     const result = await ref.transaction((row) => {
       const current = transactionCurrent(row, voucher, transactionState), all = {}; failure = ""; duplicate = false;
-      if (!current) {failure = "Revolving Fund voucher not found."; return;}
+      if (!current) {failure = "Cash voucher not found."; return;}
       if (action === "approve") {
         if (current.status === "approved" && current.approvalId === approval.id) {duplicate = true; return current;}
         if (current.status !== "pending") {failure = "Only pending vouchers can be approved."; return;}
         if (!(current.receiptImg || (current.hasReceipt === true && hasReceipt)) && !financeText(current.purpose, 300)) {failure = "A receipt or clear explanation is required before approval."; return;}
         if (approvalFunding.kind === "undeposited") {const available = Financial.money(baseFunds);if (value > available + 0.009) {failure = `Voucher exceeds available Undeposited Collection (₱${available.toFixed(2)}).`; return;}}
-        all[id] = Object.assign({}, current, {status: "approved", approvedBy, approvedByUid: approval.record.approvedBy, approvedAt: now, approvalId: approval.id, conversionMovementId: ["loan_repayment","staff_advance","customer_refund"].includes(current.transactionType) ? (current.conversionMovementId || "controlled_pending") : current.conversionMovementId});
+        all[id] = Object.assign({}, current, {voucherNo: financeText(current.voucherNo, 60) || issuedVoucherNo, status: "approved", approvedBy, approvedByUid: approval.record.approvedBy, approvedAt: now, approvalId: approval.id, conversionMovementId: ["loan_repayment","staff_advance","customer_refund"].includes(current.transactionType) ? (current.conversionMovementId || "controlled_pending") : current.conversionMovementId});
       } else if (action === "reject") {
         if (current.status === "rejected" && current.rejectionApprovalId === approval.id) {duplicate = true; return current;}
         if (current.status !== "pending") {failure = "Only pending vouchers can be rejected."; return;}
@@ -2454,6 +2455,27 @@ exports.retireRevolvingFund = onCall(
     return {balance: bal, retired: true, amount: bal, approvalId: approval.id};
   },
 );
+// A Cash Voucher's number, PV-YYYYMM-NNNN (Manila month it is issued, same monthly counter as before).
+// Issued by the server when the voucher is approved, so a request that is rejected or never approved
+// never takes a number, and kept on the voucher at once so a retried approval reuses it. Vouchers that
+// already carry a number (all vouchers created before this change) keep it.
+// Firebase cost: one small read and two small transactions, once per voucher, inside the approval call.
+async function cashVoucherNumber(db, voucher, voucherId) {
+  const existing = financeText(voucher && voucher.voucherNo, 60); if (existing) return existing;
+  const numberRef = db.ref(`/pettyCashVouchers/${financeKey(voucherId, "Voucher ID")}/voucherNo`);
+  const saved = financeText((await numberRef.get()).val(), 60);
+  if (saved) { if (voucher) voucher.voucherNo = saved; return saved; }
+  const key = new Date(Date.now() + 28800000).toISOString().slice(0, 7).replace("-", "");
+  const counter = await db.ref(`/pettyCashCounter/${key}`).transaction((current) => (Number(current) || 0) + 1);
+  const seq = Number(counter && counter.snapshot && counter.snapshot.val()) || 0;
+  if (!seq) throw new HttpsError("unavailable", "The cash voucher number could not be issued. Try again.");
+  const drawn = `PV-${key}-${String(seq).padStart(4, "0")}`;
+  const kept = await numberRef.transaction((current) => current || drawn, undefined, false);
+  const number = financeText(kept && kept.snapshot && kept.snapshot.val(), 60) || drawn;
+  if (voucher) voucher.voucherNo = number;
+  return number;
+}
+// End of cash voucher numbering.
 const UNDEPOSITED_PAGE_SIZE = 25;
 const UNDEPOSITED_POOL_ACCOUNT = "asset:cash_awaiting_deposit";
 const UNDEPOSITED_INDEX_VERSION = 1;
@@ -2473,7 +2495,7 @@ function undepositedMovementProjection(id, movement) {
     type: financeText(movement.type, 80),
     sourceId: financeText(movement.sourceId, 160),
     sourceType: financeText(movement.sourceType, 80),
-    reference: financeText(movement.reference || movement.documentNo, 120),
+    reference: financeText(movement.reference || movement.documentNo || movement.voucherNo, 120),
     documentNo: financeText(movement.documentNo, 60),
     voucherNo: financeText(movement.voucherNo, 60),
     category: financeText(movement.category, 80),
@@ -5919,6 +5941,10 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
   if (existing.exists()) return {duplicate: true, movement: existing.val()};
   await assertAccountingPeriodOpen(db, Number(movement && movement.occurredAt || Date.now()), "creating this financial posting");
   const record = financeRecord(movementId, movement, actor);
+  // A cash voucher's own posting uses the voucher number as its document number, so Finance Books,
+  // Undeposited Collection and the cash ledger capture the same reference as the voucher itself.
+  // Its later void / correction movements are separate documents and keep their own numbers.
+  if (!financeText(record.documentNo, 40) && record.sourceType === "pettyVoucher" && movementId === `petty_${financeText(record.sourceId, 160)}` && /^PV-\d{6}-\d{4,}$/.test(financeText(record.voucherNo, 60))) record.documentNo = financeText(record.voucherNo, 60);
   if (!financeText(record.documentNo, 40)) {
     const prefix = documentPrefix(record);
     if (prefix) {

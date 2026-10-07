@@ -216,6 +216,14 @@ function purchaseJournalText(mv, context) {
   if(purchaseNo)return {ref:purchaseNo,memo:`${label}${itemText?` · ${itemText}`:""}${invoiceText}`};
   return {ref:label,memo:`${itemText}${invoiceText}`||`Purchase from ${supplier}`};
 }
+/* A Cash Payments voucher reads as a Cash Voucher (payee · purpose), never "POS revolving fund … pv_key".
+   Its reference is the voucher number, which is also the movement's document number. */
+function cashVoucherText(mv) {
+  if (String(mv && mv.sourceType || "") !== "pettyVoucher") return "";
+  const type = String(mv.type || ""), kind = /void|revers/.test(type) ? "Cash Voucher reversal" : /correct/.test(type) ? "Cash Voucher correction" : /settle|liquidat|return/.test(type) ? "Cash Voucher settlement" : "Cash Voucher";
+  const no = String(mv.voucherNo || ""), payee = String(mv.payee || ""), purpose = String(mv.purpose || "");
+  return `${kind}${no ? ` ${no}` : ""}${payee ? ` — ${payee}` : ""}${purpose ? ` · ${purpose}` : ""}`;
+}
 function buildSingle(mv, cashMap, context) {
   const b = bucketFor(mv);
   const {lines, unmapped} = mappedLines(mv, cashMap, context);
@@ -223,7 +231,7 @@ function buildSingle(mv, cashMap, context) {
   return {
     entry: {
       id: b.key, date: b.date, ref: purchaseText?purchaseText.ref:String(mv.documentNo || (mv.revision ? mv.reference || mv.sourceId || mv.id : mv.sourceId || mv.id) || ""),
-      memo: purchaseText?purchaseText.memo:mv.revision?String(mv.memo||""):`POS ${String(mv.type || "movement").replace(/_/g, " ")}${mv.sourceId ? " · " + mv.sourceId : ""}`,
+      memo: purchaseText?purchaseText.memo:mv.revision?String(mv.memo||""):cashVoucherText(mv)||`POS ${String(mv.type || "movement").replace(/_/g, " ")}${mv.sourceId ? " · " + mv.sourceId : ""}`,
       lines: lines.map((l) => ({code: l.code, debit: l.debit, credit: l.credit})),
       sources: {[mv.id]: true}, source: "pos-bridge", sourceType: String(mv.sourceType || ""), sourceId: String(mv.sourceId || ""),
       reversalOf: String(mv.reversalOf || ""), reversedByMovementId: String(mv.reversedByMovementId || ""),

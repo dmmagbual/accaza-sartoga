@@ -318,6 +318,10 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
   if (existing.exists()) return {duplicate: true, movement: existing.val()};
   await assertAccountingPeriodOpen(db, Number(movement && movement.occurredAt || Date.now()), "creating this financial posting");
   const record = financeRecord(movementId, movement, actor);
+  // A cash voucher's own posting uses the voucher number as its document number, so Finance Books,
+  // Undeposited Collection and the cash ledger capture the same reference as the voucher itself.
+  // Its later void / correction movements are separate documents and keep their own numbers.
+  if (!financeText(record.documentNo, 40) && record.sourceType === "pettyVoucher" && movementId === `petty_${financeText(record.sourceId, 160)}` && /^PV-\d{6}-\d{4,}$/.test(financeText(record.voucherNo, 60))) record.documentNo = financeText(record.voucherNo, 60);
   if (!financeText(record.documentNo, 40)) {
     const prefix = documentPrefix(record);
     if (prefix) {
