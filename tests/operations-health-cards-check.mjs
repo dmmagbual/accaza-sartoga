@@ -15,7 +15,7 @@ const booksMatch = coreSource.match(/window\.AccazaFinanceBooksPages=Object\.fre
 assert.ok(booksMatch, 'core.mjs must declare window.AccazaFinanceBooksPages');
 const booksPages = vm.runInNewContext(`(${booksMatch[1]})`);
 assert.equal(booksPages.cashflow, 'cashflow', 'Admin cashflow must open Finance Books Cash Flow');
-assert.ok(coreSource.includes("if(booksPage){openFinanceBooks(booksPage);return;}"), 'moved screens must open Finance Books');
+assert.ok(coreSource.includes("if(booksPage){openFinanceBooks(booksPage);return true;}"), 'moved screens must open Finance Books and report a successful route');
 assert.ok(coreSource.includes("window.open('','accazaFinanceBooks')") && coreSource.includes('books.App.go(page)'), 'Finance Books must reuse one named tab and switch pages in place, never stack tabs with their own listeners');
 const booksOpener = coreSource.slice(coreSource.indexOf('function openFinanceBooks(page){'), coreSource.indexOf('window.switchTab=function(tab,btn){'));
 assert.ok(booksOpener.length > 0 && !booksOpener.includes('_blank'), 'Finance Books routing must not open a fresh tab per click');

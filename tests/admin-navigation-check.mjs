@@ -11,15 +11,16 @@ function assert(ok,message){if(!ok)throw new Error(message);}
 
 const navigation=(html.match(/<div class="admin-tabs"[\s\S]*?<div id="adminWorkspaceHeader"/)||[])[0]||'';
 const groups=[...navigation.matchAll(/class="admin-group[^\"]*" data-grp="([^"]+)"/g)].map((match)=>match[1]);
-assert(groups.join('|')==='pos|overview|orders|reports|stock|finance|customers|settings','Admin work areas are missing or out of order');
+assert(groups.join('|')==='pos|overview|orders|reports|purchasing|stock|finance|customers|settings','Admin work areas are missing or out of order');
 
 const expected={
   pos:['pos','ops','inbox'],
   overview:['dashboard','liveoperations','operations'],
   orders:['orders','reservations','calendar','availSection'],
   reports:['saleshistory','analytics','dailyreport'],
-  stock:['inventory','stockvalue','purchases','recipes','usage','packages'],
-  finance:['petty','undeposited','payouts','discrepancy'],
+  purchasing:['purchases','petty','payables'],
+  stock:['inventory','stockvalue','recipes','usage','packages'],
+  finance:['undeposited','payouts','discrepancy'],
   customers:['rewards','appcustomers','reviews','commentsSection'],
   settings:['companyinfo','taxcompliance','possettings','accountingperiods','channelpricing','dedupe','payment','staffaccounts','changepw']
 };
@@ -30,8 +31,9 @@ for(const [group,tabs] of Object.entries(expected)){
 }
 
 const allTabs=Object.values(expected).flat();
-assert(allTabs.length===36&&new Set(allTabs).size===36,'Every Admin destination must appear exactly once');
-for(const tab of allTabs.filter((name)=>!['availSection','commentsSection'].includes(name)))assert(html.includes(`id="tab-${tab}"`),`Admin panel is missing for ${tab}`);
+assert(allTabs.length===37&&new Set(allTabs).size===37,'Every Admin destination must appear exactly once');
+for(const tab of allTabs.filter((name)=>!['availSection','commentsSection','payables'].includes(name)))assert(html.includes(`id="tab-${tab}"`),`Admin panel is missing for ${tab}`);
+assert(core.includes("payables:'payables'")&&navigation.includes("switchTab('payables',this)"),'Supplier Bills & Payables must reuse the existing Finance Books route');
 assert(core.includes("\"'availSection'\":'availability'")&&core.includes("\"'commentsSection'\":'comments'"),'Moved Availability and Comments must retain staff permission checks');
 assert(core.includes("if(id==='availSection')")&&core.includes("subscriptionHub.activate('availability')"),'Menu Availability must activate its lazy catalog and option-group data scope');
 assert(core.includes("subscriptionHub.activate('availability');buildAvail();renderOptionManager()"),'Opening Menu Availability must refresh its items and option groups after activating their data scope');
@@ -58,4 +60,4 @@ assert(navigationCss.includes('#adminGroups{display:flex;flex-wrap:wrap')&&navig
 const lazyTabs=[...navigation.matchAll(/posSwitchTab\('([^']+)'/g)].map((match)=>match[1]);
 for(const tab of new Set(lazyTabs))assert(new RegExp(`(?:^|[,\\s])${tab}:\\[`).test(moduleLoader),`Lazy Admin destination ${tab} has no module route`);
 
-console.log('PASS: all 36 Admin destinations are present once, grouped correctly, and retain their panels and permissions.');
+console.log('PASS: all 37 Admin destinations are present once, grouped correctly, and retain their panels and permissions.');

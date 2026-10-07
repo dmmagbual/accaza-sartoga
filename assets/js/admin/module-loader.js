@@ -50,13 +50,13 @@
 
   window.posSwitchTab=function(tab,button){
     var serial=++requestSerial;
-    if(window.switchTab)window.switchTab(tab,button);
+    if(window.switchTab&&window.switchTab(tab,button)===false)return Promise.resolve(false);
     var needed=routes[tab]||[];
     if(!needed.length)return Promise.resolve();
     loading(tab);
     return needed.reduce(function(chain,name){return chain.then(function(){return load(name);});},Promise.resolve()).then(function(){
       if(serial!==requestSerial)return;
-      needed.forEach(function(name){if(typeof handlers[name]==='function')handlers[name](tab,button);});
+      needed.forEach(function(name){if(typeof handlers[name]==='function')handlers[name](tab,button);});return true;
     }).catch(function(error){failed(tab,error);});
   };
 

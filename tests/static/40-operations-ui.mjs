@@ -113,7 +113,7 @@ for(const marker of ['WHAT NEEDS ATTENTION NOW?','Responsible:','Recommended act
 if(!rulesRaw.includes('"offlinePosSync": { ".indexOn": "updatedAt"')||!/"cashCustody": \{ "\.indexOn": \["closedAt"/.test(rulesRaw))fail('Phase 7B bounded exception query indexes missing');
 if(!adminHtml.includes('id="accaza-admin-nav-7c"')||!adminHtml.includes('class="admin-group pos-primary"')||!adminHtml.includes('data-grp="reports" data-label="Reports"')||!adminHtml.includes('data-grp="finance" data-label="Cash &amp; controls"'))fail('Phase 7C primary admin navigation shell missing');
 if(!adminHtml.includes('Sales &amp; Service')||!adminHtml.includes('Settings &amp; maintenance')||!adminHtml.includes('Menu Maintenance')||!adminHtml.includes('Shift &amp; Register'))fail('Phase 7C information architecture incomplete');
-if(!adminSource.includes("cashier:'pos',kitchen:'orders',finance:'finance'")||!adminSource.includes('landRoleHome()'))fail('Phase 7C role-aware landing behavior missing');
+if(!adminSource.includes("cashier:['pos'],kitchen:['orders'],finance:['purchasing','finance'],staff:['pos']")||!adminSource.includes('landRoleHome()'))fail('Phase 7C role-aware landing behavior missing');
 const workspaceShellSource=fs.readFileSync(path.join(root,'assets','js','admin','workspace-shell.mjs'),'utf8');
 if(!adminHtml.includes('id="adminWorkspaceHeader"')||!adminHtml.includes('id="adminServiceStrip"'))fail('Phase 7D contextual workspace header or live service strip missing');
 if(!adminSource.includes('body.admin-pos-workspace')||!adminSource.includes('#posCartPanel'))fail('Phase 7D focused POS workspace missing');
