@@ -58,16 +58,17 @@ const accounts=[
 ];
 const cf={accounts:()=>accounts.slice()};
 
-// Finance available: every active account appears, the protected float never does.
+// Cash Payments may use Undeposited Collection or an external bank/e-wallet; the register and
+// available cash-on-hand balance are never a payment source.
 let ctx=context(cf);
 let html=vm.runInContext("cashPaymentFundingOptions('undeposited')",ctx);
 const ids=optionIds(html);
-for(const id of ['cash_on_hand','undeposited','bdo','gcash','maribank'])if(!ids.includes(id))fail(`Paid from is missing account ${id} (got ${ids.join(', ')}).`);
-if(ids.includes('cash_float'))fail('Protected Register Cash Float must not be selectable.');
+for(const id of ['undeposited','bdo','gcash','maribank'])if(!ids.includes(id))fail(`Paid from is missing account ${id} (got ${ids.join(', ')}).`);
+for(const id of ['cash_on_hand','cash_float','register'])if(ids.includes(id))fail(`${id} must not be selectable as a Cash Payment funding source.`);
 if(selectedId(html)!=='undeposited')fail('Default selection should stay Undeposited Collection.');
 // Adding more accounts must never shrink the list.
 accounts.push({id:'bpi',name:'BPI'},{id:'maya',name:'Maya'});
-if(optionIds(vm.runInContext("cashPaymentFundingOptions('')",ctx)).length!==7)fail('Adding bank accounts changed the number of selectable accounts incorrectly.');
+if(optionIds(vm.runInContext("cashPaymentFundingOptions('')",ctx)).length!==6)fail('Adding bank accounts changed the number of selectable accounts incorrectly.');
 // A chosen bank survives a re-render.
 if(selectedId(vm.runInContext("cashPaymentFundingOptions('maribank')",ctx))!=='maribank')fail('A selected bank account is lost on re-render.');
 // An unknown selection falls back to Undeposited Collection, not to an arbitrary account.

@@ -176,7 +176,8 @@ has('42c-financial-command-controls.js', 'await claimCustodyPool(db,commandId,ap
 const pr = sources['43b-purchase-corrections.js'];
 check(pr.indexOf('await claimCustodyPool(db,`purchase_cash_reversal_${invoiceId}`,custodyClaims)') > 0 && pr.indexOf('await claimCustodyPool(db,`purchase_cash_reversal_${invoiceId}`,custodyClaims)') < pr.indexOf('await applyInventoryMovement(db,{movementId:`purchase_reverse_'), 'Reversing a purchase paid from Undeposited Collection must claim before any stock moves.');
 has('43b-purchase-corrections.js', '}finally{await releaseCustodyClaims(custodyClaims);', 'Purchase reversal must release the custody claim.');
-has('21-staff-advance-liquidation.js', 'await claimCustodyPool(db,correctionId,custodyClaims);const custodyOut=await poolCustodyOutflow(db,delta);', 'Editing a cash payment upward must claim before reading custody.');
+has('21c-voucher-correction.js', 'await claimCustodyPool(db, postId, custodyClaims);\n      const out = await poolCustodyOutflow(db, delta);', 'Editing a cash payment upward must claim before reading custody.');
+has('21a-undeposited-pages.js', 'await claimCustodyPool(db, "undeposited_index_verify", held);', 'The custody projection repair must claim before re-reading and repairing.');
 has('21-staff-advance-liquidation.js', 'await claimCustodyPool(db, `petty_settlement_reversal_${id}`, custodyClaims); const custodyOut = await poolCustodyOutflow(db, settlementValue);', 'Reversing a cash repayment must claim before reading custody.');
 has('21-staff-advance-liquidation.js', '} finally { await releaseCustodyClaims(custodyClaims); } },', 'managePettyVoucher must release the custody claim.');
 has('22-close-controls.js', 'await claimCustodyPool(db, movementId, custodyClaims);\n    const isAdvance', 'The missing-posting repair must claim before reading custody.');

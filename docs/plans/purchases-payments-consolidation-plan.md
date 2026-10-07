@@ -191,6 +191,29 @@ Specialist output is advisory. The primary agent reconciles it against this plan
 
 ### Phase 0 — Land the navigation consolidation (Codex's step)
 
+#### Approved incident task V0: Open-period Cash Voucher correction integrity
+
+**Approved by Danilo on 7 Oct 2026 and built before the remaining consolidation phases.** This is a corrective control for the 7 Oct Undeposited Collection incident, not a merger of Purchase and Cash Voucher documents.
+
+**Scope:**
+- Allow an approved expense, owner-withdrawal or unallocated supplier-payment voucher to correct date, amount, category, payee and purpose while both affected months are open.
+- Preserve the PV number and posted history. Reverse the voucher's current effective posting on its own date and post the corrected entry on the corrected date in one atomic server update.
+- Keep the funding account immutable. Bank/e-wallet corrections must reconcile to the exact bank-register row; Undeposited Collection corrections must prove custody equals Books before moving only the amount difference.
+- Reject future-dated creation, approval and correction. Earlier dates remain allowed when the accounting period is open, matching normal accounting-system open-period behavior.
+- Loan repayments, staff advances, customer refunds, Cash in Register / Cash on Hand vouchers, reconciled bank entries, allocated supplier advances and historical legacy-correction shapes remain void-and-reenter only.
+- Bind approval to the exact revision, date, amount, category, payee, supplier, purpose and written reason. Managers and Admins require a different approver. A Super Admin may self-approve with the written reason and permanent audit history; this is allowed policy and is not an Exception Center item.
+- Serialize voucher mutation and linked supplier-advance allocation/reversal so correction, void, return or allocation cannot act on stale voucher state.
+- Update custody rows and their open-index projections atomically. Remove the independent custody mirror trigger that allowed an older event to overwrite a newer projection. Keep a bounded, at-most-once-per-10-minute detective verification that repairs projection-only drift with an audit record.
+
+**Acceptance and verification:**
+- Executable fake-RTDB tests cover correction of a correction, exact approval binding, concurrent correction, correction-versus-other voucher actions, bank-register parity, later void, Undeposited custody/Books parity, future dates, period locks, reconciled rows and unsupported voucher types.
+- R0 restore point, full `npm test`, `npm run test:release`, `npm run test:safety`, R3 UAT and Code Reviewer review are required before a PR. No production data is changed by the implementation or tests.
+- R4 checks the corrected PV in Cash Payments, its reversal/repost in Finance Books, its bank or custody subledger, and the absence of a false missing-payment/custody discrepancy.
+
+**Firebase cost:** no new callable, listener or schedule. The existing correction call adds one small voucher lock transaction plus direct/indexed validation reads. Bank history is one `cfLedger.linkId` query capped at 100 rows. Undeposited verification is capped at 500 open custody rows and runs at most once per 10 minutes unless a missing-posting flag needs immediate validation. Removing `syncCashCustodyPageIndex` removes one Function invocation and one read/write cycle for every custody-row change.
+
+**Rollback:** revert the release and redeploy the prior Functions/static build. Already-posted corrections remain immutable balanced movements and must never be deleted; reverse them through the same source workflow if a business correction is required.
+
 Codex owns this step. The listed checks are the acceptance criteria.
 
 #### Task 0.1: Purchases & Payments navigation group
@@ -538,3 +561,5 @@ Every phase starts from its **R0 restore point** (§5A). The order is always: fl
   - Automated **daily** Realtime Database backups are already enabled for `accaza-sartoga-default-rtdb`, to bucket `accaza-sartoga-default-rtdb-backups`.
   - Last backup: 2026-10-07T01:54:32Z.
   - Task 0.5's first checkbox is done. Still open for 0.5: confirm the bucket's 30-day lifecycle and gzip, the restore scripts, and the restore test into UAT.
+- **7 Oct 2026, Cash Voucher correction incident task V0 approved** (Danilo): build open-period approved-voucher correction first; reject future-dated vouchers; preserve immutable reversal/repost history and the real funding account; include the task in this plan.
+- **7 Oct 2026, self-approval policy clarified** (Danilo): a Super Admin may self-approve a voucher correction when the written reason and audit history are retained. It is permitted policy and must not be raised in the Exception Center. Admins and Managers still require a different authorized approver.

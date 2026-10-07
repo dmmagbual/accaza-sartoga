@@ -344,11 +344,16 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
   try {
     // While this claim is processing, guarded cash-journal edits cannot run.
     // Detect edits completed after a custody calculation but before this claim.
+    // The open-custody projection is written in the SAME update as the custody rows it mirrors
+    // (7 Oct 2026: a trigger replaying an older custody write left the projection ₱2,664.01 stale).
+    let custodyIndex={};
     if(Object.keys(extraWrites).some(path=>path.startsWith('cashCustody/'))){
-      try{CashJournalEdit.assertCustodyDelta(await touchedCustodyRows(db,extraWrites),extraWrites,record.lines);}catch(error){throw new HttpsError('failed-precondition',error.message);}
+      const touched=await touchedCustodyRows(db,extraWrites);
+      try{CashJournalEdit.assertCustodyDelta(touched,extraWrites,record.lines);}catch(error){throw new HttpsError('failed-precondition',error.message);}
+      custodyIndex=custodyIndexWrites(touched,extraWrites);
     }
     if(record.reversalOf){const source=(await db.ref(`/financialMovements/${financeKey(record.reversalOf,'Reversal source')}`).get()).val();if(source&&Number(source.revision)>0&&CashJournalEdit.eligible(source))throw new HttpsError('failed-precondition','This cash journal has an audited revision. Refresh and use Edit / correct; journal-only reversal would break its custody link.');}
-    const writes = Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
+    const writes = Object.assign({}, extraWrites, custodyIndex, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
     await safeFinancialUpdate(db, writes, "financial");
     if (run) run.written += 1;
     return {duplicate: false, movement: record};
