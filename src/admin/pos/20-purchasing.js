@@ -17,7 +17,7 @@
       var expenseOptions=purchaseExpenseAccounts();
       if(!expenseOptions.length)expenseOptions=[{code:'6075',name:'Office & Administrative Supplies'},{code:'6070',name:'Cleaning & Operating Supplies'}];
       if(!expenseOptions.some(function(x){return String(x.code)===String(ln.expenseAccount);}))ln.expenseAccount=String(expenseOptions[0].code);
-      typeCell='<div style="min-width:250px;"><span class="pz-lbl">Charge to Finance Books</span><select class="pz-in" data-pf="expenseAccount" data-pi="'+i+'">'+expenseOptions.map(function(x){return '<option value="'+esc(x.code)+'"'+(String(ln.expenseAccount)===String(x.code)?' selected':'')+'>'+esc(x.code)+' · '+esc(x.name||'')+'</option>';}).join('')+'</select><small class="tiny">Active 6000-series operating expenses; 6110 Cash Short / Over is controlled separately.</small></div>';
+      typeCell='<div class="purchase-expense-account"><span class="pz-lbl">Charge to Finance Books</span><select class="pz-in" data-pf="expenseAccount" data-pi="'+i+'" title="Active 6000-series operating expenses; 6110 Cash Short / Over is controlled separately.">'+expenseOptions.map(function(x){return '<option value="'+esc(x.code)+'"'+(String(ln.expenseAccount)===String(x.code)?' selected':'')+'>'+esc(x.code)+' · '+esc(x.name||'')+'</option>';}).join('')+'</select></div>';
       unitCell='<span style="color:var(--tl);font-size:.82rem;">use</span>';
     } else if(ln.mode==='new'){
       var newRecipeItem=!isSupplyType(ln.newType)&&(ln.newType==='consumable'||ln.recipeItem!==false);
@@ -42,7 +42,7 @@
     var costInput=(ln.costMode==='total'
       ?'<input class="pz-in" type="number" step="any" data-pf="lineTotal" data-pi="'+i+'" value="'+(ln.lineTotal!==''&&ln.lineTotal!=null?ln.lineTotal:'')+'" placeholder="line ₱" style="width:88px;text-align:right;"/>'
       :'<input class="pz-in" type="number" step="any" data-pf="unitCost" data-pi="'+i+'" value="'+(ln.unitCost!==''&&ln.unitCost!=null?ln.unitCost:'')+'" placeholder="₱ / unit" style="width:88px;text-align:right;"/>');
-    var prev=c?(assetLine?('Fixed asset · '+peso(c.lineTotal)+' · '+num(Number(ln.qty)||0)+' card(s) created after posting'):expenseLine?('Expense · '+peso(c.lineTotal)+' · no inventory created'):('+'+num(c.stockAdd)+' '+esc(c.stockUnit)+' · new avg '+peso(c.newCost)+'/'+esc(c.stockUnit)+' · line '+peso(c.lineTotal))):'';
+    var prev=esc(purchaseLinePreview(ln,c));
     return '<div class="purchase-line">'
       +'<div class="purchase-line-head"><div class="purchase-line-title"><span class="purchase-line-number">'+(i+1)+'</span><span>'+(assetLine?'Equipment / fixed asset':expenseLine?'One-time expense':'Stock item')+'</span></div><div class="purchase-line-mode">'
         +'<label style="cursor:pointer;margin-right:0.6rem;"><input type="radio" name="pmode'+i+'" data-pf="mode" data-pi="'+i+'" value="existing"'+(ln.mode==='existing'?' checked':'')+'/> existing item</label>'
@@ -56,7 +56,7 @@
         +(directLine?'':skuCell)
         +(directLine||ln.mode==='new'?'':brandCell)
         +'<div><span class="pz-lbl">Qty</span><input class="pz-in" type="number" step="any" data-pf="qty" data-pi="'+i+'" value="'+(ln.qty!==''&&ln.qty!=null?ln.qty:'')+'" placeholder="0" style="width:78px;text-align:right;"/></div>'
-        +'<div><span class="pz-lbl">Unit</span>'+unitCell+'</div>'
+        +(expenseLine?'':'<div><span class="pz-lbl">Unit</span>'+unitCell+'</div>')
         +'<div><span class="pz-lbl">Cost</span><div style="display:flex;gap:0.25rem;"><select class="pz-in" data-pf="costMode" data-pi="'+i+'" style="width:84px;font-size:0.72rem;"><option value="unit"'+(ln.costMode!=='total'?' selected':'')+'>₱/unit</option><option value="total"'+(ln.costMode==='total'?' selected':'')+'>total ₱</option></select>'+costInput+'</div></div>'
         +(directLine?'':'<div><span class="pz-lbl">Expiry (opt.)</span><input class="pz-in" type="date" data-pf="expiry" data-pi="'+i+'" value="'+esc(ln.expiry||'')+'" style="width:140px;"/></div><div><span class="pz-lbl">Lot # (opt.)</span><input class="pz-in" data-pf="lot" data-pi="'+i+'" value="'+esc(ln.lot||'')+'" placeholder="batch/lot" style="width:100px;"/></div>')
       +'</div>'

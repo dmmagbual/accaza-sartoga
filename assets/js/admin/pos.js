@@ -1069,7 +1069,7 @@ function bindPurchaseQuantityCorrection(root){
       var expenseOptions=purchaseExpenseAccounts();
       if(!expenseOptions.length)expenseOptions=[{code:'6075',name:'Office & Administrative Supplies'},{code:'6070',name:'Cleaning & Operating Supplies'}];
       if(!expenseOptions.some(function(x){return String(x.code)===String(ln.expenseAccount);}))ln.expenseAccount=String(expenseOptions[0].code);
-      typeCell='<div style="min-width:250px;"><span class="pz-lbl">Charge to Finance Books</span><select class="pz-in" data-pf="expenseAccount" data-pi="'+i+'">'+expenseOptions.map(function(x){return '<option value="'+esc(x.code)+'"'+(String(ln.expenseAccount)===String(x.code)?' selected':'')+'>'+esc(x.code)+' · '+esc(x.name||'')+'</option>';}).join('')+'</select><small class="tiny">Active 6000-series operating expenses; 6110 Cash Short / Over is controlled separately.</small></div>';
+      typeCell='<div class="purchase-expense-account"><span class="pz-lbl">Charge to Finance Books</span><select class="pz-in" data-pf="expenseAccount" data-pi="'+i+'" title="Active 6000-series operating expenses; 6110 Cash Short / Over is controlled separately.">'+expenseOptions.map(function(x){return '<option value="'+esc(x.code)+'"'+(String(ln.expenseAccount)===String(x.code)?' selected':'')+'>'+esc(x.code)+' · '+esc(x.name||'')+'</option>';}).join('')+'</select></div>';
       unitCell='<span style="color:var(--tl);font-size:.82rem;">use</span>';
     } else if(ln.mode==='new'){
       var newRecipeItem=!isSupplyType(ln.newType)&&(ln.newType==='consumable'||ln.recipeItem!==false);
@@ -1094,7 +1094,7 @@ function bindPurchaseQuantityCorrection(root){
     var costInput=(ln.costMode==='total'
       ?'<input class="pz-in" type="number" step="any" data-pf="lineTotal" data-pi="'+i+'" value="'+(ln.lineTotal!==''&&ln.lineTotal!=null?ln.lineTotal:'')+'" placeholder="line ₱" style="width:88px;text-align:right;"/>'
       :'<input class="pz-in" type="number" step="any" data-pf="unitCost" data-pi="'+i+'" value="'+(ln.unitCost!==''&&ln.unitCost!=null?ln.unitCost:'')+'" placeholder="₱ / unit" style="width:88px;text-align:right;"/>');
-    var prev=c?(assetLine?('Fixed asset · '+peso(c.lineTotal)+' · '+num(Number(ln.qty)||0)+' card(s) created after posting'):expenseLine?('Expense · '+peso(c.lineTotal)+' · no inventory created'):('+'+num(c.stockAdd)+' '+esc(c.stockUnit)+' · new avg '+peso(c.newCost)+'/'+esc(c.stockUnit)+' · line '+peso(c.lineTotal))):'';
+    var prev=esc(purchaseLinePreview(ln,c));
     return '<div class="purchase-line">'
       +'<div class="purchase-line-head"><div class="purchase-line-title"><span class="purchase-line-number">'+(i+1)+'</span><span>'+(assetLine?'Equipment / fixed asset':expenseLine?'One-time expense':'Stock item')+'</span></div><div class="purchase-line-mode">'
         +'<label style="cursor:pointer;margin-right:0.6rem;"><input type="radio" name="pmode'+i+'" data-pf="mode" data-pi="'+i+'" value="existing"'+(ln.mode==='existing'?' checked':'')+'/> existing item</label>'
@@ -1108,7 +1108,7 @@ function bindPurchaseQuantityCorrection(root){
         +(directLine?'':skuCell)
         +(directLine||ln.mode==='new'?'':brandCell)
         +'<div><span class="pz-lbl">Qty</span><input class="pz-in" type="number" step="any" data-pf="qty" data-pi="'+i+'" value="'+(ln.qty!==''&&ln.qty!=null?ln.qty:'')+'" placeholder="0" style="width:78px;text-align:right;"/></div>'
-        +'<div><span class="pz-lbl">Unit</span>'+unitCell+'</div>'
+        +(expenseLine?'':'<div><span class="pz-lbl">Unit</span>'+unitCell+'</div>')
         +'<div><span class="pz-lbl">Cost</span><div style="display:flex;gap:0.25rem;"><select class="pz-in" data-pf="costMode" data-pi="'+i+'" style="width:84px;font-size:0.72rem;"><option value="unit"'+(ln.costMode!=='total'?' selected':'')+'>₱/unit</option><option value="total"'+(ln.costMode==='total'?' selected':'')+'>total ₱</option></select>'+costInput+'</div></div>'
         +(directLine?'':'<div><span class="pz-lbl">Expiry (opt.)</span><input class="pz-in" type="date" data-pf="expiry" data-pi="'+i+'" value="'+esc(ln.expiry||'')+'" style="width:140px;"/></div><div><span class="pz-lbl">Lot # (opt.)</span><input class="pz-in" data-pf="lot" data-pi="'+i+'" value="'+esc(ln.lot||'')+'" placeholder="batch/lot" style="width:100px;"/></div>')
       +'</div>'
@@ -1177,9 +1177,17 @@ function bindPurchaseQuantityCorrection(root){
   root.querySelectorAll('[data-purchase-duplicate]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-purchase-duplicate'),p=purchaseInvoicesMap[id]||{},matches=Object.keys(purchaseInvoicesMap).filter(function(k){var x=purchaseInvoicesMap[k]||{};return k!==id&&!x.reversed&&String(x.ref||'').toLowerCase()===String(p.ref||'').toLowerCase()&&String(x.supplier||'').toLowerCase()===String(p.supplier||'').toLowerCase()&&Math.round(Number(x.total||0)*100)===Math.round(Number(p.total||0)*100);});if(matches.length!==1){alert('A single matching purchase could not be identified. Open Details and ask management to review the purchase IDs.');return;}var keepId=matches[0],keep=purchaseInvoicesMap[keepId]||{};F().run({title:'Reverse duplicate purchase',subtitle:'Reverse purchase '+id+' and keep '+keepId+'. The selected duplicate inventory will be removed; a shared payable will remain with the kept record or be detached if already reversed.',submitLabel:'Request approval & reverse',busyLabel:'Reversing…',fields:[{name:'reason',label:'Reversal reason',type:'textarea',required:true,maxLength:300,value:'Duplicate purchase entry'},{name:'confirmed',label:'I reviewed Details and confirmed this record is the duplicate; the other matching record must remain',type:'checkbox',required:true}]},function(v){return A().managerApproval('reverse_purchase',id,p.total,v.reason).then(function(ap){return A().managePurchaseCorrection({action:'reverse',invoiceId:id,keepInvoiceId:keepId,duplicate:true,reason:v.reason,approvalId:ap.approvalId});});}).then(function(){alert('Duplicate purchase reversed. The kept purchase remains. If its shared payable had already been reversed, use Repair payable on the kept row.');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not reverse duplicate: '+((e&&e.message)||e));});};});
 }
 if(!window.__purchaseCashBalanceListener){window.__purchaseCashBalanceListener=true;window.addEventListener('accaza:cash-balances-updated',function(){if(document.getElementById('tab-purchases')&&document.getElementById('tab-purchases').style.display!=='none')renderPurchases();});}
+/* One preview authority for a purchase line, used by the full render and by live typing, so an
+   expense or equipment line never shows the stock average-cost wording. Plain text; callers escape. */
+function purchaseLinePreview(ln,c){
+  if(!c)return '';
+  if(ln.mode==='asset')return 'Fixed asset · '+peso(c.lineTotal)+' · '+num(Number(ln.qty)||0)+' card(s) created after posting';
+  if(ln.mode==='expense')return 'Expense · '+peso(c.lineTotal)+(ln.expenseAccount?' · charged to '+ln.expenseAccount:'')+' · no inventory created';
+  return '+'+num(c.stockAdd)+' '+c.stockUnit+' · new avg '+peso(c.newCost)+'/'+c.stockUnit+' · line '+peso(c.lineTotal);
+}
 function purchUpdatePrev(){
   var P=window.__purch; if(!P)return; var tot=0;
-  P.lines.forEach(function(ln,i){var c=purchCalc(ln);if(c)tot+=c.lineTotal;var el=document.querySelector('[data-pprev="'+i+'"]');if(el)el.textContent=c?('+'+num(c.stockAdd)+' '+c.stockUnit+' · new avg '+peso(c.newCost)+'/'+c.stockUnit+' · line '+peso(c.lineTotal)):'';});
+  P.lines.forEach(function(ln,i){var c=purchCalc(ln);if(c)tot+=c.lineTotal;var el=document.querySelector('[data-pprev="'+i+'"]');if(el)el.textContent=purchaseLinePreview(ln,c);});
   var t=document.getElementById('purTotal');if(t)t.textContent=peso(Math.round((tot+Math.max(0,Number(P.inputVat)||0))*100)/100);
 }
 function postPurchases(){

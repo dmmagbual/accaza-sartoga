@@ -59,4 +59,8 @@ assert.equal(result.rows[1][7],40);
 assert.equal(result.rows[1][8],10);
 assert.equal(result.rows[1][9],390);
 assert.ok(html.indexOf('src/books/csv-exports.js')<html.indexOf('assets/js/books/app.js'),'CSV helpers must load before direct-link rendering');
+const ledgerShell=fs.readFileSync('src/books/app/10-application-shell.js','utf8');
+assert.ok(ledgerShell.includes('class="ledger-date-filter" data-drill-code=')&&ledgerShell.includes('id="drillFrom"')&&ledgerShell.includes('id="drillTo"'),'The account ledger must offer a From/To date filter');
+assert.ok(/drillDates\(code\)\{[\s\S]*?AccazaReportPeriod\.validate\(from,to\)[\s\S]*?AccazaReportPeriod\.set\(\{mode:'custom',customFrom:from,customTo:to\}\)/.test(ledgerShell),'Ledger dates must drive the shared, validated reporting period (one bounded journal query, one authority for entries, print and CSV)');
+assert.ok(ledgerShell.includes("const openLedger=document.querySelector('#modalBg.show #modal [data-drill-code]');if(openLedger)this.drill(openLedger.getAttribute('data-drill-code'));"),'An open account ledger must redraw once the new period has loaded');
 console.log('PASS: CSV escaping, formula protection, date filtering, journal detail and ledger opening/closing balances.');
