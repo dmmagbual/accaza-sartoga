@@ -98,6 +98,7 @@ The required handoff items in the existing rules (PowerShell block, build/cache 
 - Work through Phase 0 one approved step at a time.
 - Before each step, give Danilo only a concise implementation proposal: scope, reason, risk, affected areas, testing, rollback, and specialists required.
 - Wait for Danilo's approval before implementing each Phase 0 step.
+- The Purchases & Payments Consolidation Plan (`docs/plans/purchases-payments-consolidation-plan.md`, same text as project document `claude/purchases-payments-consolidation-plan-2026-10-07.md`, adopted 7 Oct 2026) is binding for Claude and Codex on any Purchases, Cash Payments or supplier-payment work. Follow its phases, Decision Gates, specialist matrix and execution protocol (superpowers skills + ultra-think at each gate). Change it only with Danilo's approval, recorded in its decisions log. Where it conflicts with the AP Integrity Remediation Plan, the AP plan wins.
 
 ## Firebase Cost Discipline
 
