@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import vm from 'node:vm';
 
 // Oct 2026: admin telemetry called recordClientTelemetry before a staff account was authorized
 // (login screen, or the public site's anonymous session on the same origin). The server refused
 // about 490 calls a day and the client retried every 30 s. This runs the real telemetry.js.
-const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),'..');
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const source=fs.readFileSync(path.join(root,'assets/js/admin/telemetry.js'),'utf8');
 function fail(message){throw new Error(message);}
 

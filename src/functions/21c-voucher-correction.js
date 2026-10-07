@@ -34,13 +34,15 @@ function assertVoucherDateNotFuture(value, now) {
 }
 // The exact change a manager approves. The server rebuilds it from the command, so an approval
 // granted for one change can never be spent on another (date, amount, category, payee ...).
-function voucherChangeFingerprint(voucherId, change) {
+function voucherChangeFingerprint(voucherId, change, action = "correct_petty_voucher") {
   const c = change || {};
-  const canonical = JSON.stringify([
-    "correct_petty_voucher:v1", financeText(voucherId, 160), Math.max(0, Math.floor(Number(c.expectedRev) || 0)),
+  const canonicalFields = [
+    `${financeText(action, 60) || "correct_petty_voucher"}:v1`, financeText(voucherId, 160), Math.max(0, Math.floor(Number(c.expectedRev) || 0)),
     financeText(c.date, 10), Financial.money(c.amount).toFixed(2), financeText(c.category, 80), financeText(c.payee, 160),
     financeText(c.supplierId, 160), financeText(c.purpose, 300), financeText(c.approverName, 160), financeText(c.reason, 500),
-  ]);
+  ];
+  if (action === "void_replace_legacy_petty_voucher") canonicalFields.push(financeText(c.fundingAccountId, 120));
+  const canonical = JSON.stringify(canonicalFields);
   return crypto.createHash("sha256").update(canonical).digest("hex");
 }
 function voucherLedgerRowLocked(row) {
@@ -104,6 +106,77 @@ async function voucherEffectivePosting(db, id, voucher) {
   const movement = (await db.ref(`/financialMovements/${movementId}`).get()).val();
   if (!movement || !Array.isArray(movement.lines) || !movement.lines.length) throw new HttpsError("failed-precondition", "The voucher's Finance Books posting is missing. Use Repair missing payments in Undeposited Collection first.");
   return {movementId, movement: Object.assign({id: movementId}, movement)};
+}
+
+function legacyMovementAccountNets(movement) {
+  const nets = {};
+  for (const line of movement && movement.lines || []) {
+    const account = financeText(line && line.account, 180);
+    if (!account) continue;
+    nets[account] = Financial.money(Number(nets[account] || 0) + Number(line.debit || 0) - Number(line.credit || 0));
+  }
+  return nets;
+}
+
+// Repairs the narrow pre-7-Oct failure safely: an approved bank-paid voucher whose earlier
+// correction attempts were balanced, per-account no-ops. The original is reversed on its own
+// accounting date and a new linked voucher is posted on the requested date against the SAME bank.
+// The no-op journals remain immutable in Finance Books, but are removed from the operational
+// Undeposited Collection projection because they never changed that account's balance.
+async function voidReplaceLegacyPettyVoucher(db, actor, data, id, voucher, next) {
+  const now = Date.now(), legacyIds = Object.values(voucher.correctionMovementIds || {}).filter(Boolean).map((value) => financeKey(value, "Legacy correction movement"));
+  const replacementId = financeKey(`legacy_replace_${id}`, "Replacement voucher ID"), reverseId = `petty_void_${id}`, postId = `petty_${replacementId}`;
+  const existing = await Promise.all([db.ref(`/financialMovements/${reverseId}`).get(), db.ref(`/financialMovements/${postId}`).get(), db.ref(`/pettyCashVouchers/${replacementId}`).get()]);
+  const existingReplacement = existing[2].val() || {};
+  if (existing[0].exists() && existing[1].exists() && existingReplacement.status === "approved" && voucher.replacedByVoucherId === replacementId) return {voucherId:id,replacementVoucherId:replacementId,replacementVoucherNo:financeText(existingReplacement.voucherNo,60),action:"void_replace_legacy",duplicate:true};
+  if (existing[0].exists() || existing[1].exists() || existingReplacement.status || voucher.voided === true) throw new HttpsError("failed-precondition", "This legacy replacement is incomplete or the voucher changed. Stop and review the linked Finance Books entries before retrying.");
+  if (voucher.status !== "approved" || !legacyIds.length || voucher.effectivePosting) throw new HttpsError("failed-precondition", "Only an active voucher corrected under the earlier method can use guided void and replace.");
+  if (legacyIds.length > 20) throw new HttpsError("failed-precondition", "This voucher has too many legacy corrections for automatic repair. Review it in Finance Books.");
+  const type = financeText(voucher.transactionType, 40) || "expense";
+  if (!["expense", "owner_withdrawal"].includes(type) || voucher.returnedAt || Object.keys(voucher.allocations || {}).length) throw new HttpsError("failed-precondition", "This legacy voucher has linked activity and needs a manual Finance Books review before replacement.");
+  const funding = advanceFundingAccount(voucher);
+  if (funding.kind !== "account") throw new HttpsError("failed-precondition", "Guided legacy replacement currently requires the original bank or e-wallet funding account. Other funding sources need manual review.");
+  const originalId = `petty_${id}`, movementSnaps = await Promise.all([db.ref(`/financialMovements/${originalId}`).get()].concat(legacyIds.map((movementId) => db.ref(`/financialMovements/${movementId}`).get()))), original = movementSnaps[0].val();
+  if (!original || !Array.isArray(original.lines) || !BooksBridge.linesBalanced(original.lines) || original.sourceType !== "pettyVoucher" || financeText(original.sourceId,160) !== id || original.reversedByMovementId) throw new HttpsError("failed-precondition", "The original cash-payment posting is missing, changed, unbalanced, or already reversed.");
+  const originalFundingNet = Financial.money((original.lines || []).reduce((sum, line) => sum + (line.account === funding.account ? Number(line.debit || 0) - Number(line.credit || 0) : 0), 0)), originalPaid = Financial.money(-originalFundingNet);
+  if (!(originalPaid > 0)) throw new HttpsError("failed-precondition", "The original posting does not show an outflow from the voucher's bank account.");
+  for (let index = 0; index < legacyIds.length; index += 1) {
+    const movement = movementSnaps[index + 1].val(), movementId = legacyIds[index];
+    if (!movement || !Array.isArray(movement.lines) || !BooksBridge.linesBalanced(movement.lines) || movement.sourceType !== "pettyVoucher" || financeText(movement.sourceId,160) !== id) throw new HttpsError("failed-precondition", `Legacy correction ${movementId} is missing, unbalanced, or belongs to another voucher.`);
+    const nets = legacyMovementAccountNets(movement);
+    if (Object.values(nets).some((value) => Math.abs(Financial.money(value)) > 0.009)) throw new HttpsError("failed-precondition", "A legacy correction changed an account balance. Automatic replacement stopped so Finance Books, bank and custody can be reconciled manually.");
+  }
+  const expectedOriginalPosting = revolvingFundPosting(voucher), originalNets = legacyMovementAccountNets(original), nonZeroOriginalAccounts = Object.keys(originalNets).filter((account) => Math.abs(Financial.money(originalNets[account])) > 0.009);
+  if (Math.abs(originalPaid - Financial.money(voucher.amount)) > 0.009 || Math.abs(Financial.money(originalNets[expectedOriginalPosting.account]) - originalPaid) > 0.009 || nonZeroOriginalAccounts.length !== 2 || !nonZeroOriginalAccounts.includes(expectedOriginalPosting.account) || !nonZeroOriginalAccounts.includes(funding.account)) throw new HttpsError("failed-precondition", "The original journal does not exactly match this voucher's expense and BDO payment. Automatic replacement stopped for manual Finance Books review.");
+  const ledgerSnap = await db.ref("/cfLedger").orderByChild("linkId").equalTo(id).limitToLast(100).get(), ledgerRows = Object.values(ledgerSnap.val() || {}), originalDate = financeDateFromTimestamp(Number(original.occurredAt) || now);
+  if (ledgerRows.length >= 100) throw new HttpsError("failed-precondition", "This voucher has too many bank-register entries for automatic replacement.");
+  if (ledgerRows.some(voucherLedgerRowLocked)) throw new HttpsError("failed-precondition", "This BDO payment is already reconciled. Un-reconcile it before guided void and replace.");
+  const originalRows = ledgerRows.filter((row) => financeText(row && row.movementId,160) === originalId);
+  if (originalRows.length !== 1 || originalRows[0].accountId !== funding.id || originalRows[0].dir !== "out" || Math.abs(Financial.money(originalRows[0].amount) - originalPaid) > 0.009 || financeText(originalRows[0].date,10) !== originalDate) throw new HttpsError("failed-precondition", "The original BDO register entry does not match Finance Books. Repair that link before replacement.");
+  const replacementDate = assertVoucherDateNotFuture(data.date, now);
+  await assertAccountingPeriodOpen(db, originalDate, "reversing the legacy cash voucher");
+  await assertAccountingPeriodOpen(db, replacementDate, "posting the replacement cash voucher");
+  const changeHash = voucherChangeFingerprint(id, {expectedRev:Math.max(0,Math.floor(Number(voucher.correctionRevision)||0)),date:replacementDate,amount:next.amount,category:next.category,payee:next.payee,supplierId:"",purpose:next.purpose,approverName:financeText(voucher.approverName,160),reason:next.reason,fundingAccountId:funding.id}, "void_replace_legacy_petty_voucher");
+  const approval = await claimManagerApproval(db, data, "void_replace_legacy_petty_voucher", id, next.amount, `void_replace_legacy_${id}`, null, changeHash), approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole, approvedRole = financeText(approval.record.approvedRole,20), selfApproved = approval.record.approvedBy === actor.uid;
+  if (selfApproved && approvedRole !== "superadmin") {await db.ref().update(approval.usedWrites);throw new HttpsError("permission-denied", "A legacy replacement must be approved by a different manager account; only a Super Admin may self-approve.");}
+  if (replacementDate.slice(0,7) !== originalDate.slice(0,7) && !["superadmin","admin"].includes(approvedRole)) {await db.ref().update(approval.usedWrites);throw new HttpsError("permission-denied", "Moving a legacy voucher to another month needs Admin or Super Admin approval.");}
+  const replacementSeed = Object.assign({}, existingReplacement, {voucherNo:financeText(existingReplacement.voucherNo,60)}), replacementVoucherNo = await cashVoucherNumber(db, replacementSeed, replacementId);
+  const posting = revolvingFundPosting({transactionType:type,category:next.category,recipient:next.payee,requesterName:next.payee,purpose:next.purpose}), reversal = Financial.reverseMovement(Object.assign({id:originalId},original), `${posting.movementType}_void`, "Guided legacy voucher replacement");
+  Object.assign(reversal,{occurredAt:Number(original.occurredAt)||cashPaymentOccurredAt(voucher),actorName:approvedBy,approvalId:approval.id,voucherNo:financeText(voucher.voucherNo,60),payee:financeText(voucher.recipient||voucher.requesterName,160),purpose:financeText(voucher.purpose,300),fundingAccountId:funding.id,reversesMovementId:originalId,legacyReplacementId:replacementId});
+  const replacementHasReceipt = !!(voucher.receiptImg || voucher.hasReceipt), replacement = {voucherNo:replacementVoucherNo,date:replacementDate,amount:next.amount,transactionType:type,category:next.category,supplierId:"",supplierName:"",requesterName:next.payee,recipient:next.payee,purpose:next.purpose,approverName:financeText(voucher.approverName,160),fundingAccountId:funding.id,status:"approved",createdAt:now,createdBy:actor.uid,approvedAt:now,approvedBy,approvedByUid:approval.record.approvedBy,approvalId:approval.id,replacesVoucherId:id,replacesVoucherNo:financeText(voucher.voucherNo,60),hasReceipt:replacementHasReceipt,receiptSourceVoucherId:replacementHasReceipt?id:"",cashCustodyStatus:"not_applicable",legacyReplacement:{sourceVoucherId:id,sourceVoucherNo:financeText(voucher.voucherNo,60),reason:next.reason,repairedAt:now,schemaVersion:1}};
+  const corrected = Financial.movement(posting.movementType,"pettyVoucher",replacementId,[Financial.line(posting.account,next.amount,0,posting.label),Financial.line(funding.account,0,next.amount,"Paid from selected cash account")],{occurredAt:cashPaymentOccurredAt(replacement),approvedAt:now,actorName:approvedBy,approvalId:approval.id,voucherNo:replacementVoucherNo,category:next.category,payee:next.payee,purpose:next.purpose,fundingAccountId:funding.id,replacesMovementId:originalId,legacyReplacement:true});
+  const writes = Object.assign({}, approval.usedWrites, {
+    [`pettyCashVouchers/${id}/voided`]:true,[`pettyCashVouchers/${id}/voidedAt`]:now,[`pettyCashVouchers/${id}/voidReason`]:next.reason,[`pettyCashVouchers/${id}/voidedBy`]:approvedBy,[`pettyCashVouchers/${id}/voidedByUid`]:approval.record.approvedBy,[`pettyCashVouchers/${id}/voidApprovalId`]:approval.id,[`pettyCashVouchers/${id}/replacedByVoucherId`]:replacementId,[`pettyCashVouchers/${id}/replacedByVoucherNo`]:replacementVoucherNo,[`pettyCashVouchers/${id}/legacyReplacement`]:{replacementVoucherId:replacementId,replacementVoucherNo,reverseMovementId:reverseId,replacementMovementId:postId,reason:next.reason,repairedAt:now,legacyCorrectionMovementIds:legacyIds,schemaVersion:1},
+    [`pettyCashVouchers/${replacementId}`]:replacement,
+    [`financialMovements/${originalId}/reversedByMovementId`]:reverseId,
+    [`books/journal/${originalId}/reversedByMovementId`]:reverseId,[`books/journal/${originalId}/correctionReplacementId`]:postId,
+    [`cfLedger/fm_${reverseId}`]:cashLedgerRecord({date:originalDate,accountId:funding.id,dir:"in",category:"Legacy cash voucher void",amount:originalPaid,party:financeText(voucher.recipient||voucher.requesterName,160),ref:financeText(voucher.voucherNo,60)},reverseId,reversal,actor),
+    [`cfLedger/fm_${postId}`]:cashLedgerRecord({date:replacementDate,accountId:funding.id,dir:"out",category:posting.label,amount:next.amount,party:next.payee,ref:replacementVoucherNo},postId,corrected,actor),
+    [`operationalAudit/${now}_${id}_legacy_replace`]:operationalAuditRecord("void_replace_legacy_petty_voucher","pettyVoucher",id,actor,{approvalId:approval.id,approvedBy,approvedRole,selfApproved,originalVoucherNo:financeText(voucher.voucherNo,60),replacementVoucherId:replacementId,replacementVoucherNo,originalMovementId:originalId,reverseMovementId:reverseId,replacementMovementId:postId,legacyCorrectionMovementIds:legacyIds,originalDate,replacementDate,originalAmount:originalPaid,replacementAmount:next.amount,fundingAccountId:funding.id,reason:next.reason,accounting:"Reverse the proven original bank posting on its own date; retain neutral legacy journals as audit evidence; post one linked replacement against the same bank."}),
+  });
+  legacyIds.forEach((movementId) => {writes[`undepositedLedgerPageIndex/${movementId}`] = null;});
+  const committed = await commitFinancialSet(db,[{id:reverseId,movement:reversal},{id:postId,movement:corrected}],actor,writes);
+  return {voucherId:id,replacementVoucherId:replacementId,replacementVoucherNo,action:"void_replace_legacy",date:replacementDate,amount:next.amount,fundingAccountId:funding.id,duplicate:committed.duplicate};
 }
 
 async function correctApprovedPettyVoucher(db, actor, data, id, voucher, next, custodyClaims) {

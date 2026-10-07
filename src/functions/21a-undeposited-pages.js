@@ -11,6 +11,7 @@ function undepositedMovementProjection(id, movement) {
     outgoing = Financial.money(outgoing + Financial.money(line.credit));
   });
   if (!(incoming > 0) && !(outgoing > 0)) return null;
+  if (financeText(movement.type, 80) === "petty_cash_payment_correction" && incoming > 0 && outgoing > 0 && Math.abs(Financial.money(incoming - outgoing)) < 0.005) return null;
   return {
     id,
     occurredAt: Number(movement.occurredAt || movement.postedAt || 0),
@@ -223,7 +224,7 @@ function undepositedCursor(data, field) {
   return {value, id, field};
 }
 
-async function readUndepositedIndexPage(baseRef, field, data, fromValue, toValue) {
+async function readUndepositedIndexPage(db, baseRef, field, data, fromValue, toValue) {
   const cursor = undepositedCursor(data, field);
   let query = baseRef.orderByChild(field);
   if (Number.isFinite(fromValue)) query = query.startAt(fromValue);
@@ -233,7 +234,14 @@ async function readUndepositedIndexPage(baseRef, field, data, fromValue, toValue
   let rows = Object.entries(snap.val() || {}).map(([id, row]) => Object.assign({id}, row || {}));
   rows.sort((a, b) => (Number(b[field]) - Number(a[field])) || String(b.id).localeCompare(String(a.id)));
   if (cursor) rows = rows.filter((row) => !(Number(row[field]) === cursor.value && row.id === cursor.id));
-  const hasMore = rows.length > UNDEPOSITED_PAGE_SIZE;
+  const rawHasMore = rows.length > UNDEPOSITED_PAGE_SIZE, neutralLegacyIds = rows.filter((row) => row.type === "petty_cash_payment_correction" && Number(row.inAmount) > 0 && Number(row.outAmount) > 0 && Math.abs(Financial.money(Number(row.inAmount) - Number(row.outAmount))) < 0.005).map((row) => row.id);
+  if (neutralLegacyIds.length) {
+    const repairedAt = Date.now(), writes = {[`operationalAudit/${repairedAt}_neutral_legacy_undeposited_projection`]:operationalAuditRecord("remove_neutral_legacy_correction_from_undeposited_projection","undepositedLedgerPageIndex","neutralLegacyCorrections",{uid:"server",role:"server"},{movementIds:neutralLegacyIds,accounting:"Projection cleanup only. Posted Finance Books journals remain immutable; these movements net to zero in Undeposited Collection."})};
+    neutralLegacyIds.forEach((movementId) => {writes[`undepositedLedgerPageIndex/${movementId}`] = null;});
+    await db.ref().update(writes);
+    rows = rows.filter((row) => !neutralLegacyIds.includes(row.id));
+  }
+  const hasMore = rawHasMore || rows.length > UNDEPOSITED_PAGE_SIZE;
   rows = rows.slice(0, UNDEPOSITED_PAGE_SIZE);
   const last = rows[rows.length - 1];
   return {rows,hasMore,nextCursor:hasMore && last ? {value:Number(last[field])||0,id:last.id} : null,pageSize:UNDEPOSITED_PAGE_SIZE};
@@ -248,16 +256,17 @@ exports.getUndepositedPage = onCall(
     if (kind === "voucher") {
       const id = financeKey(data.id, "Voucher ID"), row = (await db.ref(`/pettyCashVouchers/${id}`).get()).val();
       if (!row) throw new HttpsError("not-found", "Cash-payment voucher was not found.");
-      return {id,voucherNo:financeText(row.voucherNo,60),category:financeText(row.category,80),recipient:financeText(row.recipient||row.requesterName,160),purpose:financeText(row.purpose,300),approvedBy:financeText(row.approvedBy||row.approverName,160),status:row.voided?"voided":financeText(row.status,40),receiptImg:financeText(row.receiptImg||(row.hasReceipt===true?(await db.ref(`/pettyCashReceipts/${id}/image`).get()).val():""),1500000)};
+      const receiptSourceId=row.receiptSourceVoucherId?financeKey(row.receiptSourceVoucherId,"Receipt source voucher"):id,receiptImg=row.receiptImg||(row.hasReceipt===true?((await db.ref(`/pettyCashReceipts/${receiptSourceId}/image`).get()).val()||(receiptSourceId!==id?(await db.ref(`/pettyCashVouchers/${receiptSourceId}/receiptImg`).get()).val():"")):"");
+      return {id,voucherNo:financeText(row.voucherNo,60),category:financeText(row.category,80),recipient:financeText(row.recipient||row.requesterName,160),purpose:financeText(row.purpose,300),approvedBy:financeText(row.approvedBy||row.approverName,160),status:row.voided?"voided":financeText(row.status,40),receiptImg:financeText(receiptImg,1500000)};
     }
     if (kind !== "ledger" && kind !== "custody") throw new HttpsError("invalid-argument", "Choose the ledger or custody page.");
     await ensureUndepositedPageIndexes(db);
-    if (kind === "custody") return readUndepositedIndexPage(db.ref("/cashCustodyOpenIndex"), "closedAt", data);
+    if (kind === "custody") return readUndepositedIndexPage(db, db.ref("/cashCustodyOpenIndex"), "closedAt", data);
     const from = financeText(data.from, 10), to = financeText(data.to, 10);
     if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) throw new HttpsError("invalid-argument", "From date is invalid.");
     if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new HttpsError("invalid-argument", "To date is invalid.");
     if (from && to && from > to) throw new HttpsError("invalid-argument", "From date cannot be after To date.");
     const fromValue = from ? Date.parse(`${from}T00:00:00+08:00`) : undefined, toValue = to ? Date.parse(`${to}T23:59:59.999+08:00`) : undefined;
-    return readUndepositedIndexPage(db.ref("/undepositedLedgerPageIndex"), "occurredAt", data, fromValue, toValue);
+    return readUndepositedIndexPage(db, db.ref("/undepositedLedgerPageIndex"), "occurredAt", data, fromValue, toValue);
   },
 );

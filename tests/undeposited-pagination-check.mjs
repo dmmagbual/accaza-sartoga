@@ -12,6 +12,7 @@ ok(server.includes('const UNDEPOSITED_PAGE_SIZE = 25'),'Server page size must re
 ok(client.includes('var PAGE_SIZE=25'),'Client page size must remain 25');
 ok(server.includes('limitToLast(UNDEPOSITED_PAGE_SIZE + (cursor ? 2 : 1))'),'Cursor pages need a look-ahead after excluding the inclusive cursor');
 ok(server.includes('rows = rows.filter((row) => !(Number(row[field]) === cursor.value && row.id === cursor.id))'),'Inclusive cursor must be removed to prevent duplicates');
+ok(server.includes('remove_neutral_legacy_correction_from_undeposited_projection')&&server.includes('neutralLegacyIds'),'Verified zero-net legacy corrections must self-remove from the operational Undeposited projection without deleting Finance Books history');
 for(const marker of ['undepositedLedgerPageIndex','cashCustodyOpenIndex','pettyVoucherAttentionIndex','syncUndepositedLedgerPageIndex','syncPettyVoucherAttentionIndex'])ok(server.includes(marker),`Missing compact projection safeguard: ${marker}`);
 ok(!server.includes('exports.syncCashCustodyPageIndex = onValueWritten'),'The stale custody projection trigger must stay removed; financial writes update custody and its projection atomically.');
 for(const marker of ['"undepositedLedgerPageIndex"','"cashCustodyOpenIndex"','"pettyVoucherAttentionIndex"','"undepositedPageIndexMeta"'])ok(rules.includes(marker),`Protected rules node missing: ${marker}`);
