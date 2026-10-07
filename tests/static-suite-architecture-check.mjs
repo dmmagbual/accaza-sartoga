@@ -27,7 +27,7 @@ for(const file of expected){
   if(Buffer.byteLength(source,'utf8')>47500){const message=`tests/static/${file} is ${Buffer.byteLength(source,'utf8')} bytes of its 50 KB bound. Split it before adding more guards.`;console.warn('STATIC MODULE SIZE WARNING: '+message);if(process.env.GITHUB_ACTIONS)console.log(`::warning file=tests/static/${file}::${message}`);}
   if(file!=='00-context.mjs'&&!runner.includes(`./static/${file}`))throw new Error(`Static-check runner omits domain: ${file}`);
 }
-if((combined.match(/\bfail\(/g)||[]).length!==560)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 560');
+if((combined.match(/\bfail\(/g)||[]).length!==561)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 561');
 if((combined.match(/spawnSync\(/g)||[]).length!==33)throw new Error('Static-check executable-check inventory changed from the reviewed baseline of 33');
 const guardSource=combined.split(/\r?\n/).filter(line=>/\bfail\(|spawnSync\(/.test(line)).map(line=>line.trim()).join('\n');
 const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
@@ -72,6 +72,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // Oct 2026 (Purchases & Payments Task 0.1): the existing role-landing guard now pins Finance
 // to the consolidated Purchases & Payments group first, with Cash & Controls as its fallback.
 // Same single guard, widened for the approved navigation; count and executable checks unchanged.
-if(guardDigest!=='e0c62cbf1c6d0cf093a01e58449fe121988ce95103fe0ac02600327a28ab88c3')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (custody-trigger deployment): one new guard requires the workflow to retire only the
+// known obsolete custody projection function, and to fail closed when list/delete does not succeed.
+// Reviewed guard count 560 -> 561.
+if(guardDigest!=='a4e2138387a999d7d669ef31b9cf5bb99931cfd3914ef788c4b2d4a289d0ae5d')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
-console.log('PASS: all 560 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
+console.log('PASS: all 561 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
