@@ -276,12 +276,33 @@ async function nextDocumentNumber(db, prefix, year) {
   return `${prefix}-${year}-${String(seq).padStart(4, "0")}`;
 }
 // A purchase's own short reference, PUR-YYYY-NNNN, from the same counter as the finance
-// document numbers. Assigned once at post time; returns the existing one on any retry so a
-// number is never burned twice. The caller stamps it onto the purchase and its bill.
-async function purchaseDocumentNumber(db, invoice, dateStr) {
+// document numbers. Purchases have their own series (cash payments use PV numbers).
+// A number is given only to a purchase that has been entered: the server calls this once the
+// saved purchase record exists, and the number is kept ON that record at once, before the
+// payment or bill is posted. So a posting that fails afterwards and is retried reuses the same
+// number instead of drawing a new one, and a draft that is never entered never gets one.
+// Firebase cost: one small read of the purchase's documentNo and one small transaction, only
+// the first time a purchase is numbered. Callers without an invoiceId keep the old behaviour.
+async function purchaseDocumentNumber(db, invoice, dateStr, invoiceId) {
   const existing = financeText(invoice && invoice.documentNo, 40); if (existing) return existing;
   const year = (financeText(dateStr, 10) || financeDateFromTimestamp(Date.now())).slice(0, 4);
-  return await nextDocumentNumber(db, "PUR", year);
+  if (!invoiceId) return await nextDocumentNumber(db, "PUR", year);
+  const numberRef = db.ref(`/purchaseInvoices/${financeKey(invoiceId, "Purchase invoice ID")}/documentNo`);
+  const saved = financeText((await numberRef.get()).val(), 40);
+  if (saved) { if (invoice) invoice.documentNo = saved; return saved; }
+  const drawn = await nextDocumentNumber(db, "PUR", year); if (!drawn) return "";
+  const kept = await numberRef.transaction((current) => current || drawn, undefined, false);
+  const number = financeText(kept && kept.snapshot && kept.snapshot.val(), 40) || drawn;
+  if (invoice) invoice.documentNo = number;
+  return number;
+}
+// The supplier's own invoice/receipt reference, or "" when the purchase has none. Purchases saved
+// without one used to store their internal key (pinv_…, PENDING-pinv_…) or, once billed, their own
+// PUR number as the reference; none of those is a supplier reference.
+function purchaseSupplierRef(invoice, invoiceId) {
+  const ref = financeText(invoice && invoice.ref, 120);
+  if (!ref || ref === financeText(invoiceId, 160) || /^(PENDING-)?pinv_/i.test(ref) || ref === financeText(invoice && invoice.documentNo, 40)) return "";
+  return ref;
 }
 // Movements known to exist for the duration of one maintenance run (ensureFinancialLedger).
 // Financial movements are never deleted, so a movement present when the run started is

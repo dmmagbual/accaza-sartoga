@@ -24,7 +24,7 @@ for(const marker of ['createManagerApproval','postFinancialCommand','suspense_ad
 if(/\bonValue\s*\(/.test(bridge))throw new Error('The conversion bridge must not attach a listener to the whole conversions node');
 const livePos=fs.readFileSync('assets/js/books/live-pos.mjs','utf8');
 if(!livePos.includes('supplierAdvanceConversionId:n.supplierAdvanceConversionId||""'))throw new Error('Journal entries no longer carry the conversion flag the conversion action reads');
-must(html,'assets/js/books/suspense-advance.mjs?v=147','Conversion bridge is not loaded by Books');
+must(html,'assets/js/books/suspense-advance.mjs?v=148','Conversion bridge is not loaded by Books');
 must(sw,"'/assets/js/books/suspense-advance.mjs'",'Conversion bridge is not cached');
 if(!manifest.authoritativeFiles.includes('assets/js/books/suspense-advance.mjs'))throw new Error('Conversion bridge is not release-authoritative');
 must(rules,'"suspenseAdvanceConversions"','Conversion status is not readable to signed-in Admin Books users');

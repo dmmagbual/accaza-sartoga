@@ -16,48 +16,78 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const failures = [];
 const check = (condition, message) => { if (!condition) failures.push(message); };
 
-/* ---------- 1. the real helper allocates once and never twice ---------- */
+/* ---------- 1. the real helpers: a number only for an entered purchase, kept on its record ---------- */
 const sales = read('src/functions/40-sales-finance.js');
 const block = sales.slice(sales.indexOf('async function purchaseDocumentNumber('), sales.indexOf('// Movements known to exist'));
-check(block, 'purchaseDocumentNumber must be defined in 40-sales-finance.js.');
+check(block.includes('function purchaseSupplierRef('), 'purchaseDocumentNumber and purchaseSupplierRef must be defined together in 40-sales-finance.js.');
 const financeText = (v, n) => String(v == null ? '' : v).trim().slice(0, n || 160);
+const financeKey = (v) => String(v);
 const financeDateFromTimestamp = () => '2026-07-01';
-let counter = 0; const seen = [];
-const nextDocumentNumber = async (db, prefix, year) => { counter += 1; const no = `${prefix}-${year}-${String(counter).padStart(4, '0')}`; seen.push(no); return no; };
-const purchaseDocumentNumber = new Function('financeText', 'financeDateFromTimestamp', 'nextDocumentNumber', `${block}\nreturn purchaseDocumentNumber;`)(financeText, financeDateFromTimestamp, nextDocumentNumber);
-const fresh = await purchaseDocumentNumber({}, {date: '2026-07-01'}, '2026-07-01');
-check(fresh === 'PUR-2026-0001', `A new purchase must get PUR-2026-0001 (got ${fresh}).`);
-const second = await purchaseDocumentNumber({}, {date: '2026-07-01'}, '2026-07-01');
-check(second === 'PUR-2026-0002', 'Each new purchase must get the next number.');
-const retry = await purchaseDocumentNumber({}, {documentNo: 'PUR-2026-0002'}, '2026-07-01');
-check(retry === 'PUR-2026-0002' && counter === 2, 'A purchase that already has a number must keep it — the counter must not advance on a retry.');
-const noDate = await purchaseDocumentNumber({}, {}, '');
-check(noDate === 'PUR-2026-0003', 'A purchase with no date must still get a number (year from the fallback clock).');
+let counter = 0;
+const nextDocumentNumber = async (db, prefix, year) => { counter += 1; return `${prefix}-${year}-${String(counter).padStart(4, '0')}`; };
+const helpers = new Function('financeText', 'financeKey', 'financeDateFromTimestamp', 'nextDocumentNumber', `${block}\nreturn {purchaseDocumentNumber, purchaseSupplierRef};`)(financeText, financeKey, financeDateFromTimestamp, nextDocumentNumber);
+const {purchaseDocumentNumber, purchaseSupplierRef} = helpers;
+/* An in-memory RTDB with the Admin SDK's transaction shape: first pass on an empty cache (null);
+   undefined there aborts; otherwise it re-runs on the server value. */
+function fakeDb(data) {
+  const at = (p) => p.replace(/^\//, '').split('/').filter(Boolean);
+  const get = (p) => at(p).reduce((n, k) => (n == null ? undefined : n[k]), data);
+  const set = (p, v) => { const k = at(p), last = k.pop(); let n = data; for (const x of k) n = n[x] = n[x] || {}; n[last] = v; };
+  return {data, ref: (p) => ({
+    get: async () => ({val: () => (get(p) === undefined ? null : get(p))}),
+    transaction: async (fn) => { const cur = get(p); let next = fn(null); if (next === undefined) return {committed: false, snapshot: {val: () => null}}; if (cur !== undefined) next = fn(cur); if (next === undefined) return {committed: false, snapshot: {val: () => cur}}; set(p, next); return {committed: true, snapshot: {val: () => next}}; },
+  })};
+}
+const db = fakeDb({purchaseInvoices: {pinv_a: {ref: '', date: '2026-07-01'}, pinv_b: {ref: 'SI-55', date: '2026-07-01'}}});
+const first = await purchaseDocumentNumber(db, Object.assign({}, db.data.purchaseInvoices.pinv_a), '2026-07-01', 'pinv_a');
+check(first === 'PUR-2026-0001' && db.data.purchaseInvoices.pinv_a.documentNo === 'PUR-2026-0001', `An entered purchase must get its number and keep it on its record at once (got ${first}).`);
+/* The posting failed after numbering (e.g. Undeposited Collection busy) and is retried with a stale snapshot. */
+const retried = await purchaseDocumentNumber(db, {ref: '', date: '2026-07-01'}, '2026-07-01', 'pinv_a');
+check(retried === 'PUR-2026-0001' && counter === 1, 'A retry of the same purchase must reuse its number, never draw a new one.');
+const other = await purchaseDocumentNumber(db, Object.assign({}, db.data.purchaseInvoices.pinv_b), '2026-07-01', 'pinv_b');
+check(other === 'PUR-2026-0002', 'The next entered purchase gets the next number.');
+const known = await purchaseDocumentNumber(db, {documentNo: 'PUR-2026-0002'}, '2026-07-01', 'pinv_b');
+check(known === 'PUR-2026-0002' && counter === 2, 'A purchase that already has a number must keep it without reading or drawing.');
+const legacy = await purchaseDocumentNumber({}, {}, '');
+check(legacy === 'PUR-2026-0003', 'A caller without a purchase id keeps the old behaviour.');
+/* Two postings racing for one purchase: the loser's draw is discarded, both see one number. */
+const race = fakeDb({purchaseInvoices: {pinv_r: {}}});
+const [r1, r2] = await Promise.all([purchaseDocumentNumber(race, {}, '2026-07-01', 'pinv_r'), purchaseDocumentNumber(race, {}, '2026-07-01', 'pinv_r')]);
+check(r1 === r2 && race.data.purchaseInvoices.pinv_r.documentNo === r1, 'Concurrent postings of one purchase must agree on a single number.');
+check(purchaseSupplierRef({ref: 'pinv_x'}, 'pinv_x') === '' && purchaseSupplierRef({ref: 'PENDING-pinv_x'}, 'pinv_x') === '' && purchaseSupplierRef({ref: 'PUR-2026-0009', documentNo: 'PUR-2026-0009'}, 'pinv_x') === '' && purchaseSupplierRef({ref: ''}, 'x') === '', 'The internal key, a pending placeholder or the PUR number is never a supplier reference.');
+check(purchaseSupplierRef({ref: 'SI-55'}, 'pinv_b') === 'SI-55', 'A real supplier invoice reference is kept.');
 
-/* ---------- 2. every terminal posting path stamps the number on the purchase (and its bill) ---------- */
+/* ---------- 2. every posting path numbers the purchase BEFORE any payment work and uses it as the reference ---------- */
 const onAccount = read('src/functions/43a-purchase-payable.js');
-check((onAccount.match(/purchaseDocumentNumber\(db,\s*invoice,\s*date\)/g) || []).length === 3, 'All three on-account write branches (manual link, auto-match, new payable) must stamp the number.');
-check(onAccount.includes('payable.documentNo=purchaseNo'), 'A newly created supplier bill must carry the purchase number.');
-check(onAccount.includes('writes[`payables/${selectedId}/documentNo`]=purchaseNo') && onAccount.includes('linkedWrites[`payables/${payableId}/documentNo`]=purchaseNo'), 'A bill linked to the purchase must carry the purchase number.');
+check((onAccount.match(/purchaseDocumentNumber\(/g) || []).length === 1 && onAccount.includes('const purchaseNo = await purchaseDocumentNumber(db, invoice, date, invoiceId); if (!ref) ref = financeText(purchaseNo || `PENDING-${invoiceId}`, 120);'), 'The on-account path must number the purchase once, after preview, and use it as the bill reference when the supplier gave none.');
+check(onAccount.indexOf('if (data.preview === true) return') < onAccount.indexOf('purchaseDocumentNumber('), 'A preview must never draw a number.');
+check(onAccount.includes('data.invoiceRef || purchaseSupplierRef(invoice, invoiceId) || (provisional ? `PENDING-${invoiceId}` : "")'), 'The bill must use the supplier reference first; a pending invoice keeps its pending placeholder.');
+check(onAccount.includes('payable.documentNo=purchaseNo') && onAccount.includes('writes[`payables/${selectedId}/documentNo`]=purchaseNo') && onAccount.includes('linkedWrites[`payables/${payableId}/documentNo`]=purchaseNo'), 'Every bill linked to the purchase must carry the purchase number.');
 check((onAccount.match(/writes\[`purchaseInvoices\/\$\{invoiceId\}\/documentNo`\]=purchaseNo|linkedWrites\[`purchaseInvoices\/\$\{invoiceId\}\/documentNo`\]=purchaseNo/g) || []).length === 3, 'Every on-account branch must stamp the number on the purchase record.');
-
 const cash = read('src/functions/42b-financial-command-transactions.js');
-check(cash.includes('const purchaseNo=await purchaseDocumentNumber(db,invoice,date);if(purchaseNo)writes[`purchaseInvoices/${invoiceId}/documentNo`]=purchaseNo;'), 'A cash / advance purchase must stamp the number.');
-check(cash.includes('if(ownerTreatment==="reimburse"&&writes[`payables/${reimbursementId}`])writes[`payables/${reimbursementId}`].documentNo=purchaseNo;'), 'An owner-funded purchase must stamp the number (and its reimbursement bill).');
+const paid = cash.slice(cash.indexOf('} else if (action === "purchase_paid") {'), cash.indexOf('} else if (action === "personal_business_cost")'));
+check(paid.indexOf('const purchaseNo=await purchaseDocumentNumber(db,invoice,date,invoiceId),purchaseRef=purchaseSupplierRef(invoice,invoiceId)||purchaseNo;') > 0 && paid.indexOf('purchaseDocumentNumber(') < paid.indexOf('claimCustodyPool('), 'A cash / advance purchase must be numbered before the Undeposited Collection claim, so a refused payment still leaves the purchase numbered.');
+check(paid.includes('reference:purchaseRef,payee:financeText(invoice.supplier,160)}') && paid.includes('ref:purchaseRef, auto:true}') && paid.includes('ref:financeText(purchaseRef,120),allocatedAt:now'), 'The payment movement, cash ledger and advance allocation must carry the purchase reference, never the internal key.');
+const owner = cash.slice(cash.indexOf('} else if (action === "purchase_owner_funded") {'), cash.indexOf('} else if (action === "purchase_paid") {'));
+check(owner.includes('const purchaseNo=await purchaseDocumentNumber(db,invoice,date,invoiceId),purchaseRef=purchaseSupplierRef(invoice,invoiceId)||purchaseNo;') && owner.includes('ref:financeText(purchaseRef,120),status:"open"') && owner.includes('writes[`payables/${reimbursementId}`].documentNo=purchaseNo;'), 'An owner-funded purchase must be numbered and use it on its reimbursement bill.');
+check(!/purchaseDocumentNumber\(db,\s*invoice,\s*date\)/.test(cash + onAccount), 'No posting path may draw a number without the purchase id (that would burn a new number on every retry).');
 
-/* ---------- 3. the deployed bundle carries the stamping and the helper ---------- */
+/* ---------- 3. the deployed bundles carry it ---------- */
 const bundle = read('functions/index.js');
-check(bundle.includes('async function purchaseDocumentNumber(') && (bundle.match(/await purchaseDocumentNumber\(db,\s*invoice,\s*date\)/g) || []).length >= 5, 'The deployed functions bundle must contain the helper and every stamping call (run npm run build:artifacts).');
+check(bundle.includes('function purchaseSupplierRef(') && (bundle.match(/purchaseDocumentNumber\(db,\s*invoice,\s*date,\s*invoiceId\)/g) || []).length === 3, 'The deployed functions bundle must contain the helpers and every numbering call (run npm run build:artifacts).');
+const bridge = read('functions/lib/books-bridge.js');
+check(bridge.includes('if(purchaseNo)return {ref:purchaseNo,'), 'The Books journal must use the purchase number as the entry reference.');
 
-/* ---------- 4. displays show the number where they fell back to the raw key ---------- */
+/* ---------- 4. displays: the purchase number, plus the supplier reference — never the raw key ---------- */
 const purchasesUi = read('src/admin/pos/11h-purchase-workspace.js');
-check(purchasesUi.includes("esc(p.ref||p.documentNo||p.id)"), 'The Purchases history row must show the document number before the raw id.');
-check(purchasesUi.includes("esc(p.ref||p.documentNo||id)"), 'The purchase details popup must show the document number before the raw id.');
-check(purchasesUi.includes("esc(a.ref||p.ref||p.documentNo||id)"), 'The applied-advance list must show the document number before the raw id.');
+check(purchasesUi.includes("'</td><td>'+purchaseRefHtml(p,p.id)+'</td><td>'") && purchasesUi.includes("esc(purchaseRefText(p,id))") && purchasesUi.includes("esc(p.documentNo||purchaseSupplierRef(a,id)||purchaseSupplierRef(p,id)||id)"), 'Purchases history, details and advance allocations must show the purchase number first.');
+check(!/esc\(p\.ref\|\|p\.documentNo/.test(purchasesUi), 'No Purchases display may put the stored reference (possibly the raw key) before the number.');
 const booksSub = read('src/books/app/40-subledgers.js');
-check((booksSub.match(/esc\(d\.ref\|\|d\.documentNo\|\|d\.id\)/g) || []).length === 2, 'Books Payables rows and the trace list must show the document number before the raw id.');
-check(booksSub.includes("esc(d.ref||d.documentNo||id)") && booksSub.includes("esc(invoice.ref||invoice.documentNo||d.purchaseInvoiceId)"), 'The Books payable modal must show the document number before the raw id.');
-check(read('assets/js/books/app.js').includes("esc(d.ref||d.documentNo||d.id)"), 'The Books runtime bundle must contain the display change (run npm run build:artifacts).');
+check((booksSub.match(/esc\(billRefLabel\(d,d\.id\)\)/g) || []).length === 2 && booksSub.includes('esc(billRefLabel(d,id))') && booksSub.includes('esc(billRefLabel(invoice,d.purchaseInvoiceId))'), 'Books Payables rows, trace list and modal must use billRefLabel.');
+check(read('assets/js/books/app.js').includes('function billRefLabel(d,id)'), 'The Books runtime bundle must contain the display change (run npm run build:artifacts).');
+check(purchasesUi.includes("ref:purchaseSupplierRef(inv,inv.id),"), 'A corrected (amended) purchase must carry only the supplier reference forward, never the reversed purchase’s internal key or number.');
+const posting = read('src/admin/pos/20a-purchase-posting.js');
+check(posting.includes("effectiveRef=(P.ref||'').trim()||(P.pay==='pending'?('PENDING-'+invoiceId):'');") && !posting.includes("('PENDING-'+invoiceId):invoiceId)"), 'A new purchase must never store its internal key as the supplier reference.');
 
 /* ---------- 5. the backfill: Super-Admin only, idempotent, registered, wired ---------- */
 const backfill = read('src/functions/44c-purchase-doc-numbers.js');
@@ -79,7 +109,7 @@ check(read('tests/download-read-guard-check.mjs').includes("'backfillPurchaseDoc
 
 /* ---------- 6. already-formatted references and internal keys are untouched ---------- */
 check(sales.includes('const DOCUMENT_PREFIXES = ['), 'The finance document-number prefixes (PV/RV/PI/…) must be unchanged.');
-check(purchasesUi.includes("esc(p.ref||p.documentNo||p.id)") && !purchasesUi.includes("esc(p.documentNo||p.ref"), 'A supplier’s own typed reference must still take precedence over the document number.');
+check(purchasesUi.includes("<div class=\"pz-sub\">Supplier ref '+esc(sup)+'</div>"), 'A supplier’s own typed reference must still be shown next to the purchase number.');
 
 if (failures.length) { console.error(`FAIL: ${failures.length} purchase document-number check(s)\n- ${failures.join('\n- ')}`); process.exit(1); }
-console.log('PASS: every purchase gets a short PUR-YYYY-NNNN number at post time on both the purchase and its bill, the Purchases list and Books Payables show it instead of the raw key, supplier references are untouched, and the Super-Admin backfill numbers older purchases idempotently.');
+console.log('PASS: an entered purchase gets one PUR-YYYY-NNNN number, kept on its record before payment and reused on retry; it is the purchase reference in Purchases, Books journal and Payables with the supplier reference alongside; the raw key is never stored or shown; the backfill numbers older purchases idempotently.');
