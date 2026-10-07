@@ -17,7 +17,7 @@ function undepositedMovementProjection(id, movement) {
     type: financeText(movement.type, 80),
     sourceId: financeText(movement.sourceId, 160),
     sourceType: financeText(movement.sourceType, 80),
-    reference: financeText(movement.reference || movement.documentNo, 120),
+    reference: financeText(movement.reference || movement.documentNo || movement.voucherNo, 120),
     documentNo: financeText(movement.documentNo, 60),
     voucherNo: financeText(movement.voucherNo, 60),
     category: financeText(movement.category, 80),

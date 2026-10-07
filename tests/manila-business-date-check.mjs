@@ -96,7 +96,7 @@ function zoneProbe(){
   const usageMonth=new Function('usageEntries',`${fn(usage,'usageThisMonth')}\nreturn usageThisMonth;`)(()=>[{ts:Date.parse(EVE)},{ts:Date.parse(NEW_YEAR)}]);
   eq(at(NEW_YEAR,()=>usageMonth().length),1,'internal usage this month after midnight');
 
-  const fund=read('src/admin/register/40-revolving-fund.js'),voucher=fund.slice(fund.indexOf('function nextVoucherNo('),fund.indexOf('function renderPetty(')),keyExpr=(/var key=([^;]+);/.exec(voucher)||[])[1];
+  const voucherModule=read('src/functions/21-staff-advance-liquidation.js'),voucher=voucherModule.slice(voucherModule.indexOf('async function cashVoucherNumber('),voucherModule.indexOf('// End of cash voucher numbering.')),keyExpr=(/const key = ([^;]+);/.exec(voucher)||[])[1];
   if(!keyExpr)fail('petty cash voucher month expression not found');
   const voucherMonth=new Function(`return ${keyExpr};`);
   eq(at(EVE,voucherMonth),'202612','petty cash voucher month on New Year\'s Eve');
