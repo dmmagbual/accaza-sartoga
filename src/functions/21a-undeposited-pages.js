@@ -130,6 +130,22 @@ async function verifyUndepositedIndexes(db, indexRows, missingRows) {
   return result;
 }
 
+// A failed/delayed voucher trigger can leave an already approved voucher in the pending index.
+// Recheck only the bounded rows displayed by the control snapshot; never scan voucher history.
+async function verifyPendingVoucherIndex(db, pendingRows) {
+  const stale = [];
+  await Promise.all(Object.keys(pendingRows || {}).map(async (id) => {
+    const snap = await db.ref(`/pettyCashVouchers/${financeKey(id, "Voucher ID")}`).get();
+    const row = snap.val();
+    if (!row || row.voided === true || row.status !== "pending") stale.push(id);
+  }));
+  if (!stale.length) return [];
+  const auditKey = db.ref("/operationalAudit").push().key, writes = {[`operationalAudit/${auditKey}`]: operationalAuditRecord("repair_voucher_attention_index", "pettyVoucher", "pendingIndex", {uid: "server", role: "server"}, {voucherIds: stale, accounting: "Only stale pending attention flags were removed; voucher and Finance Books postings were not changed."})};
+  stale.forEach((id) => { writes[`pettyVoucherAttentionIndex/pending/${financeKey(id, "Voucher ID")}`] = null; });
+  await db.ref().update(writes);
+  return stale;
+}
+
 function pettyVoucherAttentionProjection(id, row) {
   return {id,voucherNo:financeText(row.voucherNo,60),date:financeText(row.date,10),recipient:financeText(row.recipient||row.requesterName,160),purpose:financeText(row.purpose,300),category:financeText(row.category,80),amount:Financial.money(row.amount),status:financeText(row.status,40),voided:row.voided===true};
 }
@@ -185,7 +201,7 @@ exports.getUndepositedControlSnapshot = onCall(
     const openIndex=openCustodySnap.val()||{};if(Object.keys(openIndex).length>500)throw new HttpsError("resource-exhausted","Undeposited Collection has more than 500 open custody rows. Deposit or archive older settled rows before opening this control.");
     const verification=verificationSnap.val()||{},verifyDue=Date.now()-Number(verification.checkedAt||0)>=600000||missingVoucherSnap.exists(),verified=verifyDue?await verifyUndepositedIndexes(db,openIndex,missingVoucherSnap.val()||{}):{checked:false,custodyRowsRepaired:0,missingVouchersCleared:0,index:openIndex,falseMissing:[]};
     const custodyRemaining=Financial.money(Object.values(verified.index||{}).reduce((sum,row)=>sum+Number(row&&row.remaining||0),0));
-    const pendingVouchers=Object.values(pendingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided).sort((a,b)=>String(b.date).localeCompare(String(a.date))),missingApprovedVouchers=Object.values(missingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided&&!(verified.falseMissing||[]).includes(row.id));
+    const pendingIndex=pendingVoucherSnap.val()||{},stalePendingVoucherIds=await verifyPendingVoucherIndex(db,pendingIndex),pendingVouchers=Object.values(pendingIndex).filter((row)=>row&&!row.voided&&!stalePendingVoucherIds.includes(row.id)).sort((a,b)=>String(b.date).localeCompare(String(a.date))),missingApprovedVouchers=Object.values(missingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided&&!(verified.falseMissing||[]).includes(row.id));
     const custodyGap=Financial.money(undeposited-custodyRemaining);let custodyGapCandidates=[];
     if(custodyGap>0){const candidateSnap=await db.ref("/undepositedLedgerPageIndex").orderByChild("netAmount").equalTo(custodyGap).limitToLast(25).get();custodyGapCandidates=Object.entries(candidateSnap.val()||{}).map(([id,row])=>Object.assign({id},row||{})).filter((row)=>!row.reversalOf&&!row.reversedByMovementId);}
     return{undepositedBalance:undeposited,revolvingBalance:revolving,custodyRemaining,custodyGap,pendingVouchers,missingApprovedVouchers,missingApprovedVoucherIds:missingApprovedVouchers.map((row)=>row.id),custodyGapCandidates,retirementPosted:retirementSnap.exists(),openingPosted:openingSnap.exists(),indexVerification:{checked:verified.checked,custodyRowsRepaired:verified.custodyRowsRepaired,missingVouchersCleared:verified.missingVouchersCleared},calculatedAt:Date.now(),authority:"server_all_time",pageSize:UNDEPOSITED_PAGE_SIZE};
