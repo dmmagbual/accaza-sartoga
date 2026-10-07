@@ -9,6 +9,11 @@ const statements=fs.readFileSync('src/books/app/30-statements-pages.js','utf8');
 const controls=fs.readFileSync('src/books/app/40-subledgers.js','utf8');
 const pagination=fs.readFileSync('assets/js/shared/report-pagination.js','utf8');
 const admin=fs.readFileSync('admin.html','utf8');
+const purchaseUi=fs.readFileSync('src/admin/pos/11h-purchase-workspace.js','utf8');
+const cashPaymentUi=fs.readFileSync('src/admin/register/40-revolving-fund.js','utf8');
+const payoutUi=fs.readFileSync('src/admin/analytics/40-platform-payout-reconciliation.js','utf8');
+const discrepancyUi=fs.readFileSync('src/admin/register/30-discrepancy-controls.js','utf8');
+const inventoryUi=fs.readFileSync('src/admin/pos/10-inventory.js','utf8');
 
 assert(!/id="periodSel"|>All time</i.test(books),'Finance Books must not expose a global or All Time period selector');
 assert(shell.includes("selected.group==='controls'"),'Controls must suppress report filters');
@@ -21,6 +26,26 @@ assert(!controls.includes('id="bc_date"')&&controls.includes('var date=todayStr(
 assert(/var SIZE=50/.test(pagination),'Report pagination must cap each page at 50 records');
 assert(pagination.includes("classList.contains('total-row')")&&pagination.includes("classList.contains('tot')"),'Pagination must preserve report summary rows');
 assert(books.includes('assets/js/shared/report-pagination.js')&&admin.includes('assets/js/shared/report-pagination.js'),'Pagination must load in both Finance Books and Admin');
+for(const [name,source] of [['Purchases',purchaseUi],['Cash Payments',cashPaymentUi],['Platform Payouts',payoutUi],['Reconciliation Issues',discrepancyUi],['Stock Items',inventoryUi]])assert(source.includes('data-report-page-size="20"'),`${name} history must display 20 records per page`);
+assert(purchaseUi.includes('rows=allRows.filter(function(p){return showReversedPurchases||!p.reversed;})')&&!purchaseUi.includes('}).slice(0,100)'),'Purchases must paginate every locally loaded purchase after applying the existing reversed-record filter');
+assert(payoutUi.includes('data-report-page-group')&&payoutUi.includes("window.AccazaReportPagination.reset('admin-tab-payouts')"),'Payout audit rows must stay attached to each payout and filters must reset the page');
+assert(pagination.includes('Number(table.dataset.reportPageSize)||SIZE')&&pagination.includes('data-report-page-group'),'Shared pagination must support opt-in page sizes and grouped detail rows');
+
+let currentNav=null;const buttons=[],paginationDocument={addEventListener(){},createElement(){const nav={className:'',innerHTML:'',querySelectorAll(){return buttons;},remove(){currentNav=null;}};return nav;}},paginationWindow={};
+buttons.push({disabled:false,onclick:null},{disabled:false,onclick:null});
+vm.runInNewContext(pagination,{window:paginationWindow,document:paginationDocument});
+const makeRows=count=>{const result=[];for(let i=0;i<count;i++){const group='p'+i;for(let j=0;j<2;j++)result.push({group:group,hidden:false,classList:{contains:()=>false},hasAttribute:()=>false,getAttribute:name=>name==='data-report-page-group'?group:null});}return result;};
+const table={tBodies:[{rows:makeRows(21)}],dataset:{reportPageSize:'20'},closest:()=>null,parentNode:{querySelector:()=>currentNav,appendChild:nav=>{currentNav=nav;}}};
+paginationWindow.AccazaReportPagination.apply({querySelectorAll:()=>[table]},'test');
+assert.equal(table.tBodies[0].rows.filter(row=>!row.hidden).length,40,'Page one must show 20 records including each attached detail row');
+buttons[1].onclick();
+assert.equal(table.tBodies[0].rows.filter(row=>!row.hidden).length,2,'Page two must show the remaining record and its attached detail row');
+paginationWindow.AccazaReportPagination.reset('test');paginationWindow.AccazaReportPagination.apply({querySelectorAll:()=>[table]},'test',true);
+assert.equal(table.tBodies[0].rows.filter(row=>!row.hidden).length,40,'Resetting a filtered list must return it to page one');
+table.tBodies[0].rows=makeRows(20);paginationWindow.AccazaReportPagination.apply({querySelectorAll:()=>[table]},'test',true);
+assert.equal(table.tBodies[0].rows.filter(row=>!row.hidden).length,40,'A 20-record list must show all records without splitting details');assert.equal(currentNav,null,'A single-page list must not keep pagination controls');
+table.tBodies[0].rows=[];paginationWindow.AccazaReportPagination.apply({querySelectorAll:()=>[table]},'test',true);
+assert.equal(currentNav,null,'An empty list must not render pagination controls');
 
 const events={},storage=new Map(),win={AccazaDate:{key:()=> '2026-09-06'},localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},addEventListener:(name,fn)=>(events[name]??=[]).push(fn),dispatchEvent:event=>(events[event.type]||[]).forEach(fn=>fn(event))};
 vm.runInNewContext(fs.readFileSync('assets/js/shared/report-period.js','utf8'),{window:win,localStorage:win.localStorage,CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}},Date,Intl});
