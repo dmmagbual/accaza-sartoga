@@ -90,6 +90,20 @@ jobs:
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
+      - name: Retire obsolete custody projection trigger
+        run: |
+          deployed_functions_json="$(mktemp)"
+          trap 'rm -f "$deployed_functions_json"' EXIT
+          firebase functions:list --project accaza-sartoga --json > "$deployed_functions_json"
+          function_state="$(node -e 'const fs=require("node:fs");const doc=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(doc.status!=="success"||!Array.isArray(doc.result))throw new Error("Firebase functions:list returned an invalid response.");const matches=doc.result.filter(fn=>fn.id==="syncCashCustodyPageIndex"&&fn.region==="asia-southeast1");if(matches.length>1)throw new Error("More than one matching custody projection trigger was found.");process.stdout.write(matches.length?"present":"absent");' "$deployed_functions_json")"
+          if [ "$function_state" = "present" ]; then
+            firebase functions:delete syncCashCustodyPageIndex --region asia-southeast1 --project accaza-sartoga --force --non-interactive
+          else
+            echo "syncCashCustodyPageIndex is already absent; continuing."
+          fi
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
       # App Check enforcement is deliberately NOT configured here. A step's env: is shell
       # environment for the firebase CLI process only and is never forwarded into a deployed
       # function's runtime configuration, and functions/.env.accaza-sartoga is git-ignored so
