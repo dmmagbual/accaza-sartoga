@@ -11,7 +11,8 @@
    - an approved voucher's date / amount / category is corrected by reversing its CURRENT posting on
      its own date and re-posting on the new date, in one write, against its real funding account
      (bank register rows included; Undeposited custody moved only by the difference);
-   - both months must be open, reconciled bank rows and legacy-corrected vouchers are refused,
+   - both months must be open, reconciled bank rows are refused, and a neutral legacy correction
+     can be voided and replaced through one guided, linked, same-bank workflow;
      cash vouchers can never be future-dated (create / approve / correct);
    - the approval binds the exact change and reason, a non-Super-Admin cannot approve their own
      correction, a cross-month move needs Admin+, and a Super Admin's self-approval is audited only;
@@ -42,7 +43,9 @@ const world = () => ({
     V_HAND: bankVoucher({voucherNo: 'PV-202610-0018', date: '2026-10-01', fundingAccountId: 'cash_on_hand', purpose: 'CASH-PAID OFFICE SUPPLIES'}),
     V_POOL: bankVoucher({voucherNo: 'PV-202610-0017', amount: 3843, date: '2026-09-29', fundingAccountId: 'undeposited', purpose: 'PAYMENT FOR FUEL'}),
     V_PEND: bankVoucher({voucherNo: '', status: 'pending', date: '2026-10-28'}),
-    V_LEGACY: bankVoucher({voucherNo: 'PV-202609-0009', correctionRevision: 1, correctionMovementIds: {1: 'petty_correct_V_LEGACY_1'}}),
+    V_LEGACY: bankVoucher({voucherNo: 'PV-202610-0015', correctionRevision: 2, correctionMovementIds: {1: 'petty_correct_V_LEGACY_1', 2: 'petty_correct_V_LEGACY_2'}, hasReceipt: true}),
+    V_LEGACY_BAD: bankVoucher({voucherNo: 'PV-202610-0016', correctionRevision: 1, correctionMovementIds: {1: 'petty_correct_V_LEGACY_BAD_1'}, category: 'marketing'}),
+    V_LEGACY_MALFORMED: bankVoucher({voucherNo: 'PV-202610-0019', correctionRevision: 1, correctionMovementIds: {1: 'petty_correct_V_LEGACY_MALFORMED_1'}}),
     V_RECON: bankVoucher({voucherNo: 'PV-202610-0011', date: '2026-10-03'}),
     V_AUG: bankVoucher({voucherNo: 'PV-202608-0003', date: '2026-08-15'}),
     V_STAFF: bankVoucher({voucherNo: 'PV-202610-0012', transactionType: 'staff_advance', conversionMovementId: 'controlled'}),
@@ -54,12 +57,24 @@ const world = () => ({
     petty_V_POOL: {type: 'petty_cash_expense', sourceType: 'pettyVoucher', sourceId: 'V_POOL', occurredAt: at('2026-09-29'), lines: [L('expense:office_supplies', 3843, 0), L('asset:cash_awaiting_deposit', 0, 3843)]},
     petty_V_RECON: {type: 'petty_cash_expense', sourceType: 'pettyVoucher', sourceId: 'V_RECON', occurredAt: at('2026-10-03'), lines: [L('expense:office_supplies', 1400, 0), L('asset:cash_account:acc_bank', 0, 1400)]},
     petty_V_AUG: {type: 'petty_cash_expense', sourceType: 'pettyVoucher', sourceId: 'V_AUG', occurredAt: at('2026-08-15'), lines: [L('expense:office_supplies', 1400, 0), L('asset:cash_account:acc_bank', 0, 1400)]},
+    petty_V_LEGACY: {type: 'petty_cash_expense', sourceType: 'pettyVoucher', sourceId: 'V_LEGACY', occurredAt: at('2026-10-28'), lines: [L('expense:office_supplies', 1400, 0), L('asset:cash_account:acc_bank', 0, 1400)]},
+    petty_correct_V_LEGACY_1: {type: 'petty_cash_payment_correction', sourceType: 'pettyVoucher', sourceId: 'V_LEGACY', occurredAt: NOW, lines: [L('asset:cash_awaiting_deposit', 1400, 0), L('expense:office_supplies', 0, 1400), L('expense:office_supplies', 1400, 0), L('asset:cash_awaiting_deposit', 0, 1400)]},
+    petty_correct_V_LEGACY_2: {type: 'petty_cash_payment_correction', sourceType: 'pettyVoucher', sourceId: 'V_LEGACY', occurredAt: NOW, lines: [L('asset:cash_awaiting_deposit', 1400, 0), L('expense:office_supplies', 0, 1400), L('expense:office_supplies', 1400, 0), L('asset:cash_awaiting_deposit', 0, 1400)]},
+    petty_V_LEGACY_BAD: {type: 'petty_cash_expense', sourceType: 'pettyVoucher', sourceId: 'V_LEGACY_BAD', occurredAt: at('2026-10-28'), lines: [L('expense:office_supplies', 1400, 0), L('asset:cash_account:acc_bank', 0, 1400)]},
+    petty_correct_V_LEGACY_BAD_1: {type: 'petty_cash_payment_correction', sourceType: 'pettyVoucher', sourceId: 'V_LEGACY_BAD', occurredAt: NOW, lines: [L('asset:cash_awaiting_deposit', 1400, 0), L('expense:office_supplies', 0, 1400), L('expense:marketing', 1400, 0), L('asset:cash_awaiting_deposit', 0, 1400)]},
+    petty_V_LEGACY_MALFORMED: {type: 'petty_cash_expense', sourceType: 'pettyVoucher', sourceId: 'V_LEGACY_MALFORMED', occurredAt: at('2026-10-28'), lines: [L('expense:office_supplies', 1400, 0), L('expense:other_expense', 10, 0), L('asset:cash_account:acc_bank', 0, 1410)]},
+    petty_correct_V_LEGACY_MALFORMED_1: {type: 'petty_cash_payment_correction', sourceType: 'pettyVoucher', sourceId: 'V_LEGACY_MALFORMED', occurredAt: NOW, lines: [L('asset:cash_awaiting_deposit', 1400, 0), L('expense:office_supplies', 0, 1400), L('expense:office_supplies', 1400, 0), L('asset:cash_awaiting_deposit', 0, 1400)]},
+    petty_correct_OTHER_1: {type: 'petty_cash_payment_correction', sourceType: 'pettyVoucher', sourceId: 'OTHER', occurredAt: NOW - 1, lines: [L('asset:cash_awaiting_deposit', 50, 0), L('expense:office_supplies', 0, 50), L('expense:office_supplies', 50, 0), L('asset:cash_awaiting_deposit', 0, 50)]},
   },
   cfLedger: {
     fm_petty_V_BANK: {accountId: 'acc_bank', dir: 'out', amount: 1400, date: '2026-10-28', movementId: 'petty_V_BANK', source: 'pettyVoucher', linkId: 'V_BANK'},
     fm_petty_V_HAND: {accountId: 'cash_on_hand', dir: 'out', amount: 1400, date: '2026-10-01', movementId: 'petty_V_HAND', source: 'pettyVoucher', linkId: 'V_HAND'},
     fm_petty_V_RECON: {accountId: 'acc_bank', dir: 'out', amount: 1400, date: '2026-10-03', movementId: 'petty_V_RECON', source: 'pettyVoucher', linkId: 'V_RECON', bankReconciled: true},
+    fm_petty_V_LEGACY: {accountId: 'acc_bank', dir: 'out', amount: 1400, date: '2026-10-28', movementId: 'petty_V_LEGACY', source: 'pettyVoucher', linkId: 'V_LEGACY'},
+    fm_petty_V_LEGACY_BAD: {accountId: 'acc_bank', dir: 'out', amount: 1400, date: '2026-10-28', movementId: 'petty_V_LEGACY_BAD', source: 'pettyVoucher', linkId: 'V_LEGACY_BAD'},
+    fm_petty_V_LEGACY_MALFORMED: {accountId: 'acc_bank', dir: 'out', amount: 1410, date: '2026-10-28', movementId: 'petty_V_LEGACY_MALFORMED', source: 'pettyVoucher', linkId: 'V_LEGACY_MALFORMED'},
   },
+  pettyCashReceipts: {V_LEGACY: {meta: {createdAt: NOW - 1000, bytes: 30}, image: 'data:image/png;base64,AAAA'}},
   cashCustody: {
     C1: {shiftId: 'C1', amount: 5000, paidOutAmount: 4000, depositedAmount: 0, remaining: 1000, closedAt: 1, status: 'partially_paid_out'},
     C2: {shiftId: 'C2', amount: 2000, paidOutAmount: 0, depositedAmount: 0, remaining: 2000, closedAt: 2, status: 'awaiting_deposit'},
@@ -70,6 +85,11 @@ const world = () => ({
     C1: {id: 'C1', amount: 5000, paidOutAmount: 4000, depositedAmount: 0, remaining: 1000, closedAt: 1},
     C2: {id: 'C2', amount: 2000, paidOutAmount: 0, depositedAmount: 0, remaining: 2000, closedAt: 2},
     J: {id: 'J', amount: 2997, paidOutAmount: 332.99, depositedAmount: 0, remaining: 2664.01, closedAt: 0},
+  },
+  undepositedLedgerPageIndex: {
+    petty_correct_V_LEGACY_1: {id: 'petty_correct_V_LEGACY_1', occurredAt: NOW, type: 'petty_cash_payment_correction', sourceId: 'V_LEGACY', sourceType: 'pettyVoucher', inAmount: 1400, outAmount: 1400, netAmount: 0},
+    petty_correct_V_LEGACY_2: {id: 'petty_correct_V_LEGACY_2', occurredAt: NOW, type: 'petty_cash_payment_correction', sourceId: 'V_LEGACY', sourceType: 'pettyVoucher', inAmount: 1400, outAmount: 1400, netAmount: 0},
+    petty_correct_OTHER_1: {id: 'petty_correct_OTHER_1', occurredAt: NOW - 1, type: 'petty_cash_payment_correction', sourceId: 'OTHER', sourceType: 'pettyVoucher', inAmount: 50, outAmount: 50, netAmount: 0},
   },
   pettyVoucherPostingIndex: {V_BANK: 'petty_V_BANK', V_POOL: 'petty_V_POOL'},
   pettyVoucherAttentionIndex: {missing: {V_BANK: {id: 'V_BANK', voucherNo: 'PV-202610-0015', amount: 1400, status: 'approved'}}},
@@ -86,7 +106,14 @@ async function approve(voucherId, change, {by = 'super_uid', role = 'superadmin'
   await db.ref(`financialApprovals/${id}`).set({action: 'correct_petty_voucher', sourceId: voucherId, amount: bound.amount, approvedBy: by, approvedRole: role, approvedName: name, approvedAt: NOW, expiresAt: NOW + 300000, changeHash: fingerprint(voucherId, bound)});
   return id;
 }
+async function approveLegacy(voucherId, change, {by = 'super_uid', role = 'superadmin', name = 'SuperdaD'} = {}) {
+  const id = `approval_t${++approvals}`, action = 'void_replace_legacy_petty_voucher';
+  const bound = Object.assign({approverName: '', reason: 'Wrong date entered'}, change);
+  await db.ref(`financialApprovals/${id}`).set({action, sourceId: voucherId, amount: bound.amount, approvedBy: by, approvedRole: role, approvedName: name, approvedAt: NOW, expiresAt: NOW + 300000, changeHash: fingerprint(voucherId, bound, action)});
+  return id;
+}
 const correct = (uid, voucherId, cmd, approvalId) => F.managePettyVoucher({auth: {uid, token: {}}, data: Object.assign({action: 'correct', voucherId, reason: 'Wrong date entered', approverName: ''}, cmd, {approvalId})});
+const replaceLegacy = (uid, voucherId, cmd, approvalId) => F.managePettyVoucher({auth: {uid, token: {}}, data: Object.assign({action: 'void_replace_legacy', voucherId, reason: 'Wrong date entered', approverName: ''}, cmd, {approvalId})});
 const refused = async (promise, pattern, label) => { await assert.rejects(promise, (e) => pattern.test(String(e && e.message)), label); };
 const fundingNet = (mv, account) => (mv.lines || []).reduce((s, l) => s + (l.account === account ? Number(l.debit || 0) - Number(l.credit || 0) : 0), 0);
 const balanced = (mv) => Math.abs((mv.lines || []).reduce((s, l) => s + Number(l.debit || 0) - Number(l.credit || 0), 0)) < 0.005;
@@ -148,6 +175,29 @@ await refused(correct('super_uid', 'V_RECON', {date: '2026-08-20', amount: 1400,
 change = Object.assign({expectedRev: 0, date: '2026-10-04', amount: 1400}, base);
 await refused(correct('super_uid', 'V_RECON', {date: '2026-10-04', amount: 1400, category: 'office_supplies', payee: 'MARIA', purpose: base.purpose}, await approve('V_RECON', change)), /reconciled/, 'a bank-reconciled payment cannot be re-posted');
 await refused(correct('super_uid', 'V_LEGACY', {date: '2026-10-04', amount: 1400, category: 'office_supplies', payee: 'MARIA', purpose: base.purpose}, 'approval_none'), /earlier method|missing, expired/, 'a voucher corrected under the old single-movement method is refused');
+const legacyBefore1 = structuredClone(await val('financialMovements/petty_correct_V_LEGACY_1')), legacyBefore2 = structuredClone(await val('financialMovements/petty_correct_V_LEGACY_2'));
+const legacyChange = Object.assign({expectedRev: 2, date: '2026-09-28', amount: 1400, fundingAccountId: 'acc_bank'}, base);
+const legacyApproval = await approveLegacy('V_LEGACY', legacyChange), legacyResult = await replaceLegacy('super_uid', 'V_LEGACY', {date:'2026-09-28',amount:1400,category:'office_supplies',payee:'MARIA',purpose:base.purpose}, legacyApproval);
+assert.equal(legacyResult.date, '2026-09-28'); assert.equal(legacyResult.fundingAccountId, 'acc_bank');
+const legacySource = await val('pettyCashVouchers/V_LEGACY'), legacyReplacement = await val(`pettyCashVouchers/${legacyResult.replacementVoucherId}`), legacyVoid = await val('financialMovements/petty_void_V_LEGACY'), legacyPost = await val(`financialMovements/petty_${legacyResult.replacementVoucherId}`);
+assert.equal(legacySource.voided, true); assert.equal(legacySource.replacedByVoucherId, legacyResult.replacementVoucherId); assert.equal(legacyReplacement.replacesVoucherId, 'V_LEGACY');
+assert.equal((await val('financialMovements/petty_V_LEGACY')).reversedByMovementId, 'petty_void_V_LEGACY', 'the original posting is atomically linked to its reversal');
+assert.equal((await val('books/journal/petty_V_LEGACY')).reversedByMovementId, 'petty_void_V_LEGACY', 'the mirrored Books entry carries the same reversal link');
+assert.equal(legacyReplacement.date, '2026-09-28'); assert.equal(legacyReplacement.fundingAccountId, 'acc_bank'); assert.equal(legacyReplacement.amount, 1400);
+assert.equal(legacyReplacement.hasReceipt, true); assert.equal(legacyReplacement.receiptSourceVoucherId, 'V_LEGACY', 'the replacement retains direct access to the original evidence');
+assert.equal(legacyVoid.occurredAt, at('2026-10-28'), 'the original BDO posting is reversed on its own date'); assert.equal(legacyPost.occurredAt, at('2026-09-28'), 'the replacement posts on the intended date');
+assert.equal(fundingNet(legacyVoid, 'asset:cash_account:acc_bank'), 1400); assert.equal(fundingNet(legacyPost, 'asset:cash_account:acc_bank'), -1400);
+assert.ok(!legacyVoid.lines.concat(legacyPost.lines).some((line) => line.account === 'asset:cash_awaiting_deposit'), 'the repair never posts against Undeposited Collection');
+assert.deepEqual(await val('financialMovements/petty_correct_V_LEGACY_1'), legacyBefore1, 'legacy journal 1 remains immutable'); assert.deepEqual(await val('financialMovements/petty_correct_V_LEGACY_2'), legacyBefore2, 'legacy journal 2 remains immutable');
+assert.equal(await val('undepositedLedgerPageIndex/petty_correct_V_LEGACY_1'), null); assert.equal(await val('undepositedLedgerPageIndex/petty_correct_V_LEGACY_2'), null);
+const cleanedLedgerPage = await F.getUndepositedPage({auth:{uid:'super_uid',token:{}},data:{kind:'ledger'}});
+assert.ok(!cleanedLedgerPage.rows.some((row)=>row.id==='petty_correct_OTHER_1')); assert.equal(await val('undepositedLedgerPageIndex/petty_correct_OTHER_1'), null, 'any visible zero-net legacy correction self-removes from the operational Undeposited projection');
+assert.equal((await val('cfLedger/fm_petty_void_V_LEGACY')).accountId, 'acc_bank'); assert.equal((await val(`cfLedger/fm_petty_${legacyResult.replacementVoucherId}`)).accountId, 'acc_bank');
+const legacyRetry = await replaceLegacy('super_uid', 'V_LEGACY', {date:'2026-09-28',amount:1400,category:'office_supplies',payee:'MARIA',purpose:base.purpose}, legacyApproval); assert.equal(legacyRetry.duplicate, true, 'a retry returns the linked replacement without another posting');
+const badLegacyChange = Object.assign({expectedRev:1,date:'2026-09-28',amount:1400,fundingAccountId:'acc_bank'},base,{category:'marketing'});
+await refused(replaceLegacy('super_uid','V_LEGACY_BAD',{date:'2026-09-28',amount:1400,category:'marketing',payee:'MARIA',purpose:base.purpose},await approveLegacy('V_LEGACY_BAD',badLegacyChange)),/changed an account balance/,'a non-neutral legacy correction fails closed for manual reconciliation');
+const malformedLegacyChange = Object.assign({expectedRev:1,date:'2026-09-28',amount:1400,fundingAccountId:'acc_bank'},base);
+await refused(replaceLegacy('super_uid','V_LEGACY_MALFORMED',{date:'2026-09-28',amount:1400,category:'office_supplies',payee:'MARIA',purpose:base.purpose},await approveLegacy('V_LEGACY_MALFORMED',malformedLegacyChange)),/does not exactly match/,'a malformed original journal with an extra account fails closed');
 await refused(correct('super_uid', 'V_STAFF', {date: '2026-10-04', amount: 1400, category: 'office_supplies', payee: 'MARIA', purpose: base.purpose}, 'approval_none'), /cannot be edited in place/, 'controlled types stay void-only');
 await refused(correct('super_uid', 'V_RECON', {date: '2026-10-03', amount: 1400, category: 'office_supplies', payee: 'MARIA', purpose: base.purpose}, 'approval_none'), /Nothing was changed/, 'a no-op correction is refused');
 await refused(F.managePettyVoucher({auth: {uid: 'super_uid', token: {}}, data: {action: 'approve', voucherId: 'V_PEND', approvalId: 'approval_none'}}), /in the future/, 'a future-dated pending voucher cannot be approved');

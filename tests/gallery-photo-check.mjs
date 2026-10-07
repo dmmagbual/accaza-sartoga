@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 // Oct 2026: the hero, latte and gallery photos used to come from postimg.cc as 1280px PNGs
 // (19.7 MB for the 13 photos, 1.1-2.7 MB each). They are now same-origin WebP files under
 // assets/img/gallery. This check keeps them small, keeps every page pointing at them, and
 // keeps the lightbox order matched to the gallery cards.
-const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),'..');
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const dir='assets/img/gallery';
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 function fail(message){throw new Error(message);}

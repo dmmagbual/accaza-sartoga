@@ -235,7 +235,9 @@ exports.reopenDiscrepancy = onCall(
 async function voucherHasReceipt(db, id, voucher) {
   if (voucher && voucher.receiptImg) return true;
   if (!voucher || voucher.hasReceipt !== true) return false;
-  return (await db.ref(`/pettyCashReceipts/${id}/meta`).get()).exists();
+  const sourceId = voucher.receiptSourceVoucherId ? financeKey(voucher.receiptSourceVoucherId, "Receipt source voucher") : id;
+  if ((await db.ref(`/pettyCashReceipts/${sourceId}/meta`).get()).exists()) return true;
+  return sourceId !== id && (await db.ref(`/pettyCashVouchers/${sourceId}/receiptImg`).get()).exists();
 }
 
 // A cash-difference review needs the shift's legacy variance posting, any movement the manager
@@ -256,4 +258,3 @@ async function discrepancyCandidateMovements(db, shiftId, shiftRow, row, allocat
   requestedSnaps.forEach((snap, index) => { if (snap.exists()) out[requested[index]] = snap.val(); });
   return out;
 }
-
