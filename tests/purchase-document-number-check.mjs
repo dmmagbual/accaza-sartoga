@@ -86,6 +86,8 @@ const booksSub = read('src/books/app/40-subledgers.js');
 check((booksSub.match(/esc\(billRefLabel\(d,d\.id\)\)/g) || []).length === 2 && booksSub.includes('esc(billRefLabel(d,id))') && booksSub.includes('esc(billRefLabel(invoice,d.purchaseInvoiceId))'), 'Books Payables rows, trace list and modal must use billRefLabel.');
 check(read('assets/js/books/app.js').includes('function billRefLabel(d,id)'), 'The Books runtime bundle must contain the display change (run npm run build:artifacts).');
 check(purchasesUi.includes("ref:purchaseSupplierRef(inv,inv.id),"), 'A corrected (amended) purchase must carry only the supplier reference forward, never the reversed purchase’s internal key or number.');
+check(purchasesUi.includes("function purchaseAdvanceRegisterHtml(){var rows=allPurchaseAdvances().filter(function(x){return x.status!=='cancelled'&&x.remaining>0.005;});"), 'Payments pending inventory allocation must list only advances that still hold unallocated cash; a fully allocated advance is not pending.');
+check(purchasesUi.includes("'</td><td>'+purchaseActionsMenu(p,actions)+'</td></tr>';") && purchasesUi.includes('<details class="purchase-actions">') && read('src/admin/pos/20-purchasing.js').includes("root.querySelectorAll('details.purchase-actions')"), 'Purchase history must group its actions in one Actions menu that keeps the existing button hooks.');
 const posting = read('src/admin/pos/20a-purchase-posting.js');
 check(posting.includes("effectiveRef=(P.ref||'').trim()||(P.pay==='pending'?('PENDING-'+invoiceId):'');") && !posting.includes("('PENDING-'+invoiceId):invoiceId)"), 'A new purchase must never store its internal key as the supplier reference.');
 
