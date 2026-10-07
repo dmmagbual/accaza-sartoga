@@ -32,7 +32,15 @@ function fakeDb(initial) {
     ref: (p) => ({
       get: async () => { await tick(); return snap(getAt(p)); },
       orderByChild: (child) => ({startAt: (min) => ({get: async () => { await tick(); const rows = getAt(p) || {}, out = {}; Object.keys(rows).forEach((k) => { if (Number(rows[k] && rows[k][child]) >= min) out[k] = rows[k]; }); return snap(out); }})}),
-      transaction: async (fn) => { await tick(); const current = getAt(p); /* Firebase first runs the handler on the (empty) local cache, then retries with the server value. */ let next = fn(null); if (current !== undefined) next = fn(structuredClone(current)); if (next === undefined) return {committed: false, snapshot: snap(current)}; setAt(p, next); return {committed: true, snapshot: snap(next)}; },
+      transaction: async (fn) => { await tick(); const current = getAt(p);
+        /* Like the Admin SDK: the handler first runs on the empty local cache (null). Returning
+           undefined there ABORTS at once — the server value is never seen. Otherwise, if the server
+           holds a value, the handler re-runs with it. (Modelling this is what catches a release that
+           aborts on the null pass and leaves the claim held until the lease expires.) */
+        let next = fn(null);
+        if (next === undefined) return {committed: false, snapshot: snap(null)};
+        if (current !== undefined) next = fn(structuredClone(current));
+        if (next === undefined) return {committed: false, snapshot: snap(current)}; setAt(p, next); return {committed: true, snapshot: snap(next)}; },
     }),
     update: async (writes) => { await tick(); Object.keys(writes).forEach((p) => setAt(p, writes[p])); },
   };
@@ -84,6 +92,16 @@ const okCount = outcome(results).filter((x) => x === 'ok').length, refusedCount 
 check(okCount === 5 && refusedCount === 5, `Ten simultaneous ₱10 cash-outs on ₱50 must give five posts and five refusals (got ${JSON.stringify(outcome(results))}).`);
 check(custodySum(db) === 0 && glSum(db) === 0, `Σ custody remaining must equal GL 1030 after the run (custody ${custodySum(db)}, GL ${glSum(db)}).`);
 check(lockOf(db) === undefined, 'No custody claim may be left behind after the run.');
+
+/* 2b. Regression (7 Oct 2026): a SUCCESSFUL cash-out must release the claim at once, so the next
+       cash-out a moment later is not refused. The release once aborted on the null-cache pass and
+       left the pool locked for the whole 3-minute lease. */
+db = fakeDb(pool());
+await cashOut(db, C, 'first', 10, true);
+check(lockOf(db) === undefined, 'A successful Undeposited Collection payment must release the custody claim immediately.');
+let followUp = ''; try { followUp = await cashOut(db, load({wait: 1, attempts: 3}), 'second', 10, true); } catch (error) { followUp = error.code; }
+check(followUp === 'ok', `A second Undeposited Collection payment right after the first must post, not wait for the lease (got ${followUp}).`);
+check(sales.includes('ref.transaction((current) => (current && current.token === token ? null : current), undefined, false)'), 'The custody claim release must return current (not undefined) when the claim is not ours.');
 
 /* 3. Uneven amounts across rows keep the FIFO allocation exact. */
 db = fakeDb(pool());

@@ -5965,6 +5965,9 @@ async function custodyRowsForShift(db, shiftId) {
 // live claim is never taken over (not even by a retry of the same command); one call reuses a
 // claim it already holds.
 // Firebase cost: one tiny transaction to claim and one to release; nothing is downloaded.
+// Release must return `current` (never `undefined`) when the value is not ours: the Admin SDK first
+// runs the handler on an empty local cache (null), and `undefined` there aborts the transaction
+// before the server value is seen, leaving the claim in place until the lease expires.
 const CUSTODY_POOL_CLAIM_PATH = "/financialControlLocks/cashCustodyPool";
 const CUSTODY_POOL_LEASE_MS = 180000, CUSTODY_POOL_WAIT_MS = 250, CUSTODY_POOL_ATTEMPTS = 40;
 async function claimCustodyPool(db, ownerId, held) {
@@ -5977,7 +5980,7 @@ async function claimCustodyPool(db, ownerId, held) {
     if (result.committed && result.snapshot.exists() && result.snapshot.val().token === token) {
       const set = {custodyPool: true, owner, token, released: false, release: async () => {
         if (set.released) return; set.released = true;
-        try { await ref.transaction((current) => (current && current.token === token ? null : undefined), undefined, false); }
+        try { await ref.transaction((current) => (current && current.token === token ? null : current), undefined, false); }
         catch (error) { logger.error("Undeposited Collection claim release failed", {owner, message: String(error && error.message || error)}); }
       }};
       if (held) held.push(set);
