@@ -11,8 +11,9 @@ var NAV=[
   {group:'Home',tabs:[{label:'Dashboard',key:'dashboard'},{label:'Live Operations',key:'liveoperations'},{label:'Operations Center',locked:true}]},
   {group:'Sales & Service',tabs:[{label:'Orders',key:'orders'},{label:'Reservations & Calendar',key:'reservations'},{label:'Menu Availability',key:'availability'}]},
   {group:'Reports',tabs:[{label:'Sales History',key:'saleshistory'},{label:'Sales Analytics',key:'analytics'},{label:'Daily Report',key:'dailyreport'}]},
-  {group:'Inventory',tabs:[{label:'Stock Items',key:'inventory'},{label:'Inventory (stock value)',key:'stockvalue'},{label:'Purchases',key:'purchases'},{label:'Recipes',key:'recipes'},{label:'Internal Usage',key:'usage'},{label:'Packages',locked:true}]},
-  {group:'Cash & Controls',tabs:[{label:'Cash Payments',key:'petty'},{label:'Undeposited Collection',key:'undeposited'},{label:'Platform Payouts',locked:true},{label:'Reconciliation Issues',key:'discrepancy'}]},
+  {group:'Purchases & Payments',tabs:[{label:'Purchases',key:'purchases'},{label:'Cash Payments',key:'petty'},{label:'Supplier Bills & Payables',locked:true}]},
+  {group:'Inventory',tabs:[{label:'Stock Items',key:'inventory'},{label:'Inventory (stock value)',key:'stockvalue'},{label:'Recipes',key:'recipes'},{label:'Internal Usage',key:'usage'},{label:'Packages',locked:true}]},
+  {group:'Cash & Controls',tabs:[{label:'Undeposited Collection',key:'undeposited'},{label:'Platform Payouts',locked:true},{label:'Reconciliation Issues',key:'discrepancy'}]},
   {group:'Customers',tabs:[{label:'Rewards Program',locked:true},{label:'Customer List',key:'appcustomers'},{label:'Reviews',key:'reviews'},{label:'Comments',key:'comments'}]},
   {group:'Settings',tabs:[{label:'Company Information',locked:true},{label:'Tax Compliance',locked:true},{label:'Channel Pricing',key:'channelpricing'},{label:'Change Password',always:true},{label:'POS Settings',locked:true},{label:'Accounting Periods',locked:true},{label:'Menu Maintenance',locked:true},{label:'Payment Details',locked:true},{label:'User Accounts & Access',locked:true}]},
   {group:'Outside Admin',tabs:[{label:'Finance Books app',key:'cashflow'}]}

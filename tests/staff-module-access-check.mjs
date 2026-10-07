@@ -10,6 +10,8 @@ const navHtml = read('src/html/admin/50-admin-workspace.html');
 const rules = read('database.rules.json');
 const undepositedSource = read('src/functions/21a-undeposited-pages.js');
 const historySource = read('src/functions/61-historical-archive.js');
+const moduleLoader = read('assets/js/admin/module-loader.js');
+const purchasingSource = read('src/admin/pos/20-purchasing.js');
 
 const grab = (source, pattern, label) => { const m = source.match(pattern); assert.ok(m, `${label} not found`); return m[1]; };
 const evalIn = (code, context = {}) => vm.runInNewContext(code, context);
@@ -60,6 +62,29 @@ for (const tab of tabsPerGroup.settings) {
 for (const locked of ['dedupe', 'possettings', 'payouts']) assert.ok(!serverKeys.includes(locked), `${locked} must not be grantable to staff`);
 assert.ok(alwaysHide.includes('payouts'), 'Platform Payouts stays locked for staff');
 assert.ok(alwaysHide.includes('operations'), 'Operations Center is management-only on the server and must stay locked');
+assert.ok(alwaysHide.includes('payables'), 'The Admin Payables shortcut must stay management-only');
+
+// Hidden tabs are not only hidden: direct and cross-link routing fails closed before data loads.
+const alwaysRoutes = evalIn(`(${grab(coreSource, /ADMIN_ALWAYS_ROUTES=(\{[^}]*\})/, 'always routes')})`);
+const managementRoutes = evalIn(`(${grab(coreSource, /ADMIN_MANAGEMENT_ROUTES=(\{[^}]*\})/, 'management routes')})`);
+const routeGuard = grab(coreSource, /(function canOpenAdminRoute\(tab\)\{[\s\S]*?\n\})/, 'route guard');
+function canRoute(tab,{admin=false,staff=false,ready=true,perms={}}={}){
+  return evalIn(`var adminLoggedIn=${admin},staffLoggedIn=${staff},staffPermissionsReady=${ready},currentStaffPerms=${JSON.stringify(perms)},_permTabMap=${JSON.stringify(tabMap)},ADMIN_ALWAYS_ROUTES=${JSON.stringify(alwaysRoutes)},ADMIN_MANAGEMENT_ROUTES=${JSON.stringify(managementRoutes)};${routeGuard};canOpenAdminRoute(${JSON.stringify(tab)});`);
+}
+assert.equal(canRoute('purchases',{staff:true,ready:false,perms:{purchases:true}}),false,'Purchases must stay closed while saved permissions load');
+assert.equal(canRoute('petty',{staff:true,ready:false,perms:{petty:true}}),false,'Cash Payments must stay closed while saved permissions load');
+assert.equal(canRoute('purchases',{staff:true,perms:{purchases:true,petty:false}}),true,'purchases-only staff must open Purchases');
+assert.equal(canRoute('petty',{staff:true,perms:{purchases:true,petty:false}}),false,'purchases-only staff must not open Cash Payments');
+assert.equal(canRoute('purchases',{staff:true,perms:{purchases:false,petty:true}}),false,'cash-payment-only staff must not open Purchases');
+assert.equal(canRoute('petty',{staff:true,perms:{purchases:false,petty:true}}),true,'cash-payment-only staff must open Cash Payments');
+assert.equal(canRoute('payables',{staff:true,perms:{purchases:true,petty:true,cashflow:true}}),false,'staff permissions must not imply Admin Payables access');
+assert.equal(canRoute('availSection',{staff:true,ready:false,perms:{availability:true}}),false,'Menu Availability must stay closed while permissions load');
+assert.equal(canRoute('commentsSection',{staff:true,perms:{comments:false}}),false,'Comments must stay closed when its permission is denied');
+for(const tab of ['purchases','petty','payables'])assert.equal(canRoute(tab,{admin:true}),true,'management must open '+tab);
+assert.ok(moduleLoader.includes("window.switchTab&&window.switchTab(tab,button)===false)return Promise.resolve(false)"),'Denied routes must stop before lazy modules and handlers load');
+assert.ok(coreSource.includes("window.showAdminSection=function(id,btn){\n  if(!canOpenAdminRoute(id))"),'Legacy integrated panels must pass the same route guard before activating data');
+assert.ok(purchasingSource.includes("posSwitchTab('petty',tab).then(function(opened){if(opened===false)return;"),'The supplier-advance cross-link must respect the Cash Payments permission');
+assert.ok(coreSource.includes("applyStaffPerms({},false);get(ref(db,'adminPerms/'+uid)).then(function(sn){applyStaffPerms(staffPermsFrom(sn.val()),true);})"),'Staff permissions must fail closed until the saved record resolves');
 
 // 5. Existing accounts keep today's access until a Super Admin saves them (server and Admin agree).
 const serverLegacy = evalIn(`(${grab(serverSource, /const PORTAL_PERMISSION_LEGACY = (\{[^;]*\});/, 'server legacy')})`);
@@ -108,7 +133,9 @@ const rollupGate = historySource.slice(historySource.indexOf('exports.readHistor
 assert.ok(rollupGate.includes('requirePortalPermission(db, request, ["orders", "saleshistory", "dashboard"])'), 'Dashboard summaries must accept the dashboard key');
 
 // 9. Staff and Cashier start on POS, and their first data scope is POS (no Dashboard download at sign-in).
-assert.ok(coreSource.includes("var target={cashier:'pos',kitchen:'orders',finance:'finance',staff:'pos'}"), 'Staff must land on POS');
-assert.ok(coreSource.includes("subscriptionHub.activate(effectiveRole==='cashier'||effectiveRole==='staff'?'pos':'dashboard');subscriptionHub.authorize();"), 'Staff sign-in must start on the POS data scope');
+const landingGroups = evalIn(`${grab(coreSource, /(function roleLandingGroups\(role\)\{[^\n]*\})/, 'role landing groups')};roleLandingGroups`);
+assert.deepEqual(Array.from(landingGroups('finance')),['purchasing','finance'],'Finance must try Purchases & Payments before Cash & Controls');
+assert.deepEqual(Array.from(landingGroups('cashier')),['pos'],'Cashier must still land on POS');
+assert.ok(coreSource.includes("subscriptionHub.activate(role==='admin'?'dashboard':'auth-pending');subscriptionHub.authorize();"), 'Staff sign-in must not activate a business data scope before permissions load');
 
 console.log('PASS: staff module access mirrors the Admin navigation, Settings stays locked except Channel Pricing and Change Password, and every ticked tab works on its own.');

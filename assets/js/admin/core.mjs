@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=655";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=656";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -1025,7 +1025,7 @@ window.selectLoginRole=function(role){
 };
 
 // Staff-level module access. Keys must match PORTAL_PERMISSION_KEYS in src/functions/20b-portal-accounts.js.
-var DEFAULT_STAFF_PERMS={dashboard:false,liveoperations:false,orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,saleshistory:true,dailyreport:false,discrepancy:false,petty:true,undeposited:false,channelpricing:false,cashflow:false,stockvalue:false},roleLandingDone=false;
+var DEFAULT_STAFF_PERMS={dashboard:false,liveoperations:false,orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,saleshistory:true,dailyreport:false,discrepancy:false,petty:true,undeposited:false,channelpricing:false,cashflow:false,stockvalue:false},roleLandingDone=false,currentStaffPerms=null,staffPermissionsReady=false;
 // Tabs every staff account could see before they had their own key; an unsaved record keeps that.
 var LEGACY_STAFF_PERMS={saleshistory:['orders'],undeposited:['petty','cashflow']};
 // Admin roles always see the Dashboard; staff-level roles only with the Dashboard tick.
@@ -1034,19 +1034,31 @@ function dashboardAllowed(){return adminLoggedIn||(staffLoggedIn&&staffDashboard
 function staffPermsFrom(stored){var perms=Object.assign({},DEFAULT_STAFF_PERMS,stored||{});if(stored)Object.keys(LEGACY_STAFF_PERMS).forEach(function(key){if(stored[key]===undefined)perms[key]=LEGACY_STAFF_PERMS[key].some(function(from){return stored[from]===true;});});return perms;}
 var _permTabMap={"'dashboard'":'dashboard',"'liveoperations'":'liveoperations',"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'availSection'":'availability',"'commentsSection'":'comments',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'saleshistory'":'saleshistory',"'undeposited'":'undeposited',"'ops'":'registerOps'};
 // Settings is locked for staff-level roles except Channel Pricing (ticked per account) and Change Password.
-var _permAlwaysHide=["'payment'","'staffaccounts'","'packages'","'operations'","'possettings'","'accountingperiods'","'dedupe'","'payouts'","'rewards'","'companyinfo'","'taxcompliance'"];
+var _permAlwaysHide=["'payment'","'staffaccounts'","'packages'","'operations'","'possettings'","'accountingperiods'","'dedupe'","'payouts'","'rewards'","'companyinfo'","'taxcompliance'","'payables'"];
+var ADMIN_ALWAYS_ROUTES={inbox:1,changepw:1},ADMIN_MANAGEMENT_ROUTES={payables:1};
+function canOpenAdminRoute(tab){
+  if(adminLoggedIn)return true;
+  if(!staffLoggedIn||!staffPermissionsReady||ADMIN_MANAGEMENT_ROUTES[tab])return false;
+  var key=_permTabMap["'"+tab+"'"];
+  return key?!!(currentStaffPerms&&currentStaffPerms[key]===true):ADMIN_ALWAYS_ROUTES[tab]===1;
+}
+window.canOpenAdminRoute=canOpenAdminRoute;
 function mountLegacyAdminPanels(){
   var wrap=document.querySelector('#adminDash .admin-wrap');if(!wrap)return;
   ['availSection','commentsSection'].forEach(function(id){var panel=document.getElementById(id);if(!panel)return;panel.classList.add('admin-tab-content','admin-integrated-panel');wrap.appendChild(panel);});
 }
 mountLegacyAdminPanels();
 window.showAdminSection=function(id,btn){
+  if(!canOpenAdminRoute(id)){alert('This account does not have access to this section.');return false;}
   var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
   if(id==='availSection'){document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(av)av.style.display='block';subscriptionHub.activate('availability');buildAvail();renderOptionManager();workspaceShell.update('availability');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'});}
   else if(id==='commentsSection'){ document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(cm)cm.style.display='block';subscriptionHub.activate('comments');if(typeof renderComments==='function')renderComments();workspaceShell.update('comments');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'}); }
   else { if(av)av.style.display='none'; if(cm)cm.style.display='none'; window.scrollTo({top:0,behavior:'smooth'}); }
+  return true;
 };
-function applyStaffPerms(perms){
+function applyStaffPerms(perms,ready){
+  staffPermissionsReady=ready!==false;
+  currentStaffPerms=staffPermissionsReady?perms:null;
   staffDashboardAllowed=perms.dashboard===true;
   document.querySelectorAll('.admin-tab').forEach(function(btn){
     var oc=btn.getAttribute('onclick')||'';
@@ -1056,28 +1068,26 @@ function applyStaffPerms(perms){
   var na=document.getElementById('navAvail'); if(na)na.style.display='none';
   var nc=document.getElementById('navComments'); if(nc)nc.style.display='none';
   document.querySelectorAll('.admin-group').forEach(function(gb){var g=gb.getAttribute('data-grp');var row=document.querySelector('.tabgrp[data-grp="'+g+'"]');var vis=false;if(row)row.querySelectorAll('.admin-tab').forEach(function(b){if(b.style.display!=='none')vis=true;});gb.style.display=vis?'':'none';});
+  if(!staffPermissionsReady)return;
   var curG=document.querySelector('.admin-group.active');
   if(!curG||curG.style.display==='none'){var fg=null;document.querySelectorAll('.admin-group').forEach(function(gb){if(!fg&&gb.style.display!=='none')fg=gb;});if(fg)window.showTabGroup(fg.getAttribute('data-grp'),fg);}
   landRoleHome();
   // Saved ticks load after sign-in; draw the Dashboard once it becomes allowed and visible.
   if(dashboardAllowed()){var dashTab=document.getElementById('tab-dashboard');if(dashTab&&dashTab.style.display!=='none')renderDashboard();}
 }
+function roleLandingGroups(role){return {cashier:['pos'],kitchen:['orders'],finance:['purchasing','finance'],staff:['pos']}[String(role||'').toLowerCase()]||[];}
 function landRoleHome(){
   if(roleLandingDone||!currentUser||!window.showTabGroup)return;
   // Staff and Cashier start on POS even when the Dashboard is ticked.
-  var target={cashier:'pos',kitchen:'orders',finance:'finance',staff:'pos'}[String(currentUser.serverRole||'').toLowerCase()];
-  if(!target)return;
-  var group=document.querySelector('.admin-group[data-grp="'+target+'"]'),row=document.querySelector('.tabgrp[data-grp="'+target+'"]');
-  if(!group||group.style.display==='none'||!row)return;
-  var first=null;row.querySelectorAll('.admin-tab').forEach(function(button){if(!first&&button.style.display!=='none')first=button;});
-  if(!first)return;roleLandingDone=true;window.showTabGroup(target,group);
+  var targets=roleLandingGroups(currentUser.serverRole);
+  for(var i=0;i<targets.length;i++){var target=targets[i],group=document.querySelector('.admin-group[data-grp="'+target+'"]'),row=document.querySelector('.tabgrp[data-grp="'+target+'"]');if(!group||group.style.display==='none'||!row)continue;var first=null;row.querySelectorAll('.admin-tab').forEach(function(button){if(!first&&button.style.display!=='none')first=button;});if(first){roleLandingDone=true;window.showTabGroup(target,group);return;}}
 }
 async function loginSuccess(role,username,uid,serverRole,profile){
   roleLandingDone=false;
   currentUser={role,serverRole:serverRole||role,username,uid,title:profile&&profile.title||''};
   var effectiveRole=String(serverRole||role).toLowerCase();
   window.__accazaAuthz={uid,role:effectiveRole,isPrivileged:['owner','superadmin','admin','manager'].indexOf(effectiveRole)>-1};
-  subscriptionHub.activate(effectiveRole==='cashier'||effectiveRole==='staff'?'pos':'dashboard');subscriptionHub.authorize();
+  subscriptionHub.activate(role==='admin'?'dashboard':'auth-pending');subscriptionHub.authorize();
   ensureActiveOrdersCall({}).catch(function(e){console.warn('Active-order projection sweep deferred',e&&e.code);});
   try{sessionStorage.setItem('accaza_admin_session',JSON.stringify({username:username,uid:uid||null}));}catch(e){}
   try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}
@@ -1090,6 +1100,7 @@ async function loginSuccess(role,username,uid,serverRole,profile){
   if(accountAccessTab)accountAccessTab.style.display='none';
 
   if(role==='admin'){
+    currentStaffPerms=null;staffPermissionsReady=false;
     adminLoggedIn=true;superAdminLoggedIn=(effectiveRole==='superadmin');staffLoggedIn=false;
     document.getElementById('adminDash').style.display='block';
     document.getElementById('navAdminPanel').style.display='block';
@@ -1104,13 +1115,13 @@ async function loginSuccess(role,username,uid,serverRole,profile){
       renderAdminReviews();renderAdminCalendar();renderDashboard();
     },300);
   }else{
-    staffLoggedIn=true;adminLoggedIn=false;superAdminLoggedIn=false;
+    staffLoggedIn=true;adminLoggedIn=false;superAdminLoggedIn=false;staffPermissionsReady=false;currentStaffPerms=null;
     document.body.classList.add('staff-mode');
     document.getElementById('adminDash').style.display='block';
     document.getElementById('navAdminPanel').style.display='block';
     document.getElementById('navComments').style.display='none';
     document.getElementById('navAdminPanelLink').textContent='Staff panel';
-    (function(){ applyStaffPerms(staffPermsFrom(null)); get(ref(db,'adminPerms/'+uid)).then(function(sn){ var v=sn.val(); if(v)applyStaffPerms(staffPermsFrom(v)); }).catch(function(){}); })();
+    (function(){applyStaffPerms({},false);get(ref(db,'adminPerms/'+uid)).then(function(sn){applyStaffPerms(staffPermsFrom(sn.val()),true);}).catch(function(){applyStaffPerms({},false);});})();
     var hdr=document.querySelector('#adminDash .admin-header p');
     if(hdr)hdr.textContent='Staff: '+username;
     setTimeout(function(){
@@ -1119,10 +1130,10 @@ async function loginSuccess(role,username,uid,serverRole,profile){
     },300);
   }
   window.scrollTo(0,0);
-  workspaceShell.update('dashboard');
+  if(role==='admin')workspaceShell.update('dashboard');
 }
 
-installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;staffDashboardAllowed=false;currentUser=null;currentLoginRole=null;window.__posShift=null;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();}});
+installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;staffDashboardAllowed=false;currentStaffPerms=null;staffPermissionsReady=false;currentUser=null;currentLoginRole=null;window.__posShift=null;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();}});
 const workspaceShell=installWorkspaceShell({currentUser:function(){return currentUser;},subscriptionHub:subscriptionHub});
 // Admin screens that moved to Finance Books. Opening one here would hide every Admin tab and
 // leave a blank page, so they open the matching Books page instead.
@@ -1136,10 +1147,11 @@ function openFinanceBooks(page){
   books.location.href=url;books.focus();
 }
 window.switchTab=function(tab,btn){
+  if(!canOpenAdminRoute(tab)){alert('This account does not have access to '+(tab==='payables'?'Supplier Bills & Payables':'this section')+'.');return false;}
   var booksPage=window.AccazaFinanceBooksPages[tab];
-  if(booksPage){openFinanceBooks(booksPage);return;}
-  if(!document.getElementById('tab-'+tab)){console.warn('Admin has no screen for tab',tab);return;}
-  if(tab==='staffaccounts'&&!superAdminLoggedIn){alert('Super Admin access is required.');return;}
+  if(booksPage){openFinanceBooks(booksPage);return true;}
+  if(!document.getElementById('tab-'+tab)){console.warn('Admin has no screen for tab',tab);return false;}
+  if(tab==='staffaccounts'&&!superAdminLoggedIn){alert('Super Admin access is required.');return false;}
   subscriptionHub.activate(tab);
   var legacyAvailability=document.getElementById('availSection'),legacyComments=document.getElementById('commentsSection');
   if(legacyAvailability)legacyAvailability.style.display='none';if(legacyComments)legacyComments.style.display='none';
@@ -1156,6 +1168,7 @@ window.switchTab=function(tab,btn){
   workspaceShell.update(tab);
   setTimeout(function(){renderHistoryPager(tab);},0);
   try{var _ab=document.querySelector('.admin-tab.active'); if(_ab){var _g=_ab.closest('.tabgrp'); if(_g){var _gn=_g.getAttribute('data-grp'); document.querySelectorAll('.tabgrp').forEach(function(r){r.style.display=(r===_g)?'flex':'none';}); document.querySelectorAll('.admin-group').forEach(function(x){x.classList.toggle('active', x.getAttribute('data-grp')===_gn);}); }}}catch(e){}
+  return true;
 };
 window.showTabGroup=function(g,btn){
   document.querySelectorAll('.admin-group').forEach(function(b){b.classList.remove('active');});

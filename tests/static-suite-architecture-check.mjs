@@ -69,6 +69,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // Oct 2026 (BIR tax compliance Phase 1): the server sales-reconciliation guard's orderNetSales
 // marker now includes the taxSettings argument, so net sales must be derived under the effective
 // tax regime rather than ignoring tax. Same single guard, widened, not weakened; count 560.
-if(guardDigest!=='fed9719cd074610cd8a546aabc3a7d608b466e8d45dd827f1f02103ab8f7573b')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (Purchases & Payments Task 0.1): the existing role-landing guard now pins Finance
+// to the consolidated Purchases & Payments group first, with Cash & Controls as its fallback.
+// Same single guard, widened for the approved navigation; count and executable checks unchanged.
+if(guardDigest!=='e0c62cbf1c6d0cf093a01e58449fe121988ce95103fe0ac02600327a28ab88c3')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 560 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
