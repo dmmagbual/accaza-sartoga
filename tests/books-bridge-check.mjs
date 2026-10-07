@@ -127,6 +127,11 @@ const readablePurchase=B.buildSingle({id:'purchase_cash_pinv_1',type:'purchase_c
 ok(readablePurchase.entry.ref==='Purchase — ABC Supplier','purchase journal uses supplier description instead of internal ID');
 ok(readablePurchase.entry.memo==='2 kg Coffee beans · Invoice INV-42','purchase journal shows item quantity, description and invoice reference');
 ok(readablePurchase.entry.sourceId==='pinv_1','purchase journal retains source ID for audit tracing');
+const numberedPurchase=B.buildSingle({id:'purchase_cash_pinv_2',type:'purchase_cash',sourceType:'purchaseInvoice',sourceId:'pinv_2',occurredAt:t,lines:[{account:'coa:1200',debit:170,credit:0},{account:'asset:register_cash',debit:0,credit:170}]},cashMap,{purchaseInvoice:{supplier:'JFrost Ice',ref:'pinv_2',documentNo:'PUR-2026-0139',lines:[{itemName:'Ice',qty:30000,unit:'g',total:170}]},inventory:{}});
+ok(numberedPurchase.entry.ref==='PUR-2026-0139','a numbered purchase uses its PUR number as the journal reference');
+ok(numberedPurchase.entry.memo==='Purchase — JFrost Ice · 30000 g Ice','the internal key is never shown as a supplier invoice reference');
+const numberedWithRef=B.buildSingle({id:'purchase_cash_pinv_3',type:'purchase_cash',sourceType:'purchaseInvoice',sourceId:'pinv_3',occurredAt:t,lines:[{account:'coa:1200',debit:413,credit:0},{account:'asset:register_cash',debit:0,credit:413}]},cashMap,{purchaseInvoice:{supplier:'ABC Supplier',ref:'INV-42',documentNo:'PUR-2026-0140',lines:[{itemName:'Coffee beans',qty:2,unit:'kg',total:413}]},inventory:{}});
+ok(numberedWithRef.entry.ref==='PUR-2026-0140'&&numberedWithRef.entry.memo==='Purchase — ABC Supplier · 2 kg Coffee beans · Invoice INV-42','a numbered purchase keeps the supplier invoice reference in the memo');
 
 // 6) COGS leg: order cogs snapshot -> Dr COGS / Cr Inventory (account strings; codes via mapAccount)
 const order = {channel:"instore", cogsSnapshot:41.5, cogsCategorySnapshot:{beverage:30, food:10, packaging:1.5, directLabor:0, unallocated:0}, completedAt: Date.parse("2026-08-22T05:00:00Z")};

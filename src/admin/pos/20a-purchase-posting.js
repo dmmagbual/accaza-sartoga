@@ -38,7 +38,7 @@ function postPurchases(){
   /* a "new" line whose name already exists (or repeats within this invoice) blends into that item — no duplicate SKU */
   var byName={}; ings().forEach(function(x){byName[uNorm(x.name)]=x.id;});
   window.__purchPosting=true;
-  var a=A(); var invoiceId=P.invoiceId||(P.invoiceId=uid('pinv_')); var date=P.date||window.AccazaDate.key(), effectiveRef=(P.ref||'').trim()||(P.pay==='pending'?('PENDING-'+invoiceId):invoiceId);
+  var a=A(); var invoiceId=P.invoiceId||(P.invoiceId=uid('pinv_')); var date=P.date||window.AccazaDate.key(), effectiveRef=(P.ref||'').trim()||(P.pay==='pending'?('PENDING-'+invoiceId):''); /* blank = no supplier reference; the server gives the purchase its PUR number when it is entered */
   var updates={}, seedUpdates={}, invTotal=0, receiptIds=[], invoiceLines=[], agg={}, newByName={}, newSkuByKey={};
   lines.forEach(function(ln,lineIndex){
     if(ln.mode==='asset'){var ac=purchCalc(ln),assetQty=Number(ln.qty)||0;invTotal+=ac.lineTotal;invoiceLines.push({lineType:'fixed_asset',itemName:(ln.assetName||'').trim(),assetCategory:ln.assetCategory==='furniture'?'furniture':'equipment',qty:assetQty,unit:'asset',unitCost:Math.round((ac.lineTotal/assetQty)*100)/100,total:ac.lineTotal,usefulLifeMonths:Math.round(Number(ln.assetLifeMonths)||0),depreciationMethod:'straight-line',salvagePerUnit:Math.round((Number(ln.assetSalvage)||0)*100)/100,inServiceDate:ln.assetInServiceDate||date,location:(ln.assetLocation||'').trim(),custodian:(ln.assetCustodian||'').trim()});return;}
@@ -72,7 +72,7 @@ function postPurchases(){
   var movementRows=[];
   Object.keys(agg).forEach(function(id){ var g=agg[id];
     if(g.newItem){ var ni={name:g.name,unit:g.unit,type:g.type,recipeItem:g.recipeItem===true,inventoryAccount:g.inventoryAccount,costAccount:g.costAccount,stock:0,cost:0,reorder:0,updatedAt:Date.now()}; if(g.type==='consumable'){ni.serves='both';ni.size='';ni.qtyPerOrder=1;} seedUpdates['inventory/'+id]=ni; }
-    movementRows.push({movementId:movementId('purchase',invoiceId,id),itemId:id,type:'purchase',qty:Math.round(g.stock*1000000)/1000000,unitCost:g.stock>0?Math.round((g.value/g.stock)*1000000)/1000000:0,sourceType:'purchase-invoice',sourceId:invoiceId,note:(P.supplier||'Supplier')+' · '+effectiveRef,actorName:(P.by||'').trim()||'Admin',occurredAt:Date.now()});
+    movementRows.push({movementId:movementId('purchase',invoiceId,id),itemId:id,type:'purchase',qty:Math.round(g.stock*1000000)/1000000,unitCost:g.stock>0?Math.round((g.value/g.stock)*1000000)/1000000:0,sourceType:'purchase-invoice',sourceId:invoiceId,note:(P.supplier||'Supplier')+(effectiveRef?' · '+effectiveRef:''),actorName:(P.by||'').trim()||'Admin',occurredAt:Date.now()});
   });
   invTotal=Math.round(invTotal*100)/100;
   var inputVat=Math.max(0,Math.round((Number(P.inputVat)||0)*100)/100);if(inputVat>0){if(inputVat>=invTotal){window.__purchPosting=false;alert('Input VAT must be less than the line amounts. Enter the line costs net of VAT and the VAT shown on the supplier invoice.');return;}invTotal=Math.round((invTotal+inputVat)*100)/100;}
