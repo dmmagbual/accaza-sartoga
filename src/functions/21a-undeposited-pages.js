@@ -54,6 +54,81 @@ function cashCustodyProjection(id, row) {
   };
 }
 
+// The open-custody projection rows a multi-path write produces, computed from the custody rows as
+// they are now plus the write itself, so a writer can store the projection in the SAME update.
+function custodyIndexWrites(rows, writes) {
+  const next = {}, out = {}, copy = (value) => (value == null ? null : JSON.parse(JSON.stringify(value)));
+  Object.keys(writes || {}).filter((path) => path.startsWith("cashCustody/")).forEach((path) => {
+    const keys = path.split("/").slice(1), id = keys[0];
+    if (!id) return;
+    if (!Object.prototype.hasOwnProperty.call(next, id)) next[id] = copy(rows && rows[id]);
+    if (keys.length === 1) { next[id] = copy(writes[path]); return; }
+    if (!next[id]) next[id] = {};
+    let node = next[id];
+    for (const key of keys.slice(1, -1)) { if (!node[key] || typeof node[key] !== "object") node[key] = {}; node = node[key]; }
+    const last = keys[keys.length - 1];
+    if (writes[path] == null) delete node[last]; else node[last] = copy(writes[path]);
+  });
+  Object.keys(next).forEach((id) => { const record = cashCustodyProjection(id, next[id]); out[`cashCustodyOpenIndex/${id}`] = record && record.remaining > 0 ? record : null; });
+  return out;
+}
+function openCustodyProjections(rows) {
+  const out = {};
+  Object.entries(rows || {}).forEach(([id, row]) => { const record = cashCustodyProjection(id, row); if (record && record.remaining > 0) out[id] = record; });
+  return out;
+}
+function custodyIndexDrift(index, truth) {
+  const writes = {}, same = (a, b) => !!a && !!b && ["amount", "paidOutAmount", "depositedAmount", "remaining"].every((field) => Financial.money(a[field]) === Financial.money(b[field]));
+  Object.keys(index || {}).forEach((id) => { if (!truth[id]) writes[`cashCustodyOpenIndex/${id}`] = null; });
+  Object.keys(truth).forEach((id) => { if (!same(index && index[id], truth[id])) writes[`cashCustodyOpenIndex/${id}`] = truth[id]; });
+  return writes;
+}
+// Detective control (7 Oct 2026): every Undeposited Collection snapshot compares the compact
+// projections with the authoritative records and repairs any drift, logged, never hidden.
+// Cost: one bounded query of the open custody rows (the same rows the projection holds) and one
+// single-node read per flagged "missing" voucher. Repairs take the custody pool claim and
+// re-read first, so no payment can change a row between the check and the repair.
+async function verifyUndepositedIndexes(db, indexRows, missingRows) {
+  const verifyLimit = 500, openRows = async () => {
+    const rows = (await db.ref("/cashCustody").orderByChild("remaining").startAt(0.005).limitToFirst(verifyLimit + 1).get()).val() || {};
+    if (Object.keys(rows).length > verifyLimit) throw new HttpsError("resource-exhausted", "Undeposited Collection has more than 500 open custody rows. Deposit or archive older settled rows before running the control check.");
+    return openCustodyProjections(rows);
+  };
+  let index = indexRows || {}, truth = await openRows(), writes = custodyIndexDrift(index, truth);
+  const result = {checked: true, custodyRowsRepaired: 0, missingVouchersCleared: 0, index};
+  if (Object.keys(writes).length) {
+    const held = [];
+    try {
+      await claimCustodyPool(db, "undeposited_index_verify", held);
+      index = (await db.ref("/cashCustodyOpenIndex").limitToFirst(verifyLimit + 1).get()).val() || {};
+      if (Object.keys(index).length > verifyLimit) throw new HttpsError("resource-exhausted", "The custody projection exceeds the 500-row verification limit.");
+      truth = await openRows();
+      writes = custodyIndexDrift(index, truth);
+      if (Object.keys(writes).length) {
+        const now = Date.now(), before = {};
+        Object.keys(writes).forEach((path) => { const id = path.split("/")[1]; before[id] = index[id] ? Financial.money(index[id].remaining) : null; });
+        writes[`operationalAudit/${now}_undeposited_index_repair`] = operationalAuditRecord("repair_undeposited_custody_index", "cashCustody", "openIndex", {uid: "server", role: "server"}, {rows: Object.keys(before).map((id) => ({id, projectedRemaining: before[id], authoritativeRemaining: truth[id] ? Financial.money(truth[id].remaining) : 0})), accounting: "Projection only; no custody row or Finance Books posting changed."});
+        await db.ref().update(writes);
+        result.custodyRowsRepaired = Object.keys(before).length;
+      }
+    } catch (error) { logger.warn("Undeposited custody index verify skipped", {message: String(error && error.message || error)}); result.checked = false; return result; }
+    finally { await releaseCustodyClaims(held); }
+    index = truth;
+  }
+  const falseMissing = [];
+  await Promise.all(Object.keys(missingRows || {}).map(async (id) => { if ((await db.ref(`/pettyVoucherPostingIndex/${financeKey(id, "Voucher ID")}`).get()).exists()) falseMissing.push(id); }));
+  if (falseMissing.length) {
+    const now = Date.now(), clear = {[`operationalAudit/${now}_voucher_attention_repair`]: operationalAuditRecord("repair_voucher_attention_index", "pettyVoucher", "missingIndex", {uid: "server", role: "server"}, {voucherIds: falseMissing, accounting: "The vouchers are posted; only the stale 'missing' flag was removed."})};
+    falseMissing.forEach((id) => { clear[`pettyVoucherAttentionIndex/missing/${id}`] = null; });
+    await db.ref().update(clear);
+    result.missingVouchersCleared = falseMissing.length;
+  }
+  result.index = index;
+  result.falseMissing = falseMissing;
+  await db.ref("/systemHealth/undepositedIndexVerification").set({checkedAt:Date.now(),custodyRowsRepaired:result.custodyRowsRepaired,missingVouchersCleared:result.missingVouchersCleared,checked:result.checked});
+  return result;
+}
+
 function pettyVoucherAttentionProjection(id, row) {
   return {id,voucherNo:financeText(row.voucherNo,60),date:financeText(row.date,10),recipient:financeText(row.recipient||row.requesterName,160),purpose:financeText(row.purpose,300),category:financeText(row.category,80),amount:Financial.money(row.amount),status:financeText(row.status,40),voided:row.voided===true};
 }
@@ -91,9 +166,10 @@ exports.getUndepositedControlSnapshot = onCall(
   {region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB"},
   async (request) => {
     const db=getDatabase();await requirePortalPermission(db,request,["petty","cashflow","undeposited"]);await ensureUndepositedPageIndexes(db);
-    const [summaryMetaSnap,summaryBalanceSnap,pendingSummarySnap,openCustodySnap,pendingVoucherSnap,missingVoucherSnap,retirementSnap,openingSnap]=await Promise.all([
-      db.ref("/cashBalanceSummary/meta").get(),db.ref("/cashBalanceSummary/balances").get(),db.ref("/cashBalanceSummaryPending").limitToFirst(1).get(),db.ref("/cashCustodyOpenIndex").get(),
+    const [summaryMetaSnap,summaryBalanceSnap,pendingSummarySnap,openCustodySnap,pendingVoucherSnap,missingVoucherSnap,retirementSnap,openingSnap,verificationSnap]=await Promise.all([
+      db.ref("/cashBalanceSummary/meta").get(),db.ref("/cashBalanceSummary/balances").get(),db.ref("/cashBalanceSummaryPending").limitToFirst(1).get(),db.ref("/cashCustodyOpenIndex").limitToFirst(501).get(),
       db.ref("/pettyVoucherAttentionIndex/pending").limitToLast(100).get(),db.ref("/pettyVoucherAttentionIndex/missing").limitToLast(100).get(),db.ref("/financialMovements/revolving_fund_retirement").get(),db.ref("/financialMovements/undeposited_opening_balance").get(),
+      db.ref("/systemHealth/undepositedIndexVerification").get(),
     ]);
     let undeposited=0,revolving=0,summaryMeta=summaryMetaSnap.val()||{},summaryBalances=summaryBalanceSnap.val()||{};
     if(summaryMeta.schemaVersion!==CashBalances.SCHEMA_VERSION||summaryMeta.complete!==true||pendingSummarySnap.exists()){
@@ -105,11 +181,13 @@ exports.getUndepositedControlSnapshot = onCall(
       const movementMap=/* download-ok: fallback cash-balance summary is incomplete */(await db.ref("/financialMovements").get()).val()||{};
       Object.values(movementMap).forEach((movement)=>{((movement&&movement.lines)||[]).forEach((line)=>{const net=Financial.money((Number(line.debit)||0)-(Number(line.credit)||0));if(line.account===UNDEPOSITED_POOL_ACCOUNT)undeposited=Financial.money(undeposited+net);if(line.account==="asset:petty_cash")revolving=Financial.money(revolving+net);});});
     }
-    const custodyRemaining=Financial.money(Object.values(openCustodySnap.val()||{}).reduce((sum,row)=>sum+Number(row&&row.remaining||0),0));
-    const pendingVouchers=Object.values(pendingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided).sort((a,b)=>String(b.date).localeCompare(String(a.date))),missingApprovedVouchers=Object.values(missingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided);
+    const openIndex=openCustodySnap.val()||{};if(Object.keys(openIndex).length>500)throw new HttpsError("resource-exhausted","Undeposited Collection has more than 500 open custody rows. Deposit or archive older settled rows before opening this control.");
+    const verification=verificationSnap.val()||{},verifyDue=Date.now()-Number(verification.checkedAt||0)>=600000||missingVoucherSnap.exists(),verified=verifyDue?await verifyUndepositedIndexes(db,openIndex,missingVoucherSnap.val()||{}):{checked:false,custodyRowsRepaired:0,missingVouchersCleared:0,index:openIndex,falseMissing:[]};
+    const custodyRemaining=Financial.money(Object.values(verified.index||{}).reduce((sum,row)=>sum+Number(row&&row.remaining||0),0));
+    const pendingVouchers=Object.values(pendingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided).sort((a,b)=>String(b.date).localeCompare(String(a.date))),missingApprovedVouchers=Object.values(missingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided&&!(verified.falseMissing||[]).includes(row.id));
     const custodyGap=Financial.money(undeposited-custodyRemaining);let custodyGapCandidates=[];
     if(custodyGap>0){const candidateSnap=await db.ref("/undepositedLedgerPageIndex").orderByChild("netAmount").equalTo(custodyGap).limitToLast(25).get();custodyGapCandidates=Object.entries(candidateSnap.val()||{}).map(([id,row])=>Object.assign({id},row||{})).filter((row)=>!row.reversalOf&&!row.reversedByMovementId);}
-    return{undepositedBalance:undeposited,revolvingBalance:revolving,custodyRemaining,custodyGap,pendingVouchers,missingApprovedVouchers,missingApprovedVoucherIds:missingApprovedVouchers.map((row)=>row.id),custodyGapCandidates,retirementPosted:retirementSnap.exists(),openingPosted:openingSnap.exists(),calculatedAt:Date.now(),authority:"server_all_time",pageSize:UNDEPOSITED_PAGE_SIZE};
+    return{undepositedBalance:undeposited,revolvingBalance:revolving,custodyRemaining,custodyGap,pendingVouchers,missingApprovedVouchers,missingApprovedVoucherIds:missingApprovedVouchers.map((row)=>row.id),custodyGapCandidates,retirementPosted:retirementSnap.exists(),openingPosted:openingSnap.exists(),indexVerification:{checked:verified.checked,custodyRowsRepaired:verified.custodyRowsRepaired,missingVouchersCleared:verified.missingVouchersCleared},calculatedAt:Date.now(),authority:"server_all_time",pageSize:UNDEPOSITED_PAGE_SIZE};
   },
 );
 
@@ -131,14 +209,9 @@ exports.syncPettyVoucherAttentionIndex = onValueWritten(
     if(row&&row.voided!==true&&row.status==="pending")writes[`pettyVoucherAttentionIndex/pending/${id}`]=pettyVoucherAttentionProjection(id,row);
     if(row&&row.voided!==true&&row.status==="approved"&&!(await db.ref(`/pettyVoucherPostingIndex/${id}`).get()).exists())writes[`pettyVoucherAttentionIndex/missing/${id}`]=pettyVoucherAttentionProjection(id,row);
     await db.ref().update(writes);
-  },
-);
-
-exports.syncCashCustodyPageIndex = onValueWritten(
-  {ref:"/cashCustody/{custodyId}",region:ORDER_REGION,retry:true},
-  async (event) => {
-    const db = getDatabase(), id = event.params.custodyId, row = event.data.after.exists() ? event.data.after.val() : null, record = cashCustodyProjection(id, row);
-    await db.ref(`/cashCustodyOpenIndex/${id}`).set(record && record.remaining > 0 ? record : null);
+    // Write-then-verify: the posting trigger sets the posting index and clears "missing" in one
+    // update, so whichever trigger runs second leaves the right answer (7 Oct 2026 race).
+    if(writes[`pettyVoucherAttentionIndex/missing/${id}`]&&(await db.ref(`/pettyVoucherPostingIndex/${id}`).get()).exists())await db.ref(`/pettyVoucherAttentionIndex/missing/${id}`).remove();
   },
 );
 

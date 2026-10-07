@@ -1343,9 +1343,9 @@ function transactionCurrent(current, initial, state) {
   state.seen = true;
   return value;
 }
-async function claimManagerApproval(db, data, action, sourceId, amount, operationKey, disallowApprovedByUid) {
+async function claimManagerApproval(db, data, action, sourceId, amount, operationKey, disallowApprovedByUid, expectedChangeHash) {
   const approvalId = financeKey(data && data.approvalId, "Privileged approval"); const ref = db.ref(`/financialApprovals/${approvalId}`), now = Date.now();
-  const matches = (row) => !!row && row.action === action && row.sourceId === String(sourceId) && Number(row.expiresAt || 0) >= now && !row.usedAt && !(disallowApprovedByUid && row.approvedBy === disallowApprovedByUid) && !(amount != null && Math.abs(Financial.money(row.amount) - Financial.money(amount)) > 0.009) && !(row.claimKey && row.claimKey !== operationKey);
+  const matches = (row) => !!row && row.action === action && row.sourceId === String(sourceId) && Number(row.expiresAt || 0) >= now && !row.usedAt && !(disallowApprovedByUid && row.approvedBy === disallowApprovedByUid) && !(amount != null && Math.abs(Financial.money(row.amount) - Financial.money(amount)) > 0.009) && !(row.claimKey && row.claimKey !== operationKey) && !(expectedChangeHash && row.changeHash !== expectedChangeHash);
   const initial = (await ref.get()).val();
   if (!matches(initial)) throw new HttpsError("failed-precondition", "Privileged approval is missing, expired, already used, or does not match this action.");
   const transactionState = {seen: false};
@@ -1362,7 +1362,10 @@ exports.createManagerApproval = onCall(
     const managerSnap = await db.ref(`/admins/${decoded.uid}`).get(), managerRole = portalRoleValue(managerSnap.val()); if (!["superadmin", "admin", "manager"].includes(managerRole)) throw new HttpsError("permission-denied", "That Firebase account is not a Super Admin, Admin, or Manager account.");
     if (["correct_completed_order", "completed_order_cash_refund"].includes(action) && decoded.uid === requester.uid) throw new HttpsError("permission-denied", "Completed-order changes require approval from a different authorized manager account.");
     const sourceId = financeText(data.sourceId, 160); if (!sourceId) throw new HttpsError("invalid-argument", "Approval source is required."); const amount = data.amount == null ? null : Financial.money(data.amount), now = Date.now(), id = `approval_${crypto.randomBytes(12).toString("hex")}`;
-    await db.ref(`/financialApprovals/${id}`).set({action, sourceId, amount, reason: financeText(data.reason, 300), requestedBy: requester.uid, approvedBy: decoded.uid, approvedEmail: financeText(decoded.email, 160), approvedName: financeText(decoded.name, 160), approvedRole: managerRole, approvedAt: now, expiresAt: now + 5 * 60 * 1000, schemaVersion: 1});
+    // A cash voucher correction approval binds the exact change (date, amount, category, payee ...).
+    const changeHash = action === "correct_petty_voucher" && data.change && typeof data.change === "object" ? voucherChangeFingerprint(sourceId, data.change) : "";
+    if (action === "correct_petty_voucher" && !changeHash) throw new HttpsError("failed-precondition", "This approval screen is out of date. Refresh the portal and try the correction again.");
+    await db.ref(`/financialApprovals/${id}`).set({action, sourceId, amount, reason: financeText(data.reason, 300), requestedBy: requester.uid, approvedBy: decoded.uid, approvedEmail: financeText(decoded.email, 160), approvedName: financeText(decoded.name, 160), approvedRole: managerRole, approvedAt: now, expiresAt: now + 5 * 60 * 1000, changeHash: changeHash || null, schemaVersion: 1});
     return {approvalId: id, approvedBy: decoded.email || managerRole, expiresAt: now + 5 * 60 * 1000};
   },
 );
@@ -2241,14 +2244,16 @@ async function discrepancyCandidateMovements(db, shiftId, shiftRow, row, allocat
 
 exports.managePettyVoucher = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
-  async (request) => { const custodyClaims = []; try {
+  async (request) => { const custodyClaims = [], voucherClaims = []; try {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["petty"]);
     const data = request.data || {}, action = financeText(data.action, 20), id = financeKey(data.voucherId, "Voucher ID"), reason = financeText(data.reason, 500);
+    await claimPettyVoucherMutation(db, id, `manage_${action}_${id}`, actor, voucherClaims);
     const ref = db.ref(`/pettyCashVouchers/${id}`), snap = await ref.get(); if (!snap.exists()) throw new HttpsError("not-found", "Cash voucher not found.");
     const voucher = snap.val() || {}, value = Financial.money(voucher.amount), now = Date.now(), hasReceipt = await voucherHasReceipt(db, id, voucher); let approvalAction;
     // Editing a voucher changes the Admin subledger as well as its linked
     // Finance correction, so the voucher's own accounting month must be open.
-    if (["correct", "approve"].includes(action)) await assertAccountingPeriodOpen(db, action === "correct" && voucher.status === "pending" ? financeDate(data.date) : (financeText(voucher.date, 10) || financeDateFromTimestamp(now)), "editing or approving this Admin cash payment");
+    // An approved voucher's correction checks BOTH months (old and new date) in correctApprovedPettyVoucher.
+    if (action === "approve" || (action === "correct" && voucher.status === "pending")) await assertAccountingPeriodOpen(db, action === "correct" ? assertVoucherDateNotFuture(data.date, now) : (financeText(voucher.date, 10) || financeDateFromTimestamp(now)), "editing or approving this Admin cash payment");
     if (action === "correct") {
       if (!["pending", "approved"].includes(voucher.status) || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active pending or approved cash payment can be edited.");
       if (voucher.returnedAt) throw new HttpsError("failed-precondition", "A returned supplier payment cannot be edited. Record a new correcting payment instead.");
@@ -2262,15 +2267,11 @@ exports.managePettyVoucher = onCall(
       const allocated = Financial.money(Object.values(voucher.allocations || {}).reduce((sum, row) => sum + Number(row && row.amount || 0), 0));
       if (type === "purchase_advance" && allocated > 0 && financeText(voucher.supplierId,160) !== nextSupplierId) throw new HttpsError("failed-precondition", "Reverse every linked inventory purchase before changing the supplier on this payment.");
       if (type === "purchase_advance" && nextAmount + 0.009 < allocated) throw new HttpsError("failed-precondition", `Amount cannot be below the ${allocated.toFixed(2)} already allocated to inventory purchases.`);
-      const nextDate = voucher.status === "pending" ? financeDate(data.date) : financeText(voucher.date, 10), before = {date:financeText(voucher.date,10),amount:value,category:financeText(voucher.category,80),payee:financeText(voucher.recipient||voucher.requesterName,160),purpose:financeText(voucher.purpose,300),approverName:financeText(voucher.approverName,160)}, after = {date:nextDate,amount:nextAmount,category:nextCategory,payee:nextPayee,purpose:nextPurpose,approverName:nextApprover};
+      const nextDate = voucher.status === "pending" ? assertVoucherDateNotFuture(data.date, now) : financeText(voucher.date, 10), before = {date:financeText(voucher.date,10),amount:value,category:financeText(voucher.category,80),payee:financeText(voucher.recipient||voucher.requesterName,160),purpose:financeText(voucher.purpose,300),approverName:financeText(voucher.approverName,160)}, after = {date:nextDate,amount:nextAmount,category:nextCategory,payee:nextPayee,purpose:nextPurpose,approverName:nextApprover};
       const revision = Math.max(0, Math.floor(Number(voucher.correctionRevision)||0)) + 1, writes = {[`pettyCashVouchers/${id}/date`]:nextDate,[`pettyCashVouchers/${id}/amount`]:nextAmount,[`pettyCashVouchers/${id}/category`]:nextCategory,[`pettyCashVouchers/${id}/supplierId`]:nextSupplierId,[`pettyCashVouchers/${id}/supplierName`]:type==="purchase_advance"?nextPayee:"",[`pettyCashVouchers/${id}/requesterName`]:nextPayee,[`pettyCashVouchers/${id}/recipient`]:nextPayee,[`pettyCashVouchers/${id}/purpose`]:nextPurpose,[`pettyCashVouchers/${id}/approverName`]:nextApprover,[`pettyCashVouchers/${id}/correctionRevision`]:revision,[`pettyCashVouchers/${id}/lastCorrectedAt`]:now,[`pettyCashVouchers/${id}/lastCorrectionReason`]:reason};
       if (type === "purchase_advance") {writes[`pettyCashVouchers/${id}/allocatedAmount`]=allocated;writes[`pettyCashVouchers/${id}/remainingAmount`]=Financial.money(nextAmount-allocated);writes[`pettyCashVouchers/${id}/allocationStatus`]=allocated>0?(nextAmount-allocated>0?"partially_allocated":"fully_allocated"):"unallocated";}
       if (voucher.status === "pending") {writes[`operationalAudit/${now}_${id}_correct_${revision}`]=operationalAuditRecord("correct_pending_petty_voucher","pettyVoucher",id,actor,{before,after,reason,revision});await db.ref().update(writes);return {voucherId:id,action,revision,pending:true};}
-      const approval = await claimManagerApproval(db,data,"correct_petty_voucher",id,nextAmount,`correct_petty_voucher_${id}_${revision}`), approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole, oldPosting = type === "purchase_advance" ? {account:`asset:purchase_cash_advance:${id}`,label:voucher.recipient||"Supplier payment pending allocation"} : revolvingFundPosting(voucher), nextVoucher = Object.assign({},voucher,{amount:nextAmount,category:nextCategory,recipient:nextPayee,requesterName:nextPayee,purpose:nextPurpose,approverName:nextApprover}), nextPosting = type === "purchase_advance" ? {account:`asset:purchase_cash_advance:${id}`,label:nextPayee} : revolvingFundPosting(nextVoucher), delta = Financial.money(nextAmount-value), correctionId = `petty_correct_${id}_${revision}`, funding = type === "purchase_advance" ? advanceFundingAccount(voucher) : {kind:"undeposited",account:"asset:cash_awaiting_deposit"};
-      let custodyWrites = {}; if (funding.kind === "undeposited") { if (delta > 0) {await claimCustodyPool(db,correctionId,custodyClaims);const custodyOut=await poolCustodyOutflow(db,delta);if(custodyOut.shortfall>0.009)throw new HttpsError("failed-precondition",`The increase exceeds available Undeposited Collection by ${custodyOut.shortfall.toFixed(2)}.`);custodyWrites=custodyOut.writes;} else if (delta < 0) custodyWrites = poolCustodyInflowRecord(correctionId,-delta,"Cash payment correction returned",now,correctionId); }
-      const movement = Financial.movement("petty_cash_payment_correction","pettyVoucher",id,[Financial.line(funding.account,value,0,"Reverse previous cash payment"),Financial.line(oldPosting.account,0,value,"Reverse "+oldPosting.label),Financial.line(nextPosting.account,nextAmount,0,nextPosting.label),Financial.line(funding.account,0,nextAmount,"Corrected cash payment")],{occurredAt:now,actorName:approvedBy,approvalId:approval.id,voucherNo:financeText(voucher.voucherNo,60),category:nextCategory,payee:nextPayee,purpose:nextPurpose,correctionRevision:revision,correctionReason:reason});
-      Object.assign(writes,approval.usedWrites,custodyWrites,{[`pettyCashVouchers/${id}/lastCorrectedBy`]:approvedBy,[`pettyCashVouchers/${id}/lastCorrectionApprovalId`]:approval.id,[`pettyCashVouchers/${id}/correctionMovementIds/${revision}`]:correctionId,[`operationalAudit/${now}_${id}_correct_${revision}`]:operationalAuditRecord("correct_approved_petty_voucher","pettyVoucher",id,actor,{before,after,reason,revision,approvalId:approval.id,movementId:correctionId})});
-      const committed = await commitFinancial(db,correctionId,movement,actor,writes);return {voucherId:id,action,revision,movementId:correctionId,duplicate:committed.duplicate};
+      return await correctApprovedPettyVoucher(db, actor, data, id, voucher, {amount: nextAmount, category: nextCategory, payee: nextPayee, supplierId: nextSupplierId, purpose: nextPurpose, approverName: nextApprover, reason, allocated}, custodyClaims);
     }
     if (action === "return") {if(voucher.transactionType!=="purchase_advance"||voucher.status!=="approved"||voucher.voided===true)throw new HttpsError("failed-precondition","Only an active supplier payment can be returned.");const remaining=Financial.money(voucher.remainingAmount!=null?voucher.remainingAmount:value);if(!(remaining>0))throw new HttpsError("failed-precondition","This supplier payment has no unallocated balance to return.");if(!reason)throw new HttpsError("invalid-argument","A return reason is required.");const funding=advanceFundingAccount(voucher),approval=await claimManagerApproval(db,data,"return_supplier_payment",id,remaining,`return_supplier_payment_${id}`),movementId=`petty_return_${id}`,movement=Financial.movement("revolving_fund_supplier_payment_return","pettyVoucher",id,[Financial.line(funding.account,remaining,0,funding.kind==="undeposited"?"Returned to Undeposited Collection":"Returned to selected cash account"),Financial.line(`asset:purchase_cash_advance:${id}`,0,remaining,"Clear unallocated supplier payment")],{occurredAt:now,actorName:approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole,approvalId:approval.id}),writes=Object.assign({},approval.usedWrites,funding.kind==="undeposited"?poolCustodyInflowRecord(`petty_return_${id}`,remaining,"Supplier payment returned",now,`petty_return_${id}`):{},{[`pettyCashVouchers/${id}/remainingAmount`]:0,[`pettyCashVouchers/${id}/allocationStatus`]:(Number(voucher.allocatedAmount)||0)>0?"partially_allocated_returned":"returned_unallocated",[`pettyCashVouchers/${id}/returnedAmount`]:remaining,[`pettyCashVouchers/${id}/returnedAt`]:now,[`pettyCashVouchers/${id}/returnReason`]:reason,[`pettyCashVouchers/${id}/returnApprovalId`]:approval.id,[`operationalAudit/${now}_${id}_return`]:operationalAuditRecord("return_supplier_payment","pettyVoucher",id,actor,{approvalId:approval.id,amount:remaining,reason})});const committed=await commitFinancial(db,movementId,movement,actor,writes);return {voucherId:id,action,amount:remaining,duplicate:committed.duplicate};}
     if (action === "liquidate") {
@@ -2290,7 +2291,7 @@ exports.managePettyVoucher = onCall(
       let debitAccount = "", debitLabel = "", custodyWrites = {}, settlementAccountId = "";
       if (settlementType === "cash") {
         settlementAccountId = financeText(data.accountId, 120) || "undeposited";
-        if (["register", "cash_float"].includes(settlementAccountId)) throw new HttpsError("failed-precondition", "Register Cash is retired and Cash Float is controlled. Select Undeposited Collection, Cash on Hand, or an active bank/cash account.");
+        if (["register", "cash_float", "cash_on_hand"].includes(settlementAccountId)) throw new HttpsError("failed-precondition", "Cash in Register and Cash on Hand cannot be selected. Use Undeposited Collection or an active bank / e-wallet account.");
         const destination = advanceFundingAccount({fundingAccountId: settlementAccountId});
         debitAccount = destination.account;
         if (destination.kind === "undeposited") custodyWrites = poolCustodyInflowRecord(settlementId, settlementAmount, "Staff advance repaid", now, settlementId);
@@ -2349,6 +2350,8 @@ exports.managePettyVoucher = onCall(
     }
     if (action === "approve") {
       if (voucher.status !== "pending") throw new HttpsError("failed-precondition", "Only pending vouchers can be approved.");
+      // Cash vouchers can never be future-dated (PV-202610-0015 was approved dated 21 days ahead).
+      assertVoucherDateNotFuture(voucher.date || financeDateFromTimestamp(now), now);
       if (voucher.transactionType === "purchase_advance") await requireActiveSupplier(db,voucher.supplierId,voucher.supplierName||voucher.recipient);
       if (voucher.transactionType === "loan_repayment") {
         const code=financeText(voucher.debitAccountCode,4),booksChart=await ensureBooksChart(db),loan=booksChart[code],interest=Financial.money(voucher.interestAmount||0),interestCode=financeText(voucher.interestAccountCode,4),interestRow=interestCode&&booksChart[interestCode];
@@ -2367,11 +2370,8 @@ exports.managePettyVoucher = onCall(
       }
       {
         const fundingAccountId = financeText(voucher.fundingAccountId, 120) || "undeposited", fundingValue = Financial.money(voucher.amount);
-        if (["register", "cash_float"].includes(fundingAccountId)) throw new HttpsError("failed-precondition", "Register Cash is retired and Cash Float is controlled. Select Undeposited Collection, Cash on Hand, or an active bank/cash account.");
-        if (fundingAccountId === "cash_on_hand") {
-          const cash = await availableCashOnHandAboveFloat(db);
-          if (fundingValue > cash.available + 0.009) throw new HttpsError("failed-precondition", `This payment exceeds available Cash on Hand by ${Financial.money(fundingValue - cash.available).toFixed(2)}. The protected Register Cash Float of ${cash.float.toFixed(2)} cannot be used.`);
-        } else if (fundingAccountId === "undeposited") {
+        if (["register", "cash_float", "cash_on_hand"].includes(fundingAccountId)) throw new HttpsError("failed-precondition", "Cash in Register and Cash on Hand cannot fund cash payments. Select Undeposited Collection or an active bank / e-wallet account.");
+        if (fundingAccountId === "undeposited") {
           const custodyPreview = await poolCustodyOutflow(db, fundingValue);
           if (custodyPreview.shortfall > 0.009) throw new HttpsError("failed-precondition", `This payment exceeds available Undeposited Collection by ${custodyPreview.shortfall.toFixed(2)}.`);
         } else {
@@ -2432,7 +2432,7 @@ exports.managePettyVoucher = onCall(
     const controlledType=["loan_repayment","staff_advance","customer_refund"].includes(voucher.transactionType);if(controlledType&&(action==="approve"||action==="void")){const controlledAfter=Object.assign({},result.snapshot.val()||voucher,{status:action==="void"?"reversed":"approved",approvedBy:action==="approve"?approvedBy:voucher.approvedBy,approvedAt:action==="approve"?now:voucher.approvedAt});await postControlledPettyVoucher(db,id,voucher,controlledAfter,{uid:actor.uid,role:actor.role});}
     await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord(`${action}_petty_voucher`, "pettyVoucher", id, actor, {approvalId: approval.id, amount: value, evidenceType: hasReceipt ? "receipt" : "manager_reviewed_explanation", explanation: financeText(voucher.purpose, 300)})}));
     return {voucherId: id, action, at: now, duplicate};
-  } finally { await releaseCustodyClaims(custodyClaims); } },
+  } finally { await releaseCustodyClaims(custodyClaims); await releasePettyVoucherClaims(voucherClaims); } },
 );
 
 exports.retireRevolvingFund = onCall(
@@ -2532,6 +2532,81 @@ function cashCustodyProjection(id, row) {
   };
 }
 
+// The open-custody projection rows a multi-path write produces, computed from the custody rows as
+// they are now plus the write itself, so a writer can store the projection in the SAME update.
+function custodyIndexWrites(rows, writes) {
+  const next = {}, out = {}, copy = (value) => (value == null ? null : JSON.parse(JSON.stringify(value)));
+  Object.keys(writes || {}).filter((path) => path.startsWith("cashCustody/")).forEach((path) => {
+    const keys = path.split("/").slice(1), id = keys[0];
+    if (!id) return;
+    if (!Object.prototype.hasOwnProperty.call(next, id)) next[id] = copy(rows && rows[id]);
+    if (keys.length === 1) { next[id] = copy(writes[path]); return; }
+    if (!next[id]) next[id] = {};
+    let node = next[id];
+    for (const key of keys.slice(1, -1)) { if (!node[key] || typeof node[key] !== "object") node[key] = {}; node = node[key]; }
+    const last = keys[keys.length - 1];
+    if (writes[path] == null) delete node[last]; else node[last] = copy(writes[path]);
+  });
+  Object.keys(next).forEach((id) => { const record = cashCustodyProjection(id, next[id]); out[`cashCustodyOpenIndex/${id}`] = record && record.remaining > 0 ? record : null; });
+  return out;
+}
+function openCustodyProjections(rows) {
+  const out = {};
+  Object.entries(rows || {}).forEach(([id, row]) => { const record = cashCustodyProjection(id, row); if (record && record.remaining > 0) out[id] = record; });
+  return out;
+}
+function custodyIndexDrift(index, truth) {
+  const writes = {}, same = (a, b) => !!a && !!b && ["amount", "paidOutAmount", "depositedAmount", "remaining"].every((field) => Financial.money(a[field]) === Financial.money(b[field]));
+  Object.keys(index || {}).forEach((id) => { if (!truth[id]) writes[`cashCustodyOpenIndex/${id}`] = null; });
+  Object.keys(truth).forEach((id) => { if (!same(index && index[id], truth[id])) writes[`cashCustodyOpenIndex/${id}`] = truth[id]; });
+  return writes;
+}
+// Detective control (7 Oct 2026): every Undeposited Collection snapshot compares the compact
+// projections with the authoritative records and repairs any drift, logged, never hidden.
+// Cost: one bounded query of the open custody rows (the same rows the projection holds) and one
+// single-node read per flagged "missing" voucher. Repairs take the custody pool claim and
+// re-read first, so no payment can change a row between the check and the repair.
+async function verifyUndepositedIndexes(db, indexRows, missingRows) {
+  const verifyLimit = 500, openRows = async () => {
+    const rows = (await db.ref("/cashCustody").orderByChild("remaining").startAt(0.005).limitToFirst(verifyLimit + 1).get()).val() || {};
+    if (Object.keys(rows).length > verifyLimit) throw new HttpsError("resource-exhausted", "Undeposited Collection has more than 500 open custody rows. Deposit or archive older settled rows before running the control check.");
+    return openCustodyProjections(rows);
+  };
+  let index = indexRows || {}, truth = await openRows(), writes = custodyIndexDrift(index, truth);
+  const result = {checked: true, custodyRowsRepaired: 0, missingVouchersCleared: 0, index};
+  if (Object.keys(writes).length) {
+    const held = [];
+    try {
+      await claimCustodyPool(db, "undeposited_index_verify", held);
+      index = (await db.ref("/cashCustodyOpenIndex").limitToFirst(verifyLimit + 1).get()).val() || {};
+      if (Object.keys(index).length > verifyLimit) throw new HttpsError("resource-exhausted", "The custody projection exceeds the 500-row verification limit.");
+      truth = await openRows();
+      writes = custodyIndexDrift(index, truth);
+      if (Object.keys(writes).length) {
+        const now = Date.now(), before = {};
+        Object.keys(writes).forEach((path) => { const id = path.split("/")[1]; before[id] = index[id] ? Financial.money(index[id].remaining) : null; });
+        writes[`operationalAudit/${now}_undeposited_index_repair`] = operationalAuditRecord("repair_undeposited_custody_index", "cashCustody", "openIndex", {uid: "server", role: "server"}, {rows: Object.keys(before).map((id) => ({id, projectedRemaining: before[id], authoritativeRemaining: truth[id] ? Financial.money(truth[id].remaining) : 0})), accounting: "Projection only; no custody row or Finance Books posting changed."});
+        await db.ref().update(writes);
+        result.custodyRowsRepaired = Object.keys(before).length;
+      }
+    } catch (error) { logger.warn("Undeposited custody index verify skipped", {message: String(error && error.message || error)}); result.checked = false; return result; }
+    finally { await releaseCustodyClaims(held); }
+    index = truth;
+  }
+  const falseMissing = [];
+  await Promise.all(Object.keys(missingRows || {}).map(async (id) => { if ((await db.ref(`/pettyVoucherPostingIndex/${financeKey(id, "Voucher ID")}`).get()).exists()) falseMissing.push(id); }));
+  if (falseMissing.length) {
+    const now = Date.now(), clear = {[`operationalAudit/${now}_voucher_attention_repair`]: operationalAuditRecord("repair_voucher_attention_index", "pettyVoucher", "missingIndex", {uid: "server", role: "server"}, {voucherIds: falseMissing, accounting: "The vouchers are posted; only the stale 'missing' flag was removed."})};
+    falseMissing.forEach((id) => { clear[`pettyVoucherAttentionIndex/missing/${id}`] = null; });
+    await db.ref().update(clear);
+    result.missingVouchersCleared = falseMissing.length;
+  }
+  result.index = index;
+  result.falseMissing = falseMissing;
+  await db.ref("/systemHealth/undepositedIndexVerification").set({checkedAt:Date.now(),custodyRowsRepaired:result.custodyRowsRepaired,missingVouchersCleared:result.missingVouchersCleared,checked:result.checked});
+  return result;
+}
+
 function pettyVoucherAttentionProjection(id, row) {
   return {id,voucherNo:financeText(row.voucherNo,60),date:financeText(row.date,10),recipient:financeText(row.recipient||row.requesterName,160),purpose:financeText(row.purpose,300),category:financeText(row.category,80),amount:Financial.money(row.amount),status:financeText(row.status,40),voided:row.voided===true};
 }
@@ -2569,9 +2644,10 @@ exports.getUndepositedControlSnapshot = onCall(
   {region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB"},
   async (request) => {
     const db=getDatabase();await requirePortalPermission(db,request,["petty","cashflow","undeposited"]);await ensureUndepositedPageIndexes(db);
-    const [summaryMetaSnap,summaryBalanceSnap,pendingSummarySnap,openCustodySnap,pendingVoucherSnap,missingVoucherSnap,retirementSnap,openingSnap]=await Promise.all([
-      db.ref("/cashBalanceSummary/meta").get(),db.ref("/cashBalanceSummary/balances").get(),db.ref("/cashBalanceSummaryPending").limitToFirst(1).get(),db.ref("/cashCustodyOpenIndex").get(),
+    const [summaryMetaSnap,summaryBalanceSnap,pendingSummarySnap,openCustodySnap,pendingVoucherSnap,missingVoucherSnap,retirementSnap,openingSnap,verificationSnap]=await Promise.all([
+      db.ref("/cashBalanceSummary/meta").get(),db.ref("/cashBalanceSummary/balances").get(),db.ref("/cashBalanceSummaryPending").limitToFirst(1).get(),db.ref("/cashCustodyOpenIndex").limitToFirst(501).get(),
       db.ref("/pettyVoucherAttentionIndex/pending").limitToLast(100).get(),db.ref("/pettyVoucherAttentionIndex/missing").limitToLast(100).get(),db.ref("/financialMovements/revolving_fund_retirement").get(),db.ref("/financialMovements/undeposited_opening_balance").get(),
+      db.ref("/systemHealth/undepositedIndexVerification").get(),
     ]);
     let undeposited=0,revolving=0,summaryMeta=summaryMetaSnap.val()||{},summaryBalances=summaryBalanceSnap.val()||{};
     if(summaryMeta.schemaVersion!==CashBalances.SCHEMA_VERSION||summaryMeta.complete!==true||pendingSummarySnap.exists()){
@@ -2583,11 +2659,13 @@ exports.getUndepositedControlSnapshot = onCall(
       const movementMap=/* download-ok: fallback cash-balance summary is incomplete */(await db.ref("/financialMovements").get()).val()||{};
       Object.values(movementMap).forEach((movement)=>{((movement&&movement.lines)||[]).forEach((line)=>{const net=Financial.money((Number(line.debit)||0)-(Number(line.credit)||0));if(line.account===UNDEPOSITED_POOL_ACCOUNT)undeposited=Financial.money(undeposited+net);if(line.account==="asset:petty_cash")revolving=Financial.money(revolving+net);});});
     }
-    const custodyRemaining=Financial.money(Object.values(openCustodySnap.val()||{}).reduce((sum,row)=>sum+Number(row&&row.remaining||0),0));
-    const pendingVouchers=Object.values(pendingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided).sort((a,b)=>String(b.date).localeCompare(String(a.date))),missingApprovedVouchers=Object.values(missingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided);
+    const openIndex=openCustodySnap.val()||{};if(Object.keys(openIndex).length>500)throw new HttpsError("resource-exhausted","Undeposited Collection has more than 500 open custody rows. Deposit or archive older settled rows before opening this control.");
+    const verification=verificationSnap.val()||{},verifyDue=Date.now()-Number(verification.checkedAt||0)>=600000||missingVoucherSnap.exists(),verified=verifyDue?await verifyUndepositedIndexes(db,openIndex,missingVoucherSnap.val()||{}):{checked:false,custodyRowsRepaired:0,missingVouchersCleared:0,index:openIndex,falseMissing:[]};
+    const custodyRemaining=Financial.money(Object.values(verified.index||{}).reduce((sum,row)=>sum+Number(row&&row.remaining||0),0));
+    const pendingVouchers=Object.values(pendingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided).sort((a,b)=>String(b.date).localeCompare(String(a.date))),missingApprovedVouchers=Object.values(missingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided&&!(verified.falseMissing||[]).includes(row.id));
     const custodyGap=Financial.money(undeposited-custodyRemaining);let custodyGapCandidates=[];
     if(custodyGap>0){const candidateSnap=await db.ref("/undepositedLedgerPageIndex").orderByChild("netAmount").equalTo(custodyGap).limitToLast(25).get();custodyGapCandidates=Object.entries(candidateSnap.val()||{}).map(([id,row])=>Object.assign({id},row||{})).filter((row)=>!row.reversalOf&&!row.reversedByMovementId);}
-    return{undepositedBalance:undeposited,revolvingBalance:revolving,custodyRemaining,custodyGap,pendingVouchers,missingApprovedVouchers,missingApprovedVoucherIds:missingApprovedVouchers.map((row)=>row.id),custodyGapCandidates,retirementPosted:retirementSnap.exists(),openingPosted:openingSnap.exists(),calculatedAt:Date.now(),authority:"server_all_time",pageSize:UNDEPOSITED_PAGE_SIZE};
+    return{undepositedBalance:undeposited,revolvingBalance:revolving,custodyRemaining,custodyGap,pendingVouchers,missingApprovedVouchers,missingApprovedVoucherIds:missingApprovedVouchers.map((row)=>row.id),custodyGapCandidates,retirementPosted:retirementSnap.exists(),openingPosted:openingSnap.exists(),indexVerification:{checked:verified.checked,custodyRowsRepaired:verified.custodyRowsRepaired,missingVouchersCleared:verified.missingVouchersCleared},calculatedAt:Date.now(),authority:"server_all_time",pageSize:UNDEPOSITED_PAGE_SIZE};
   },
 );
 
@@ -2609,14 +2687,9 @@ exports.syncPettyVoucherAttentionIndex = onValueWritten(
     if(row&&row.voided!==true&&row.status==="pending")writes[`pettyVoucherAttentionIndex/pending/${id}`]=pettyVoucherAttentionProjection(id,row);
     if(row&&row.voided!==true&&row.status==="approved"&&!(await db.ref(`/pettyVoucherPostingIndex/${id}`).get()).exists())writes[`pettyVoucherAttentionIndex/missing/${id}`]=pettyVoucherAttentionProjection(id,row);
     await db.ref().update(writes);
-  },
-);
-
-exports.syncCashCustodyPageIndex = onValueWritten(
-  {ref:"/cashCustody/{custodyId}",region:ORDER_REGION,retry:true},
-  async (event) => {
-    const db = getDatabase(), id = event.params.custodyId, row = event.data.after.exists() ? event.data.after.val() : null, record = cashCustodyProjection(id, row);
-    await db.ref(`/cashCustodyOpenIndex/${id}`).set(record && record.remaining > 0 ? record : null);
+    // Write-then-verify: the posting trigger sets the posting index and clears "missing" in one
+    // update, so whichever trigger runs second leaves the right answer (7 Oct 2026 race).
+    if(writes[`pettyVoucherAttentionIndex/missing/${id}`]&&(await db.ref(`/pettyVoucherPostingIndex/${id}`).get()).exists())await db.ref(`/pettyVoucherAttentionIndex/missing/${id}`).remove();
   },
 );
 
@@ -2742,6 +2815,186 @@ async function ensureLegacyVoucherReceiptsMoved(db) {
   await flagRef.set({at: Date.now(), moved: result.moved.length, kept: result.kept});
 }
 
+// ---------------------------------------------------------------------------
+// Approved Cash Voucher correction (7 Oct 2026, Danilo's request).
+// An approved voucher can be edited - date, amount, category, payee, purpose - while the
+// months involved are open, the way Xero / MYOB / NetSuite allow an open-period edit. The
+// ledger stays immutable: the voucher's current effective posting is reversed ON ITS OWN DATE
+// and the corrected posting is made on the voucher's (new) date, both in one atomic write,
+// always against the voucher's real funding account (bank / e-wallet register rows included,
+// Undeposited Collection custody moved only by the amount difference).
+// Cash vouchers can never be future-dated: creation, approval and correction all refuse a
+// date after today's Manila business date.
+// ---------------------------------------------------------------------------
+const VOUCHER_CONTROLLED_TYPES = ["loan_repayment", "staff_advance", "customer_refund"];
+const VOUCHER_EXPENSE_CATEGORIES = ["operating_supplies","office_supplies","utilities","internet_phone","marketing","repairs","bank_fees","rent","salaries","transport","staff_meals","miscellaneous","other_expense"];
+const PETTY_VOUCHER_MUTATION_LEASE_MS = 120000;
+
+async function claimPettyVoucherMutation(db, voucherId, ownerId, actor, registry) {
+  const id = financeKey(voucherId, "Voucher ID"), ref = db.ref(`/financialControlLocks/pettyVoucher/${id}`), token = crypto.randomBytes(12).toString("hex"), claimedAt = Date.now();
+  const result = await ref.transaction((current) => (!current || Number(current.claimedAt || 0) < claimedAt - PETTY_VOUCHER_MUTATION_LEASE_MS ? {token, ownerId: financeText(ownerId, 200), actorUid: actor && actor.uid || "", claimedAt} : undefined), undefined, false);
+  if (!result.committed || !result.snapshot.exists() || result.snapshot.val().token !== token) throw new HttpsError("aborted", "This cash voucher is being updated by another action. Refresh it and try again.");
+  const claim = {pettyVoucher: true, id, token, released: false, release: async () => {
+    if (claim.released) return; claim.released = true;
+    await ref.transaction((current) => (current && current.token === token ? null : current), undefined, false);
+  }};
+  if (Array.isArray(registry)) registry.push(claim);
+  return claim;
+}
+async function releasePettyVoucherClaims(held) { for (const claim of held || []) if (claim && claim.pettyVoucher === true) await claim.release(); }
+
+function voucherBusinessToday(now) { return financeDateFromTimestamp(Number(now) || Date.now()); }
+function assertVoucherDateNotFuture(value, now) {
+  const date = financeDate(value, true), today = voucherBusinessToday(now);
+  if (date > today) throw new HttpsError("invalid-argument", `Cash voucher date ${date} is in the future. Use the date the money actually left (${today} or earlier).`);
+  return date;
+}
+// The exact change a manager approves. The server rebuilds it from the command, so an approval
+// granted for one change can never be spent on another (date, amount, category, payee ...).
+function voucherChangeFingerprint(voucherId, change) {
+  const c = change || {};
+  const canonical = JSON.stringify([
+    "correct_petty_voucher:v1", financeText(voucherId, 160), Math.max(0, Math.floor(Number(c.expectedRev) || 0)),
+    financeText(c.date, 10), Financial.money(c.amount).toFixed(2), financeText(c.category, 80), financeText(c.payee, 160),
+    financeText(c.supplierId, 160), financeText(c.purpose, 300), financeText(c.approverName, 160), financeText(c.reason, 500),
+  ]);
+  return crypto.createHash("sha256").update(canonical).digest("hex");
+}
+function voucherLedgerRowLocked(row) {
+  return !!row && (row.bankReconciled === true || row.reconciled === true || !!row.reconciledAt || !!row.bankReconciliationId);
+}
+
+// Commits several financial movements in ONE multi-path update: all are posted or none is.
+// Same guarantees as commitFinancial (period lock, document numbers, per-movement claims,
+// custody-delta check, unsafe-update guard) for a correction that spans two dates.
+async function commitFinancialSet(db, entries, actor, extraWrites = {}) {
+  const ids = entries.map((entry) => financeKey(entry.id, "Movement ID"));
+  const existing = await Promise.all(ids.map((id) => db.ref(`/financialMovements/${id}`).get()));
+  if (existing.every((snap) => snap.exists())) throw new HttpsError("aborted", "This voucher correction was already posted. Refresh the voucher before trying another change.");
+  if (existing.some((snap) => snap.exists())) throw new HttpsError("failed-precondition", "Part of this correction is already posted. Refresh the voucher; nothing new was posted.");
+  for (const entry of entries) await assertAccountingPeriodOpen(db, Number(entry.movement && entry.movement.occurredAt || Date.now()), "posting this cash voucher correction");
+  const records = [];
+  for (let i = 0; i < entries.length; i += 1) {
+    const record = financeRecord(ids[i], entries[i].movement, actor);
+    const prefix = documentPrefix(record);
+    if (prefix && !financeText(record.documentNo, 40)) {
+      const year = financeDateFromTimestamp(Number(record.occurredAt) || Date.now()).slice(0, 4);
+      try { record.documentNo = await nextDocumentNumber(db, prefix, year); } catch (error) { record.documentNo = ""; }
+    }
+    records.push(record);
+  }
+  const claimedAt = Date.now(), token = crypto.randomBytes(12).toString("hex"), held = [];
+  try {
+    for (const id of ids) {
+      const claim = await db.ref(`/financialCommandClaims/${id}`).transaction((current) => (!current || (current.status === "processing" && Number(current.claimedAt || 0) < claimedAt - 900000)) ? {status: "processing", token, claimedAt, actorUid: actor.uid, movementId: id, operationType: "petty_cash_payment_correction", schemaVersion: 2} : undefined);
+      if (!claim.committed || !claim.snapshot.exists() || claim.snapshot.val().token !== token) throw new HttpsError("aborted", "This correction is already being processed. Wait a moment, then refresh.");
+      held.push(id);
+    }
+    let custodyIndex = {};
+    if (Object.keys(extraWrites).some((path) => path.startsWith("cashCustody/"))) {
+      const lines = records.reduce((all, record) => all.concat(record.lines || []), []), touched = await touchedCustodyRows(db, extraWrites);
+      try { CashJournalEdit.assertCustodyDelta(touched, extraWrites, lines); } catch (error) { throw new HttpsError("failed-precondition", error.message); }
+      custodyIndex = custodyIndexWrites(touched, extraWrites);
+    }
+    const writes = Object.assign({}, extraWrites, custodyIndex);
+    records.forEach((record, i) => {
+      writes[`financialMovements/${ids[i]}`] = record;
+      const queueKey = CashBalances.pendingKey(`voucher_correction_${ids[i]}`, ids[i]);
+      writes[`cashBalanceSummaryPending/${queueKey}`] = CashBalances.pendingRecord(ids[i], claimedAt);
+      writes[`financialCommandClaims/${ids[i]}`] = {status: "posted", token, claimedAt, postedAt: Date.now(), actorUid: actor.uid, movementId: ids[i], operationType: financeText(record.type, 80), schemaVersion: 2};
+    });
+    await safeFinancialUpdate(db, writes, "financial");
+    return {duplicate: false, movements: records};
+  } catch (error) {
+    for (const id of held) await db.ref(`/financialCommandClaims/${id}`).transaction((current) => (current && current.token === token && current.status === "processing" ? null : current));
+    throw error;
+  }
+}
+
+// The posting this voucher currently stands on: the latest correction's posting, else the
+// original approval posting. Vouchers corrected under the pre-Oct-2026 single-movement method
+// cannot be split back to their two dates, so they are refused (void and re-enter instead).
+async function voucherEffectivePosting(db, id, voucher) {
+  const effective = voucher.effectivePosting || null;
+  if (!effective && voucher.correctionMovementIds && Object.keys(voucher.correctionMovementIds).length) throw new HttpsError("failed-precondition", "This cash voucher was corrected under the earlier method. Void it with approval and record a new voucher.");
+  const movementId = effective && effective.movementId ? financeKey(effective.movementId, "Movement ID") : `petty_${id}`;
+  const movement = (await db.ref(`/financialMovements/${movementId}`).get()).val();
+  if (!movement || !Array.isArray(movement.lines) || !movement.lines.length) throw new HttpsError("failed-precondition", "The voucher's Finance Books posting is missing. Use Repair missing payments in Undeposited Collection first.");
+  return {movementId, movement: Object.assign({id: movementId}, movement)};
+}
+
+async function correctApprovedPettyVoucher(db, actor, data, id, voucher, next, custodyClaims) {
+  const now = Date.now(), type = financeText(voucher.transactionType, 40) || "expense";
+  if (VOUCHER_CONTROLLED_TYPES.includes(type) || voucher.conversionMovementId) throw new HttpsError("failed-precondition", "Loan repayments, staff advances and customer refunds cannot be edited in place. Void with approval and record a correcting entry.");
+  const funding = advanceFundingAccount(voucher);
+  const before = {date: financeText(voucher.date, 10), amount: Financial.money(voucher.amount), category: financeText(voucher.category, 80), payee: financeText(voucher.recipient || voucher.requesterName, 160), supplierId: financeText(voucher.supplierId, 160), purpose: financeText(voucher.purpose, 300), approverName: financeText(voucher.approverName, 160)};
+  const after = {date: assertVoucherDateNotFuture(data.date || before.date, now), amount: next.amount, category: next.category, payee: next.payee, supplierId: next.supplierId, purpose: next.purpose, approverName: next.approverName};
+  const financialChange = after.date !== before.date || Math.abs(after.amount - before.amount) > 0.009 || after.category !== before.category || after.payee !== before.payee || after.purpose !== before.purpose || after.approverName !== before.approverName || (type === "purchase_advance" && after.supplierId !== before.supplierId);
+  const anyChange = financialChange || after.payee !== before.payee || after.purpose !== before.purpose || after.approverName !== before.approverName;
+  if (!anyChange) throw new HttpsError("invalid-argument", "Nothing was changed on this cash voucher.");
+  if (financialChange && !["undeposited", "account"].includes(funding.kind)) throw new HttpsError("failed-precondition", "Cash in Register and Cash on Hand cannot be corrected in place. Void with approval and record a new voucher against Undeposited Collection or the actual bank / e-wallet account.");
+  if (type === "purchase_advance" && after.date !== before.date && Object.keys(voucher.allocations || {}).length) throw new HttpsError("failed-precondition", "This supplier payment is already allocated to purchases. Reverse the linked purchases before changing its date.");
+  await assertAccountingPeriodOpen(db, before.date || financeDateFromTimestamp(now), "correcting this cash voucher");
+  await assertAccountingPeriodOpen(db, after.date, "correcting this cash voucher");
+  const expectedRev = Math.max(0, Math.floor(Number(voucher.correctionRevision) || 0)), rev = expectedRev + 1;
+  const changeHash = voucherChangeFingerprint(id, {expectedRev, date: after.date, amount: after.amount, category: after.category, payee: after.payee, supplierId: after.supplierId, purpose: after.purpose, approverName: after.approverName, reason: next.reason});
+  const approval = await claimManagerApproval(db, data, "correct_petty_voucher", id, after.amount, `correct_petty_voucher_${id}_${rev}`, null, changeHash);
+  const approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole, approvedRole = financeText(approval.record.approvedRole, 20);
+  const selfApproved = approval.record.approvedBy === actor.uid;
+  if (selfApproved && approvedRole !== "superadmin") {await db.ref().update(approval.usedWrites); throw new HttpsError("permission-denied", "A cash voucher correction must be approved by a different manager account (only a Super Admin may approve their own correction).");}
+  if (after.date.slice(0, 7) !== before.date.slice(0, 7) && !["superadmin", "admin"].includes(approvedRole)) {await db.ref().update(approval.usedWrites); throw new HttpsError("permission-denied", "Moving a cash voucher to another month needs Admin or Super Admin approval.");}
+  const writes = Object.assign({}, approval.usedWrites), base = `pettyCashVouchers/${id}`;
+  Object.assign(writes, {[`${base}/date`]: after.date, [`${base}/amount`]: after.amount, [`${base}/category`]: after.category, [`${base}/supplierId`]: after.supplierId, [`${base}/supplierName`]: type === "purchase_advance" ? after.payee : "", [`${base}/requesterName`]: after.payee, [`${base}/recipient`]: after.payee, [`${base}/purpose`]: after.purpose, [`${base}/approverName`]: after.approverName, [`${base}/correctionRevision`]: rev, [`${base}/lastCorrectedAt`]: now, [`${base}/lastCorrectionReason`]: next.reason, [`${base}/lastCorrectedBy`]: approvedBy, [`${base}/lastCorrectedByUid`]: actor.uid, [`${base}/lastCorrectionApprovalId`]: approval.id});
+  if (type === "purchase_advance") {writes[`${base}/allocatedAmount`] = next.allocated; writes[`${base}/remainingAmount`] = Financial.money(after.amount - next.allocated); writes[`${base}/allocationStatus`] = next.allocated > 0 ? (after.amount - next.allocated > 0 ? "partially_allocated" : "fully_allocated") : "unallocated";}
+  const record = {rev, before, after, reason: next.reason, approvalId: approval.id, approvedBy, approvedRole, selfApproved, requestedBy: actor.uid, at: now, financial: financialChange};
+  if (!financialChange) {
+    writes[`${base}/corrections/${rev}`] = record;
+    writes[`operationalAudit/${now}_${id}_correct_${rev}`] = operationalAuditRecord("correct_approved_petty_voucher", "pettyVoucher", id, actor, {before, after, reason: next.reason, revision: rev, approvalId: approval.id, selfApproved, financial: false});
+    await db.ref().update(writes);
+    return {voucherId: id, action: "correct", revision: rev, financial: false, selfApproved};
+  }
+  const effective = await voucherEffectivePosting(db, id, voucher);
+  const reverseId = `petty_corr_${id}_r${rev}_rev`, postId = `petty_corr_${id}_r${rev}_post`;
+  const detail = {actorName: approvedBy, approvalId: approval.id, voucherNo: financeText(voucher.voucherNo, 60), payee: after.payee, purpose: after.purpose, correctionRevision: rev, correctionReason: next.reason, fundingAccountId: funding.id || "undeposited"};
+  const reversal = Financial.reverseMovement(effective.movement, "petty_cash_payment_correction_reversal", `Correction ${rev} reverses`);
+  Object.assign(reversal, detail, {category: before.category, reversesMovementId: effective.movementId});
+  const nextVoucher = Object.assign({}, voucher, {amount: after.amount, category: after.category, recipient: after.payee, requesterName: after.payee, purpose: after.purpose});
+  const posting = type === "purchase_advance" ? {account: `asset:purchase_cash_advance:${id}`, label: after.payee || "Supplier payment pending allocation"} : revolvingFundPosting(nextVoucher);
+  const correctedAt = cashPaymentOccurredAt({date: after.date});
+  const corrected = Financial.movement("petty_cash_payment_correction", "pettyVoucher", id, [Financial.line(posting.account, after.amount, 0, posting.label), Financial.line(funding.account, 0, after.amount, funding.kind === "undeposited" ? "Paid from Undeposited Collection" : "Paid from selected cash account")], Object.assign({}, detail, {occurredAt: correctedAt, category: after.category, correctsMovementId: effective.movementId}));
+  const fundingNet = (lines) => Financial.money((lines || []).reduce((sum, line) => sum + (line.account === funding.account ? Number(line.debit || 0) - Number(line.credit || 0) : 0), 0));
+  const paidBefore = Financial.money(-fundingNet(effective.movement.lines));
+  if (!(paidBefore > 0)) throw new HttpsError("failed-precondition", "The voucher's current posting does not pay from its funding account. Void with approval and record a new voucher.");
+  if (funding.kind === "account") {
+    const accountId = funding.id;
+    const ledger = (await db.ref("/cfLedger").orderByChild("linkId").equalTo(id).limitToLast(100).get()).val() || {}, rows = Object.values(ledger), effectiveRows = rows.filter((row) => financeText(row && row.movementId, 160) === effective.movementId);
+    if (rows.length >= 100) throw new HttpsError("failed-precondition", "This voucher has too many bank-register amendments to correct safely. Review it in Finance Books and use a controlled void.");
+    if (rows.some(voucherLedgerRowLocked)) throw new HttpsError("failed-precondition", `This payment or an earlier correction is already reconciled to the ${funding.kind === "cash_on_hand" ? "cash-register control" : "bank statement"}. Un-reconcile it first, or void with approval and record a new voucher.`);
+    const oldDate = financeDateFromTimestamp(Number(effective.movement.occurredAt) || now);
+    if (effectiveRows.length !== 1 || effectiveRows[0].accountId !== accountId || effectiveRows[0].dir !== "out" || Math.abs(Financial.money(effectiveRows[0].amount) - paidBefore) > 0.009 || financeText(effectiveRows[0].date, 10) !== oldDate) throw new HttpsError("failed-precondition", `The voucher's ${funding.kind === "cash_on_hand" ? "cash-register" : "bank-register"} entry is missing or does not match Finance Books. Repair the original cash-payment register link before correcting this voucher.`);
+    writes[`cfLedger/fm_${reverseId}`] = cashLedgerRecord({date: oldDate, accountId, dir: "in", category: "Cash voucher correction (reversal)", amount: paidBefore, party: before.payee, ref: financeText(voucher.voucherNo, 60)}, reverseId, Object.assign({}, reversal, {sourceType: "pettyVoucher", sourceId: id}), actor);
+    writes[`cfLedger/fm_${postId}`] = cashLedgerRecord({date: after.date, accountId, dir: "out", category: posting.label, amount: after.amount, party: after.payee, ref: financeText(voucher.voucherNo, 60)}, postId, corrected, actor);
+  }
+  let custodyAllocations = {};
+  if (funding.kind === "undeposited") {
+    await claimCustodyPool(db, postId, custodyClaims);
+    const [cashControl, openRows] = await Promise.all([currentCashBalances(db, now), openCustodyRows(db)]), custodyTotal = Financial.money(Object.values(openRows).reduce((sum, row) => sum + Number(row && row.remaining || 0), 0)), booksTotal = Financial.money(Number(cashControl.balances && cashControl.balances.undepositedCents || 0) / 100);
+    if (Math.abs(custodyTotal - booksTotal) > 0.009) throw new HttpsError("failed-precondition", `Undeposited Collection must be reconciled before correcting this voucher. Custody is ${custodyTotal.toFixed(2)} and Finance Books is ${booksTotal.toFixed(2)}.`);
+    const delta = Financial.money(after.amount - paidBefore);
+    if (delta > 0) {
+      const out = await poolCustodyOutflow(db, delta);
+      if (out.shortfall > 0.009) throw new HttpsError("failed-precondition", `The increase exceeds available Undeposited Collection by ${out.shortfall.toFixed(2)}.`);
+      Object.assign(writes, out.writes); custodyAllocations = out.allocations;
+    } else if (delta < 0) Object.assign(writes, poolCustodyInflowRecord(`corr_${id}_r${rev}`, -delta, "Cash voucher correction returned", now, postId));
+    corrected.custodyAllocations = custodyAllocations;
+  }
+  writes[`${base}/effectivePosting`] = {movementId: postId, reversedMovementId: effective.movementId, reversalMovementId: reverseId, date: after.date, amount: after.amount, account: funding.account, rev};
+  writes[`${base}/corrections/${rev}`] = Object.assign(record, {reversalMovementId: reverseId, postingMovementId: postId, reversedMovementId: effective.movementId});
+  writes[`operationalAudit/${now}_${id}_correct_${rev}`] = operationalAuditRecord("correct_approved_petty_voucher", "pettyVoucher", id, actor, {before, after, reason: next.reason, revision: rev, approvalId: approval.id, selfApproved, financial: true, reversalMovementId: reverseId, postingMovementId: postId, fundingAccount: funding.account});
+  const committed = await commitFinancialSet(db, [{id: reverseId, movement: reversal}, {id: postId, movement: corrected}], actor, writes);
+  return {voucherId: id, action: "correct", revision: rev, financial: true, reversalMovementId: reverseId, movementId: postId, selfApproved, duplicate: committed.duplicate};
+}
+// End of approved Cash Voucher correction.
 function savedShiftCashSales(shift) {
   const sales = shift && shift.zReport && Array.isArray(shift.zReport.sales) ? shift.zReport.sales : [];
   let cash = 0;
@@ -5967,11 +6220,16 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
   try {
     // While this claim is processing, guarded cash-journal edits cannot run.
     // Detect edits completed after a custody calculation but before this claim.
+    // The open-custody projection is written in the SAME update as the custody rows it mirrors
+    // (7 Oct 2026: a trigger replaying an older custody write left the projection ₱2,664.01 stale).
+    let custodyIndex={};
     if(Object.keys(extraWrites).some(path=>path.startsWith('cashCustody/'))){
-      try{CashJournalEdit.assertCustodyDelta(await touchedCustodyRows(db,extraWrites),extraWrites,record.lines);}catch(error){throw new HttpsError('failed-precondition',error.message);}
+      const touched=await touchedCustodyRows(db,extraWrites);
+      try{CashJournalEdit.assertCustodyDelta(touched,extraWrites,record.lines);}catch(error){throw new HttpsError('failed-precondition',error.message);}
+      custodyIndex=custodyIndexWrites(touched,extraWrites);
     }
     if(record.reversalOf){const source=(await db.ref(`/financialMovements/${financeKey(record.reversalOf,'Reversal source')}`).get()).val();if(source&&Number(source.revision)>0&&CashJournalEdit.eligible(source))throw new HttpsError('failed-precondition','This cash journal has an audited revision. Refresh and use Edit / correct; journal-only reversal would break its custody link.');}
-    const writes = Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
+    const writes = Object.assign({}, extraWrites, custodyIndex, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
     await safeFinancialUpdate(db, writes, "financial");
     if (run) run.written += 1;
     return {duplicate: false, movement: record};
@@ -6293,7 +6551,26 @@ exports.onPettyVoucherFinancial = onValueWritten(
 // A cash payment approved from Undeposited Collection takes the custody pool claim (step 0.5);
 // a void only creates a returned-cash row and needs none.
 async function pettyVoucherFinancialLocked(event) {const before = event.data.before.val() || {}, after = event.data.after.val(); if (after && after.status === "approved" && before.status !== "approved" && advanceFundingAccount(after).kind === "undeposited") return withCustodyPool(getDatabase(), `petty_${event.params.voucherId}`, () => pettyVoucherFinancialEvent(event)); return pettyVoucherFinancialEvent(event);}
-async function pettyVoucherFinancialEvent(event) {const before = event.data.before.val() || {}, after = event.data.after.val(); if (!after) return; const db = getDatabase(), id = event.params.voucherId, value = Financial.money(after.amount), actor = {uid: "server", role: "server"}, isAdvance=after.transactionType==="purchase_advance", posting=revolvingFundPosting(after), funding=advanceFundingAccount(after); if (after.status === "approved" && before.status !== "approved" && value > 0 && !after.conversionMovementId) {let custodyOut={writes:{},fromCustody:0,shortfall:0,allocations:{}};if(funding.kind==="undeposited"){custodyOut = await poolCustodyOutflow(db, value);if(custodyOut.shortfall>0.009){const blockedAt=Date.now();await db.ref().update({[`pettyCashVouchers/${id}/cashCustodyStatus`]:"blocked_insufficient_custody",[`pettyCashVouchers/${id}/cashCustodyShortfall`]:custodyOut.shortfall,[`pettyCashVouchers/${id}/cashCustodyCheckedAt`]:blockedAt,[`operationalAudit/${blockedAt}_${id}_custody_blocked`]:operationalAuditRecord("block_cash_payment_without_custody","pettyVoucher",id,actor,{amount:value,available:custodyOut.fromCustody,shortfall:custodyOut.shortfall})});return;}}const movement = Financial.movement(isAdvance?"revolving_fund_purchase_advance":posting.movementType, "pettyVoucher", id, [Financial.line(isAdvance?`asset:purchase_cash_advance:${id}`:posting.account, value, 0, isAdvance?(after.recipient||"Supplier payment pending allocation"):posting.label), Financial.line(funding.account, 0, value, funding.kind==="undeposited"?"Paid from Undeposited Collection":(funding.kind==="cash_on_hand"?"Paid from Cash on Hand":"Paid from selected cash account"))], {occurredAt:cashPaymentOccurredAt(after),approvedAt:Number(after.approvedAt||Date.now()),actorName:after.approvedBy||"Manager",voucherNo:financeText(after.voucherNo,60),category:financeText(after.category,80),payee:financeText(after.recipient||after.requesterName,160),purpose:financeText(after.purpose,300),custodyAllocations:custodyOut.allocations,fundingAccountId:funding.id||"undeposited"}); await commitFinancial(db, `petty_${id}`, movement, actor, Object.assign({},custodyOut.writes,funding.kind==="undeposited"?{[`pettyCashVouchers/${id}/cashCustodyStatus`]:"allocated",[`pettyCashVouchers/${id}/cashCustodyAllocations`]:custodyOut.allocations,[`pettyCashVouchers/${id}/cashCustodyCheckedAt`]:Date.now()}:{[`pettyCashVouchers/${id}/cashCustodyStatus`]:"not_applicable",[`pettyCashVouchers/${id}/cashCustodyCheckedAt`]:Date.now()}));} if (after.voided === true && before.voided !== true && after.status === "approved" && value > 0) {const inflow = funding.kind==="undeposited"?poolCustodyInflowRecord(`petty_void_${id}`, value, isAdvance?"Supplier payment voided":"Expense voided", Number(after.voidedAt || Date.now()), `petty_void_${id}`):{}; const movement = Financial.movement(isAdvance?"revolving_fund_purchase_advance_void":posting.movementType+"_void", "pettyVoucher", id, [Financial.line(funding.account, value, 0, funding.kind==="undeposited"?"Returned to Undeposited Collection":"Returned to selected cash account"), Financial.line(isAdvance?`asset:purchase_cash_advance:${id}`:posting.account, 0, value, isAdvance?"Reverse supplier payment":"Reverse "+posting.label)], {occurredAt:Number(after.voidedAt||Date.now()),actorName:"Manager",voucherNo:financeText(after.voucherNo,60),category:financeText(after.category,80),payee:financeText(after.recipient||after.requesterName,160),purpose:financeText(after.purpose,300)}); await commitFinancial(db, `petty_void_${id}`, movement, actor, inflow);}}
+async function pettyVoucherFinancialEvent(event) {
+  const before = event.data.before.val() || {}, after = event.data.after.val(); if (!after) return;
+  const db = getDatabase(), id = event.params.voucherId, value = Financial.money(after.amount), actor = {uid: "server", role: "server"}, isAdvance=after.transactionType==="purchase_advance", posting=revolvingFundPosting(after), funding=advanceFundingAccount(after);
+  if (after.status === "approved" && before.status !== "approved" && value > 0 && !after.conversionMovementId) {
+    let custodyOut={writes:{},fromCustody:0,shortfall:0,allocations:{}};
+    if(funding.kind==="undeposited"){
+      custodyOut = await poolCustodyOutflow(db, value);
+      if(custodyOut.shortfall>0.009){const blockedAt=Date.now();await db.ref().update({[`pettyCashVouchers/${id}/cashCustodyStatus`]:"blocked_insufficient_custody",[`pettyCashVouchers/${id}/cashCustodyShortfall`]:custodyOut.shortfall,[`pettyCashVouchers/${id}/cashCustodyCheckedAt`]:blockedAt,[`operationalAudit/${blockedAt}_${id}_custody_blocked`]:operationalAuditRecord("block_cash_payment_without_custody","pettyVoucher",id,actor,{amount:value,available:custodyOut.fromCustody,shortfall:custodyOut.shortfall})});return;}
+    }
+    const movementId=`petty_${id}`,movement = Financial.movement(isAdvance?"revolving_fund_purchase_advance":posting.movementType, "pettyVoucher", id, [Financial.line(isAdvance?`asset:purchase_cash_advance:${id}`:posting.account, value, 0, isAdvance?(after.recipient||"Supplier payment pending allocation"):posting.label), Financial.line(funding.account, 0, value, funding.kind==="undeposited"?"Paid from Undeposited Collection":(funding.kind==="cash_on_hand"?"Paid from Cash on Hand":"Paid from selected cash account"))], {occurredAt:cashPaymentOccurredAt(after),approvedAt:Number(after.approvedAt||Date.now()),actorName:after.approvedBy||"Manager",voucherNo:financeText(after.voucherNo,60),category:financeText(after.category,80),payee:financeText(after.recipient||after.requesterName,160),purpose:financeText(after.purpose,300),custodyAllocations:custodyOut.allocations,fundingAccountId:funding.id||"undeposited"}),writes=Object.assign({},custodyOut.writes,funding.kind==="undeposited"?{[`pettyCashVouchers/${id}/cashCustodyStatus`]:"allocated",[`pettyCashVouchers/${id}/cashCustodyAllocations`]:custodyOut.allocations,[`pettyCashVouchers/${id}/cashCustodyCheckedAt`]:Date.now()}:{[`pettyCashVouchers/${id}/cashCustodyStatus`]:"not_applicable",[`pettyCashVouchers/${id}/cashCustodyCheckedAt`]:Date.now()});
+    if(funding.kind!=="undeposited")writes[`cfLedger/fm_${movementId}`]=cashLedgerRecord({date:financeDateFromTimestamp(movement.occurredAt),accountId:funding.id,dir:"out",category:posting.label,amount:value,party:financeText(after.recipient||after.requesterName,160),ref:financeText(after.voucherNo,60)},movementId,movement,actor);
+    await commitFinancial(db, movementId, movement, actor, writes);
+  }
+  if (after.voided === true && before.voided !== true && after.status === "approved" && value > 0) {
+    const movementId=`petty_void_${id}`, occurredAt=Number(after.voidedAt || Date.now()), writes = funding.kind==="undeposited"?poolCustodyInflowRecord(movementId, value, isAdvance?"Supplier payment voided":"Expense voided", occurredAt, movementId):{};
+    const movement = Financial.movement(isAdvance?"revolving_fund_purchase_advance_void":posting.movementType+"_void", "pettyVoucher", id, [Financial.line(funding.account, value, 0, funding.kind==="undeposited"?"Returned to Undeposited Collection":"Returned to selected cash account"), Financial.line(isAdvance?`asset:purchase_cash_advance:${id}`:posting.account, 0, value, isAdvance?"Reverse supplier payment":"Reverse "+posting.label)], {occurredAt,actorName:"Manager",voucherNo:financeText(after.voucherNo,60),category:financeText(after.category,80),payee:financeText(after.recipient||after.requesterName,160),purpose:financeText(after.purpose,300),fundingAccountId:funding.id||"undeposited"});
+    if(funding.kind!=="undeposited")writes[`cfLedger/fm_${movementId}`]=cashLedgerRecord({date:financeDateFromTimestamp(occurredAt),accountId:funding.id,dir:"in",category:isAdvance?"Supplier payment voided":"Cash voucher void",amount:value,party:financeText(after.recipient||after.requesterName,160),ref:financeText(after.voucherNo,60)},movementId,movement,actor);
+    await commitFinancial(db, movementId, movement, actor, writes);
+  }
+}
 exports.onPettyReplenishmentFinancial = onValueWritten(
   {ref: "/pettyCashReplenishments/{replenishmentId}", region: ORDER_REGION, retry: true},
   async (event) => {if (!event.data.after.exists() || event.data.before.exists()) return; const row = event.data.after.val() || {}, value = Financial.money(row.amount); if (!(value > 0)) return; const id = event.params.replenishmentId, source = row.source === "register" ? "asset:register_cash" : "equity:owner_capital", movement = Financial.movement("petty_cash_replenishment", "pettyReplenishment", id, [Financial.line("asset:petty_cash", value, 0, "Revolving Fund replenished"), Financial.line(source, 0, value, row.source || "owner")], {occurredAt: Number(row.ts || Date.now()), actorName: row.by || "Admin"}); await commitFinancial(getDatabase(), `petty_replenish_${id}`, movement, {uid: "server", role: "server"});},
@@ -6575,7 +6852,7 @@ exports.postFinancialCommand = onCall(
       const purchaseNo=await purchaseDocumentNumber(db,invoice,date,invoiceId),purchaseRef=purchaseSupplierRef(invoice,invoiceId)||purchaseNo;
       if (fromCashOnHand) {const cash = await availableCashOnHandAboveFloat(db);if (value > cash.available + 0.009) throw new HttpsError("failed-precondition", `Purchase exceeds available Cash on Hand by ${Financial.money(value-cash.available).toFixed(2)}. The protected Register Cash Float of ${cash.float.toFixed(2)} cannot be used.`);}
       if (fromUndeposited) {await claimCustodyPool(db, commandId, apClaimSets);const custodyOut = await poolCustodyOutflow(db, value);if (custodyOut.shortfall > 0.009) throw new HttpsError("failed-precondition", `Purchase exceeds available Undeposited Collection by ${custodyOut.shortfall.toFixed(2)}.`);Object.assign(writes,custodyOut.writes);custodyAllocations=custodyOut.allocations;Object.keys(custodyOut.allocations).forEach((id)=>{writes[`cashCustody/${id}/lastPaymentMovementId`]=commandId;});}
-      if (advanceId) {const [shiftPayOuts,fundSnap]=await Promise.all([supplierAdvanceShiftPayOuts(db),db.ref(`/pettyCashVouchers/${advanceId}`).get()]);let found=null;for(const shiftId of Object.keys(shiftPayOuts)){const rows=shiftPayOuts[shiftId];const index=rows.findIndex((row)=>row&&row.id===advanceId&&row.type==="purchase_advance");if(index>=0){found={kind:"shift",shiftId,index,row:rows[index]};break;}}if(!found&&fundSnap.exists()){const row=fundSnap.val()||{};if(row.transactionType==="purchase_advance"&&row.status==="approved"&&!row.voided)found={kind:"revolving",row};}if(!found)throw new HttpsError("not-found","Purchase cash advance was not found.");const allocations=found.row.allocations||{};if(allocations[invoiceId])throw new HttpsError("already-exists","This purchase is already allocated to the selected cash advance.");const allocated=Financial.money(Object.values(allocations).reduce((sum,row)=>sum+Number(row&&row.amount||0),0)),remaining=Financial.money(Number(found.row.amount||0)-allocated);if(value>remaining+0.009)throw new HttpsError("failed-precondition",`Purchase exceeds the remaining cash advance of ${remaining}.`);const next=Financial.money(remaining-value),base=found.kind==="shift"?`shifts/${found.shiftId}/payOuts/${found.index}`:`pettyCashVouchers/${advanceId}`;cashAsset=`asset:purchase_cash_advance:${advanceId}`;writes[`${base}/allocations/${invoiceId}`]={purchaseInvoiceId:invoiceId,amount:value,supplier:financeText(invoice.supplier,120),ref:financeText(purchaseRef,120),allocatedAt:now,allocatedBy:actor.uid};writes[`${base}/allocatedAmount`]=Financial.money(allocated+value);writes[`${base}/remainingAmount`]=next;writes[`${base}/allocationStatus`]=next>0?"partially_allocated":"fully_allocated";if(!(next>0))writes[`${base}/completedAt`]=now;writes[`purchaseInvoices/${invoiceId}/purchaseAdvanceId`]=advanceId;writes[`purchaseInvoices/${invoiceId}/advanceSource`]=found.kind;}
+      if (advanceId) {await claimPettyVoucherMutation(db,advanceId,commandId,actor,apClaimSets);const [shiftPayOuts,fundSnap]=await Promise.all([supplierAdvanceShiftPayOuts(db),db.ref(`/pettyCashVouchers/${advanceId}`).get()]);let found=null;for(const shiftId of Object.keys(shiftPayOuts)){const rows=shiftPayOuts[shiftId];const index=rows.findIndex((row)=>row&&row.id===advanceId&&row.type==="purchase_advance");if(index>=0){found={kind:"shift",shiftId,index,row:rows[index]};break;}}if(!found&&fundSnap.exists()){const row=fundSnap.val()||{};if(row.transactionType==="purchase_advance"&&row.status==="approved"&&!row.voided)found={kind:"revolving",row};}if(!found)throw new HttpsError("not-found","Purchase cash advance was not found.");const allocations=found.row.allocations||{};if(allocations[invoiceId])throw new HttpsError("already-exists","This purchase is already allocated to the selected cash advance.");const allocated=Financial.money(Object.values(allocations).reduce((sum,row)=>sum+Number(row&&row.amount||0),0)),remaining=Financial.money(Number(found.row.amount||0)-allocated);if(value>remaining+0.009)throw new HttpsError("failed-precondition",`Purchase exceeds the remaining cash advance of ${remaining}.`);const next=Financial.money(remaining-value),base=found.kind==="shift"?`shifts/${found.shiftId}/payOuts/${found.index}`:`pettyCashVouchers/${advanceId}`;cashAsset=`asset:purchase_cash_advance:${advanceId}`;writes[`${base}/allocations/${invoiceId}`]={purchaseInvoiceId:invoiceId,amount:value,supplier:financeText(invoice.supplier,120),ref:financeText(purchaseRef,120),allocatedAt:now,allocatedBy:actor.uid};writes[`${base}/allocatedAmount`]=Financial.money(allocated+value);writes[`${base}/remainingAmount`]=next;writes[`${base}/allocationStatus`]=next>0?"partially_allocated":"fully_allocated";if(!(next>0))writes[`${base}/completedAt`]=now;writes[`purchaseInvoices/${invoiceId}/purchaseAdvanceId`]=advanceId;writes[`purchaseInvoices/${invoiceId}/advanceSource`]=found.kind;}
       if(advanceId){const supplierAdvance=(await db.ref(`/pettyCashVouchers/${advanceId}`).get()).val();if(supplierAdvance){if(!supplierAdvance.supplierId||supplierAdvance.supplierId!==supplierMaster.id)throw new HttpsError("failed-precondition","The selected advance payment belongs to a different supplier master record.");}}
       movement = Financial.movement("purchase_cash", "purchaseInvoice", invoiceId, split.concat([Financial.line(cashAsset, 0, value, invoice.supplier || "Inventory purchase")]), {occurredAt: Date.parse(`${date}T00:00:00+08:00`) || now, actorName: actor.role,supplierId:supplierMaster.id,supplierName:supplierMaster.name, accountId:advanceId?"purchase_advance":accountId, custodyAllocations,reference:purchaseRef,payee:financeText(invoice.supplier,160)});
       writes[`purchaseInvoices/${invoiceId}/paymentMovementId`]=commandId;writes[`purchaseInvoices/${invoiceId}/paymentAccountId`]=advanceId?"purchase_advance":accountId;writes[`purchaseInvoices/${invoiceId}/paymentPostedAt`]=now;if(purchaseNo)writes[`purchaseInvoices/${invoiceId}/documentNo`]=purchaseNo;
@@ -7011,7 +7288,8 @@ exports.managePurchaseCorrection = onCall(
     const movementIds = Array.isArray(invoice.movementIds)?invoice.movementIds:[], originals=[];
     // AP Integrity Remediation step 0.4: claim the bill (and any owner reimbursement) before reading it, so a
     // payment cannot be posted to it while the purchase is being reversed or amended.
-    let purchaseClaim=null;const custodyClaims=[];try{
+    let purchaseClaim=null;const custodyClaims=[],voucherClaims=[];try{
+    if(invoice.payMode==="advance"&&invoice.advanceSource==="revolving"&&invoice.purchaseAdvanceId)await claimPettyVoucherMutation(db,invoice.purchaseAdvanceId,`purchase_reverse_${invoiceId}`,actor,voucherClaims);
     const purchaseClaimIds=[invoice.payableId,invoice.payMode==="owner_funded"?financeText(invoice.ownerReimbursementId,160):""].filter(Boolean);if(purchaseClaimIds.length)purchaseClaim=await claimPayables(db,purchaseClaimIds,`purchase_reverse_${invoiceId}_${crypto.randomBytes(6).toString("hex")}`,actor,[]);
     const payable = invoice.payableId ? purchaseClaim.doc(invoice.payableId) : null,keepInvoiceId=financeText(data.keepInvoiceId,160),keepInvoice=keepInvoiceId&&invoices[keepInvoiceId],duplicateCleanup=data.duplicate===true&&keepInvoice&&keepInvoiceId!==invoiceId&&keepInvoice.reversed!==true&&financeText(keepInvoice.ref,120).toLowerCase()===financeText(invoice.ref,120).toLowerCase()&&financeText(keepInvoice.supplier,120).toLowerCase()===financeText(invoice.supplier,120).toLowerCase()&&Financial.money(keepInvoice.total)===safeInvoice.total;if (data.duplicate===true&&!duplicateCleanup) throw new HttpsError("failed-precondition","A single matching purchase must be selected as the record to keep.");if (payable && payable.status === "paid") throw new HttpsError("failed-precondition", "This payable has already been paid. Reverse the supplier payment before reversing the purchase.");const orphanAccount=invoice.payMode==="account"&&!payable;if (!duplicateCleanup&&orphanAccount&&(await db.ref(`/financialMovements/purchase_ap_${invoiceId}`).get()).exists()) throw new HttpsError("failed-precondition","This purchase has a payable movement but its payable record is missing. Repair the payable before reversal.");if (!duplicateCleanup&&invoice.payMode === "pending"&&(!payable||payable.status!=="open")) throw new HttpsError("failed-precondition", "The linked provisional obligation is missing or is no longer open.");if (!duplicateCleanup&&invoice.payMode==="account"&&payable&&payable.status!=="open") throw new HttpsError("failed-precondition","The linked supplier payable is no longer open.");
     // AP Integrity Remediation step 0.1: the reversal below debits the supplier liability for the
@@ -7038,7 +7316,7 @@ exports.managePurchaseCorrection = onCall(
     const reversalInventoryLines=await purchaseInventoryLines(db,invoice,true);let financialMovement=null,financialId="";if (!duplicateCleanup&&(invoice.payMode === "account"||invoice.payMode === "pending")&&payable) {financialId=`purchase_ap_reversal_${invoiceId}`;financialMovement=Financial.movement("purchase_payable_reversed","purchaseInvoice",invoiceId,[Financial.line(invoice.payMode==="pending"?`liability:grni:${invoice.payableId}`:`liability:payable:${invoice.payableId}`,safeInvoice.total,0,"Reverse supplier obligation")].concat(reversalInventoryLines),{occurredAt:now,actorName:actor.role});if(purchaseClaim&&purchaseClaim.doc(invoice.payableId))writes[`payables/${financeKey(invoice.payableId,"Payable ID")}/rev`]=purchaseClaim.nextRev(invoice.payableId);writes[`payables/${invoice.payableId}/status`]="reversed";writes[`payables/${invoice.payableId}/reversedAt`]=now;writes[`payables/${invoice.payableId}/reversalMovementId`]=financialId;} else if (invoice.payMode === "paid") {financialId=`purchase_cash_reversal_${invoiceId}`;const paidAsset=paidCashAccount==="cash_on_hand"||paidCashAccount==="register"?"asset:register_cash":paidCashAccount==="undeposited"?"asset:cash_awaiting_deposit":`asset:cash_account:${paidCashAccount}`;financialMovement=Financial.movement("purchase_cash_reversed","purchaseInvoice",invoiceId,[Financial.line(paidAsset,safeInvoice.total,0,"Reverse purchase payment")].concat(reversalInventoryLines),{occurredAt:now,actorName:actor.role,accountId:paidCashAccount});if(paidCashAccount==="undeposited"){const original=(await db.ref(`/financialMovements/purchase_cash_${invoiceId}`).get()).val()||{},allocations=original.custodyAllocations||{};if(!Object.keys(allocations).length)throw new HttpsError("failed-precondition","The original Undeposited Collection custody allocation is missing. Repair it before reversing this purchase.");for(const id of Object.keys(allocations)){const key=financeKey(id,"Custody ID"),row=(await db.ref(`/cashCustody/${key}`).get()).val();if(!row)throw new HttpsError("failed-precondition",`Cash custody ${key} is missing.`);const restore=Financial.money(allocations[id]),remaining=Financial.money(Number(row.remaining||0)+restore),paidOut=Financial.money(Math.max(0,Number(row.paidOutAmount||0)-restore));writes[`cashCustody/${key}/remaining`]=remaining;writes[`cashCustody/${key}/paidOutAmount`]=paidOut;writes[`cashCustody/${key}/status`]="awaiting_deposit";writes[`cashCustody/${key}/lastPaymentReversalMovementId`]=financialId;}}writes[`cfLedger/fm_${financialId}`]=cashLedgerRecord({date:financeDateFromTimestamp(now),accountId:paidCashAccount==="register"?"cash_on_hand":paidCashAccount,dir:"in",category:"Purchase reversal",amount:safeInvoice.total,party:invoice.supplier,ref:invoice.ref,auto:true},financialId,financialMovement,actor);} else if (invoice.payMode === "advance" && invoice.purchaseAdvanceId) {const advanceId=financeKey(invoice.purchaseAdvanceId,"Purchase advance ID");let base="",advance=null;if(invoice.advanceSource==="revolving"){base=`pettyCashVouchers/${advanceId}`;advance=(await db.ref(`/pettyCashVouchers/${advanceId}`).get()).val();}else{const shiftPayOuts=await supplierAdvanceShiftPayOuts(db);for(const shiftId of Object.keys(shiftPayOuts)){const rows=shiftPayOuts[shiftId],index=rows.findIndex((row)=>row&&row.id===advanceId);if(index>=0){base=`shifts/${shiftId}/payOuts/${index}`;advance=rows[index];break;}}}if(!advance||!(advance.allocations&&advance.allocations[invoiceId]))throw new HttpsError("failed-precondition","The linked supplier-payment allocation is missing. Repair it before reversing this purchase.");const restored=Financial.money(Number(advance.remainingAmount!=null?advance.remainingAmount:advance.amount)+safeInvoice.total),allocated=Financial.money(Math.max(0,Number(advance.allocatedAmount||0)-safeInvoice.total));writes[`${base}/allocations/${invoiceId}`]=null;writes[`${base}/remainingAmount`]=restored;writes[`${base}/allocatedAmount`]=allocated;writes[`${base}/allocationStatus`]=allocated>0?"partially_allocated":"pending_allocation";financialId=`purchase_advance_reversal_${invoiceId}`;financialMovement=Financial.movement("purchase_advance_allocation_reversed","purchaseInvoice",invoiceId,[Financial.line(`asset:purchase_cash_advance:${advanceId}`,safeInvoice.total,0,"Restore supplier payment for allocation")].concat(reversalInventoryLines),{occurredAt:now,actorName:actor.role});}
     if (financialMovement) await commitFinancial(db,financialId,financialMovement,actor,writes);else await db.ref().update(writes);
     return {invoiceId,result:"reversed",amount:safeInvoice.total,invoice:safeInvoice};
-    }finally{await releaseCustodyClaims(custodyClaims);if(purchaseClaim)await purchaseClaim.release();}
+    }finally{await releaseCustodyClaims(custodyClaims);await releasePettyVoucherClaims(voucherClaims);if(purchaseClaim)await purchaseClaim.release();}
   },
 );
 
@@ -7980,6 +8258,7 @@ function financialControlResolution(issue) {
     register_float_differs_from_control:["Open POS Settings and verify the approved register float. Use the controlled float adjustment; do not record it as a receipt or expense.","admin_finance","Open POS Settings"],
     undeposited_subledger_mismatch:["Open Undeposited Collection, reconcile the custody rows to the Finance balance, and use the controlled custody correction shown there.","admin_finance","Open Undeposited Collection"],
     cash_payment_missing_bank_ledger:["Open Undeposited Collection and use Repair missing cash payments, or run repairPettyVoucherFinancial for this voucher. It rebuilds the register row from the posted movement without changing Finance Books.","admin_petty","Open Cash Payments"],
+    cash_voucher_future_dated:["Open Cash Payments and use Edit on this voucher to set the date the money actually left. The correction reverses and re-posts it on the right date with approval.","admin_petty","Open Cash Payments"],
     cash_payment_missing_custody:["Open the exact approved cash payment. Record or restore enough physical cash custody first, then use the controlled repair so the payment and its custody allocation post together. Do not deposit the original shift amount.","admin_petty","Open Cash Payments"],
     holding_account_balance:["Open the original operational workflow named in the account description and finish its allocation, settlement, or variance resolution. Do not clear control accounts with a free-form journal.","books_transactions","Open Finance Books"],
     balance_off_chart:["Open Chart of Accounts, restore the account definition, and then review the linked posting before changing its account mapping.","books_transactions","Open Chart of Accounts"],
@@ -8048,6 +8327,12 @@ exports.auditFinancialControls = onCall(
     try {
       const petty=/* download-ok: manual control audit */(await db.ref("/pettyCashVouchers").get()).val()||{};Object.keys(petty).forEach((id)=>{const voucher=petty[id]||{};if(voucher.status==="approved"&&!voucher.voided&&!movements[`petty_${id}`])issues.push({severity:"critical",kind:"cash_payment_missing_custody",source:id,detail:`Approved cash payment ${financeText(voucher.voucherNo||id,80)} has not reduced Undeposited Collection.`,amount:Financial.money(voucher.amount)});});
     } catch(e){logger.warn("auditFinancialControls: cash-payment custody check skipped",{error:String(e)});}
+    try {
+      // Cash vouchers may never be future-dated. Super Admin self-approval remains in the
+      // voucher and audit history, but is an allowed policy and is not an exception.
+      const petty=/* download-ok: manual control audit */(await db.ref("/pettyCashVouchers").get()).val()||{},today=financeDateFromTimestamp(Date.now());
+      Object.keys(petty).forEach((id)=>{const voucher=petty[id]||{},label=`Cash voucher ${financeText(voucher.voucherNo||id,80)} · ${financeText(voucher.date,10)} · ${Financial.money(voucher.amount).toFixed(2)}`;if(voucher.voided===true||!["pending","approved"].includes(voucher.status))return;if(financeText(voucher.date,10)>today)issues.push({severity:"critical",kind:"cash_voucher_future_dated",source:id,sourceLabel:label,detail:`Dated ${financeText(voucher.date,10)}, after today (${today}). Correct the date with Edit; cash vouchers cannot be future-dated.`,amount:Financial.money(voucher.amount)});});
+    } catch(e){logger.warn("auditFinancialControls: cash voucher date check skipped",{error:String(e)});}
     try {
       const ledgerByMovement=new Set(Object.values(cash).map((row)=>String(row&&row.movementId||"")).filter(Boolean)),petty=/* download-ok: manual control audit */(await db.ref("/pettyCashVouchers").get()).val()||{};
       Object.keys(petty).forEach((id)=>{const voucher=petty[id]||{},mv=movements[`petty_${id}`];if(voucher.status!=="approved"||voucher.voided||!mv)return;const bank=(mv.lines||[]).find((line)=>String(line&&line.account||"").indexOf("asset:cash_account:")===0);if(bank&&!ledgerByMovement.has(`petty_${id}`))issues.push({severity:"warning",kind:"cash_payment_missing_bank_ledger",source:id,sourceLabel:`Cash payment ${financeText(voucher.voucherNo||id,80)} · ${financeText(voucher.date,10)} · ${Financial.money(voucher.amount).toFixed(2)}`,detail:"Posted to Finance Books from a bank or e-wallet account, but the account's cash register has no matching row.",amount:Financial.money(Number(bank.credit||0)-Number(bank.debit||0))});});

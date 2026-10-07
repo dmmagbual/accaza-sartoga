@@ -12,7 +12,8 @@ ok(server.includes('const UNDEPOSITED_PAGE_SIZE = 25'),'Server page size must re
 ok(client.includes('var PAGE_SIZE=25'),'Client page size must remain 25');
 ok(server.includes('limitToLast(UNDEPOSITED_PAGE_SIZE + (cursor ? 2 : 1))'),'Cursor pages need a look-ahead after excluding the inclusive cursor');
 ok(server.includes('rows = rows.filter((row) => !(Number(row[field]) === cursor.value && row.id === cursor.id))'),'Inclusive cursor must be removed to prevent duplicates');
-for(const marker of ['undepositedLedgerPageIndex','cashCustodyOpenIndex','pettyVoucherAttentionIndex','syncUndepositedLedgerPageIndex','syncCashCustodyPageIndex','syncPettyVoucherAttentionIndex'])ok(server.includes(marker),`Missing compact projection safeguard: ${marker}`);
+for(const marker of ['undepositedLedgerPageIndex','cashCustodyOpenIndex','pettyVoucherAttentionIndex','syncUndepositedLedgerPageIndex','syncPettyVoucherAttentionIndex'])ok(server.includes(marker),`Missing compact projection safeguard: ${marker}`);
+ok(!server.includes('exports.syncCashCustodyPageIndex = onValueWritten'),'The stale custody projection trigger must stay removed; financial writes update custody and its projection atomically.');
 for(const marker of ['"undepositedLedgerPageIndex"','"cashCustodyOpenIndex"','"pettyVoucherAttentionIndex"','"undepositedPageIndexMeta"'])ok(rules.includes(marker),`Protected rules node missing: ${marker}`);
 ok(!client.includes("subscribe('financialMovements'")&&!client.includes("subscribe('cashCustody'")&&!client.includes("subscribe('pettyCashVouchers'"),'Undeposited UI must not restore broad collection subscriptions');
 ok(!hub.includes("pettyCashVouchers:['petty','purchases','undeposited']")&&!hub.includes("cashCustody:['cashflow','undeposited']")&&!hub.includes("'saleshistory','undeposited','discrepancy'"),'Undeposited scope must not reactivate broad shared listeners');
