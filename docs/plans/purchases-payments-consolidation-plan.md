@@ -25,6 +25,30 @@ Accaza · 7 October 2026 · Plan only. No code, data or configuration was change
 >
 > Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## ⚠️ Scope revision — 7 Oct 2026 (binding; supersedes the task list below where they differ)
+
+Danilo accepted the "brutal" review: the full plan is heavier than a single owner-run shop needs, and the open AP integrity steps matter more. **This is the active scope:**
+
+| Order | Work | Status |
+|---|---|---|
+| 1 | **Task 0.1** Purchases & Payments menu grouping (Codex) and **Task 0.2** commit the specialist definitions | Active |
+| 2 | **Task 0.5 (reduced)** R0 restore point: tag, confirmed daily backups (done 7 Oct), node snapshot, restore-node script. The UAT restore test is deferred with Task 0.3. | Active |
+| 3 | **AP Phase 0 steps 0.8, 0.9 and 0.11**, under the AP plan's own proposal → approval flow | Active, before 1.2 |
+| 4 | **Task 1.2** one expense account catalogue | Active |
+| 5 | **Task 2.1** one "Needs attention" queue | Active |
+| — | Tasks 1.1, 1.3 and 2.2; Phase 4 | ⏸ **On hold.** Revisit with AP 1.5 (`postPurchase`). |
+| — | Task 3.1 "New entry" front door | ⏸ **On hold.** Only if Danilo still picks the wrong screen after the menu grouping. |
+| — | Tasks 0.3 (UAT) and 0.4 (replay harness) | ⏸ **On hold.** Required before any posting-path change (AP 1.5, Task 1.1, Phase 4). |
+
+**Gates under the reduced scope:**
+- **R0** restore point and **R4** same-day smoke check: **every deploy**.
+- **R1** for Task 1.2 only, as a lightweight check: compare the legacy category map with the new catalogue over the last 60 days of vouchers and purchase expense lines. Every one must give the same Books code. A script inside the task is enough; the general harness (Task 0.4) is not needed.
+- **R2** shadow mode and **R3** UAT run: required only for posting-path changes (AP 1.5, Task 1.1, Phase 4). They are not required for 1.2 or 2.1.
+
+Everything else in this document stays as the reference design for when the deferred work is picked up.
+
+---
+
 **Goal:** Purchases, Cash Payments and supplier bill payments become one work area that shares one set of foundations: payee, payment source, expense account, reference, "needs attention" and actions. Each keeps its own accounting document and lifecycle.
 
 **Architecture:** Shared rules move into single authorities: one server payment-source resolver, one chart-driven expense catalogue, and one client picker module that both screens load lazily. The two documents stay separate on purpose: **Purchase (PUR-YYYY-NNNN)** for goods and itemised supplier invoices, **Cash Voucher (PV-YYYYMM-NNNN)** for operating payments, advances and controlled payments. A single "New entry" front door applies the adopted payment-routing rule so staff never pick the wrong screen. Posting stays server-authoritative, and the AP Integrity Remediation Plan remains the foundation.
@@ -217,7 +241,7 @@ Codex owns this step. The listed checks are the acceptance criteria.
 
 - [ ] Stage `.claude/agents/*.md` and `.codex/agents/*.md` by name, with **no other files from `.claude/`**. Check for secrets with `test:safety`. Commit and PR.
 
-#### Task 0.3: Make UAT usable for gate R3
+#### Task 0.3: Make UAT usable for gate R3 — ⏸ ON HOLD until a posting-path change
 
 - [ ] Confirm `accazacoffeepos-uat` has Realtime Database, Functions and Auth enabled, and a staff login for testing.
 - [ ] Add `tools/uat/deploy-uat.ps1`. It deploys the current branch's Functions and static build to UAT only and refuses if the project ID is not `accazacoffeepos-uat`.
@@ -233,7 +257,7 @@ Codex owns this step. The listed checks are the acceptance criteria.
 - [ ] Do a **restore test into UAT**: restore one node snapshot and one daily backup into `accazacoffeepos-uat` and verify them. This also provides the `backupRestoreTest` evidence that `test:release` currently reports as pending.
 - [ ] Specialists: Database Optimizer, Identity & Access (restore rights are superadmin only).
 
-#### Task 0.4: Build the R1 replay harness once
+#### Task 0.4: Build the R1 replay harness once — ⏸ ON HOLD until a posting-path change
 
 - [ ] Add `tools/replay-parity/export.mjs`. It makes read-only, bounded exports via the Firebase CLI to an ignored local folder.
 - [ ] Add `tools/replay-parity/compare.mjs`. It loads the old and new functions from two git refs and prints matched/mismatched counts plus each difference.
@@ -248,7 +272,7 @@ Codex owns this step. The listed checks are the acceptance criteria.
 
 Everything in Phase 1 must produce **byte-identical movement lines** for every existing case. Run brainstorming first, then ultra-think on the mapping table (Task 1.2) before coding.
 
-#### Task 1.1: One server payment-source resolver
+#### Task 1.1: One server payment-source resolver — ⏸ ON HOLD (scope revision)
 
 **Files:**
 - Create: `src/functions/41a-payment-sources.js`. It sorts after `41-expense-assets.js`; add it to the drift check's section order if required.
@@ -332,7 +356,7 @@ These are the codes the Books bridge already posts each legacy category to today
 
 **Migration:** none. Posted vouchers keep their lines. New vouchers use the chart.
 
-#### Task 1.3: Shared client pickers (payee, payment source, expense account)
+#### Task 1.3: Shared client pickers (payee, payment source, expense account) — ⏸ ON HOLD (scope revision)
 
 **Files:**
 - Create: `src/admin/shared/payment-entry-pickers.js`, built to `assets/js/admin/payment-entry-pickers.js`. Load it lazily through `module-loader.js` as a dependency of both the `purchases` and `petty` routes. **Do not add it to the initial runtime.**
@@ -390,7 +414,7 @@ Each row has its existing retry action (**Post payment**, **Repair payable**, **
 
 ⚖️ **Decision Gate 2.1:** ⚠️ this decision is open. Should pending vouchers be numbered at creation instead of at approval (today they show "Awaiting approval")? This affects what the queue shows.
 
-#### Task 2.2: One reference search (PUR / PV / supplier ref)
+#### Task 2.2: One reference search (PUR / PV / supplier ref) — ⏸ ON HOLD (scope revision)
 
 **Scope:** a search box in the area. A PUR, PV or supplier reference opens that document. A lookup by key reads one record by indexed field.
 
@@ -404,7 +428,7 @@ Each row has its existing retry action (**Post payment**, **Repair payable**, **
 
 Brainstorming with Danilo is mandatory. UX Architect and Product Manager draft it, and Danilo approves a mockup before any code.
 
-#### Task 3.1: Routing wizard
+#### Task 3.1: Routing wizard — ⏸ ON HOLD (scope revision)
 
 **Scope:** one **New entry** button. It asks the adopted first-match questions **in this order** and opens the right form, prefilled:
 1. Goods, stock or an itemised supplier invoice? → **Purchase**.
@@ -538,3 +562,5 @@ Every phase starts from its **R0 restore point** (§5A). The order is always: fl
   - Automated **daily** Realtime Database backups are already enabled for `accaza-sartoga-default-rtdb`, to bucket `accaza-sartoga-default-rtdb-backups`.
   - Last backup: 2026-10-07T01:54:32Z.
   - Task 0.5's first checkbox is done. Still open for 0.5: confirm the bucket's 30-day lifecycle and gzip, the restore scripts, and the restore test into UAT.
+- **7 Oct 2026, bucket lifecycle confirmed:** daily backups are kept for 30 days (Danilo).
+- **7 Oct 2026, scope revision adopted** (Danilo: "I will go with your recommendation"). Active: the menu grouping, the reduced R0, AP 0.8, 0.9 and 0.11, then Tasks 1.2 and 2.1. On hold: 1.1, 1.3, 2.2, 3.1, Phase 4, 0.3 and 0.4. R0 and R4 apply to every deploy; R2 and R3 apply to posting-path changes only.
