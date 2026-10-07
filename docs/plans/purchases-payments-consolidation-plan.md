@@ -113,6 +113,7 @@ The plan blocks each one:
 - **Size ceilings:**
   - `src/functions/40-sales-finance.js` is at ~69 KB of its 70 KB section ceiling, so **new server code goes in new section files**.
   - `src/admin/pos/20-purchasing.js` and the `assets/js/admin/pos.js` budget must be checked before adding code there.
+- **Regression safeguards:** §5A gates R1–R4 are mandatory where §5A says so. A PR that skips one is not mergeable.
 - **Tests:** full `npm test`, `test:release` and `test:safety` before every PR. Windows-path tests (`gallery-photo`, `telemetry-signin`) are reported separately.
 - **Git:** one branch per task off `main`. Stage named files only. PR with `--body-file`. **Never merge.**
 
@@ -164,6 +165,30 @@ Specialist output is advisory. The primary agent reconciles it against this plan
 
 ## 5. Phases and tasks
 
+### 5A. Regression safeguards (mandatory gates, adopted 7 Oct 2026)
+
+**Why:** on 7 Oct, #696 passed all 137 tests and CI yet broke production: every Undeposited payment locked the pool for 3 minutes. The test's fake database did not behave like real Firebase. CI does not post through the real Cloud Functions, so server posting is only checked statically. Green tests are therefore necessary but **not sufficient**.
+
+| Gate | What it is | Required for | Pass rule |
+|---|---|---|---|
+| **R0 Restore point** | Taken **before every production deploy** of a consolidation task. Three layers, used in this order:<br>**(a) Code:** tag the current `main` as `restore/consolidation-<task>-<YYYYMMDD>` before merging, and record the live Functions deploy run and Pages commit in the PR.<br>**(b) Switch:** for R2-gated tasks, the feature flag is the instant off-switch.<br>**(c) Data:** confirm the automated daily Realtime Database backup completed within the last 24 h, and save a small pre-deploy snapshot of only the config/counter nodes the task touches (e.g. `config/featureFlags`, `documentCounters`, `pettyCashCounter`, the chart) to an ignored local folder. | Every production deploy | The tag exists, the backup is confirmed with its timestamp, the node snapshot is saved, and the exact restore commands for (a)–(c) are written in the PR **before** merge. |
+| **R1 Production replay parity** | Read-only, run on Danilo's machine. Export a bounded set of real records with indexed/limited queries: the last 60 days of `purchaseInvoices` (by `date`), cash vouchers and bill payments (by their indexes). Feed each record to the **old** and the **new** code paths and compare the resulting movement lines, accounts, references and custody effects. | Every Phase 1 task; Phase 4 | **100% identical.** Any difference blocks the merge until it is explained and approved by Danilo with the Bookkeeper's opinion. Report counts and differences in the PR. |
+| **R2 Shadow mode** | The new logic is deployed behind a server flag `/config/featureFlags/consolidation/<task>` = `off` \| `shadow` \| `on`. In `shadow`, every live posting computes both results, **posts the old one**, and writes any difference to `/consolidationShadowLog/<YYYY-MM-DD>/<movementId>` (small records, written only on mismatch). | Tasks 1.1, 1.2; Phase 4 | 3–5 trading days in `shadow` with **zero mismatches** and at least one real posting of each kind the task touches (purchase, voucher, bill payment, each funding source used). Only then switch to `on`. Rollback = set back to `off`. |
+| **R3 UAT dry run** | Deploy the branch's Functions and static build to the separate Firebase project **AccazaCoffeePOS-UAT** (`accazacoffeepos-uat`) and walk the scripted flows there with the real Cloud Functions. Never use production. | Every task that changes `src/functions/**` or posting/numbering screens | A checklist in the PR with the evidence (movement JSON or screenshots): a purchase paid from Undeposited Collection, a purchase on account, a cash voucher approve → post → void, a bill payment and its reversal, two Undeposited payments back-to-back (no lock wait), and a shift close / Z report unaffected. |
+| **R4 Post-deploy smoke** | The same day as each production deploy, Danilo or the agent checks one real transaction of each touched kind in Purchases / Cash Payments, Finance Books and Undeposited Collection. Monitoring (§9) stays on. | Every deploy | The same reference and amounts everywhere; custody = GL 1030; lock age < 60 s; no "Payment not posted" / "approved not posted" items. |
+
+**How the restore point is used (and how it is never used):**
+- **First:** flag `off`.
+- **Second:** redeploy the tag. Revert the merge commit on `main`, which redeploys Pages and Functions through the normal workflows.
+- **Third:** restore a single small node from its pre-deploy snapshot, with an audit note.
+- **Never:** restore a whole-database backup over live data. It would erase every sale, shift, Z report and payment made since the backup.
+- **Wrong postings:** a posting that went wrong is corrected with reversing or adjusting entries (the AP-plan principle), never by deleting it.
+
+**Rules for the gates:**
+- **Firebase cost.** R1 runs once per task on bounded queries, recorded in the PR. R2 adds only the mismatch writes, with no new reads, listeners or functions: the comparison runs inside the posting that already happens.
+- **Privacy.** R1 exports stay on Danilo's machine under ignored paths (`*export*.json`) and are never committed or uploaded.
+- **Test fakes must model real Firebase semantics.** Example: an Admin SDK transaction runs first on a null cache, and returning `undefined` there aborts it. Any test fake that does not model this is a defect.
+
 ### Phase 0 — Land the navigation consolidation (Codex's step)
 
 Codex owns this step. The listed checks are the acceptance criteria.
@@ -192,7 +217,30 @@ Codex owns this step. The listed checks are the acceptance criteria.
 
 - [ ] Stage `.claude/agents/*.md` and `.codex/agents/*.md` by name, with **no other files from `.claude/`**. Check for secrets with `test:safety`. Commit and PR.
 
-⚖️ **Decision Gate 0:** Danilo confirms the navigation in the live admin before Phase 1 starts.
+#### Task 0.3: Make UAT usable for gate R3
+
+- [ ] Confirm `accazacoffeepos-uat` has Realtime Database, Functions and Auth enabled, and a staff login for testing.
+- [ ] Add `tools/uat/deploy-uat.ps1`. It deploys the current branch's Functions and static build to UAT only and refuses if the project ID is not `accazacoffeepos-uat`.
+- [ ] Add `tools/uat/seed-uat.mjs`. It seeds a minimal chart, suppliers, cash accounts, one open shift with custody, and stock items. It uses synthetic data only, never a copy of production.
+- [ ] Write `docs/plans/uat-checklist.md` with the R3 flows.
+- [ ] Specialists: Database Optimizer, Identity & Access (UAT credentials are separate from production).
+- [ ] **If UAT cannot be made usable, stop** and ask Danilo. R3 is not waived silently.
+
+#### Task 0.5: Prove the restore point works (R0)
+
+- [ ] Confirm in the Firebase console that **automated daily Realtime Database backups** are enabled for `accaza-sartoga`, and record the backup location and retention. If they are off, ask Danilo to enable them; it is a billing-plan setting.
+- [ ] Add `tools/restore-point/take.ps1`. It creates the git tag, records the deploy runs, and saves the node snapshot with bounded reads. Add `tools/restore-point/restore-node.ps1`, which restores a single node. It refuses whole-database paths and asks for typed confirmation of the node name.
+- [ ] Do a **restore test into UAT**: restore one node snapshot and one daily backup into `accazacoffeepos-uat` and verify them. This also provides the `backupRestoreTest` evidence that `test:release` currently reports as pending.
+- [ ] Specialists: Database Optimizer, Identity & Access (restore rights are superadmin only).
+
+#### Task 0.4: Build the R1 replay harness once
+
+- [ ] Add `tools/replay-parity/export.mjs`. It makes read-only, bounded exports via the Firebase CLI to an ignored local folder.
+- [ ] Add `tools/replay-parity/compare.mjs`. It loads the old and new functions from two git refs and prints matched/mismatched counts plus each difference.
+- [ ] Add `tests/replay-parity-harness-check.mjs`. It proves that the harness itself detects a deliberately changed account, and that a run stopped part-way leaves no partial output.
+- [ ] Specialists: Bookkeeper & Controller, Database Optimizer.
+
+⚖️ **Decision Gate 0:** Danilo confirms the navigation in the live admin, and Tasks 0.3, 0.4 and 0.5 are done, before Phase 1 starts.
 
 ---
 
@@ -225,7 +273,10 @@ Everything in Phase 1 must produce **byte-identical movement lines** for every e
 - [ ] Step 2: write the failing test `undeposited-source-claims-and-releases-all-callers`. It uses the fake DB pattern from `tests/custody-pool-claim-check.mjs` (null-cache transaction semantics). Purchase, voucher and bill payment each claim once and release, and a second payment straight after posts.
 - [ ] Step 3: implement both functions in `41a-payment-sources.js`, then switch each caller.
 - [ ] Step 4: posting-parity test `movement-lines-unchanged`. Build the movement for a cash purchase, a voucher and a bill payment with fixed inputs; compare against snapshots taken before the change.
-- [ ] Step 5: build, run the full suite, PR. Specialists: Bookkeeper, Database Optimizer, Software Architect, Code Reviewer.
+- [ ] Step 5: **R1:** run the replay over the last 60 days; 100% identical, with counts in the PR.
+- [ ] Step 6: **R3:** UAT walkthrough with evidence in the PR.
+- [ ] Step 7: build, run the full suite, PR. Specialists: Bookkeeper, Database Optimizer, Software Architect, Code Reviewer.
+- [ ] Step 8: after merge, **R2:** shadow for 3–5 trading days with zero mismatches, then switch to `on`; then **R4.**
 
 **Firebase cost:** zero change. Same reads and same claims.
 
@@ -274,7 +325,10 @@ These are the codes the Books bridge already posts each legacy category to today
 - [ ] Step 2: failing test `same-expense-same-account-both-screens`. A purchase expense line with `expenseAccount: "6050"` and a voucher with `expenseAccountCode: "6050"` both debit `coa:6050`.
 - [ ] Step 3: failing test `rejects-6110-and-inactive`. `6110`, a non-6000 code and an inactive account are each refused.
 - [ ] Step 4: implement, then run the tests.
-- [ ] Step 5: the full suite, then PR. Specialists: Bookkeeper (mandatory sign-off on the mapping table and history-untouched proof), Code Reviewer.
+- [ ] Step 5: **R1:** replay every voucher and purchase expense line from the last 60 days. Each one must land on the same Books code as today.
+- [ ] Step 6: **R3:** UAT walkthrough, with one voucher per category and one purchase expense line.
+- [ ] Step 7: the full suite, then PR. Specialists: Bookkeeper (mandatory sign-off on the mapping table and history-untouched proof), Code Reviewer.
+- [ ] Step 8: after merge, **R2:** shadow (the old map posts, the new catalogue is compared) until zero mismatches, then `on`; then **R4.**
 
 **Migration:** none. Posted vouchers keep their lines. New vouchers use the chart.
 
@@ -298,7 +352,8 @@ These are the codes the Books bridge already posts each legacy category to today
 - [ ] Step 1: failing test `picker-waits-for-accounts`. With `window.__cf` absent, `sourceOptions` returns the single "Loading cash, bank and e-wallet accounts…" option.
 - [ ] Step 2: failing test `one-label-for-every-source`. `sourceLabel('undeposited'|'cash_on_hand'|bankId)` gives identical text in both screens.
 - [ ] Step 3: implement, swap the callers, and confirm no new `subscribe(` or `onValue(` calls (grep assertion in the test).
-- [ ] Step 4: the full suite, then PR. Specialists: Frontend Developer, Code Reviewer.
+- [ ] Step 4: **R3:** a UAT walkthrough of both screens, including the accounts not yet loaded.
+- [ ] Step 5: the full suite, then PR. Specialists: Frontend Developer, Code Reviewer. After deploy, **R4.**
 
 **Firebase cost:** zero. The pickers only read maps that are already loaded.
 
@@ -385,7 +440,7 @@ Deferred, and gated on **AP 1.5 `postPurchase`**.
   - reference stamping.
 - The two documents keep separate commands and separate movement types.
 
-Not started until AP Phase 0 completes and AP 1.5 is approved.
+Not started until AP Phase 0 completes and AP 1.5 is approved. Gates **R1, R2, R3 and R4 are all mandatory.**
 
 **Specialists:** Software Architect, Bookkeeper, Database Optimizer, Identity & Access, Code Reviewer.
 
@@ -397,7 +452,7 @@ Not started until AP Phase 0 completes and AP 1.5 is approved.
 
 1. **Open PRs first:** #704 (Cash Vouchers) merges before Codex rebases Task 0.1.
 2. **Then:**
-   - Task 0.1 (Codex) → Task 0.2
+   - Task 0.1 (Codex) → Task 0.2 → Tasks 0.3, 0.4 and 0.5 (gate tooling and restore point)
    - → Gate 0
    - → 1.1 → 1.2 → 1.3 (1.3 may run in parallel with 1.2 only if they touch different files; 40-revolving-fund.js is shared, so **sequential is safer**)
    - → Gate 1
@@ -414,7 +469,7 @@ Not started until AP Phase 0 completes and AP 1.5 is approved.
 3. `superpowers:using-git-worktrees`: a worktree off `main` created with Windows git (Desktop Commander), with junctioned `node_modules`.
 4. Call the specialists named for the task, using the protocol in §4, before code (design review) and after code (Code Reviewer).
 5. `superpowers:test-driven-development`: write the failing test, run it to see it fail, implement, see it pass.
-6. `npm run build:artifacts`, then the full `npm test` (Windows-path tests reported separately), `test:release` and `test:safety`.
+6. Take the **R0 restore point** before the merge. Then `npm run build:artifacts` and the full `npm test` (Windows-path tests reported separately), `test:release` and `test:safety`. Then the §5A gates the task requires (R1 / R3 before the PR; R2 / R4 after merge).
 7. `superpowers:verification-before-completion`: show command output, never "should pass".
 8. `superpowers:requesting-code-review` → Code Reviewer specialist; fix the findings.
 9. `superpowers:finishing-a-development-branch`: commit named files, push, `gh pr create --body-file`. **No merge.**
@@ -424,6 +479,9 @@ Not started until AP Phase 0 completes and AP 1.5 is approved.
     - The Firebase cost line.
 
 ## 8. Rollback per phase
+
+Every phase starts from its **R0 restore point** (§5A). The order is always: flag off → redeploy the tag / revert → restore a single node. Never restore the whole database over live trading data.
+
 
 - **Phase 0:** revert the navigation PR. No data effect.
 - **Phase 1:** redeploy previous functions and static. The new voucher field `expenseAccountCode` is additive; old code ignores it and posts through the legacy map. Already-posted movements are unaffected.
@@ -436,6 +494,7 @@ Not started until AP Phase 0 completes and AP 1.5 is approved.
 - Custody vs GL 1030 drift (existing).
 - `financialControlLocks/cashCustodyPool` held for more than 60 s. Alert, because the lease is 180 s and normal holds are under 1 s.
 - A weekly list of vouchers posted through the legacy category map after Task 1.2. It should trend to zero.
+- During any R2 shadow period: a daily count of `/consolidationShadowLog` entries. Alert on the first mismatch.
 
 ## 10. Decisions Danilo must make
 
@@ -473,3 +532,5 @@ Not started until AP Phase 0 completes and AP 1.5 is approved.
   - #702: PUR as the purchase reference, numbered at entry, with **Post payment**.
   - #703: one Actions menu in Purchases; fully allocated advances hidden.
   - **#704 (merged 7 Oct):** Cash Vouchers keep PV-YYYYMM-NNNN, server-issued at approval, and the PV number is the Finance Books reference.
+- **7 Oct 2026, Danilo approved the regression safeguards:** R1 production replay parity, R2 shadow mode, R3 UAT dry run, R4 post-deploy smoke (§5A). Tasks 0.3 and 0.4 were added to build the tooling.
+- **7 Oct 2026, Danilo required a restore point** in case everything goes wrong. Added gate R0 (code tag, feature-flag off-switch, confirmed daily database backup and a small node snapshot) and Task 0.5, which proves it with a restore test into UAT. A whole-database restore over live data is explicitly prohibited.
