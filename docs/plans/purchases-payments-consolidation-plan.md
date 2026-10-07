@@ -534,3 +534,7 @@ Every phase starts from its **R0 restore point** (§5A). The order is always: fl
   - **#704 (merged 7 Oct):** Cash Vouchers keep PV-YYYYMM-NNNN, server-issued at approval, and the PV number is the Finance Books reference.
 - **7 Oct 2026, Danilo approved the regression safeguards:** R1 production replay parity, R2 shadow mode, R3 UAT dry run, R4 post-deploy smoke (§5A). Tasks 0.3 and 0.4 were added to build the tooling.
 - **7 Oct 2026, Danilo required a restore point** in case everything goes wrong. Added gate R0 (code tag, feature-flag off-switch, confirmed daily database backup and a small node snapshot) and Task 0.5, which proves it with a restore test into UAT. A whole-database restore over live data is explicitly prohibited.
+- **7 Oct 2026, R0 data layer confirmed** (Danilo, console screenshot):
+  - Automated **daily** Realtime Database backups are already enabled for `accaza-sartoga-default-rtdb`, to bucket `accaza-sartoga-default-rtdb-backups`.
+  - Last backup: 2026-10-07T01:54:32Z.
+  - Task 0.5's first checkbox is done. Still open for 0.5: confirm the bucket's 30-day lifecycle and gzip, the restore scripts, and the restore test into UAT.
