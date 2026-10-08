@@ -4,6 +4,7 @@ const inventory=fs.readFileSync('src/functions/50-inventory.js','utf8');
 const correction=fs.readFileSync('src/functions/43b-purchase-corrections.js','utf8');
 const workspace=fs.readFileSync('src/admin/pos/11h-purchase-workspace.js','utf8');
 const purchasing=fs.readFileSync('src/admin/pos/19-purchase-quantity-correction.js','utf8');
+const purchaseActions=fs.readFileSync('src/admin/pos/20-purchasing.js','utf8');
 const failures=[];
 const must=(source,marker,message)=>{if(!source.includes(marker))failures.push(message);};
 const qty6=value=>Math.round((Number(value)||0)*1000000)/1000000;
@@ -31,6 +32,20 @@ must(correction,'[`inventoryBatch/${batchId}/qtyRecv`]:newQty','The linked inven
 must(workspace,'data-purchase-quantity','Purchase history must offer the correction on active inventory purchases.');
 must(purchasing,"action:'correct_quantity'",'The Admin form must call the controlled server action.');
 must(purchasing,'The purchase total, cash/payment, payable, and Finance Books remain unchanged.','The operator must see the financial safeguard before submitting.');
+
+must(correction,'action === "correct_accounts"','Posted purchases must have a controlled account-correction action.');
+must(correction,'actor.role !== "superadmin"','Purchase account correction must be Super-Admin-only on the server.');
+must(correction,'assertAccountingPeriodOpen(db,date,"correcting purchase account coding")','Account corrections must be blocked when the purchase period is closed.');
+must(correction,'purchaseCorrectionLocks/${invoiceId}','Account, quantity, and reversal actions must serialize against each other.');
+must(correction,'purchase_account_reclassified','Purchase account correction must append a linked Finance movement.');
+must(correction,'BooksBridge.linesBalanced(journalLines)','The account correction must be balanced before posting.');
+must(correction,'purchaseInvoices/${invoiceId}/lines`]:lines','The corrected expense coding must remain visible on the purchase.');
+must(correction,'Existing sale and usage COGS postings remain unchanged','The correction must not double-post consumed inventory to COGS.');
+must(correction,'correctionFingerprint','Retries must identify the same account correction and avoid duplicate postings.');
+must(correction,'priorRevision?`purchase_account_reclass_${invoiceId}_${priorRevision}`:originalMovementId','Later corrections must validate against the posting that established the current account.');
+must(purchaseActions,'data-purchase-accounts','Purchase History must expose account correction on eligible active purchases.');
+must(purchaseActions,"action:'correct_accounts'",'The Admin account editor must call the controlled server action.');
+must(workspace,"role==='superadmin'&&hasExpenses",'Only Super Admins should see the expense account correction action.');
 
 if(failures.length){console.error('Purchase quantity correction check failed:\n- '+failures.join('\n- '));process.exit(1);}
 console.log('PASS: purchase quantity corrections preserve invoice and carrying value, update linked inventory records, reject unsafe reductions, stay server-only, and post P0 to Finance Books.');
