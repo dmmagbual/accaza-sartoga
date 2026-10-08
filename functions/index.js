@@ -7333,6 +7333,15 @@ exports.reconcilePurchasePayable = onCall(
   },
 );
 
+async function claimPurchaseCorrection(db, invoiceId, actor) {
+  const ref=db.ref(`/purchaseCorrectionLocks/${invoiceId}`),now=Date.now(),token=crypto.randomBytes(12).toString("hex"),claim=await ref.transaction((current)=>!current||Number(current.expiresAt||0)<=now?{token,actorUid:actor.uid,claimedAt:now,expiresAt:now+180000}:undefined,undefined,false);
+  if(!claim.committed||!claim.snapshot.exists()||claim.snapshot.val().token!==token)throw new HttpsError("aborted","This purchase is being corrected in another request. Wait briefly, refresh, and try again.");
+  return{ref,token};
+}
+async function releasePurchaseCorrection(lock) {
+  if(!lock)return;await lock.ref.transaction((current)=>current&&current.token===lock.token?null:current,undefined,false);
+}
+
 // Controlled purchase correction boundary. Metadata corrections preserve the
 // original financial amount. Reversals offset inventory and finance with
 // deterministic IDs so an interrupted request is safe to retry.
@@ -7341,6 +7350,8 @@ exports.managePurchaseCorrection = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["purchases"]), data = request.data || {}, action = financeText(data.action, 30);
     const requestedId = financeText(data.invoiceId, 160), requestedRef = financeText(data.invoiceRef, 120);
+    const correctionLockActions=new Set(["correct_accounts","correct_quantity","reverse"]);if(correctionLockActions.has(action)&&!requestedId)throw new HttpsError("invalid-argument","Refresh the purchase and submit its record ID before correcting it.");const correctionLock=correctionLockActions.has(action)?await claimPurchaseCorrection(db,financeKey(requestedId,"Purchase invoice ID"),actor):null;
+    try{
     // By ID only the invoice is read; a lookup by reference has to compare every invoice.
     const requestedRow = requestedId && TrackedRead.trackable(requestedId) ? (await db.ref(`/purchaseInvoices/${requestedId}`).get()).val() : null;
     const invoices = requestedRow ? {[requestedId]: requestedRow} : requestedRef ? ((/* download-ok: fallback purchase looked up by invoice reference instead of ID */await db.ref("/purchaseInvoices").get()).val() || {}) : {};
@@ -7351,6 +7362,39 @@ exports.managePurchaseCorrection = onCall(
     if (action === "lookup") return {invoice:safeInvoice,reversed:invoice.reversed===true};
     if (invoice.reversed === true) throw new HttpsError("failed-precondition", "This purchase has already been reversed.");
     const now = Date.now(), reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
+    if (action === "correct_accounts") {
+      if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can correct posted purchase accounts.");
+      const date=financeDate(invoice.date),expectedRevision=Math.max(0,Math.trunc(Number(data.expectedRevision)||0)),currentRevision=Math.max(0,Math.trunc(Number(invoice.accountCorrectionRevision)||0)),changes=Array.isArray(data.changes)?data.changes:[];
+      if(!changes.length||changes.length>40)throw new HttpsError("invalid-argument","Choose at least one purchase expense account to correct.");
+      const correctionFingerprint=JSON.stringify(changes.map((change)=>({lineIndex:Math.trunc(Number(change&&change.lineIndex)),accountCode:financeText(change&&change.accountCode,4)})).sort((a,b)=>a.lineIndex-b.lineIndex)),nextRevision=expectedRevision+1,movementId=`purchase_account_reclass_${invoiceId}_${nextRevision}`,prior=(await db.ref(`/financialMovements/${movementId}`).get()).val();
+      if(prior&&prior.sourceId===invoiceId&&prior.type==="purchase_account_reclassified"&&prior.correctionFingerprint===correctionFingerprint)return{invoiceId,result:"account_correction",movementId,revision:nextRevision,duplicate:true};
+      if(expectedRevision!==currentRevision)throw new HttpsError("aborted","This purchase was corrected after you opened it. Refresh the page and review the current account coding.");
+      if(prior)throw new HttpsError("already-exists","A different correction already uses this purchase correction number. Refresh and review the record.");
+      const period=await assertAccountingPeriodOpen(db,date,"correcting purchase account coding");
+      const lines=safeInvoice.lines.map((line)=>Object.assign({},line)),seen=new Set(),chart=await ensureBooksChart(db),movementIds=[`purchase_ap_${invoiceId}`,`purchase_ap_repair_${invoiceId}`,`purchase_cash_${invoiceId}`,`purchase_owner_${invoiceId}`];
+      const before={};const after={};const journalLines=[];
+      for(const change of changes){
+        const lineIndex=Math.trunc(Number(change&&change.lineIndex)),line=lines[lineIndex],target=financeText(change&&change.accountCode,4);
+        if(!Number.isInteger(lineIndex)||lineIndex<0||!line||seen.has(lineIndex)||line.lineType!=="expense")throw new HttpsError("invalid-argument","Only distinct purchase expense lines can be account-corrected here.");
+        seen.add(lineIndex);const oldCode=financeText(line.expenseAccount,4),amount=Financial.money(line.total),account=chart[target];
+        if(!/^6\d{3}$/.test(oldCode)||oldCode==="6110"||!(amount>0))throw new HttpsError("failed-precondition","A purchase expense line has invalid account coding or amount. Review the source purchase first.");
+        if(oldCode!==target&&(!account||account.active===false||String(account.type||"").toLowerCase()!=="expense"||target==="6110"))throw new HttpsError("invalid-argument","Choose an active 6000-series operating expense account. Cash Short / Over is controlled separately.");
+        before[lineIndex]={accountCode:oldCode,amount};after[lineIndex]={accountCode:target,amount};
+        if(oldCode!==target){journalLines.push(Financial.line(`coa:${target}`,amount,0,`Purchase account correction · ${safeInvoice.ref||invoiceId}`),Financial.line(`coa:${oldCode}`,0,amount,`Reclassify purchase expense · ${safeInvoice.ref||invoiceId}`));line.expenseAccount=target;line.accountCorrectionRevision=currentRevision+1;}
+      }
+      if(!journalLines.length)throw new HttpsError("invalid-argument","No account changes were selected.");
+      if(!BooksBridge.linesBalanced(journalLines))throw new HttpsError("failed-precondition","The purchase account correction is not balanced.");
+      let original=null,originalMovementId="";for(const id of movementIds){original=(await db.ref(`/financialMovements/${id}`).get()).val();if(original){originalMovementId=id;break;}}
+      if(!original||original.sourceType!=="purchaseInvoice"||original.sourceId!==invoiceId||!Array.isArray(original.lines)||!BooksBridge.linesBalanced(original.lines))throw new HttpsError("failed-precondition","The original balanced purchase posting is missing or inconsistent. Repair the source posting before correcting its accounts.");
+      const sourceNeeds={};for(const change of changes){const index=Math.trunc(Number(change.lineIndex)),line=lines[index],oldCode=financeText(before[index].accountCode,4);if(oldCode===financeText(change.accountCode,4))continue;const priorRevision=Math.max(0,Math.trunc(Number(invoice.lines[index]&&invoice.lines[index].accountCorrectionRevision)||0)),sourceId=priorRevision?`purchase_account_reclass_${invoiceId}_${priorRevision}`:originalMovementId;sourceNeeds[sourceId]=sourceNeeds[sourceId]||{};sourceNeeds[sourceId][oldCode]=Financial.money((sourceNeeds[sourceId][oldCode]||0)+Financial.money(line.total));}
+      const sourceRows={};await Promise.all(Object.keys(sourceNeeds).map(async(id)=>{sourceRows[id]=id===originalMovementId?original:(await db.ref(`/financialMovements/${financeKey(id,"Correction movement ID")}`).get()).val();}));
+      for(const sourceId of Object.keys(sourceNeeds)){const source=sourceRows[sourceId];if(!source||source.sourceType!=="purchaseInvoice"||source.sourceId!==invoiceId||!Array.isArray(source.lines)||!BooksBridge.linesBalanced(source.lines))throw new HttpsError("failed-precondition","A prior linked purchase account correction is missing or inconsistent. Ask Finance to review this purchase.");for(const oldCode of Object.keys(sourceNeeds[sourceId])){const sourceDebit=Financial.money(source.lines.filter((line)=>line.account===`coa:${oldCode}`).reduce((sum,line)=>sum+Number(line.debit||0),0));if(sourceDebit+0.009<sourceNeeds[sourceId][oldCode])throw new HttpsError("failed-precondition",`The linked purchase posting does not contain enough value in account ${oldCode} for this correction. Ask Finance to review the source lines.`);}}
+      if(nextRevision!==currentRevision+1)throw new HttpsError("aborted","Purchase correction revision changed. Refresh and review the purchase.");
+      const timestamp=Date.parse(`${date}T00:00:00+08:00`)||now,movement=Financial.movement("purchase_account_reclassified","purchaseInvoice",invoiceId,journalLines,{occurredAt:timestamp,actorName:actor.role,reference:safeInvoice.ref||safeInvoice.id,originalMovementId,accountCorrectionRevision:nextRevision,correctionFingerprint,reason});
+      const writes={[`purchaseInvoices/${invoiceId}/lines`]:lines,[`purchaseInvoices/${invoiceId}/accountCorrectionRevision`]:nextRevision,[`purchaseInvoices/${invoiceId}/lastAccountCorrectionAt`]:now,[`purchaseInvoices/${invoiceId}/lastAccountCorrectionBy`]:actor.uid,[`purchaseInvoices/${invoiceId}/lastAccountCorrectionReason`]:reason,[`operationalAudit/${now}_purchase_account_correction_${invoiceId}_${nextRevision}`]:{action:"correct_purchase_accounts",sourceType:"purchaseInvoice",sourceId:invoiceId,period,originalMovementId,movementId,revision:nextRevision,before,after,reason,actorUid:actor.uid,actorRole:actor.role,inventoryQuantityChanged:false,payableChanged:false,cashChanged:false,cogsTreatment:"Existing sale and usage COGS postings remain unchanged; no consumed cost is posted a second time.",ts:now,schemaVersion:1}};
+      const committed=await commitFinancial(db,movementId,movement,actor,writes);
+      return{invoiceId,result:"account_correction",movementId,revision:nextRevision,duplicate:committed.duplicate};
+    }
     if (action === "correct_details") {
       const supplierMaster=await requireActiveSupplier(db,invoice.supplierId,invoice.supplier),requestedSupplierId=financeText(data.supplierId,160);if(requestedSupplierId&&requestedSupplierId!==supplierMaster.id)throw new HttpsError("failed-precondition","Changing a posted purchase supplier requires reversing and re-entering the purchase so inventory, advance, payable, and Finance Books links remain intact.");const next = {supplier:supplierMaster.name,ref:financeText(data.ref,120),due:data.due?financeDate(data.due, true):"",by:financeText(data.by,120),description:financeText(data.description,240)};if (!next.ref) throw new HttpsError("invalid-argument", "Invoice reference is required.");
       const duplicate = Object.keys(invoices).some((id) => id !== invoiceId && financeText(invoices[id] && invoices[id].ref,120).toLowerCase() === next.ref.toLowerCase());if (duplicate) throw new HttpsError("already-exists", "Another purchase already uses this invoice reference.");
@@ -7420,6 +7464,7 @@ exports.managePurchaseCorrection = onCall(
     if (financialMovement) await commitFinancial(db,financialId,financialMovement,actor,writes);else await db.ref().update(writes);
     return {invoiceId,result:"reversed",amount:safeInvoice.total,invoice:safeInvoice};
     }finally{await releaseCustodyClaims(custodyClaims);await releasePettyVoucherClaims(voucherClaims);if(purchaseClaim)await purchaseClaim.release();}
+    }finally{await releasePurchaseCorrection(correctionLock);}
   },
 );
 
