@@ -30,6 +30,7 @@ for(const [name,source] of [['Purchases',purchaseUi],['Cash Payments',cashPaymen
 assert(purchaseUi.includes('rows=allRows.filter(function(p){return showReversedPurchases||!p.reversed;})')&&!purchaseUi.includes('}).slice(0,100)'),'Purchases must paginate every locally loaded purchase after applying the existing reversed-record filter');
 assert(payoutUi.includes('data-report-page-group')&&payoutUi.includes("window.AccazaReportPagination.reset('admin-tab-payouts')"),'Payout audit rows must stay attached to each payout and filters must reset the page');
 assert(pagination.includes('Number(table.dataset.reportPageSize)||SIZE')&&pagination.includes('data-report-page-group'),'Shared pagination must support opt-in page sizes and grouped detail rows');
+assert(pagination.includes("document.getElementById('adminDash')")&&pagination.includes("attributeFilter:['style']"),'Pagination observer must attach to the real Admin container and rerun when tabs change visibility');
 
 let currentNav=null;const buttons=[],paginationDocument={addEventListener(){},createElement(){const nav={className:'',innerHTML:'',querySelectorAll(){return buttons;},remove(){currentNav=null;}};return nav;}},paginationWindow={};
 buttons.push({disabled:false,onclick:null},{disabled:false,onclick:null});
@@ -46,6 +47,14 @@ table.tBodies[0].rows=makeRows(20);paginationWindow.AccazaReportPagination.apply
 assert.equal(table.tBodies[0].rows.filter(row=>!row.hidden).length,40,'A 20-record list must show all records without splitting details');assert.equal(currentNav,null,'A single-page list must not keep pagination controls');
 table.tBodies[0].rows=[];paginationWindow.AccazaReportPagination.apply({querySelectorAll:()=>[table]},'test',true);
 assert.equal(currentNav,null,'An empty list must not render pagination controls');
+
+let readyHandler,observedTarget,observedOptions,observerCallback,visibleTabQueries=0;const adminHost={},visibleRoot={id:'tab-purchases',querySelectorAll(){visibleTabQueries++;return[];}},observerDocument={addEventListener(name,handler){if(name==='DOMContentLoaded')readyHandler=handler;},getElementById(id){return id==='adminDash'?adminHost:null;},querySelector(){return visibleRoot;},createElement:paginationDocument.createElement};
+class MockObserver{constructor(callback){observerCallback=callback;}observe(target,options){observedTarget=target;observedOptions=options;}}
+vm.runInNewContext(pagination,{window:{},document:observerDocument,MutationObserver:MockObserver,setTimeout:fn=>{fn();return 1;},clearTimeout(){},Array,Math,Number,String});
+readyHandler();assert.equal(observedTarget,adminHost,'Pagination must observe the actual Admin shell');
+observerCallback([{type:'attributes',attributeName:'style',target:visibleRoot}]);
+assert.equal(visibleTabQueries,2,'Switching tabs must reapply pagination even without new list rows');
+assert.equal(observedOptions.attributes,true,'Pagination observer must detect tab visibility changes');
 
 const events={},storage=new Map(),win={AccazaDate:{key:()=> '2026-09-06'},localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},addEventListener:(name,fn)=>(events[name]??=[]).push(fn),dispatchEvent:event=>(events[event.type]||[]).forEach(fn=>fn(event))};
 vm.runInNewContext(fs.readFileSync('assets/js/shared/report-period.js','utf8'),{window:win,localStorage:win.localStorage,CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}},Date,Intl});
