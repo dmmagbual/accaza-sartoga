@@ -12,7 +12,7 @@ export const BUDGET_WARN_ROOM=0.025;
 // Any tracked runtime script at or above this size must have a ceiling below.
 export const BUDGET_COVERAGE_MIN_BYTES=10000;
 // Modules carved out of a guarded bundle keep a ceiling whatever their size.
-export const SPLIT_MODULES=Object.freeze(['assets/js/admin/daily-report-output.mjs','assets/js/admin/order-archive-panel.mjs','assets/js/customer/chatbot.mjs']);
+export const SPLIT_MODULES=Object.freeze(['assets/js/admin/daily-report-output.mjs','assets/js/admin/order-archive-panel.mjs','assets/js/customer/chatbot.mjs','assets/js/books/controlled-transactions.js']);
 export const usableBudget=(maximum,reserve=0)=>maximum-reserve;
 export const budgetState=(bytes,maximum,reserve=0)=>{
   const usable=usableBudget(maximum,reserve);
@@ -116,7 +116,8 @@ export const BUNDLE_BUDGETS=Object.freeze({
   // Books 124 adds the read-only original-journal viewer to every subsidiary
   // ledger row, exposing both entry legs without any additional Firebase read.
   // Sep 2026 re-baseline under the budget policy above: reviewed 223,307 bytes (books 132).
-  'assets/js/books/app.js':234500,
+  'assets/js/books/app.js':199100, // reviewed 189,601 after moving 50-controlled-transactions.js into its lazy route bundle
+  'assets/js/books/controlled-transactions.js':49400, // reviewed 46,956; loaded on controlled Books routes only
   // Build 110 isolates the owner-only supplier AP cutover form from the core Books bundle.
   'src/books/opening-payables.js':7500,
   // Oct 2026 coverage (tests/bundle-coverage-check.mjs): every runtime script of 10 KB or more,

@@ -114,11 +114,11 @@ await call(fx.manageCashAccount, {action: 'upsert', commandId: 'c11', accountId:
 assert.equal((await val('cfAccounts/kina')).booksCode, '1016', 'editing keeps the link');
 
 // ---- wiring ----
-const bundle = read('functions/index.js'), books = read('assets/js/books/app.js'), live = read('assets/js/books/live-pos.mjs');
+const bundle = read('functions/index.js'), books = read('assets/js/books/app.js'), controlledBooks = read('assets/js/books/controlled-transactions.js'), live = read('assets/js/books/live-pos.mjs');
 for (const marker of ['BankLedgerLink.planCashAccountLink(', '`books/config/cashAccountMap/${id}`', 'cashAccountCodeClaims', 'BankLedgerLink.chartChangeGuard(', 'BankLedgerLink.accountsForCode(code, accounts, cashAccountMap)', 'BankLedgerLink.resolveCashAccountCodes(accounts,'])
   assert.ok(bundle.includes(marker), `server wiring missing: ${marker}`);
 for (const marker of ['App.bankAccountForm=', 'App.bankAccountCreate=', "onclick=\"App.bankAccountForm('')\">+ Add bank account", 'Make bank account', 'bankAccountsForCode(a.code)', "this.bankAccountForm('',code)"])
-  assert.ok(books.includes(marker), `Books wiring missing: ${marker}`);
+  assert.ok(books.includes(marker)||controlledBooks.includes(marker), `Books wiring missing: ${marker}`);
 assert.ok(live.includes('ref(db,"/books/config/cashAccountMap")'), 'Books shows which ledger account each bank uses');
 assert.ok(JSON.parse(read('release-manifest.json')).authoritativeFiles.includes('functions/lib/bank-ledger-link.js'), 'release manifest lists the link rules');
 

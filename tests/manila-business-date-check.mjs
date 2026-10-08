@@ -18,7 +18,7 @@ const fail=message=>{throw new Error(message);};
 if(process.argv[2]==='--zone-probe'){zoneProbe();process.exit(0);}
 
 // ---------- 1. ratchet ----------
-const BUNDLES=new Set(['assets/js/admin/pos.js','assets/js/admin/register.js','assets/js/admin/analytics.js','assets/js/admin/finance.js','assets/js/books/app.js','assets/js/customer/core.mjs']);
+const BUNDLES=new Set(['assets/js/admin/pos.js','assets/js/admin/register.js','assets/js/admin/analytics.js','assets/js/admin/finance.js','assets/js/books/app.js','assets/js/books/controlled-transactions.js','assets/js/customer/core.mjs']);
 const walk=dir=>fs.readdirSync(dir,{withFileTypes:true}).flatMap(entry=>{const full=path.join(dir,entry.name);return entry.isDirectory()?walk(full):/\.m?js$/.test(entry.name)?[full]:[];});
 const scanned=['src/admin','src/books','src/customer','assets/js/admin','assets/js/books','assets/js/shared'].flatMap(dir=>walk(path.join(root,dir))).map(rel).filter(file=>!BUNDLES.has(file)).sort();
 const LOCAL_CALENDAR=/(?<!AccazaReportPeriod)\.(getFullYear|getMonth|getDate|getDay|getHours|setHours|setDate|setMonth|setFullYear)\(/g;
