@@ -4,6 +4,15 @@
 
 These instructions apply to every task in this folder and its subfolders.
 
+### Repository skills and capability routing
+
+- Scope gate: trivial wording/typo edits and simple factual questions are handled directly with proportionate verification; they do not trigger repository scans, specialist agents or full application audits. Substantive bugs, features, designs and operational changes use the routing below.
+- Use skills, agents and connectors only when relevant to the current task. For substantive Accaza work, read `.agents/skills/accaza-workflow/SKILL.md` and select relevant capabilities from `docs/accaza-capability-map.md`. Trivial edits and simple factual questions use the scope gate directly.
+- Canonical skills live in `.agents/skills/`; Claude entry points in `.claude/skills/` load the same instructions. Read each selected skill completely. Use `accaza-token-efficiency` throughout substantive work without weakening required safeguards.
+- POS integrity and continuity are mandatory at all times. For any task that can affect the till, including shared auth, pricing, inventory/financial posting, startup, networking, bundles or service-worker updates, apply `accaza-pos-live-safety` before changes. Protect active shifts and durable queues; unresolved POS regressions block the affected release.
+- Verify actual Superpowers/other external skill availability. A required but missing AP skill or approved document blocks its dependent step; do not claim invocation or invent a replacement. Continue independent safe checks.
+- Skill activation does not authorize publication, deployment, financial mutations or messages. Push/publish only when Danilo requests it, and merge only with explicit authorization; preserve approvals already given for the exact task.
+
 ### User handoff requirements
 
 - Edit in the local project folder first, then push to GitHub, so the folder always holds the latest code. Pull `main` into the folder before starting a task. If a session cannot reach the folder, say so before editing and recommend a session on Danilo's computer; never quietly edit a separate copy.
@@ -155,12 +164,14 @@ The required handoff items in the existing rules (PowerShell block, build/cache 
 
 ### Firebase Cost Discipline
 
-Every change must keep Firebase Realtime Database downloads, reads and Cloud Functions invocations to the minimum the feature genuinely needs. This rule never lowers correctness, financial or inventory integrity, security, authorization, auditability, server authority, or the app's speed and reliability. When they conflict, those win and the cheapest safe design is chosen instead.
+Every relevant change must keep Firebase Realtime Database downloads, Firestore document reads, Cloud Functions invocations and Function compute/scaling cost to the minimum the feature genuinely needs. This rule never lowers correctness, financial or inventory integrity, security, authorization, auditability, server authority, or the app's speed and reliability. When they conflict, those win and the cheapest safe design is chosen instead.
 
 - Read only what the operation needs: one record by key, an indexed and bounded query (`orderByChild` on an indexed field, `limitToFirst`/`limitToLast`), or a maintained summary or index. Never read a whole collection on a routine path; an unavoidable full read must be a rare manual tool, marked `download-ok` with its reason.
 - Do server work inside a Cloud Function call that already happens (posting, approval, close). Add a new callable, trigger, listener, schedule or poll only when no existing call can carry the work.
 - Prefer one multi-path write over several writes. Keep locks and claims to one small node.
 - Client screens listen live only to small, bounded paths they actually show, and detach when the screen closes. Use one-time reads or cached data where live updates add nothing.
-- Add any new index to `database.rules.json` together with the query that uses it.
-- Every proposal and handoff that touches database access states its Firebase cost: reads, downloads and function calls added or removed.
+- Add any new RTDB index to `database.rules.json` together with the query that uses it; define Firestore indexes in the repository's actual Firestore index configuration.
+- Every proposal and handoff that touches Firebase access states its cost: RTDB downloads, Firestore document reads, Function calls and Function compute/scaling impact added, removed or unchanged.
+- For affected Functions, review calls per business action, retries, execution time, memory, CPU, timeout, concurrency and minimum/maximum instances. Increase runtime resources only from realistic workload evidence and state the cost impact.
+- Define a comparable workload baseline and alert/rollback threshold for relevant Firebase changes. Unexplained or unbounded RTDB, Firestore or Functions cost regression blocks the affected release. Do not claim savings until live usage confirms them.
 - Never save a read by dropping a check, weakening a control, or making a screen slower. A missing safeguard or a slow till costs more than the read.
