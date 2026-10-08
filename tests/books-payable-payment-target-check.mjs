@@ -20,7 +20,7 @@ for (const file of ['assets/js/books/app.js', 'src/books/app/40-subledgers.js'])
   must(s, "if(d.type!=='customer_change_refund')return App.txnPay(id);",
     `${file}: the Pay action must pay the payable that was clicked, not the first open one.`);
 }
-for (const file of ['assets/js/books/app.js', 'src/books/app/50-controlled-transactions.js']) {
+for (const file of ['assets/js/books/controlled-transactions.js', 'src/books/app/50-controlled-transactions.js']) {
   const s = read(file);
   must(s, 'App.txnPay=function(preselectId)',
     `${file}: txnPay must accept the payable to pay.`);

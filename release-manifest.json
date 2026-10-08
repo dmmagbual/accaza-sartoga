@@ -13,9 +13,9 @@
   },
   "builds": {
     "admin": 661,
-    "books": 149,
+    "books": 150,
     "customer": 97,
-    "serviceWorkerCache": 653
+    "serviceWorkerCache": 654
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -59,6 +59,7 @@
     "assets/css/admin/pos-inventory-recipes.css",
     "assets/css/admin/analytics.css",
     "assets/js/books/app.js",
+    "assets/js/books/controlled-transactions.js",
     "src/books/business-intelligence.js",
     "src/books/app/00-accounting-model.js",
     "src/books/app/10-application-shell.js",
@@ -227,6 +228,14 @@
     "tools/build-runtime-bundles.mjs",
     "tools/build-html-pages.mjs",
     "tests/runtime-bundle-drift-check.mjs",
+    "tests/bundle-budgets.mjs",
+    "tests/books-navigation-check.mjs",
+    "tests/books-payable-payment-target-check.mjs",
+    "tests/payable-payment-reversal-check.mjs",
+    "tests/suspense-supplier-advance-check.mjs",
+    "tests/bank-ledger-link-check.mjs",
+    "tests/manila-business-date-check.mjs",
+    "tests/client-download-guard-check.mjs",
     "tests/html-page-drift-check.mjs",
     "tests/static-check.mjs",
     "tests/static-suite-architecture-check.mjs",

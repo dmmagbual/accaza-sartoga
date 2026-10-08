@@ -88,7 +88,7 @@ for (const file of ['assets/js/books/app.js', 'src/books/app/40-subledgers.js'])
   must(s, "onclick=\"App.reversePayablePayment(", `${file}: a settled bill must offer the reversal action.`);
   must(s, "reversed?'<span class=\"tiny muted\">Payment reversed</span>'", `${file}: an already-reversed payment must not offer the action again.`);
 }
-for (const file of ['assets/js/books/app.js', 'src/books/app/50-controlled-transactions.js']) {
+for (const file of ['assets/js/books/controlled-transactions.js', 'src/books/app/50-controlled-transactions.js']) {
   const s = read(file);
   must(s, 'App.reversePayablePayment=function(id,paymentId)', `${file}: the reversal action must identify one payment.`);
   must(s, "payment.status==='reversed'||payment.reversalMovementId", `${file}: the client must refuse a second reversal of the selected payment.`);
