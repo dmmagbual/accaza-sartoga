@@ -34,5 +34,13 @@ jobs:
         run: npm install --global firebase-tools
       - name: Install Chromium for browser smoke tests
         run: npx playwright install --with-deps chromium
-      - name: Run static, workflow, recovery, and rules tests
-        run: npm run test:ci
+      - name: Run application tests
+        run: npm test
+      - name: Run release-consistency tests
+        run: npm run test:release
+      - name: Run repository-safety tests
+        run: npm run test:safety
+      - name: Run Firebase rules tests
+        run: npm run test:rules
+      - name: Run browser end-to-end tests
+        run: npm run test:e2e
