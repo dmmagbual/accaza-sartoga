@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const root=path.join(import.meta.dirname,'..');
 let source=fs.readFileSync(path.join(root,'src','books','app','20-cash-flow.js'),'utf8');
 assert.ok(source.includes("let CF_TO=todayStr(), CF_FROM=CF_TO.slice(0,8)+'01';"),'Cash Flow must default to the current month through today');
+assert.ok(source.includes("payable_paid_batch:'Supplier / bill payments'"),'single- and multi-bill batch payments must remain in the supplier-payment cash-flow category');
 source=source.replace("let CF_TO=todayStr(), CF_FROM=CF_TO.slice(0,8)+'01';","let CF_FROM='2026-09-01', CF_TO='2026-09-06';");
 source+='\nglobalThis.__cashFlowTest={cfStatement};';
 

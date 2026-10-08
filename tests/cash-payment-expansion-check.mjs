@@ -23,8 +23,28 @@ assert.match(entry, /orderByChild\('status'\)\.equalTo\('open'\)\.limitToLast\(1
 assert.match(entry, /pay_payable_batch/);
 assert.match(entry, /claimPayables\(db,unique\.map\(\(row\)=>row\.documentId\),commandId,actor,apClaimSets\)/, 'batch payments must claim every bill before reading it');
 assert.match(books, /App\.txnPayBatch/);
-assert.match(books, /at least two bills/i);
+assert.match(books, /Pay supplier bills/, 'the action label must cover one or multiple bills');
+assert.match(books, /Choose one or more bills/i, 'the payment form must allow a single selected bill');
+assert.match(books, /allocations\.length<1/, 'the UI must reject an empty selection');
+assert.match(entry, /normalizePayableBatchAllocations\(data\.allocations\)/, 'the server must normalize and validate single or multiple bill allocations');
 assert.match(books, /reverse_payable_batch_payment/);
 assert.match(split, /split|tender|payment/i, 'split-payment source remains present');
 assert.doesNotMatch(register, /onValue\([^)]*payables/i, 'cash-payment form must not add a broad payable listener');
+
+class AllocationError extends Error { constructor(code, message) { super(message); this.code = code; } }
+const helper = entry.match(/function normalizePayableBatchAllocations\(raw\) \{[\s\S]*?\n\}/);
+assert.ok(helper, 'the server must expose testable allocation normalization');
+const normalize = new Function('financeKey', 'Financial', 'HttpsError', `${helper[0]}\nreturn normalizePayableBatchAllocations;`)(
+  (value, label) => { const id = String(value || '').trim(); if (!id || /[.#$\/\[\]]/.test(id)) throw new AllocationError('invalid-argument', `${label} is invalid.`); return id; },
+  {money: value => Math.round((Number(value) || 0) * 100) / 100},
+  AllocationError
+);
+assert.deepEqual(normalize([{documentId:'gp-bill',amount:9360}]), [{documentId:'gp-bill',amount:9360}], 'one bill must be payable');
+assert.deepEqual(normalize([{documentId:'gp-bill',amount:1000}]), [{documentId:'gp-bill',amount:1000}], 'a partial single-bill amount must stay partial');
+assert.equal(normalize([{documentId:'bill-a',amount:10},{documentId:'bill-b',amount:20}]).length, 2, 'multiple bill allocation must remain supported');
+assert.throws(() => normalize([]), error => error.code === 'invalid-argument', 'an empty selection must be rejected');
+assert.throws(() => normalize([{documentId:'gp-bill',amount:0}]), error => error.code === 'invalid-argument', 'zero allocations must be rejected');
+assert.throws(() => normalize([{documentId:'gp-bill',amount:10},{documentId:'gp-bill',amount:10}]), error => error.code === 'invalid-argument', 'duplicate bill IDs must be rejected');
+assert.throws(() => normalize([{documentId:'bad/bill',amount:10}]), error => error.code === 'invalid-argument', 'malformed bill IDs must be rejected');
+assert.throws(() => normalize(Array.from({length:21}, (_,i) => ({documentId:'bill-'+i,amount:1}))), error => error.code === 'invalid-argument', 'the existing 20-bill allocation cap must remain enforced');
 console.log('PASS: expanded cash-payment accounts and bounded multi-bill supplier settlement are present; split-payment routing source remains intact.');

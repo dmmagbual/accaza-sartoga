@@ -208,13 +208,13 @@ function applyDaily(current, mv, cashMap) {
 /* Build a discrete journal entry for a non-sale movement. */
 function purchaseJournalText(mv, context) {
   const invoice=context&&context.purchaseInvoice;if(!invoice)return null;
-  const rows=Array.isArray(invoice.lines)?invoice.lines:[],items=rows.slice(0,3).map((line)=>{const qty=Number(line.qty)||0,unit=String(line.unit||""),name=String(line.itemName||line.itemId||"Item");return `${qty} ${unit} ${name}`.replace(/\s+/g," ").trim();}),more=rows.length>3?` +${rows.length-3} more`:"",supplier=String(invoice.supplier||"Supplier"),reversal=String(mv.type||"").indexOf("revers")>=0,label=`${reversal?"Purchase reversal":"Purchase"} — ${supplier}`;
+  const rows=Array.isArray(invoice.lines)?invoice.lines:[],items=rows.slice(0,3).map((line)=>{const qty=Number(line.qty)||0,unit=String(line.unit||""),name=String(line.itemName||line.itemId||"Item");return `${qty} ${unit} ${name}`.replace(/\s+/g," ").trim();}),more=rows.length>3?` +${rows.length-3} more`:"",supplier=String(invoice.supplier||"Supplier"),type=String(mv.type||""),accountCorrection=type==="purchase_account_reclassified",reversal=type.indexOf("revers")>=0,label=`${accountCorrection?"Purchase account correction":reversal?"Purchase reversal":"Purchase"} — ${supplier}`,reason=accountCorrection&&String(mv.reason||"").trim()?` · ${String(mv.reason).trim()}`:"";
   // The purchase's own number (PUR-YYYY-NNNN) is its journal reference. The supplier's invoice
   // reference is shown only when there is one: the internal key or the PUR number stored as a
   // fallback "reference" is not a supplier invoice.
   const purchaseNo=String(invoice.documentNo||""),raw=String(invoice.ref||""),pending=/^PENDING-/i.test(raw),supplierRef=!raw||pending||/^pinv_/i.test(raw)||raw===purchaseNo?"":raw,invoiceText=supplierRef?` · Invoice ${supplierRef}`:pending?" · Invoice pending":"",itemText=`${items.join(" · ")}${more}`;
-  if(purchaseNo)return {ref:purchaseNo,memo:`${label}${itemText?` · ${itemText}`:""}${invoiceText}`};
-  return {ref:label,memo:`${itemText}${invoiceText}`||`Purchase from ${supplier}`};
+  if(purchaseNo)return {ref:purchaseNo,memo:`${label}${itemText?` · ${itemText}`:""}${invoiceText}${reason}`};
+  return {ref:label,memo:`${itemText}${invoiceText}${reason}`||`Purchase from ${supplier}`};
 }
 /* A Cash Payments voucher reads as a Cash Voucher (payee · purpose), never "POS revolving fund … pv_key".
    Its reference is the voucher number, which is also the movement's document number. */
