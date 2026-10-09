@@ -2,7 +2,7 @@ import fs from 'node:fs';
 
 const read=(path)=>fs.readFileSync(path,'utf8');
 const server=read('src/functions/21a-undeposited-pages.js');
-const finance=read('src/functions/40-sales-finance.js')+read('src/functions/42d-financial-command-close.js');
+const finance=read('src/functions/40-sales-finance.js')+read('src/functions/40a-custody-pool.js')+read('src/functions/42d-financial-command-close.js');
 const client=read('assets/js/admin/undeposited.js');
 const hub=read('assets/js/admin/realtime-hub.mjs');
 const rules=read('database.rules.json');
