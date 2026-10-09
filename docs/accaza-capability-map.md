@@ -4,7 +4,8 @@ Repository workflow reference, 8 October 2026. Use skills, agents and connectors
 
 ## Activation
 
-- Substantive work starts with [accaza-workflow](../.agents/skills/accaza-workflow/SKILL.md) and [accaza-token-efficiency](../.agents/skills/accaza-token-efficiency/SKILL.md), then only the relevant rows below. Simple factual answers and trivial edits use the root scope gate directly.
+- The root `AGENTS.md` rules are the default for every Accaza task. This map is consulted only when the work matches a row below or the task is cross-domain/ambiguous. Simple factual answers and trivial edits use the scope gate directly.
+- [accaza-workflow](../.agents/skills/accaza-workflow/SKILL.md) is optional for an explicit full routing review. Do not load it, a specialist, a connector or a Superpowers skill merely because work is substantive.
 - POS continuity and integrity apply at all times. If work can affect checkout, offline sales, shifts, shared auth, pricing, inventory/financial posting, networking, startup, bundles or service workers, load [accaza-pos-live-safety](../.agents/skills/accaza-pos-live-safety/SKILL.md) before changes. Protect active shifts/queues and resolve POS regressions before affected releases.
 - Codex discovers canonical skills under `.agents/skills/`. Claude entry points under `.claude/skills/` load the same files. Ask to "use accaza-workflow"; Codex also supports `$accaza-workflow`, and compatible Claude sessions expose `/accaza-workflow`. If the selector is stale, start/reload the session; root instructions still provide direct file routing.
 - Read actual selected `SKILL.md` instructions before acting. Do not load every skill, specialist or connector for every request.
@@ -36,7 +37,7 @@ Use the real installed skills when available; repository skills do not vendor or
 
 | Trigger | Upstream skill |
 |---|---|
-| Select process skills | `superpowers:using-superpowers` |
+| Select process skills for a complex task | `superpowers:using-superpowers` only when explicitly requested; otherwise select the one matching subskill below |
 | Design a feature/workflow | `superpowers:brainstorming`, then `superpowers:writing-plans` when an implementation plan is needed |
 | Investigate a defect | `superpowers:systematic-debugging` |
 | Implement behavior | `superpowers:test-driven-development` |
@@ -93,6 +94,6 @@ Use existing artifact skills for spreadsheets, Data analysis, Word/PDF/slides, i
 
 Run `node .agents/skills/accaza-workflow/scripts/verify-skills.mjs` after changing this set. It validates skill metadata, matching Claude entry points and local document links; it does not establish live connector access or behavioral compliance. Review routing with realistic cases: active cashier sync failure; supplier partial-payment correction with missing AP plan; a wording-only edit; a shared-auth/service-worker change; and a push request whose previous PR merged.
 
-Keep procedures in canonical skills and routing here. Edit Claude entry points only to keep descriptions/targets synchronized. No credentials, live business data, machine-specific plugin paths or full upstream skill copies belong here. These instruction files require no application build/cache bump or Firebase runtime work.
+Keep procedures in canonical skills and routing here. Edit Claude entry points only to keep descriptions/targets synchronized. No credentials, live business data, machine-specific plugin paths or full upstream skill copies belong here. These instruction files require no application build/cache bump or Firebase runtime work. Default routing must remain shorter than loading any repository skill.
 
 Codex repository discovery and invocation follow [official skill documentation](https://learn.chatgpt.com/docs/build-skills).

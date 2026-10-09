@@ -8,7 +8,7 @@ const canonical = resolve(root, '.agents/skills');
 const wrappers = resolve(root, '.claude/skills');
 const mapPath = resolve(root, 'docs/accaza-capability-map.md');
 const expected = [
-  'accaza-workflow', 'accaza-token-efficiency', 'accaza-financial-integrity',
+  'accaza-workflow', 'accaza-financial-integrity',
   'accaza-pos-live-safety', 'accaza-ap-phase-gate',
   'accaza-firebase-cost-review', 'accaza-release-verify',
 ];
@@ -78,9 +78,17 @@ for (const base of [canonical, wrappers]) {
 
 for (const name of ['AGENTS.md', 'CLAUDE.md']) {
   const text = read(resolve(root, name));
-  if (!text.includes('.agents/skills/accaza-workflow/SKILL.md') || !text.includes('docs/accaza-capability-map.md')) {
+  if (!text.includes('docs/accaza-capability-map.md') || !text.includes('Default to these root instructions')) {
     errors.push(`Missing root activation route: ${name}`);
   }
+}
+
+if (map.includes('Substantive work starts with [accaza-workflow]')) {
+  errors.push('Capability map forces a workflow skill for every substantive task');
+}
+const workflowSkill = files.get(resolve(canonical, 'accaza-workflow', 'SKILL.md')) ?? '';
+if (workflowSkill.includes('accaza-token-efficiency')) {
+  errors.push('Workflow skill forces the removed token-efficiency skill');
 }
 
 const firebaseSkill = files.get(resolve(canonical, 'accaza-firebase-cost-review', 'SKILL.md')) ?? '';
