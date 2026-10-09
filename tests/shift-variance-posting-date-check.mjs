@@ -71,7 +71,32 @@ const val=async(db,path)=>(await db.ref(path).get()).val();
   assert.equal(await val(db,'financialMovements/cash_difference_D1_1'),null,'no empty close-dated posting');
 }
 
-// 3. Single-treatment workflow: shortage expense posts at the shift closing time.
+// 3. Current case workflow: an unexplained shortage requires documented investigation and
+//    reclassifies the pending shortage to Cash Short / Over at the shift closing time.
+{
+  const {db,fx}=setup();
+  await fx.reviewDiscrepancy(req({discrepancyId:'D2',caseVersion:2,approvalId:'A2',note:'Recount and source review found no identifiable cause',allocations:[
+    {id:'unexplained',treatment:'unexplained_shortage',amount:150,details:{investigation:'Manager recounted the drawer and checked sales, change, payouts, tips, and adjacent shifts.'}}
+  ]}));
+  const movement=await val(db,'financialMovements/cash_difference_D2_1');
+  assert.ok(movement,'the unexplained-shortage resolution posted');
+  assert.equal(movement.occurredAt,CLOSE,'Cash Short / Over is recognised on the shift closing date');
+  assert.deepEqual(movement.lines.map((line)=>[line.account,line.debit,line.credit]),[
+    ['expense:cash_shortage',150,0],
+    ['asset:cash_shortage_pending',0,150]
+  ]);
+  assert.equal((await val(db,'discrepancies/D2/resolutionAllocations/unexplained')).details.investigation,'Manager recounted the drawer and checked sales, change, payouts, tips, and adjacent shifts.');
+}
+{
+  const {db,fx}=setup();
+  await assert.rejects(fx.reviewDiscrepancy(req({discrepancyId:'D2',caseVersion:2,approvalId:'A2',note:'Cause not identified',allocations:[
+    {id:'unexplained',treatment:'unexplained_shortage',amount:150,details:{investigation:'  '}}
+  ]})),/Document the investigation before recognizing an unexplained cash shortage expense/);
+  assert.equal(await val(db,'financialMovements/cash_difference_D2_1'),null,'missing investigation evidence posts nothing');
+  assert.equal((await val(db,'discrepancies/D2')).status,'open','the unexplained case remains open');
+}
+
+// 4. Legacy single-treatment workflow: shortage expense posts at the shift closing time.
 {
   const {db,fx}=setup();
   await fx.reviewDiscrepancy(req({discrepancyId:'D2',approvalId:'A2',treatment:'shortage_expense',note:'Unexplained shortage after recount'}));
@@ -81,7 +106,7 @@ const val=async(db,path)=>(await db.ref(path).get()).val();
   assert.equal(manilaDay(movement.occurredAt),'2026-12-31');
 }
 
-// 4. A closed December is never written into; the review is refused and nothing posts.
+// 5. A closed December is never written into; the review is refused and nothing posts.
 {
   const {db,fx}=setup({accountingPeriods:{'2026-12':{period:'2026-12',status:'closed'}}});
   await assert.rejects(fx.reviewDiscrepancy(req({discrepancyId:'D3',approvalId:'A3',treatment:'shortage_expense',note:'Late review'})),(e)=>e.code==='failed-precondition');
@@ -89,7 +114,7 @@ const val=async(db,path)=>(await db.ref(path).get()).val();
   assert.equal((await val(db,'discrepancies/D3')).status,'open','the case stays open until December is reopened');
 }
 
-// 5. Retry after a partial failure: the found-cash posting and its custody were saved, the case
+// 6. Retry after a partial failure: the found-cash posting and its custody were saved, the case
 //    posting was not. The retry completes the case without counting the found cash twice.
 {
   const allocations=[{id:'owner',treatment:'owner_draw',amount:100,details:{owner:'Danilo',reference:'Owner note 31-12'}},{id:'returned',treatment:'cash_recovered',amount:50,details:{destination:'undeposited',reference:'Returned by Ana'}}];
