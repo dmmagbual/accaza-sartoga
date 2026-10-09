@@ -3,10 +3,10 @@
 ## Repository skills and capability routing
 
 - Scope gate: trivial wording/typo edits and simple factual questions are handled directly with proportionate verification; they do not trigger repository scans, specialist agents or full application audits. Substantive bugs, features, designs and operational changes use the routing below.
-- Use skills, agents and connectors only when relevant to the current task. For substantive Accaza work, read `.agents/skills/accaza-workflow/SKILL.md` and select relevant capabilities from `docs/accaza-capability-map.md`. Trivial edits and simple factual questions use the scope gate directly.
-- Canonical skills live in `.agents/skills/`; Claude entry points in `.claude/skills/` load the same instructions. Read each selected skill completely. Use `accaza-token-efficiency` throughout substantive work without weakening required safeguards.
+- Default to these root instructions. Do not load a repository skill, specialist or connector merely because a task is substantive; select one only when its trigger matches the work.
+- `docs/accaza-capability-map.md` is a lookup table, not required reading. `accaza-workflow` is optional for an explicit full routing review. Canonical skills live in `.agents/skills/`; Claude entry points in `.claude/skills/` load the same instructions.
 - POS integrity and continuity are mandatory at all times. For any task that can affect the till, including shared auth, pricing, inventory/financial posting, startup, networking, bundles or service-worker updates, apply `accaza-pos-live-safety` before changes. Protect active shifts and durable queues; unresolved POS regressions block the affected release.
-- Verify actual Superpowers/other external skill availability. A required but missing AP skill or approved document blocks its dependent step; do not claim invocation or invent a replacement. Continue independent safe checks.
+- Use a specific Superpowers process skill only when its task trigger applies; do not invoke `using-superpowers` as a generic startup step. A required but missing AP skill or approved document blocks its dependent step; do not claim invocation or invent a replacement. Continue independent safe checks.
 - Skill activation does not authorize publication, deployment, financial mutations or messages. Push/publish only when Danilo requests it, and merge only with explicit authorization; preserve approvals already given for the exact task.
 
 Before substantive application code or configuration changes:

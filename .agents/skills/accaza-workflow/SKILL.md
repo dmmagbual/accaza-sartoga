@@ -1,16 +1,12 @@
 ---
 name: accaza-workflow
-description: Use when starting substantive Accaza investigation, design, implementation, review, release, or operational work. Skip trivial wording and simple factual questions.
+description: Use when explicitly asked to route a complex Accaza task across skills, specialists, connectors, release controls, and approved plans.
 ---
 
 # Accaza workflow
 
-Work from the repository root. Read the current root instructions and select the relevant row of [the capability map](../../../docs/accaza-capability-map.md). Open only the selected skills and references.
+The root `AGENTS.md` rules are the normal Accaza workflow. Read [the capability map](../../../docs/accaza-capability-map.md) only to resolve a genuinely cross-domain or ambiguous task.
 
-1. Identify whether the request authorizes explanation, diagnosis, planning, implementation, or release. Preserve authorization already given; skill activation grants no additional authority.
-2. Load `accaza-token-efficiency`. Check whether the task can affect the POS, including shared auth, pricing, stock/posting, networking, startup, bundles or service-worker updates. If so, load `accaza-pos-live-safety` before changes. AP/Purchases work also loads `accaza-ap-phase-gate` first.
-3. Select the appropriate Superpowers process skill from the map. Verify its availability and read its actual instructions before claiming use. A similarly named local procedure is not an upstream skill invocation.
-4. Inspect the current source and affected upstream/downstream controls. Use the minimum specialist combination required by root instructions and the approved task plan. When a role is not registered, use an available equivalent with its project role instructions; report any unsatisfied mandatory review.
-5. For implementation, establish acceptance evidence, make the smallest complete change, and use `accaza-release-verify` at handoff. For diagnosis/discussion, return evidence and recommendations within that scope.
+Select the smallest matching domain skill, specialist and connector. Do not load skills for a simple task, and do not invoke Superpowers merely because a conversation starts. Preserve existing user authorization; routing adds no authority.
 
-Unavailable optional tools do not block independent local work. An unavailable mandatory AP dependency blocks only its dependent step; identify it precisely and continue safe independent inspection.
+For POS, financial, AP, Firebase, debugging or release work, select the corresponding map row and verify its dependencies. If a mandatory AP dependency is unavailable, stop only the dependent step and report it precisely.
