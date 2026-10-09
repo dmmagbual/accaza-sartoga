@@ -28,7 +28,18 @@ for (const file of ['assets/js/admin/pos.js', 'src/admin/pos/20-purchasing.js'])
     `${file}: Purchases must route an already-raised bill to Finance Books Payables.`);
   must(s, 'Paying a supplier before delivery, or a cost with no itemised invoice: Cash Payments.',
     `${file}: Purchases must route advances and non-itemised costs to Cash Payments.`);
+  must(s, 'data-open-payables',
+    `${file}: Purchases must provide an explicit route to Payables for an already-raised bill.`);
+  must(s, 'An amendment corrects a received purchase. It does not settle an existing supplier bill.',
+    `${file}: the Amend control must state that it cannot be used to settle Accounts Payable.`);
 }
+
+const purchaseWorkspace = read('src/admin/pos/11h-purchase-workspace.js');
+must(purchaseWorkspace, "var accountingDate=inv.date||window.AccazaDate.key();return {supplierId:inv.supplierId||'',supplier:inv.supplier||'',ref:purchaseSupplierRef(inv,inv.id),date:accountingDate",
+  'An amended purchase must keep the original accounting date by default, never silently use today.');
+const purchaseActions = read('src/admin/pos/20-purchasing.js');
+must(purchaseActions, "window.location.href='books.html?tab=payables'",
+  'The Purchases Payables route must open the Finance Books Payables tab.');
 
 /* Cash Payments must push stock purchases away, or it becomes the default for everything. */
 for (const file of ['assets/js/admin/register.js', 'src/admin/register/40-revolving-fund.js']) {
