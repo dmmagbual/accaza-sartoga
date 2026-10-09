@@ -53,10 +53,11 @@ const BackupDelta = require(path.join(root, 'functions/lib/backup-delta.js'));
 const financeText = (value, max) => String(value == null ? '' : value).trim().slice(0, max || 160);
 const logger = {error: () => {}};
 const sales = read('src/functions/40-sales-finance.js');
-const start = sales.indexOf('function custodyInKeyOrder('), end = sales.indexOf('async function poolCustodyDeposit(');
-check(start > 0 && end > start, 'The custody routines must be found in 40-sales-finance.js.');
+const custodySource = read('src/functions/40a-custody-pool.js');
+const end = custodySource.indexOf('async function poolCustodyDeposit('), claimStart = custodySource.indexOf('const CUSTODY_POOL_CLAIM_PATH');
+check(end > claimStart && claimStart >= 0, 'The custody routines must be found in 40a-custody-pool.js.');
 function load({wait = 1, attempts = 400} = {}) {
-  const block = sales.slice(start, end).replace(/CUSTODY_POOL_WAIT_MS = \d+/, `CUSTODY_POOL_WAIT_MS = ${wait}`).replace(/CUSTODY_POOL_ATTEMPTS = \d+/, `CUSTODY_POOL_ATTEMPTS = ${attempts}`);
+  const block = custodySource.slice(claimStart, end).replace(/CUSTODY_POOL_WAIT_MS = \d+/, `CUSTODY_POOL_WAIT_MS = ${wait}`).replace(/CUSTODY_POOL_ATTEMPTS = \d+/, `CUSTODY_POOL_ATTEMPTS = ${attempts}`);
   return new Function('Financial', 'BackupDelta', 'financeText', 'crypto', 'logger', 'HttpsError', `${block}\nreturn {claimCustodyPool, releaseCustodyClaims, withCustodyPool, poolCustodyOutflow, CUSTODY_POOL_CLAIM_PATH, CUSTODY_POOL_LEASE_MS};`)(Financial, BackupDelta, financeText, crypto, logger, HttpsError);
 }
 const C = load();
@@ -101,7 +102,7 @@ await cashOut(db, C, 'first', 10, true);
 check(lockOf(db) === undefined, 'A successful Undeposited Collection payment must release the custody claim immediately.');
 let followUp = ''; try { followUp = await cashOut(db, load({wait: 1, attempts: 3}), 'second', 10, true); } catch (error) { followUp = error.code; }
 check(followUp === 'ok', `A second Undeposited Collection payment right after the first must post, not wait for the lease (got ${followUp}).`);
-check(sales.includes('ref.transaction((current) => (current && current.token === token ? null : current), undefined, false)'), 'The custody claim release must return current (not undefined) when the claim is not ours.');
+check(custodySource.includes('ref.transaction((current) => (current && current.token === token ? null : current), undefined, false)'), 'The custody claim release must return current (not undefined) when the claim is not ours.');
 
 /* 3. Uneven amounts across rows keep the FIFO allocation exact. */
 db = fakeDb(pool());
@@ -195,7 +196,7 @@ has('41-expense-assets.js', 'return withCustodyPool(db, `petty_${id}`, () => bac
 /* ---------- 11. shift close / Z report never take or wait for the claim ---------- */
 const shiftClose = sales.slice(sales.indexOf('exports.onShiftCloseFinancial'));
 check(shiftClose.length > 20 && !/claimCustodyPool|withCustodyPool/.test(shiftClose), 'Shift close must never wait for the custody claim.');
-check(!/claimCustodyPool|withCustodyPool/.test(sales.slice(sales.indexOf('function poolCustodyInflowRecord('), sales.indexOf('function accountIdFor('))), 'Creating a custody row must never need the claim.');
+check(!/claimCustodyPool|withCustodyPool/.test(custodySource.slice(custodySource.indexOf('function poolCustodyInflowRecord('))), 'Creating a custody row must never need the claim.');
 for (const file of Object.keys(sources).filter((f) => /shift|handover|z-report|zreport/i.test(f))) check(!/claimCustodyPool|withCustodyPool/.test(sources[file]), `${file} (shift close / Z report) must not take the custody claim.`);
 
 /* ---------- 12. deployed bundle ---------- */
