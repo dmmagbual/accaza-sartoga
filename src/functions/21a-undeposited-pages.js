@@ -117,7 +117,7 @@ async function verifyUndepositedIndexes(db, indexRows, missingRows) {
     index = truth;
   }
   const falseMissing = [];
-  await Promise.all(Object.keys(missingRows || {}).map(async (id) => { if ((await db.ref(`/pettyVoucherPostingIndex/${financeKey(id, "Voucher ID")}`).get()).exists()) falseMissing.push(id); }));
+  await Promise.all(Object.keys(missingRows || {}).map(async (id) => {const key=financeKey(id, "Voucher ID"),voucher=(await db.ref(`/pettyCashVouchers/${key}`).get()).val();if(!voucher||await voucherHasPostingEvidence(db,key,voucher)) falseMissing.push(id);}));
   if (falseMissing.length) {
     const now = Date.now(), clear = {[`operationalAudit/${now}_voucher_attention_repair`]: operationalAuditRecord("repair_voucher_attention_index", "pettyVoucher", "missingIndex", {uid: "server", role: "server"}, {voucherIds: falseMissing, accounting: "The vouchers are posted; only the stale 'missing' flag was removed."})};
     falseMissing.forEach((id) => { clear[`pettyVoucherAttentionIndex/missing/${id}`] = null; });
@@ -150,6 +150,17 @@ function pettyVoucherAttentionProjection(id, row) {
   return {id,voucherNo:financeText(row.voucherNo,60),date:financeText(row.date,10),recipient:financeText(row.recipient||row.requesterName,160),purpose:financeText(row.purpose,300),category:financeText(row.category,80),amount:Financial.money(row.amount),status:financeText(row.status,40),voided:row.voided===true};
 }
 
+async function voucherHasPostingEvidence(db, id, voucher) {
+  const standardIndex=(await db.ref(`/pettyVoucherPostingIndex/${id}`).get()).exists();
+  if(standardIndex)return true;
+  const conversionId=financeText(voucher&&voucher.conversionMovementId,160),sourceId=financeText(voucher&&voucher.sourceJournalId,160),paths=[`petty_${id}`];
+  if(sourceId)paths.push(sourceId);
+  if(conversionId&&conversionId!=="journal_adoption"&&conversionId!=="controlled_pending")paths.push(conversionId);
+  const snaps=await Promise.all(paths.map((path)=>db.ref(`/financialMovements/${path}`).get())),movements={};
+  snaps.forEach((snap,index)=>{if(snap.exists())movements[paths[index]]=snap.val();});
+  return !!ReconciliationControls.voucherPostingEvidence(id,voucher,movements);
+}
+
 async function writeUndepositedIndexBatches(db, writes) {
   const keys = Object.keys(writes);
   for (let offset = 0; offset < keys.length; offset += 400) {
@@ -174,7 +185,7 @@ async function ensureUndepositedPageIndexes(db) {
     if (!record) return;
     if (record.remaining > 0) writes[`cashCustodyOpenIndex/${id}`] = record;
   });
-  Object.entries(voucherSnap.val()||{}).forEach(([id,row])=>{if(!row||row.voided===true)return;const projection=pettyVoucherAttentionProjection(id,row);if(row.status==="pending")writes[`pettyVoucherAttentionIndex/pending/${id}`]=projection;if(row.status==="approved"&&!postedVouchers[id])writes[`pettyVoucherAttentionIndex/missing/${id}`]=projection;});
+  Object.entries(voucherSnap.val()||{}).forEach(([id,row])=>{if(!row||row.voided===true)return;const projection=pettyVoucherAttentionProjection(id,row);if(row.status==="pending")writes[`pettyVoucherAttentionIndex/pending/${id}`]=projection;if(row.status==="approved"&&!ReconciliationControls.voucherPostingEvidence(id,row,movementSnap.val()||{}))writes[`pettyVoucherAttentionIndex/missing/${id}`]=projection;});
   await writeUndepositedIndexBatches(db, writes);
   await metaRef.set({schemaVersion:UNDEPOSITED_INDEX_VERSION,complete:true,builtAt:Date.now(),movementCount:movementSnap.numChildren(),custodyCount:custodySnap.numChildren(),voucherCount:voucherSnap.numChildren()});
 }
@@ -199,7 +210,7 @@ exports.getUndepositedControlSnapshot = onCall(
       Object.values(movementMap).forEach((movement)=>{((movement&&movement.lines)||[]).forEach((line)=>{const net=Financial.money((Number(line.debit)||0)-(Number(line.credit)||0));if(line.account===UNDEPOSITED_POOL_ACCOUNT)undeposited=Financial.money(undeposited+net);if(line.account==="asset:petty_cash")revolving=Financial.money(revolving+net);});});
     }
     const openIndex=openCustodySnap.val()||{};if(Object.keys(openIndex).length>500)throw new HttpsError("resource-exhausted","Undeposited Collection has more than 500 open custody rows. Deposit or archive older settled rows before opening this control.");
-    const verification=verificationSnap.val()||{},verifyDue=Date.now()-Number(verification.checkedAt||0)>=600000||missingVoucherSnap.exists(),verified=verifyDue?await verifyUndepositedIndexes(db,openIndex,missingVoucherSnap.val()||{}):{checked:false,custodyRowsRepaired:0,missingVouchersCleared:0,index:openIndex,falseMissing:[]};
+    const verification=verificationSnap.val()||{},verifyDue=Date.now()-Number(verification.checkedAt||0)>=600000,verified=verifyDue?await verifyUndepositedIndexes(db,openIndex,missingVoucherSnap.val()||{}):{checked:false,custodyRowsRepaired:0,missingVouchersCleared:0,index:openIndex,falseMissing:[]};
     const custodyRemaining=Financial.money(Object.values(verified.index||{}).reduce((sum,row)=>sum+Number(row&&row.remaining||0),0));
     const pendingIndex=pendingVoucherSnap.val()||{},stalePendingVoucherIds=await verifyPendingVoucherIndex(db,pendingIndex),pendingVouchers=Object.values(pendingIndex).filter((row)=>row&&!row.voided&&!stalePendingVoucherIds.includes(row.id)).sort((a,b)=>String(b.date).localeCompare(String(a.date))),missingApprovedVouchers=Object.values(missingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided&&!(verified.falseMissing||[]).includes(row.id));
     const custodyGap=Financial.money(undeposited-custodyRemaining);let custodyGapCandidates=[];
@@ -224,11 +235,11 @@ exports.syncPettyVoucherAttentionIndex = onValueWritten(
   async (event) => {
     const db=getDatabase(),id=event.params.voucherId,row=event.data.after.exists()?event.data.after.val():null,writes={[`pettyVoucherAttentionIndex/pending/${id}`]:null,[`pettyVoucherAttentionIndex/missing/${id}`]:null};
     if(row&&row.voided!==true&&row.status==="pending")writes[`pettyVoucherAttentionIndex/pending/${id}`]=pettyVoucherAttentionProjection(id,row);
-    if(row&&row.voided!==true&&row.status==="approved"&&!(await db.ref(`/pettyVoucherPostingIndex/${id}`).get()).exists())writes[`pettyVoucherAttentionIndex/missing/${id}`]=pettyVoucherAttentionProjection(id,row);
+    if(row&&row.voided!==true&&row.status==="approved"&&!(await voucherHasPostingEvidence(db,id,row)))writes[`pettyVoucherAttentionIndex/missing/${id}`]=pettyVoucherAttentionProjection(id,row);
     await db.ref().update(writes);
     // Write-then-verify: the posting trigger sets the posting index and clears "missing" in one
     // update, so whichever trigger runs second leaves the right answer (7 Oct 2026 race).
-    if(writes[`pettyVoucherAttentionIndex/missing/${id}`]&&(await db.ref(`/pettyVoucherPostingIndex/${id}`).get()).exists())await db.ref(`/pettyVoucherAttentionIndex/missing/${id}`).remove();
+    if(writes[`pettyVoucherAttentionIndex/missing/${id}`]&&(await voucherHasPostingEvidence(db,id,row)))await db.ref(`/pettyVoucherAttentionIndex/missing/${id}`).remove();
   },
 );
 

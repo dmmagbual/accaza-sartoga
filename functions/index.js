@@ -2600,7 +2600,7 @@ async function verifyUndepositedIndexes(db, indexRows, missingRows) {
     index = truth;
   }
   const falseMissing = [];
-  await Promise.all(Object.keys(missingRows || {}).map(async (id) => { if ((await db.ref(`/pettyVoucherPostingIndex/${financeKey(id, "Voucher ID")}`).get()).exists()) falseMissing.push(id); }));
+  await Promise.all(Object.keys(missingRows || {}).map(async (id) => {const key=financeKey(id, "Voucher ID"),voucher=(await db.ref(`/pettyCashVouchers/${key}`).get()).val();if(!voucher||await voucherHasPostingEvidence(db,key,voucher)) falseMissing.push(id);}));
   if (falseMissing.length) {
     const now = Date.now(), clear = {[`operationalAudit/${now}_voucher_attention_repair`]: operationalAuditRecord("repair_voucher_attention_index", "pettyVoucher", "missingIndex", {uid: "server", role: "server"}, {voucherIds: falseMissing, accounting: "The vouchers are posted; only the stale 'missing' flag was removed."})};
     falseMissing.forEach((id) => { clear[`pettyVoucherAttentionIndex/missing/${id}`] = null; });
@@ -2633,6 +2633,17 @@ function pettyVoucherAttentionProjection(id, row) {
   return {id,voucherNo:financeText(row.voucherNo,60),date:financeText(row.date,10),recipient:financeText(row.recipient||row.requesterName,160),purpose:financeText(row.purpose,300),category:financeText(row.category,80),amount:Financial.money(row.amount),status:financeText(row.status,40),voided:row.voided===true};
 }
 
+async function voucherHasPostingEvidence(db, id, voucher) {
+  const standardIndex=(await db.ref(`/pettyVoucherPostingIndex/${id}`).get()).exists();
+  if(standardIndex)return true;
+  const conversionId=financeText(voucher&&voucher.conversionMovementId,160),sourceId=financeText(voucher&&voucher.sourceJournalId,160),paths=[`petty_${id}`];
+  if(sourceId)paths.push(sourceId);
+  if(conversionId&&conversionId!=="journal_adoption"&&conversionId!=="controlled_pending")paths.push(conversionId);
+  const snaps=await Promise.all(paths.map((path)=>db.ref(`/financialMovements/${path}`).get())),movements={};
+  snaps.forEach((snap,index)=>{if(snap.exists())movements[paths[index]]=snap.val();});
+  return !!ReconciliationControls.voucherPostingEvidence(id,voucher,movements);
+}
+
 async function writeUndepositedIndexBatches(db, writes) {
   const keys = Object.keys(writes);
   for (let offset = 0; offset < keys.length; offset += 400) {
@@ -2657,7 +2668,7 @@ async function ensureUndepositedPageIndexes(db) {
     if (!record) return;
     if (record.remaining > 0) writes[`cashCustodyOpenIndex/${id}`] = record;
   });
-  Object.entries(voucherSnap.val()||{}).forEach(([id,row])=>{if(!row||row.voided===true)return;const projection=pettyVoucherAttentionProjection(id,row);if(row.status==="pending")writes[`pettyVoucherAttentionIndex/pending/${id}`]=projection;if(row.status==="approved"&&!postedVouchers[id])writes[`pettyVoucherAttentionIndex/missing/${id}`]=projection;});
+  Object.entries(voucherSnap.val()||{}).forEach(([id,row])=>{if(!row||row.voided===true)return;const projection=pettyVoucherAttentionProjection(id,row);if(row.status==="pending")writes[`pettyVoucherAttentionIndex/pending/${id}`]=projection;if(row.status==="approved"&&!ReconciliationControls.voucherPostingEvidence(id,row,movementSnap.val()||{}))writes[`pettyVoucherAttentionIndex/missing/${id}`]=projection;});
   await writeUndepositedIndexBatches(db, writes);
   await metaRef.set({schemaVersion:UNDEPOSITED_INDEX_VERSION,complete:true,builtAt:Date.now(),movementCount:movementSnap.numChildren(),custodyCount:custodySnap.numChildren(),voucherCount:voucherSnap.numChildren()});
 }
@@ -2682,7 +2693,7 @@ exports.getUndepositedControlSnapshot = onCall(
       Object.values(movementMap).forEach((movement)=>{((movement&&movement.lines)||[]).forEach((line)=>{const net=Financial.money((Number(line.debit)||0)-(Number(line.credit)||0));if(line.account===UNDEPOSITED_POOL_ACCOUNT)undeposited=Financial.money(undeposited+net);if(line.account==="asset:petty_cash")revolving=Financial.money(revolving+net);});});
     }
     const openIndex=openCustodySnap.val()||{};if(Object.keys(openIndex).length>500)throw new HttpsError("resource-exhausted","Undeposited Collection has more than 500 open custody rows. Deposit or archive older settled rows before opening this control.");
-    const verification=verificationSnap.val()||{},verifyDue=Date.now()-Number(verification.checkedAt||0)>=600000||missingVoucherSnap.exists(),verified=verifyDue?await verifyUndepositedIndexes(db,openIndex,missingVoucherSnap.val()||{}):{checked:false,custodyRowsRepaired:0,missingVouchersCleared:0,index:openIndex,falseMissing:[]};
+    const verification=verificationSnap.val()||{},verifyDue=Date.now()-Number(verification.checkedAt||0)>=600000,verified=verifyDue?await verifyUndepositedIndexes(db,openIndex,missingVoucherSnap.val()||{}):{checked:false,custodyRowsRepaired:0,missingVouchersCleared:0,index:openIndex,falseMissing:[]};
     const custodyRemaining=Financial.money(Object.values(verified.index||{}).reduce((sum,row)=>sum+Number(row&&row.remaining||0),0));
     const pendingIndex=pendingVoucherSnap.val()||{},stalePendingVoucherIds=await verifyPendingVoucherIndex(db,pendingIndex),pendingVouchers=Object.values(pendingIndex).filter((row)=>row&&!row.voided&&!stalePendingVoucherIds.includes(row.id)).sort((a,b)=>String(b.date).localeCompare(String(a.date))),missingApprovedVouchers=Object.values(missingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided&&!(verified.falseMissing||[]).includes(row.id));
     const custodyGap=Financial.money(undeposited-custodyRemaining);let custodyGapCandidates=[];
@@ -2707,11 +2718,11 @@ exports.syncPettyVoucherAttentionIndex = onValueWritten(
   async (event) => {
     const db=getDatabase(),id=event.params.voucherId,row=event.data.after.exists()?event.data.after.val():null,writes={[`pettyVoucherAttentionIndex/pending/${id}`]:null,[`pettyVoucherAttentionIndex/missing/${id}`]:null};
     if(row&&row.voided!==true&&row.status==="pending")writes[`pettyVoucherAttentionIndex/pending/${id}`]=pettyVoucherAttentionProjection(id,row);
-    if(row&&row.voided!==true&&row.status==="approved"&&!(await db.ref(`/pettyVoucherPostingIndex/${id}`).get()).exists())writes[`pettyVoucherAttentionIndex/missing/${id}`]=pettyVoucherAttentionProjection(id,row);
+    if(row&&row.voided!==true&&row.status==="approved"&&!(await voucherHasPostingEvidence(db,id,row)))writes[`pettyVoucherAttentionIndex/missing/${id}`]=pettyVoucherAttentionProjection(id,row);
     await db.ref().update(writes);
     // Write-then-verify: the posting trigger sets the posting index and clears "missing" in one
     // update, so whichever trigger runs second leaves the right answer (7 Oct 2026 race).
-    if(writes[`pettyVoucherAttentionIndex/missing/${id}`]&&(await db.ref(`/pettyVoucherPostingIndex/${id}`).get()).exists())await db.ref(`/pettyVoucherAttentionIndex/missing/${id}`).remove();
+    if(writes[`pettyVoucherAttentionIndex/missing/${id}`]&&(await voucherHasPostingEvidence(db,id,row)))await db.ref(`/pettyVoucherAttentionIndex/missing/${id}`).remove();
   },
 );
 
@@ -3370,10 +3381,11 @@ async function backfillVoucherCashLedger(db, voucherId, movement, actor) {
 exports.repairPettyVoucherFinancial = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
-    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["petty", "cashflow"]), data = request.data || {}, id = financeKey(data.voucherId, "Voucher ID"), movementId = `petty_${id}`, existing = await db.ref(`/financialMovements/${movementId}`).get();
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["petty", "cashflow"]), data = request.data || {}, id = financeKey(data.voucherId, "Voucher ID"), movementId = `petty_${id}`, [existing,voucherSnap] = await Promise.all([db.ref(`/financialMovements/${movementId}`).get(),db.ref(`/pettyCashVouchers/${id}`).get()]);
     if (existing.exists()) return {voucherId:id,movementId,duplicate:true,cashLedgerRepaired:await backfillVoucherCashLedger(db,id,existing.val(),actor)};
-    const voucher = (await db.ref(`/pettyCashVouchers/${id}`).get()).val();
+    const voucher = voucherSnap.val();
     if (!voucher || voucher.status !== "approved" || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active approved cash payment with a missing posting can be repaired.");
+    if (voucher.conversionMovementId) throw new HttpsError("failed-precondition", "This cash payment was adopted or converted from an existing Finance journal and cannot be recreated as a new Undeposited Collection payment.");
     const value = Financial.money(voucher.amount); if (!(value > 0)) throw new HttpsError("failed-precondition", "The approved cash payment amount is invalid.");
     const custodyClaims = []; try { await claimCustodyPool(db, movementId, custodyClaims);
     const isAdvance = voucher.transactionType === "purchase_advance", posting = revolvingFundPosting(voucher), custodyOut = await poolCustodyOutflow(db, value);
@@ -8549,15 +8561,15 @@ exports.auditFinancialControls = onCall(
     // --- Additive control checks (read-only; each guarded so a failure degrades, never breaks the audit) ---
     try {
       const [journalControlSnap,chartControlSnap,reconciliationConfigSnap]=/* download-ok: manual control audit */await Promise.all([db.ref("/books/journal").get(),db.ref("/booksChart").get(),db.ref("/books/reconciliationConfig").get()]),journal=journalControlSnap.val()||{},bChart=chartControlSnap.val()||{},reconciliationConfig=ReconciliationControls.accountRules(reconciliationConfigSnap.val()||{}),bal=ReconciliationControls.journalBalances(journal);
-      ReconciliationControls.controlAccountIssues(journal,reconciliationConfig).forEach((item)=>{const period=item.oldestDate&&item.newestDate?(item.oldestDate===item.newestDate?item.oldestDate:`${item.oldestDate} to ${item.newestDate}`):"undated";issues.push({severity:Math.abs(item.balance)>=1000?"critical":"warning",kind:"holding_account_balance",source:item.code,detail:`${item.rule.name||item.code}: ${item.count} post-cutover source entr${item.count===1?"y":"ies"} (${period}) remain uncleared`,amount:item.balance,sourceCount:item.count,oldestDate:item.oldestDate,newestDate:item.newestDate});});
+      ReconciliationControls.controlAccountIssues(journal,reconciliationConfig).forEach((item)=>{const period=item.oldestDate&&item.newestDate?(item.oldestDate===item.newestDate?item.oldestDate:`${item.oldestDate} to ${item.newestDate}`):"undated";issues.push({severity:item.outstandingAmount>=1000?"critical":"warning",kind:"holding_account_balance",source:item.code,detail:`${item.rule.name||item.code}: ${item.count} post-cutover journal entr${item.count===1?"y":"ies"} (${period}) touched this control account; net ${item.balanceSide} balance ${item.outstandingAmount.toFixed(2)} remains.`,amount:item.outstandingAmount,netBalance:item.balance,balanceSide:item.balanceSide,sourceCount:item.count,oldestDate:item.oldestDate,newestDate:item.newestDate});});
       Object.keys(bal).forEach((code)=>{if(Math.abs(bal[code])<0.5)return;const row=bChart[code];if(!row)issues.push({severity:"critical",kind:"balance_off_chart",source:code,detail:"Account carries a balance but is not in the chart of accounts",amount:Financial.money(bal[code])});else if(row.active===false)issues.push({severity:"warning",kind:"balance_on_inactive_account",source:code,detail:financeText(row.name,60)+" is deactivated but still carries a balance",amount:Financial.money(bal[code])});});
     } catch(e){logger.warn("auditFinancialControls: holding/chart check skipped",{error:String(e)});}
     try {
       const discrepancies=/* download-ok: manual control audit */(await db.ref("/discrepancies").get()).val()||{}, open=Object.keys(discrepancies).map((k)=>discrepancies[k]||{}).filter(ReconciliationControls.operationalDiscrepancy);
-      if(open.length)issues.push({severity:"warning",kind:"unreviewed_discrepancies",source:"discrepancies",detail:open.length+" cash discrepancy(ies) awaiting manager review in Discrepancies",amount:Financial.money(open.reduce((s,d)=>s+Math.abs(Number(d.value!=null?d.value:d.variance||0)),0))});
+      if(open.length)issues.push({severity:"warning",kind:"unreviewed_discrepancies",source:"discrepancies",detail:open.length+" cash discrepancy(ies) awaiting manager review in Discrepancies",amount:Financial.money(open.reduce((s,d)=>s+ReconciliationControls.discrepancyOutstandingAmount(d),0))});
     } catch(e){logger.warn("auditFinancialControls: discrepancy check skipped",{error:String(e)});}
     try {
-      const petty=/* download-ok: manual control audit */(await db.ref("/pettyCashVouchers").get()).val()||{};Object.keys(petty).forEach((id)=>{const voucher=petty[id]||{};if(voucher.status==="approved"&&!voucher.voided&&!movements[`petty_${id}`])issues.push({severity:"critical",kind:"cash_payment_missing_custody",source:id,detail:`Approved cash payment ${financeText(voucher.voucherNo||id,80)} has not reduced Undeposited Collection.`,amount:Financial.money(voucher.amount)});});
+      const petty=/* download-ok: manual control audit */(await db.ref("/pettyCashVouchers").get()).val()||{};Object.keys(petty).forEach((id)=>{const voucher=petty[id]||{};if(voucher.status==="approved"&&!voucher.voided&&!ReconciliationControls.voucherPostingEvidence(id,voucher,movements))issues.push({severity:"critical",kind:"cash_payment_missing_custody",source:id,detail:`Approved cash payment ${financeText(voucher.voucherNo||id,80)} has not reduced Undeposited Collection.`,amount:Financial.money(voucher.amount)});});
     } catch(e){logger.warn("auditFinancialControls: cash-payment custody check skipped",{error:String(e)});}
     try {
       // Cash vouchers may never be future-dated. Super Admin self-approval remains in the
@@ -8567,7 +8579,7 @@ exports.auditFinancialControls = onCall(
     } catch(e){logger.warn("auditFinancialControls: cash voucher date check skipped",{error:String(e)});}
     try {
       const ledgerByMovement=new Set(Object.values(cash).map((row)=>String(row&&row.movementId||"")).filter(Boolean)),petty=/* download-ok: manual control audit */(await db.ref("/pettyCashVouchers").get()).val()||{};
-      Object.keys(petty).forEach((id)=>{const voucher=petty[id]||{},mv=movements[`petty_${id}`];if(voucher.status!=="approved"||voucher.voided||!mv)return;const bank=(mv.lines||[]).find((line)=>String(line&&line.account||"").indexOf("asset:cash_account:")===0);if(bank&&!ledgerByMovement.has(`petty_${id}`))issues.push({severity:"warning",kind:"cash_payment_missing_bank_ledger",source:id,sourceLabel:`Cash payment ${financeText(voucher.voucherNo||id,80)} · ${financeText(voucher.date,10)} · ${Financial.money(voucher.amount).toFixed(2)}`,detail:"Posted to Finance Books from a bank or e-wallet account, but the account's cash register has no matching row.",amount:Financial.money(Number(bank.credit||0)-Number(bank.debit||0))});});
+      Object.keys(petty).forEach((id)=>{const voucher=petty[id]||{},mv=movements[`petty_${id}`];if(voucher.status!=="approved"||voucher.voided||!mv)return;const bank=(mv.lines||[]).find((line)=>String(line&&line.account||"").indexOf("asset:cash_account:")===0);if(bank&&!ledgerByMovement.has(`petty_${id}`))issues.push({severity:"warning",kind:"cash_payment_missing_bank_ledger",source:id,sourceLabel:`Cash payment ${financeText(voucher.voucherNo||id,80)} · ${financeText(voucher.date,10)} · ${Financial.money(voucher.amount).toFixed(2)}`,detail:"Posted to Finance Books from a bank or e-wallet account, but the account's cash register has no matching row.",amount:Financial.money(Number(bank.credit||0)-Number(bank.debit||0)),repairAction:"repair_cash_payment_bank_ledger"});});
     } catch(e){logger.warn("auditFinancialControls: cash-payment bank register check skipped",{error:String(e)});}
 
     try {

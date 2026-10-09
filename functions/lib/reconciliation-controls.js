@@ -68,7 +68,7 @@ function controlAccountIssues(journal, rules) {
     const rows = accountActivity(journal, code, rule), balance = money(rows.reduce((sum, row) => sum + row.amount, 0) - Number(rule.expectedBalance || 0));
     if (Math.abs(balance) < 0.5) return null;
     const oldest = rows.find((row) => row.date), newest = [...rows].reverse().find((row) => row.date);
-    return {code, balance, count: rows.length, oldestDate: oldest && oldest.date || "", newestDate: newest && newest.date || "", rule};
+    return {code, balance, outstandingAmount: money(Math.abs(balance)), balanceSide: balance > 0 ? "debit" : "credit", count: rows.length, oldestDate: oldest && oldest.date || "", newestDate: newest && newest.date || "", rule};
   }).filter(Boolean);
 }
 
@@ -86,7 +86,29 @@ function retainedLegacyDiscrepancy(row) {
 function operationalDiscrepancy(row) {
   if (!row || ["reviewed", "legacy_closed"].includes(String(row.status || ""))) return false;
   const date = discrepancyDate(row);
-  return retainedLegacyDiscrepancy(row) || !date || date > LEGACY_DISCREPANCY_CUTOFF;
+  return (retainedLegacyDiscrepancy(row) || !date || date > LEGACY_DISCREPANCY_CUTOFF) && discrepancyOutstandingAmount(row) > 0.009;
 }
 
-module.exports = {DEFAULT_ACCOUNT_RULES, LEGACY_DISCREPANCY_CUTOFF, accountRules, entryDate, lineBalance, journalBalances, accountActivity, controlAccountIssues, discrepancyDate, retainedLegacyDiscrepancy, operationalDiscrepancy};
+function discrepancyOutstandingAmount(row) {
+  const original = Math.abs(Number(row && (row.value != null ? row.value : row.variance) || 0));
+  if (row && row.remainingAmount != null) return money(Math.max(0, Number(row.remainingAmount) || 0));
+  return money(Math.max(0, original - (Number(row && row.resolvedAmount) || 0)));
+}
+
+// Converted vouchers represent an existing Finance journal rather than a second cash payment.
+// Only recognize the conversion where its immutable links prove the original posting remains.
+function voucherPostingEvidence(id, voucher, movements) {
+  const standard = movements && movements[`petty_${id}`];
+  if (standard) return {kind: "voucher_movement", movementId: `petty_${id}`};
+  const conversionId = String(voucher && voucher.conversionMovementId || ""), sourceId = String(voucher && voucher.sourceJournalId || "");
+  const active = (movement) => !!movement && !movement.reversalOf && !movement.reversedByMovementId;
+  if (conversionId === "journal_adoption") {
+    const source = sourceId && movements && movements[sourceId];
+    return active(source) && String(source.staffAdvanceConversionId || "") === String(id) ? {kind: "journal_adoption", movementId: sourceId} : null;
+  }
+  if (!conversionId || conversionId === "controlled_pending") return null;
+  const source = sourceId && movements && movements[sourceId], conversion = movements && movements[conversionId];
+  return active(source) && active(conversion) && String(source.supplierAdvanceConversionId || "") === conversionId && String(conversion.voucherId || "") === String(id) ? {kind: "journal_conversion", movementId: conversionId} : null;
+}
+
+module.exports = {DEFAULT_ACCOUNT_RULES, LEGACY_DISCREPANCY_CUTOFF, accountRules, entryDate, lineBalance, journalBalances, accountActivity, controlAccountIssues, discrepancyDate, retainedLegacyDiscrepancy, operationalDiscrepancy, discrepancyOutstandingAmount, voucherPostingEvidence};

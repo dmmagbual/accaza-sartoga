@@ -270,10 +270,11 @@ async function backfillVoucherCashLedger(db, voucherId, movement, actor) {
 exports.repairPettyVoucherFinancial = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
-    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["petty", "cashflow"]), data = request.data || {}, id = financeKey(data.voucherId, "Voucher ID"), movementId = `petty_${id}`, existing = await db.ref(`/financialMovements/${movementId}`).get();
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["petty", "cashflow"]), data = request.data || {}, id = financeKey(data.voucherId, "Voucher ID"), movementId = `petty_${id}`, [existing,voucherSnap] = await Promise.all([db.ref(`/financialMovements/${movementId}`).get(),db.ref(`/pettyCashVouchers/${id}`).get()]);
     if (existing.exists()) return {voucherId:id,movementId,duplicate:true,cashLedgerRepaired:await backfillVoucherCashLedger(db,id,existing.val(),actor)};
-    const voucher = (await db.ref(`/pettyCashVouchers/${id}`).get()).val();
+    const voucher = voucherSnap.val();
     if (!voucher || voucher.status !== "approved" || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active approved cash payment with a missing posting can be repaired.");
+    if (voucher.conversionMovementId) throw new HttpsError("failed-precondition", "This cash payment was adopted or converted from an existing Finance journal and cannot be recreated as a new Undeposited Collection payment.");
     const value = Financial.money(voucher.amount); if (!(value > 0)) throw new HttpsError("failed-precondition", "The approved cash payment amount is invalid.");
     const custodyClaims = []; try { await claimCustodyPool(db, movementId, custodyClaims);
     const isAdvance = voucher.transactionType === "purchase_advance", posting = revolvingFundPosting(voucher), custodyOut = await poolCustodyOutflow(db, value);
