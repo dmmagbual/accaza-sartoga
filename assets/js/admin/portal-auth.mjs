@@ -1,6 +1,10 @@
 import{auth,db,ref,get,set,push,remove,onValue,onDisconnect,serverTimestamp,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence}from"./firebase-client.mjs";
-import{startPortalPresence,runningBuild}from"../shared/portal-presence.mjs";
+import{aggregatePortalPresence,startPortalPresence,runningBuild}from"../shared/portal-presence.mjs?v=665";
 import{startPortalIdle}from"../shared/portal-idle.mjs";
+
+// staff-access.js is lazy-loaded after this module. Keep its device grouping identical to the
+// presence writer without making the account-management screen load Firebase itself.
+window.AccazaPortalPresence=Object.assign({},window.AccazaPortalPresence||{},{aggregatePortalPresence});
 
 function portalRole(raw){
   if(raw&&typeof raw==='object'&&(raw.disabled===true||raw.active===false))return null;

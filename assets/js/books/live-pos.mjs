@@ -3,7 +3,7 @@ import {getDatabase, ref, get, set, push, remove, onDisconnect, serverTimestamp,
 import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import {initializeAccazaAppCheck} from "../shared/firebase-app-check.mjs";
-import {startPortalPresence, runningBuild} from "../shared/portal-presence.mjs";
+import {startPortalPresence, runningBuild} from "../shared/portal-presence.mjs?v=152";
 import {startPortalIdle} from "../shared/portal-idle.mjs";
 let stopPresence=null,idleController=null,booksShift=null;
 function endPresence(signedOut){ const stop=stopPresence;stopPresence=null;return stop?stop({signedOut:signedOut===true}):Promise.resolve(); }

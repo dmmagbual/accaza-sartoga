@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const read = rel => fs.readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
-const {describeDevice, startPortalPresence, runningBuild} = await import('../assets/js/shared/portal-presence.mjs');
+const {describeDevice, startPortalPresence, runningBuild, aggregatePortalPresence, browserDeviceId} = await import('../assets/js/shared/portal-presence.mjs');
 
 // 1. Device labels are short and never the raw user agent.
 assert.equal(describeDevice({userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit Chrome/128 Mobile Safari/537'}), 'Chrome · Android');
@@ -11,6 +11,24 @@ assert.equal(describeDevice({userAgent: 'Mozilla/5.0 (Windows NT 10.0) Chrome/12
 assert.equal(describeDevice({userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Version/17 Safari/604'}), 'Safari · iOS');
 assert.equal(describeDevice(null), 'Browser · Unknown');
 assert.equal(runningBuild({querySelector: () => ({getAttribute: () => '606'})}, 'accaza-admin-build'), 606);
+
+// 1a. Presence is still tracked per connection, but the account screen must show one physical
+// browser/device rather than one row for every open tab. A stable id belongs to the browser profile,
+// never to a tab; legacy records stay visible as sessions until that browser refreshes.
+const local = new Map();
+const storage = {getItem: key => local.get(key) || null, setItem: (key, value) => local.set(key, value)};
+assert.equal(browserDeviceId(storage, () => 'device_a'), 'device_a');
+assert.equal(browserDeviceId(storage, () => 'device_b'), 'device_a', 'the same browser profile keeps its device identity');
+const grouped = aggregatePortalPresence([
+  {deviceId: 'device_a', app: 'admin', build: 664, device: 'Edge · Windows', connectedAt: 30},
+  {deviceId: 'device_a', app: 'admin', build: 663, device: 'Edge · Windows', connectedAt: 20},
+  {deviceId: 'device_a', app: 'books', build: 151, device: 'Edge · Windows', connectedAt: 25},
+  {deviceId: 'device_b', app: 'admin', build: 664, device: 'Edge · Windows', connectedAt: 10},
+  {app: 'admin', build: 662, device: 'Edge · Windows', connectedAt: 5},
+]);
+assert.equal(grouped.devices.length, 2, 'three tabs on one browser and one on another remain two devices');
+assert.deepEqual(grouped.devices[0].apps.map(app => [app.app, app.build, app.connections]), [['admin', 664, 2], ['books', 151, 1]], 'one device keeps its latest build per app without exposing each tab');
+assert.equal(grouped.legacy.length, 1, 'old sessions without a browser identity remain transparent until refresh');
 
 // 2. Presence lifecycle against a fake Firebase: onDisconnect is armed before the record is
 // written, re-armed on every reconnect, and stop() cancels it and removes the record.
@@ -47,6 +65,7 @@ assert.deepEqual(log2, ['portalPresence/u2/conn1'], 'presence is written even wh
 // 3. Admin/POS and Finance Books start presence after sign-in and end it before every sign-out.
 const auth = read('assets/js/admin/portal-auth.mjs');
 assert.ok(auth.includes("watchSessionCutoff(user);await beginPresence(user.uid);beginIdle(user.uid);"), 'Admin starts presence and inactivity control once authorized');
+assert.ok(auth.includes('window.AccazaPortalPresence') && auth.includes('aggregatePortalPresence'), 'Admin exposes the shared device aggregation to the lazy-loaded account screen');
 assert.ok(auth.includes("endIdle();await endPresence(true);try{await signOut(auth);}catch(_o){}") && auth.includes('window.logoutAdmin=async function(){\n    endIdle();await endPresence(true);'), 'Admin waits for presence cleanup before signing out');
 assert.ok(auth.includes("mine=control.users&&control.users[user.uid]"), 'Admin honours the per-account sign-out');
 const books = read('assets/js/books/live-pos.mjs');
@@ -60,6 +79,7 @@ const presenceRead = rulesLine.slice(rulesLine.indexOf('".read"'), rulesLine.ind
 assert.ok(presenceRead.includes("'superadmin'") && !presenceRead.includes("'manager'") && !presenceRead.includes('adminPerms'), 'only a Super Admin may read presence');
 assert.ok(rulesLine.includes('".write": "auth != null && auth.uid === $uid && root.child(\'admins\').child(auth.uid).exists()"'), 'a portal account writes only its own presence');
 assert.ok(rulesLine.includes('"connectedAt": { ".validate": "newData.val() === now" }') && rulesLine.includes('"$other": { ".validate": false }'), 'presence records are validated');
+assert.ok(rulesLine.includes('newData.val().matches(/^[A-Za-z0-9_-]{8,80}$/)'), 'presence accepts only a bounded opaque browser device id with an RTDB regex literal');
 
 // 5. Server: per-account cutoff on every callable, and a Super Admin sign-out action.
 const portalAuth = (read('src/functions/20-portal-auth.js')+read('src/functions/20-portal-operations.js'));
@@ -71,6 +91,7 @@ assert.ok(accounts.indexOf('const db = getDatabase(), actor = await requireSuper
 
 // 6. Firebase usage: presence is read only by the User Accounts screen, while it is open.
 const screen = read('assets/js/admin/staff-access.js');
+assert.ok(screen.includes('AccazaPortalPresence.aggregatePortalPresence') && screen.includes('legacy session'), 'the account screen groups connections into devices and keeps old sessions transparent');
 assert.ok(screen.includes("a.hub.subscribe('portalPresence',function(snap){state.presence=snap.val()||{};paintPresence();},{scopes:['staffaccounts']})"), 'presence attaches only on User Accounts');
 assert.ok(screen.includes("a.hub.subscribe('sessionControl',function(snap){state.sessionControl=snap.val()||{};paintPresence();},{scopes:['staffaccounts']})"), 'the account screen follows forced sign-out cutoffs');
 assert.ok(screen.includes("fetch('/build-version.json',{cache:'no-store',credentials:'omit'})"), 'latest builds come from GitHub Pages, not Firebase');

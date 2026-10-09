@@ -26,7 +26,7 @@ if(!/id:"insights",label:"Key Metrics"/.test(shell))throw new Error('Key Metrics
 if(!/PAGES\.insights=function/.test(registration))throw new Error('Key Metrics page is not registered');
 if(!/assets\/js\/shared\/sales-authority\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(sw))throw new Error('Key Metrics engine and shared sales authority are not loaded and cached');
 if(!/accaza-books-build" content="152"/.test(books)||!/build v152/.test(books))throw new Error('Books build markers are not synchronized');
-if(manifest.builds.admin!==664||manifest.builds.books!==152||manifest.builds.serviceWorkerCache!==659)throw new Error('Release manifest build markers are not synchronized');
+if(manifest.builds.admin!==665||manifest.builds.books!==152||manifest.builds.serviceWorkerCache!==659)throw new Error('Release manifest build markers are not synchronized');
 if(!/const CACHE='accaza-v659'/.test(sw))throw new Error('Service worker cache is not synchronized');
 for(const marker of ['onChildAdded','onChildChanged','onChildRemoved','function watchMap','orderByChild("settlementStatus"),equalTo("unsettled")','orderByChild("settlementStatus"),equalTo(null)','bindOutstandingOrders()'])if(!livePos.includes(marker))throw new Error('Finance Books incremental download safeguard missing: '+marker);
 for(const broad of ['onValue(ref(db,"/orders")','onValue(ref(db,"/archivedOrders")','onValue(ref(db,"/platformPayouts")'])if(livePos.includes(broad))throw new Error('Finance Books restored a broad whole-snapshot listener: '+broad);
