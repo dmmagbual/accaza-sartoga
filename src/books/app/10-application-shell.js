@@ -60,7 +60,7 @@ const App = {
     if(this._controlledTransactionsPromise)return this._controlledTransactionsPromise;
     const self=this;this._controlledTransactionsPromise=new Promise(function(resolve,reject){
       var script=document.getElementById('booksControlledTransactions');if(script)script.remove();
-      script=document.createElement('script');script.id='booksControlledTransactions';script.src='assets/js/books/controlled-transactions.js?v=151';
+      script=document.createElement('script');script.id='booksControlledTransactions';script.src='assets/js/books/controlled-transactions.js?v=152';
       script.onload=function(){if(typeof PAGES.transactions!=='function'||typeof App.txnPay!=='function'){script.remove();self._controlledTransactionsPromise=null;return reject(new Error('Deferred Finance Books tools did not initialize.'));}window.__booksControlledTransactionsReady=true;self._controlledTransactionsPromise=null;resolve();};
       script.onerror=function(){script.remove();self._controlledTransactionsPromise=null;reject(new Error('Could not load Finance Books transaction tools.'));};
       document.head.appendChild(script);
