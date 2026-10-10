@@ -102,10 +102,10 @@ function reversePayout(payoutId,chLbl){
     subtitle:'Unwinds this settlement: its orders go back to unsettled and the ledger posting is reversed, so you can re-settle correctly. The payout record is kept and marked reversed.',
     submitLabel:'Request approval & reverse',
     busyLabel:'Reversing…',
-    fields:[{name:'reason',label:'Reversal reason',type:'textarea',required:true,maxLength:300,placeholder:'e.g. Wrong actual amount / orders included by mistake'},{name:'confirmed',label:'I understand the orders return to unsettled and the posting is reversed',type:'checkbox',required:true}]
+    fields:[{name:'accountingDate',label:'Posting date',type:'date',required:true,max:window.AccazaDate.key(),value:window.AccazaDate.key()},{name:'reason',label:'Reversal reason',type:'textarea',required:true,maxLength:300,placeholder:'e.g. Wrong actual amount / orders included by mistake'},{name:'confirmed',label:'I understand the orders return to unsettled and the posting is reversed',type:'checkbox',required:true}]
   },function(v){
-    return a.managerApproval('reverse_platform_payout',payoutId,null,v.reason).then(function(ap){
-      return a.reversePlatformPayout({payoutId:payoutId,reason:v.reason,approvalId:ap.approvalId});
+    var change={accountingDate:v.accountingDate,amount:0,reason:v.reason};return a.managerApproval('reverse_platform_payout',payoutId,null,v.reason,{change:change}).then(function(ap){
+      return a.reversePlatformPayout({payoutId:payoutId,accountingDate:v.accountingDate,reason:v.reason,approvalId:ap.approvalId});
     }).then(function(r){return (r&&r.data)||r||{};});
   }).then(function(d){refreshPayoutPeriod();alert('Payout reversed. '+((d&&d.orderCount)||0)+' order(s) returned to unsettled and can be re-settled.');}).catch(function(e){var m=String((e&&e.message)||(e&&e.code)||e);if(m.indexOf('cancelled')<0)alert('Could not reverse the payout: '+m);});
 }

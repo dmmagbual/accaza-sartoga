@@ -5,7 +5,8 @@ exports.managePettyVoucher = onCall(
     const data = request.data || {}, action = financeText(data.action, 20), id = financeKey(data.voucherId, "Voucher ID"), reason = financeText(data.reason, 500);
     await claimPettyVoucherMutation(db, id, `manage_${action}_${id}`, actor, voucherClaims);
     const ref = db.ref(`/pettyCashVouchers/${id}`), snap = await ref.get(); if (!snap.exists()) throw new HttpsError("not-found", "Cash voucher not found.");
-    const voucher = snap.val() || {}, value = Financial.money(voucher.amount), now = Date.now(), hasReceipt = await voucherHasReceipt(db, id, voucher); let approvalAction;
+    const voucher = snap.val() || {}, value = Financial.money(voucher.amount), now = Date.now(), hasReceipt = await voucherHasReceipt(db, id, voucher); let approvalAction, approvalExpectedChangeHash = "", reversalAccountingDate = "";
+    if (action === "correct_reversal_date") return await correctPettyVoucherReversalDate(db, actor, data, id, voucher);
     // Editing a voucher changes the Admin subledger as well as its linked
     // Finance correction, so the voucher's own accounting month must be open.
     // An approved voucher's correction checks BOTH months (old and new date) in correctApprovedPettyVoucher.
@@ -148,10 +149,15 @@ exports.managePettyVoucher = onCall(
       if (voucher.status !== "approved" || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active approved voucher can be voided.");
       if (voucher.transactionType === "purchase_advance" && (Object.keys(voucher.allocations || {}).length || voucher.returnedAt)) throw new HttpsError("failed-precondition", "An allocated or returned supplier payment cannot be voided. Reverse its linked activity first.");
       if (voucher.transactionType === "staff_advance" && Object.values(voucher.settlements || {}).some((row) => row && !row.reversedAt)) throw new HttpsError("failed-precondition", "A liquidated staff advance cannot be voided. Reverse its settlements first.");
-      if (!reason) throw new HttpsError("invalid-argument", "A void reason is required."); approvalAction = "void_petty_voucher";
+      if (!reason) throw new HttpsError("invalid-argument", "A void reason is required.");
+      reversalAccountingDate = assertVoucherDateNotFuture(data.accountingDate, now);
+      if (reversalAccountingDate < financeDate(voucher.date)) throw new HttpsError("invalid-argument", "The reversal posting date cannot be before the original cash-payment date.");
+      await assertAccountingPeriodOpen(db, reversalAccountingDate, "voiding this Admin cash payment");
+      approvalAction = "void_petty_voucher";
+      approvalExpectedChangeHash = reversalApprovalFingerprint(approvalAction, id, {accountingDate: reversalAccountingDate, amount: value, reason});
     } else throw new HttpsError("invalid-argument", "Petty voucher action is invalid.");
     const issuedVoucherNo = action === "approve" ? await cashVoucherNumber(db, voucher, id) : "";
-    const approval = await claimManagerApproval(db, data, approvalAction, id, value, `${approvalAction}_${id}`);
+    const approval = await claimManagerApproval(db, data, approvalAction, id, value, `${approvalAction}_${id}`, null, approvalExpectedChangeHash);
     const approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
     if (action === "approve") {
       const requesterName = financeText(voucher.requesterName, 160).toLowerCase();
@@ -184,13 +190,13 @@ exports.managePettyVoucher = onCall(
       } else {
         if (current.voided === true && current.voidApprovalId === approval.id) {duplicate = true; return current;}
         if (current.status !== "approved" || current.voided === true) {failure = "Only an active approved voucher can be voided."; return;}
-        all[id] = Object.assign({}, current, {voided: true, status: ["loan_repayment","staff_advance","customer_refund"].includes(current.transactionType) ? "reversed" : "approved", voidReason: reason, voidedBy: approvedBy, voidedByUid: approval.record.approvedBy, voidedAt: now, voidApprovalId: approval.id});
+        all[id] = Object.assign({}, current, {voided: true, status: ["loan_repayment","staff_advance","customer_refund"].includes(current.transactionType) ? "reversed" : "approved", voidReason: reason, voidedBy: approvedBy, voidedByUid: approval.record.approvedBy, voidedAt: now, reversalAccountingDate, reversalAccountingTimestamp: Date.parse(`${reversalAccountingDate}T00:00:00+08:00`) || now, voidApprovalId: approval.id});
       }
       return all[id];
     }, undefined, false);
     if (!result.committed) throw new HttpsError("failed-precondition", failure || "Voucher changed while it was being reviewed. Refresh and try again.");
     const controlledType=["loan_repayment","staff_advance","customer_refund"].includes(voucher.transactionType);if(controlledType&&(action==="approve"||action==="void")){const controlledAfter=Object.assign({},result.snapshot.val()||voucher,{status:action==="void"?"reversed":"approved",approvedBy:action==="approve"?approvedBy:voucher.approvedBy,approvedAt:action==="approve"?now:voucher.approvedAt});await postControlledPettyVoucher(db,id,voucher,controlledAfter,{uid:actor.uid,role:actor.role});}
-    await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord(`${action}_petty_voucher`, "pettyVoucher", id, actor, {approvalId: approval.id, amount: value, evidenceType: hasReceipt ? "receipt" : "manager_reviewed_explanation", explanation: financeText(voucher.purpose, 300)})}));
+    await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord(`${action}_petty_voucher`, "pettyVoucher", id, actor, {approvalId: approval.id, amount: value, reversalAccountingDate: reversalAccountingDate || null, processedAt: now, evidenceType: hasReceipt ? "receipt" : "manager_reviewed_explanation", explanation: financeText(voucher.purpose, 300)})}));
     return {voucherId: id, action, at: now, duplicate};
   } finally { await releaseCustodyClaims(custodyClaims); await releasePettyVoucherClaims(voucherClaims); } },
 );

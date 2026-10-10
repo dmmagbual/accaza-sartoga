@@ -108,6 +108,47 @@ async function voucherEffectivePosting(db, id, voucher) {
   return {movementId, movement: Object.assign({id: movementId}, movement)};
 }
 
+async function correctPettyVoucherReversalDate(db, actor, data, id, voucher) {
+  if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can correct a posted cash-payment reversal date.");
+  if (voucher.voided !== true) throw new HttpsError("failed-precondition", "This cash payment has not been voided or reversed.");
+  const now = Date.now(), reason = financeText(data.reason, 300), accountingDate = assertVoucherDateNotFuture(data.accountingDate, now), originalDate = financeDate(voucher.date), expectedRevision = Math.trunc(Number(data.expectedRevision)), currentRevision = Math.max(0, Math.trunc(Number(voucher.reversalAccountingDateRevision) || 0));
+  if (!reason) throw new HttpsError("invalid-argument", "A reason is required for the reversal-date correction.");
+  if (accountingDate < originalDate) throw new HttpsError("invalid-argument", "The reversal posting date cannot be before the original cash-payment date.");
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw new HttpsError("invalid-argument", "Refresh the cash payment before correcting its reversal date.");
+  if (expectedRevision !== currentRevision) throw new HttpsError("aborted", "This reversal date was corrected after you opened it. Refresh and try again.");
+  const movementId = `petty_void_${id}`, funding = advanceFundingAccount(voucher), [movementSnap,journalSnap,ledgerSnap,custodySnap,custodyIndexSnap,pageSnap,cashMapSnap] = await Promise.all([
+    db.ref(`/financialMovements/${movementId}`).get(), db.ref(`/books/journal/${movementId}`).get(), db.ref(`/cfLedger/fm_${movementId}`).get(), db.ref(`/cashCustody/${movementId}`).get(), db.ref(`/cashCustodyOpenIndex/${movementId}`).get(), db.ref(`/undepositedLedgerPageIndex/${movementId}`).get(), db.ref("/books/config/cashAccountMap").get(),
+  ]), movement = movementSnap.val(), journal = journalSnap.val(), ledger = ledgerSnap.val(), custody = custodySnap.val(), custodyIndex = custodyIndexSnap.val(), page = pageSnap.val();
+  if (!movement || movement.sourceType !== "pettyVoucher" || movement.sourceId !== id || !Array.isArray(movement.lines) || !BooksBridge.linesBalanced(movement.lines)) throw new HttpsError("failed-precondition", "The linked balanced cash-payment reversal is missing or inconsistent. Finance must review it before changing its date.");
+  if (!journal || journal.sourceId !== id) throw new HttpsError("failed-precondition", "The linked Finance Books journal is missing or points to another cash payment.");
+  if (funding.kind === "account" && (!ledger || ledger.movementId !== movementId || ledger.linkId !== id || Financial.money(ledger.amount) !== Financial.money(voucher.amount))) throw new HttpsError("failed-precondition", "The linked bank or e-wallet register row is missing or inconsistent.");
+  if (funding.kind === "undeposited" && (!custody || custody.movementId !== movementId || Financial.money(custody.amount) !== Financial.money(voucher.amount))) throw new HttpsError("failed-precondition", "The linked Undeposited Collection custody row is missing or inconsistent.");
+  const currentDates = {movement:financeDateFromTimestamp(movement.occurredAt||movement.postedAt||now),journal:financeText(journal.date,10),ledger:ledger&&financeText(ledger.date,10),voucher:financeText(voucher.reversalAccountingDate,10),custody:custody&&financeDateFromTimestamp(custody.closedAt)}, affectedDates = Array.from(new Set(Object.values(currentDates).filter((date)=>/^\d{4}-\d{2}-\d{2}$/.test(date||"")).concat(accountingDate)));
+  if (Object.values(currentDates).filter(Boolean).every((date)=>date===accountingDate) && financeText(voucher.reversalAccountingDate,10)===accountingDate) return {voucherId:id,result:"date_unchanged",accountingDate,currentRevision,duplicate:true};
+  for (const date of affectedDates) await assertAccountingPeriodOpen(db, date, "correcting this cash-payment reversal date");
+  const revision = currentRevision + 1, accountingTimestamp = Date.parse(`${accountingDate}T00:00:00+08:00`) || now, edited = Object.assign({}, movement, {occurredAt:accountingTimestamp,accountingDate,accountingDateRevision:revision,accountingDateReason:reason,accountingDateUpdatedAt:now,accountingDateUpdatedBy:actor.uid}), projected = BooksBridge.buildSingle(edited, cashMapSnap.val()||{}).entry, writes = {
+    [`financialMovements/${movementId}`]: edited,
+    [`books/journal/${movementId}`]: Object.assign({}, journal, projected, {createdAt:journal.createdAt||movement.postedAt||now,updatedAt:now,updatedBy:actor.uid,accountingDateRevision:revision}),
+    [`pettyCashVouchers/${id}/reversalAccountingDate`]: accountingDate,
+    [`pettyCashVouchers/${id}/reversalAccountingTimestamp`]: accountingTimestamp,
+    [`pettyCashVouchers/${id}/reversalAccountingDateRevision`]: revision,
+    [`pettyCashVouchers/${id}/lastReversalDateCorrectionAt`]: now,
+    [`pettyCashVouchers/${id}/lastReversalDateCorrectionBy`]: actor.uid,
+    [`cashJournalRevisions/${movementId}/${revision}`]: {revision,reason,changedAt:now,changedBy:actor.uid,changedByRole:actor.role,before:{accountingDates:currentDates,occurredAt:movement.occurredAt,ledgerDate:ledger&&ledger.date,journalDate:journal.date,custodyClosedAt:custody&&custody.closedAt},after:{accountingDate,occurredAt:accountingTimestamp},kind:"cash_payment_reversal_accounting_date"},
+    [`operationalAudit/${now}_petty_reversal_date_${id}_${revision}`]: operationalAuditRecord("correct_petty_voucher_reversal_date","pettyVoucher",id,actor,{movementId,revision,beforeDates:currentDates,accountingDate,reason,amount:Financial.money(voucher.amount),processedAt:voucher.voidedAt||null}),
+  };
+  if (ledger) writes[`cfLedger/fm_${movementId}`] = Object.assign({}, ledger, {date:accountingDate,ts:accountingTimestamp,accountingDateRevision:revision,accountingDateUpdatedAt:now,accountingDateUpdatedBy:actor.uid});
+  if (custody) writes[`cashCustody/${movementId}`] = Object.assign({}, custody, {closedAt:accountingTimestamp,accountingDateRevision:revision});
+  if (custodyIndex) writes[`cashCustodyOpenIndex/${movementId}`] = Object.assign({}, custodyIndex, {closedAt:accountingTimestamp});
+  if (page) writes[`undepositedLedgerPageIndex/${movementId}`] = Object.assign({}, page, {occurredAt:accountingTimestamp});
+  const closeClaims = await claimPurchaseReversalCloseLocks(db, affectedDates, actor, `petty_${id}`);
+  try {
+    for (const date of affectedDates) {const indexes=(await db.ref(`/financialCloseIndex/${date}`).get()).val()||{};for(const closeId of Object.keys(indexes)){const current=(await db.ref(`/financialCloses/${closeId}/current`).get()).val();if(current){writes[`financialCloses/${closeId}/current/status`]="REOPENED";writes[`financialCloses/${closeId}/current/reopenedAt`]=now;writes[`financialCloses/${closeId}/current/reopenedByActivityId`]=`petty_reversal_date_${id}_${revision}`;writes[`financialCloseIndex/${date}/${closeId}/status`]="REOPENED";}}}
+    await db.ref().update(writes);
+    return {voucherId:id,result:"reversal_date_corrected",movementId,accountingDate,previousDates:currentDates,revision};
+  } finally { await releasePurchaseReversalCloseLocks(closeClaims); }
+}
+
 function legacyMovementAccountNets(movement) {
   const nets = {};
   for (const line of movement && movement.lines || []) {
