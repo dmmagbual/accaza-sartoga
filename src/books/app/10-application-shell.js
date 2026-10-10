@@ -60,7 +60,7 @@ const App = {
     if(this._controlledTransactionsPromise)return this._controlledTransactionsPromise;
     const self=this;this._controlledTransactionsPromise=new Promise(function(resolve,reject){
       var script=document.getElementById('booksControlledTransactions');if(script)script.remove();
-      script=document.createElement('script');script.id='booksControlledTransactions';script.src='assets/js/books/controlled-transactions.js?v=152';
+      script=document.createElement('script');script.id='booksControlledTransactions';script.src='assets/js/books/controlled-transactions.js?v=153';
       script.onload=function(){if(typeof PAGES.transactions!=='function'||typeof App.txnPay!=='function'){script.remove();self._controlledTransactionsPromise=null;return reject(new Error('Deferred Finance Books tools did not initialize.'));}window.__booksControlledTransactionsReady=true;self._controlledTransactionsPromise=null;resolve();};
       script.onerror=function(){script.remove();self._controlledTransactionsPromise=null;reject(new Error('Could not load Finance Books transaction tools.'));};
       document.head.appendChild(script);
@@ -167,9 +167,8 @@ const App = {
   reverseEntry(id,voidIt){
     const e=ENTRIES().find(x=>x.id===id); if(!e||e.reversedByMovementId||e.reversalOf) return;
     if(voidIt&&window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(e.date||todayStr()))return alert('A void uses the original accounting date. Reopen that month in Admin Settings first, or use a current-month reversal to preserve the closed history.');
-    const reason=prompt((voidIt?"Why was this journal wrong from the beginning? It will be voided on its original accounting date and both cash-account legs will be cancelled.":"Why is this valid journal being reversed now? The reversal will use today's date.")+" The original stays in the audit history.","");if(!reason||!reason.trim())return;
     if(!window.__financeCmd) return alert("Live connection not ready — sign in first.");
-    window.__financeCmd({action:voidIt?"void_manual_journal":"reverse_manual_journal",commandId:(voidIt?"books_void_":"books_reverse_")+id,originalMovementId:id,date:todayStr(),reason:reason.trim()}).then(()=>this.render()).catch(err=>alert("Could not "+(voidIt?"void":"reverse")+" journal: "+((err&&err.message)||err)));
+    const defaultDate=voidIt?(e.date||todayStr()):todayStr();App._txnModal(voidIt?'Void journal':'Reverse journal','<div class="grid2"><div class="field"><label>Posting date</label><input id="rev_date" type="date" value="'+esc(defaultDate)+'"/></div></div><div class="field"><label>Reason</label><textarea id="rev_reason" maxlength="300" placeholder="Required"></textarea></div><div class="hint">The original stays in the audit history.</div>',voidIt?'Void journal':'Reverse journal',function(btn){const date=fval('rev_date'),reason=fval('rev_reason');if(!date||!reason)return alert('Enter the posting date and reason.');if(window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(date))return alert('This accounting month is closed. Reopen it in Finance Settings first.');App._txnRun(btn,{action:voidIt?"void_manual_journal":"reverse_manual_journal",commandId:(voidIt?"books_void_":"books_reverse_")+id,originalMovementId:id,date:date,reason:reason},function(){App.render();});});
   },
   closeModal(){ document.getElementById("modalBg").classList.remove("show"); document.getElementById("modal").innerHTML=""; },
   viewEntry(id){

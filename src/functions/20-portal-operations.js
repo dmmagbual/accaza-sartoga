@@ -293,6 +293,10 @@ async function claimManagerApproval(db, data, action, sourceId, amount, operatio
   if (!claimed.committed) throw new HttpsError("failed-precondition", "Privileged approval was changed or used before this action completed. Request a new approval.");
   return {id: approvalId, record: initial, usedWrites: {[`financialApprovals/${approvalId}/usedAt`]: now, [`financialApprovals/${approvalId}/usedBy`]: operationKey}};
 }
+function reversalApprovalFingerprint(action, sourceId, change) {
+  const row = change || {};
+  return crypto.createHash("sha256").update(JSON.stringify(["reversal-date:v1", financeText(action, 60), financeText(sourceId, 160), financeText(row.accountingDate, 10), Financial.money(row.amount).toFixed(2), financeText(row.reason, 500)])).digest("hex");
+}
 
 exports.createManagerApproval = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
@@ -303,8 +307,8 @@ exports.createManagerApproval = onCall(
     if (["correct_completed_order", "completed_order_cash_refund"].includes(action) && decoded.uid === requester.uid) throw new HttpsError("permission-denied", "Completed-order changes require approval from a different authorized manager account.");
     const sourceId = financeText(data.sourceId, 160); if (!sourceId) throw new HttpsError("invalid-argument", "Approval source is required."); const amount = data.amount == null ? null : Financial.money(data.amount), now = Date.now(), id = `approval_${crypto.randomBytes(12).toString("hex")}`;
     // A cash voucher correction approval binds the exact change (date, amount, category, payee ...).
-    const bindsVoucherChange = ["correct_petty_voucher","void_replace_legacy_petty_voucher"].includes(action), changeHash = bindsVoucherChange && data.change && typeof data.change === "object" ? voucherChangeFingerprint(sourceId, data.change, action) : "";
-    if (bindsVoucherChange && !changeHash) throw new HttpsError("failed-precondition", "This approval screen is out of date. Refresh the portal and try the correction again.");
+    const bindsVoucherChange = ["correct_petty_voucher","void_replace_legacy_petty_voucher"].includes(action), bindsReversalDate = ["void_petty_voucher","reverse_purchase","void","reverse_platform_payout"].includes(action), changeHash = bindsVoucherChange && data.change && typeof data.change === "object" ? voucherChangeFingerprint(sourceId, data.change, action) : bindsReversalDate && data.change && typeof data.change === "object" ? reversalApprovalFingerprint(action, sourceId, data.change) : "";
+    if ((bindsVoucherChange || bindsReversalDate) && !changeHash) throw new HttpsError("failed-precondition", "This approval screen is out of date. Refresh the portal and try the correction again.");
     await db.ref(`/financialApprovals/${id}`).set({action, sourceId, amount, reason: financeText(data.reason, 300), requestedBy: requester.uid, approvedBy: decoded.uid, approvedEmail: financeText(decoded.email, 160), approvedName: financeText(decoded.name, 160), approvedRole: managerRole, approvedAt: now, expiresAt: now + 5 * 60 * 1000, changeHash: changeHash || null, schemaVersion: 1});
     return {approvalId: id, approvedBy: decoded.email || managerRole, expiresAt: now + 5 * 60 * 1000};
   },

@@ -75,11 +75,11 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // Oct 2026 (custody-trigger deployment): one new guard requires the workflow to retire only the
 // known obsolete custody projection function, and to fail closed when list/delete does not succeed.
 // Reviewed guard count 560 -> 561.
-// Oct 2026 (Books build 152): the offline-cache guard pins the new exact lazy bundle URL.
+// Oct 2026 (Books build 153): the offline-cache guard pins the new exact lazy bundle URL.
 // Assertion meaning and reviewed guard count remain unchanged.
 // Oct 2026 (unexplained shortage treatment): the unified cash-difference guard now also requires
 // the Admin treatment selector to expose the server-authorized unexplained-shortage route.
 // Assertion meaning is widened; reviewed guard count remains unchanged.
-if(guardDigest!=='bd05ac20ac1d2c24cceaaae6164a59e7b47125660ac2a0adeffe9f03f380d778')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+if(guardDigest!=='9e7386f4a8134d258f655723b439d787c612cd751f1829782f0159a58c89fedc')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 561 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

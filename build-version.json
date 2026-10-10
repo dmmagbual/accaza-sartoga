@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "builds": {
     "admin": 666,
-    "books": 152,
+    "books": 153,
     "customer": 97
   }
 }
