@@ -67,6 +67,13 @@ if(!functionsSource.includes('{ref: "/orders/{orderId}/cogsSnapshot", region: "a
 for(const marker of ['BooksBridge.cogsReversalMovement','cogs_reversal_<orderId>'])if(!functionsSource.includes(marker))fail(`COGS reversal pseudo-movement missing: ${marker}`);
 if(!functionsSource.includes('// Deterministic projection: fold EVERY movement exactly as the live mirror does'))fail('Deterministic rebuild projection missing');
 for(const marker of ['order_cogs_reversal','inventoryReversed !== true'])if(!booksBridgeSource.includes(marker))fail(`COGS reversal lib guard missing: ${marker}`);
+// Stage 3 (append-only audit): in-place journal edits are intentional (stable movement ID is the join
+// key for cash flow, custody, cfLedger and bank reconciliation), and their audit is an append-only
+// revision history. Pin both invariants so a future edit can never overwrite a posted revision or drop
+// the before/after history.
+const cashJournalEditSource=fs.readFileSync(path.join(root,'functions','lib','cash-journal-edit.js'),'utf8');
+for(const marker of ['expectedRevision!==Number(original.revision||0)','(history[id]||(history[id]={}))[String(revision)]'])if(!cashJournalEditSource.includes(marker))fail(`Cash-journal append-only revision guard missing: ${marker}`);
+for(const marker of ['Number(original.revision||0)!==expected','classificationRevision'])if(!functionsSource.includes(marker))fail(`Journal reclassification append-only revision guard missing: ${marker}`);
 for(const marker of ['authoritativeEntries=ents.filter(e=>e&&e.source==="pos")','manualEntries=ents.filter(e=>!e||e.source!=="pos")','Unverified manual sales — excluded from net sales','Admin-authorized bridge entries only'])if(!booksHtml.includes(marker))fail(`Books net-sales source boundary missing: ${marker}`);
 const platformBridgeSource=fs.readFileSync(path.join(root,'functions','lib','books-bridge.js'),'utf8');
 for(const marker of ['"expense:platform_variance:va_refund": "6085"','"revenue:platform_variance:va_refund_recovery": "4990"'])if(!platformBridgeSource.includes(marker))fail(`Platform refund classification guard missing: ${marker}`);
