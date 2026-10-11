@@ -1,4 +1,10 @@
 "use strict";
+// In-place edit is intentional, not a ledger shortcut: the movement ID is the stable join key for
+// cash-flow indexes, custody rows, cfLedger and bank-reconciliation links, so a correction keeps the
+// SAME id and appends a revision instead of posting a reversal + replacement. The append-only audit
+// lives in cashJournalRevisions/{id}/{revision} (before/after), the movement carries a monotonically
+// increasing `revision`, and `expectedRevision` must match before any write, so a stale editor can
+// never clobber a newer revision. A reversal+repost here would break those stable links.
 const crypto=require('node:crypto');
 const B=require('./books-bridge');
 const P=require('./accounting-periods');
