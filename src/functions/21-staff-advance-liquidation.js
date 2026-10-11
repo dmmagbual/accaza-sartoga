@@ -2,7 +2,7 @@ exports.managePettyVoucher = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => { const custodyClaims = [], voucherClaims = []; try {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["petty"]);
-    const data = request.data || {}, action = financeText(data.action, 20), id = financeKey(data.voucherId, "Voucher ID"), reason = financeText(data.reason, 500);
+    const data = request.data || {}, action = financeText(data.action, 40), id = financeKey(data.voucherId, "Voucher ID"), reason = financeText(data.reason, 500);
     await claimPettyVoucherMutation(db, id, `manage_${action}_${id}`, actor, voucherClaims);
     const ref = db.ref(`/pettyCashVouchers/${id}`), snap = await ref.get(); if (!snap.exists()) throw new HttpsError("not-found", "Cash voucher not found.");
     const voucher = snap.val() || {}, value = Financial.money(voucher.amount), now = Date.now(), hasReceipt = await voucherHasReceipt(db, id, voucher); let approvalAction, approvalExpectedChangeHash = "", reversalAccountingDate = "";
