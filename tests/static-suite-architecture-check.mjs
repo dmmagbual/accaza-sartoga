@@ -27,7 +27,7 @@ for(const file of expected){
   if(Buffer.byteLength(source,'utf8')>47500){const message=`tests/static/${file} is ${Buffer.byteLength(source,'utf8')} bytes of its 50 KB bound. Split it before adding more guards.`;console.warn('STATIC MODULE SIZE WARNING: '+message);if(process.env.GITHUB_ACTIONS)console.log(`::warning file=tests/static/${file}::${message}`);}
   if(file!=='00-context.mjs'&&!runner.includes(`./static/${file}`))throw new Error(`Static-check runner omits domain: ${file}`);
 }
-if((combined.match(/\bfail\(/g)||[]).length!==569)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 569');
+if((combined.match(/\bfail\(/g)||[]).length!==572)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 572');
 if((combined.match(/spawnSync\(/g)||[]).length!==33)throw new Error('Static-check executable-check inventory changed from the reviewed baseline of 33');
 const guardSource=combined.split(/\r?\n/).filter(line=>/\bfail\(|spawnSync\(/.test(line)).map(line=>line.trim()).join('\n');
 const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
@@ -92,6 +92,10 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // history of in-place journal edits (cash-journal edit and reclassification), so a future edit can
 // never overwrite a posted revision or drop the before/after history.
 // Reviewed guard count 567 -> 569; executable checks unchanged at 33.
-if(guardDigest!=='84cf08341f65cd61114a9dd819e9a3e8eb438c05c953518d977043d8e576d435')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (Finance Books integrity Stage 4/5): three new reviewed guards pin the control audit's
+// AR/AP/supplier-advances reconciliation, the date-anchored register float entry, and the client
+// manual-journal net-sales boundary.
+// Reviewed guard count 569 -> 572; executable checks unchanged at 33.
+if(guardDigest!=='167b2a3574906429cec973011655bc7224522e9270622abc16ba2cf4de458a5c')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
-console.log('PASS: all 569 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
+console.log('PASS: all 572 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

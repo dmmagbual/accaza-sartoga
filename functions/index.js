@@ -535,7 +535,13 @@ exports.ensureBooksJournal = onCall(
       if(tx.committed)journalWrites++;
     }
     const registerFloat = resolveRegisterFloat(posSettingsSnap.val(), activeShiftSnap.val());
-    const floatEntry = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, Date.now(), registerFloat) : null;
+    // The float entry is a standing reclassification (Dr 1005 / Cr 1000), not a dated transaction.
+    // Re-dating it on every rebuild moved the 1000/1005 split across months while total cash stayed
+    // unchanged. Anchor it to the existing entry's date (or first-build now) so a no-change rebuild
+    // never rewrites it. Live float changes still re-date via syncRegisterCashFloat / syncActiveRegisterCashFloat.
+    const existingFloatEntry = existing.register_float_control;
+    const floatAt = existingFloatEntry && existingFloatEntry.date ? Date.parse(`${existingFloatEntry.date}T00:00:00+08:00`) : Date.now();
+    const floatEntry = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, floatAt, registerFloat) : null;
     if (!sameJournalEntry(existing.register_float_control, floatEntry, ["createdAt", "rebuiltAt"])) writes["books/journal/register_float_control"] = floatEntry;
     if (!sameJournalEntry(existing.historical_suspense_capital_20260826, historicalSuspenseCapitalEntry(), [])) writes["books/journal/historical_suspense_capital_20260826"] = historicalSuspenseCapitalEntry();
     // Reconciliation metadata is non-financial. It changes only how the audit
@@ -8578,6 +8584,9 @@ function financialControlResolution(issue) {
     shift_tips_not_recognized:["Open Undeposited Collection and use Recognize shift tips for this shift. It posts the declared tips as Other Income at the shift's closing time, once.","admin_finance","Open Undeposited Collection"],
     shift_register_not_cleared:["If the cash was handed over, use Repair closed-shift turnover in Undeposited Collection. If it was a counting or cash difference, resolve it from Discrepancies. Never journal Cash in Register directly.","admin_finance","Open Undeposited Collection"],
     unreviewed_discrepancies:["Open Admin Discrepancies, select the actual cause, and complete the linked Finance treatment. Each option records the operational and accounting resolution together.","admin_discrepancies","Open Discrepancies"],
+    receivables_control_mismatch:["Open Receivables and reconcile each open receivable to its Finance posting. Correct the record from its own workflow; never net the difference with a free-form journal.","admin_finance","Open Receivables"],
+    supplier_advances_control_mismatch:["Open Cash Payments and review the unallocated approved supplier advances against the Finance Books Supplier Advances balance. Allocate or reverse them from their own workflow.","admin_petty","Open Cash Payments"],
+    payables_control_mismatch:["Open Payables and reconcile each open supplier bill to its Finance posting. Correct or settle the bill from its own workflow; never net the difference with a free-form journal.","admin_finance","Open Payables"],
   };
   const resolution = resolutions[issue.kind] || ["Open the linked source record, verify the supporting evidence, and use its controlled correction workflow. The audit trail must remain intact.","books_cashflow","Review source"];
   const titles = {payout_deposit_missing_reference:"Platform payout needs a reference",payout_movement_missing:"Platform payout posting is missing",payout_order_link_mismatch:"Platform payout order links need review",reversed_payout_cash_not_reversed:"Reversed platform payout still has a bank receipt"};
@@ -8658,6 +8667,28 @@ exports.auditFinancialControls = onCall(
       if(Math.abs(control.residual)>0.009)issues.push({severity:"critical",kind:"register_cash_drawer_mismatch",source:"register_cash",sourceLabel:"Cash in Register (Books 1000)",detail:`Cash in Register holds ${control.registerGross.toFixed(2)}; the float is ${control.floatAmount.toFixed(2)} and the open shift has taken ${control.openShiftNet.toFixed(2)} in cash${control.awaitingFinalZNet?`, with ${control.awaitingFinalZNet.toFixed(2)} awaiting a final Z report`:""}. ${Math.abs(control.residual).toFixed(2)} is ${control.residual>0?"recorded in the drawer but is not there":"missing from the drawer record"}.`,amount:control.residual});
       control.shiftsOff.slice(0,20).forEach((row)=>{const shift=shifts[row.shiftId]||{},ref=financeText(shift.shiftReference,80)||row.shiftId,tipsGap=row.tips>0&&Math.abs(row.net+row.tips)<0.009;issues.push({severity:"critical",kind:tipsGap?"shift_tips_not_recognized":"shift_register_not_cleared",source:row.shiftId,sourceLabel:`Shift ${ref} · ${financeText(row.staff,80)||"cashier"} · closed ${financeDateFromTimestamp(row.closedAt)}`,detail:tipsGap?`Tips of ${row.tips.toFixed(2)} declared in the Z report left the drawer with the handover but were never recognized in Finance Books.`:row.net>0?`Cash in Register still holds ${row.net.toFixed(2)} from this closed shift that never moved to Undeposited Collection.`:`Cash in Register was reduced by ${Math.abs(row.net).toFixed(2)} more than this shift took in.`,amount:row.net});});
     } catch(e){logger.warn("auditFinancialControls: register drawer check skipped",{error:String(e)});}
+    try {
+      // Control reconciliation parity with Financial Close (buildClose). Other Receivables (1110),
+      // Supplier Advances (1115) and Accounts Payable (2000) must agree with their open subledgers,
+      // exactly as buildClose checks them — otherwise a manager using only this audit tool sees no
+      // AR/AP/supplier-advance drift. The ledger is already loaded; subledgers use bounded indexes.
+      const accountNet = (accountTest) => { let total = 0; Object.values(movements).forEach((m) => (m && m.lines || []).forEach((line) => { if (accountTest(String(line && line.account || ""))) total = Financial.money(total + (Number(line.debit) || 0) - (Number(line.credit) || 0)); })); return Financial.money(total); };
+      const otherReceivablesGl = accountNet((account) => account.indexOf("asset:receivable:") === 0);
+      const supplierAdvancesGl = accountNet((account) => account.indexOf("asset:purchase_cash_advance:") === 0);
+      const accountsPayableGl = Financial.money(-accountNet((account) => /^liability:(payable|grni|due_to_owner):/.test(account)));
+      const openReceivables = Object.values(ars).filter((x) => x && x.status === "open"), supplierPayables = Object.values(aps).filter((x) => x && x.status === "open" && x.type !== "customer_change_refund");
+      const subledgerRemaining = (rows) => Financial.money(rows.reduce((sum, row) => sum + Number(row && (row.remainingAmount != null ? row.remainingAmount : row.amount) || 0), 0));
+      const pettyAdvances = /* download-ok: manual control audit */ (await db.ref("/pettyCashVouchers").orderByChild("transactionType").equalTo("purchase_advance").get()).val() || {};
+      const revolvingSupplierAdvances = Financial.money(Object.values(pettyAdvances).filter((row) => row && row.status === "approved" && row.voided !== true).reduce((sum, row) => sum + Number(row.remainingAmount != null ? row.remainingAmount : row.amount || 0), 0));
+      const shiftPayOuts = await supplierAdvanceShiftPayOuts(db);
+      const shiftSupplierAdvances = Financial.money(Object.values(shiftPayOuts).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows : []).filter((row) => row && row.type === "purchase_advance" && row.voided !== true && row.status !== "cancelled").reduce((total, row) => total + Number(row.remainingAmount != null ? row.remainingAmount : row.amount || 0), 0), 0));
+      const controls = [
+        {kind: "receivables_control_mismatch", source: "receivables", label: "Other Receivables (1110)", gl: otherReceivablesGl, sub: subledgerRemaining(openReceivables)},
+        {kind: "supplier_advances_control_mismatch", source: "supplier_advances", label: "Supplier Advances (1115)", gl: supplierAdvancesGl, sub: Financial.money(revolvingSupplierAdvances + shiftSupplierAdvances)},
+        {kind: "payables_control_mismatch", source: "payables", label: "Accounts Payable (2000)", gl: accountsPayableGl, sub: subledgerRemaining(supplierPayables)},
+      ];
+      controls.forEach((control) => { const difference = Financial.money(control.gl - control.sub); if (Math.abs(difference) > 0.009) issues.push({severity: "critical", kind: control.kind, source: control.source, sourceLabel: `${control.label} · Finance Books ${control.gl.toFixed(2)} vs open subledger ${control.sub.toFixed(2)}`, detail: `Finance Books ${control.gl.toFixed(2)}; open subledger ${control.sub.toFixed(2)}`, amount: difference, expected: control.sub, actual: control.gl}); });
+    } catch(e){logger.warn("auditFinancialControls: receivable/advance/payable control check skipped",{error:String(e)});}
     // Never expose an internal key as the business-facing reference. Keep the
     // raw source for controlled actions, but present the actual transaction
     // context a manager can recognise from Admin or Finance Books.

@@ -246,7 +246,13 @@ exports.ensureBooksJournal = onCall(
       if(tx.committed)journalWrites++;
     }
     const registerFloat = resolveRegisterFloat(posSettingsSnap.val(), activeShiftSnap.val());
-    const floatEntry = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, Date.now(), registerFloat) : null;
+    // The float entry is a standing reclassification (Dr 1005 / Cr 1000), not a dated transaction.
+    // Re-dating it on every rebuild moved the 1000/1005 split across months while total cash stayed
+    // unchanged. Anchor it to the existing entry's date (or first-build now) so a no-change rebuild
+    // never rewrites it. Live float changes still re-date via syncRegisterCashFloat / syncActiveRegisterCashFloat.
+    const existingFloatEntry = existing.register_float_control;
+    const floatAt = existingFloatEntry && existingFloatEntry.date ? Date.parse(`${existingFloatEntry.date}T00:00:00+08:00`) : Date.now();
+    const floatEntry = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, floatAt, registerFloat) : null;
     if (!sameJournalEntry(existing.register_float_control, floatEntry, ["createdAt", "rebuiltAt"])) writes["books/journal/register_float_control"] = floatEntry;
     if (!sameJournalEntry(existing.historical_suspense_capital_20260826, historicalSuspenseCapitalEntry(), [])) writes["books/journal/historical_suspense_capital_20260826"] = historicalSuspenseCapitalEntry();
     // Reconciliation metadata is non-financial. It changes only how the audit

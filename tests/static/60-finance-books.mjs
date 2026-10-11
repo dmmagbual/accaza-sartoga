@@ -74,6 +74,13 @@ for(const marker of ['order_cogs_reversal','inventoryReversed !== true'])if(!boo
 const cashJournalEditSource=fs.readFileSync(path.join(root,'functions','lib','cash-journal-edit.js'),'utf8');
 for(const marker of ['expectedRevision!==Number(original.revision||0)','(history[id]||(history[id]={}))[String(revision)]'])if(!cashJournalEditSource.includes(marker))fail(`Cash-journal append-only revision guard missing: ${marker}`);
 for(const marker of ['Number(original.revision||0)!==expected','classificationRevision'])if(!functionsSource.includes(marker))fail(`Journal reclassification append-only revision guard missing: ${marker}`);
+// Stage 4/5: the control audit must reconcile AR/AP/supplier-advances exactly as Financial Close does;
+// the register float entry must be date-anchored (not re-dated on rebuild); the client must keep manual
+// journals out of authoritative net sales.
+for(const marker of ['receivables_control_mismatch','supplier_advances_control_mismatch','payables_control_mismatch'])if(!functionsSource.includes(marker))fail(`AR/AP/supplier-advances control audit missing: ${marker}`);
+for(const marker of ['existingFloatEntry','floatAt = existingFloatEntry'])if(!functionsSource.includes(marker))fail(`Register float entry date anchor missing: ${marker}`);
+const livePosSource=fs.readFileSync(path.join(root,'assets','js','books','live-pos.mjs'),'utf8');
+for(const marker of ['entrySource','indexOf("booksManualJournal")===0?"manual":"pos"'])if(!livePosSource.includes(marker))fail(`Client manual-journal net-sales boundary missing: ${marker}`);
 for(const marker of ['authoritativeEntries=ents.filter(e=>e&&e.source==="pos")','manualEntries=ents.filter(e=>!e||e.source!=="pos")','Unverified manual sales — excluded from net sales','Admin-authorized bridge entries only'])if(!booksHtml.includes(marker))fail(`Books net-sales source boundary missing: ${marker}`);
 const platformBridgeSource=fs.readFileSync(path.join(root,'functions','lib','books-bridge.js'),'utf8');
 for(const marker of ['"expense:platform_variance:va_refund": "6085"','"revenue:platform_variance:va_refund_recovery": "4990"'])if(!platformBridgeSource.includes(marker))fail(`Platform refund classification guard missing: ${marker}`);
