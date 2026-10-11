@@ -124,7 +124,7 @@ async function booksSingleEntry(db,mv,cashMap){
 }
 
 exports.mirrorPosMovementToBooks = onValueCreated(
-  {ref: "/financialMovements/{movementId}", region: "asia-southeast1"},
+  {ref: "/financialMovements/{movementId}", region: "asia-southeast1", retry: true},
   async (event) => {
     const mv = event.data.val();
     if (!mv || !Array.isArray(mv.lines) || !mv.lines.length) return;
@@ -156,7 +156,7 @@ exports.mirrorPosMovementToBooks = onValueCreated(
 // COGS leg: when an order's COGS snapshot is written, fold Dr COGS / Cr Inventory
 // into the same daily-summary-per-channel entry. Idempotent via sources[cogs_<orderId>].
 exports.mirrorPosCogsToBooks = onValueWritten(
-  {ref: "/orders/{orderId}/cogsSnapshot", region: "asia-southeast1"},
+  {ref: "/orders/{orderId}/cogsSnapshot", region: "asia-southeast1", retry: true},
   async (event) => {
     const after = event.data && event.data.after && event.data.after.val();
     if (!(Number(after) > 0)) return;
