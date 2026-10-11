@@ -488,26 +488,30 @@ exports.ensureBooksJournal = onCall(
     const movementIds = Object.keys(movements).sort((a, b) => Number(movements[a].occurredAt || 0) - Number(movements[b].occurredAt || 0) || a.localeCompare(b));
     movementIds.forEach((id) => {
       const mv = Object.assign({id}, movements[id] || {}); if (!Array.isArray(mv.lines) || !mv.lines.length) return;
-      if (!BooksBridge.includeInAuthoritativeBooks(mv, voidedSourceIds, allOrders)) {
-        if (BooksBridge.isSaleMovement(mv)) review[`sales_authority_${id}`] = {movementId: id, type: String(mv.type || ""), sourceId: String(mv.sourceId || ""), accounts: [], detail: "Excluded from recognized sales because Admin Sales History has no qualifying completed/received order for this Finance movement. The immutable Finance evidence remains available for audit.", at: Date.now()};
-        return;
-      }
+      // Deterministic projection: fold EVERY movement exactly as the live mirror does, so a rebuild
+      // can never silently drop or re-add revenue. Orphan and fully-voided chains are netted by their
+      // reversal movements (orphan_order_reversal / order_void), which ensureFinancialLedger posts
+      // before this rebuild in the same Sync. The authority check is retained as a review-only flag.
+      if (!BooksBridge.includeInAuthoritativeBooks(mv, voidedSourceIds, allOrders) && BooksBridge.isSaleMovement(mv)) review[`sales_authority_${id}`] = {movementId: id, type: String(mv.type || ""), sourceId: String(mv.sourceId || ""), accounts: [], detail: "Recognized in Books by deterministic projection but Admin Sales History has no qualifying completed/received order for this Finance movement. Verify the orphan or void/refund chain; the immutable Finance evidence remains available for audit.", at: Date.now()};
       const payable=payables[mv.sourceId]||{},derivedId=String(mv.sourceId||"").indexOf("ap_")===0?String(mv.sourceId).slice(3):String(mv.sourceId||""),purchaseInvoice=purchases[payable.purchaseInvoiceId]||purchases[mv.sourceId]||purchases[derivedId]||null,context={purchaseInvoice,inventory};
       const bucket = BooksBridge.bucketFor(mv), mapped = BooksBridge.mappedLines(mv, cashMap, context);
       if (mapped.unmapped.length) review[id] = {movementId: id, type: String(mv.type || ""), sourceId: String(mv.sourceId || ""), accounts: mapped.unmapped, at: Date.now()};
       if (bucket.mode === "daily") daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, mv, cashMap);
       else singles[bucket.key] = Object.assign(BooksBridge.buildSingle(mv, cashMap, context).entry, {createdAt: Date.now(), rebuiltAt: Date.now()});
     });
-    let cogsPosted = 0, missingCogs = 0;
+    let cogsPosted = 0, cogsReversed = 0, missingCogs = 0;
     Object.keys(allOrders).forEach((id) => {
       const order = allOrders[id] || {};
-      if (!BooksBridge.recognizedOrderForCogs(order)) return;
-      const cogs = BooksBridge.cogsMovement(order, id, inventorySnap.val() || {}, categoriesSnap.val() || {});
+      const inv = inventorySnap.val() || {}, cats = categoriesSnap.val() || {};
+      const cogs = BooksBridge.cogsMovement(order, id, inv, cats);
       // Lines sold without a recipe are tracked in /uncostedSales and costed by their own linked
-      // correction entry, so they are not unposted historical COGS.
-      if (!cogs.lines.length && (Number(order.costPendingLines) > 0 || order.costCorrections)) return;
-      if (!cogs.lines.length) { missingCogs++; review[`cogs_missing_${id}`] = {movementId: `cogs_missing_${id}`, type: "unposted_cogs", sourceId: id, accounts: [{account: "cogs:missing_snapshot", code: "5090"}], detail: "Historical order has no reliable COGS snapshot; review in Unposted COGS Clearing without guessing a cost.", at: Date.now()}; return; }
-      const bucket = BooksBridge.bucketFor(cogs); daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, cogs, cashMap); cogsPosted++;
+      // correction entry, so they are not unposted historical COGS. A recognized sale that still has
+      // no COGS is a genuine gap to review.
+      if (cogs.lines.length) { const bucket = BooksBridge.bucketFor(cogs); daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, cogs, cashMap); cogsPosted++; }
+      else if (BooksBridge.recognizedOrderForCogs(order) && !(Number(order.costPendingLines) > 0 || order.costCorrections)) { missingCogs++; review[`cogs_missing_${id}`] = {movementId: `cogs_missing_${id}`, type: "unposted_cogs", sourceId: id, accounts: [{account: "cogs:missing_snapshot", code: "5090"}], detail: "Historical order has no reliable COGS snapshot; review in Unposted COGS Clearing without guessing a cost.", at: Date.now()}; }
+      // Reconstruct the COGS reversal for returned stock, symmetric to the live onOrderInventoryReversal fold.
+      const reversal = BooksBridge.cogsReversalMovement(order, id, inv, cats);
+      if (reversal) { const bucket = BooksBridge.bucketFor(reversal); daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, reversal, cashMap); cogsReversed++; }
     });
     const existing = journalSnap.val() || {}, writes = {};
     let journalWrites = 0, journalUnchanged = 0;
@@ -550,7 +554,7 @@ exports.ensureBooksJournal = onCall(
     // the journal read at the start is that journal, so it is not downloaded a second time.
     const rebuiltJournal = journalWrites ? (/* download-ok: manual Books journal rebuild */await db.ref("/books/journal").get()).val() || {} : existing;
     await rebuildBooksMonthlyNet(db, rebuiltJournal);
-    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, journalWrites, journalUnchanged, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash, fixedFloat: registerFloat.amount, registerFloatSource: registerFloat.source};
+    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, journalWrites, journalUnchanged, netSales, cogsPosted, cogsReversed, missingCogs, reviewItems: Object.keys(review).length, openingCash, fixedFloat: registerFloat.amount, registerFloatSource: registerFloat.source};
     await db.ref("/systemMaintenance/booksJournalSynced").set(result); return result;
   },
 );
@@ -9266,6 +9270,18 @@ exports.onOrderInventoryReversal = onValueWritten(
       inventoryReversed: true, inventoryReversedAt: Date.now(), inventoryReversalRequested: null,
       inventoryReversalLedgerVersion: 1,
     });
+    // Reverse the sale's Books COGS leg (Dr COGS / Cr Inventory) now that its stock is returned,
+    // so Inventory GL 12xx stays equal to physical and a cancelled sale leaves no stale COGS.
+    // Idempotent via sources[cogs_reversal_<orderId>]; never a /financialMovements record.
+    const invCategories = (await db.ref("/posSettings/invCategories").get()).val() || {};
+    const cogsReversal = await readCatalogKeyed(db, ["inventory"], (maps) => BooksBridge.cogsReversalMovement(Object.assign({}, order, {inventoryReversed: true}), orderId, maps.inventory, invCategories));
+    if (cogsReversal) {
+      const bucket = BooksBridge.bucketFor(cogsReversal);
+      await db.ref(`/books/journal/${bucket.key}`).transaction((current) => {
+        const next = BooksBridge.applyDaily(current, cogsReversal, {});
+        return next === undefined ? undefined : Object.assign(next, {updatedAt: Date.now()});
+      }, undefined, false);
+    }
     logger.info("Order inventory reversed", {orderId, type, items: Object.keys(usage).length});
   },
 );

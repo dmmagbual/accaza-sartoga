@@ -279,5 +279,31 @@ ok(B.mapAccount('coa:4990','instore',{}).code==='4990','genuine non-variance oth
   ok(B.linesBalanced(fresh),'re-post with 1290 clearing still balances');
 }
 
+// 10) COGS reversal on void/refund-with-restock (Stage 2 determinism + stale-COGS fix).
+{
+  const voidedOrder={channel:"instore",voided:true,inventoryReversed:true,voidAccountingDate:"2026-08-25",cogsSnapshot:41.5,cogsAccountSnapshot:{"1200|5000":41.5}};
+  const voidRev=B.cogsReversalMovement(voidedOrder,"V1",{}, {});
+  ok(!!voidRev && voidRev.id==="cogs_reversal_V1" && voidRev.type==="order_cogs_reversal",'void reversal pseudo-movement id/type');
+  ok(voidRev.lines.some(l=>l.account==="coa:1200"&&l.debit===41.5),'void reversal debits Inventory (restore stock)');
+  ok(voidRev.lines.some(l=>l.account==="coa:5000"&&l.credit===41.5),'void reversal credits COGS (remove stale expense)');
+  ok(B.linesBalanced(voidRev.lines),'void COGS reversal balances');
+  ok(voidRev.occurredAt===Date.parse("2026-08-25T00:00:00+08:00"),'void reversal lands on the void accounting date');
+
+  // Refund-only reverses the corrected snapshot, not the original.
+  const refundedOrder={channel:"instore",inventoryReversed:true,refundedAt:Date.parse("2026-08-26T09:00:00+08:00"),cogsSnapshot:30,cogsAccountSnapshot:{"1200|5000":30},correctedCogsSnapshot:22,correctedCogsAccountSnapshot:{"1200|5000":22}};
+  const refundRev=B.cogsReversalMovement(refundedOrder,"R1",{}, {});
+  ok(refundRev.lines.some(l=>l.account==="coa:5000"&&l.credit===22),'refund reversal uses corrected COGS, not original');
+  ok(!refundRev.lines.some(l=>Math.abs(l.credit)===30||Math.abs(l.debit)===30),'refund reversal never uses the original snapshot');
+  ok(B.linesBalanced(refundRev.lines),'refund COGS reversal balances');
+
+  // Not reversed -> no reversal movement.
+  ok(B.cogsReversalMovement({voided:true,cogsSnapshot:10}, "N1", {}, {})===null,'no reversal when stock was not returned');
+
+  // Idempotent fold: applyDaily aborts on the second fire.
+  const n1=B.applyDaily(null, voidRev, {});
+  ok(B.linesBalanced(B.netToLines(n1.net)),'reversal folds into a balanced daily node');
+  ok(B.applyDaily(n1, voidRev, {})===undefined,'reversal fold is idempotent via sources[id]');
+}
+
 if(failed){ console.error(`\n${failed} bridge check(s) FAILED`); process.exit(1); }
-console.log('PASS: Accaza Books POS→journal bridge (mapping, business date, daily aggregation, idempotency, discrete entries, COGS leg, fixed assets, chart-category mapping) checks passed.');
+console.log('PASS: Accaza Books POS→journal bridge (mapping, business date, daily aggregation, idempotency, discrete entries, COGS leg, COGS reversal, fixed assets, chart-category mapping) checks passed.');

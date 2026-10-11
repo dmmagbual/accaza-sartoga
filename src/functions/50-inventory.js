@@ -516,6 +516,18 @@ exports.onOrderInventoryReversal = onValueWritten(
       inventoryReversed: true, inventoryReversedAt: Date.now(), inventoryReversalRequested: null,
       inventoryReversalLedgerVersion: 1,
     });
+    // Reverse the sale's Books COGS leg (Dr COGS / Cr Inventory) now that its stock is returned,
+    // so Inventory GL 12xx stays equal to physical and a cancelled sale leaves no stale COGS.
+    // Idempotent via sources[cogs_reversal_<orderId>]; never a /financialMovements record.
+    const invCategories = (await db.ref("/posSettings/invCategories").get()).val() || {};
+    const cogsReversal = await readCatalogKeyed(db, ["inventory"], (maps) => BooksBridge.cogsReversalMovement(Object.assign({}, order, {inventoryReversed: true}), orderId, maps.inventory, invCategories));
+    if (cogsReversal) {
+      const bucket = BooksBridge.bucketFor(cogsReversal);
+      await db.ref(`/books/journal/${bucket.key}`).transaction((current) => {
+        const next = BooksBridge.applyDaily(current, cogsReversal, {});
+        return next === undefined ? undefined : Object.assign(next, {updatedAt: Date.now()});
+      }, undefined, false);
+    }
     logger.info("Order inventory reversed", {orderId, type, items: Object.keys(usage).length});
   },
 );
