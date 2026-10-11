@@ -49,6 +49,7 @@ const world = () => ({
     V_RECON: bankVoucher({voucherNo: 'PV-202610-0011', date: '2026-10-03'}),
     V_AUG: bankVoucher({voucherNo: 'PV-202608-0003', date: '2026-08-15'}),
     V_STAFF: bankVoucher({voucherNo: 'PV-202610-0012', transactionType: 'staff_advance', conversionMovementId: 'controlled'}),
+    V_VOID: bankVoucher({voucherNo: 'PV-202610-0034', amount: 5075, date: '2026-09-29', fundingAccountId: 'undeposited', transactionType: 'owner_withdrawal', category: 'owner_draw', recipient: 'ALEX', requesterName: 'ALEX', purpose: 'ALEX', voided: true, voidedAt: at('2026-10-10')}),
   },
   financialMovements: {
     opening_undeposited: {type: 'opening_balance', sourceType: 'cashAccount', sourceId: 'undeposited', occurredAt: at('2026-09-01'), lines: [L('asset:cash_awaiting_deposit', 6843, 0), L('equity:opening_balance', 0, 6843)]},
@@ -65,7 +66,9 @@ const world = () => ({
     petty_V_LEGACY_MALFORMED: {type: 'petty_cash_expense', sourceType: 'pettyVoucher', sourceId: 'V_LEGACY_MALFORMED', occurredAt: at('2026-10-28'), lines: [L('expense:office_supplies', 1400, 0), L('expense:other_expense', 10, 0), L('asset:cash_account:acc_bank', 0, 1410)]},
     petty_correct_V_LEGACY_MALFORMED_1: {type: 'petty_cash_payment_correction', sourceType: 'pettyVoucher', sourceId: 'V_LEGACY_MALFORMED', occurredAt: NOW, lines: [L('asset:cash_awaiting_deposit', 1400, 0), L('expense:office_supplies', 0, 1400), L('expense:office_supplies', 1400, 0), L('asset:cash_awaiting_deposit', 0, 1400)]},
     petty_correct_OTHER_1: {type: 'petty_cash_payment_correction', sourceType: 'pettyVoucher', sourceId: 'OTHER', occurredAt: NOW - 1, lines: [L('asset:cash_awaiting_deposit', 50, 0), L('expense:office_supplies', 0, 50), L('expense:office_supplies', 50, 0), L('asset:cash_awaiting_deposit', 0, 50)]},
+    petty_void_V_VOID: {type: 'revolving_fund_owner_withdrawal_void', sourceType: 'pettyVoucher', sourceId: 'V_VOID', occurredAt: at('2026-10-10'), lines: [L('asset:cash_awaiting_deposit', 5075, 0), L('equity:owner_draw', 0, 5075)]},
   },
+  books: {config: {cashAccountMap: {}}, journal: {petty_void_V_VOID: {id: 'petty_void_V_VOID', date: '2026-10-10', sourceType: 'pettyVoucher', sourceId: 'V_VOID', lines: [{code: '1001', debit: 5075, credit: 0}, {code: '3100', debit: 0, credit: 5075}], createdAt: at('2026-10-10')}}},
   cfLedger: {
     fm_petty_V_BANK: {accountId: 'acc_bank', dir: 'out', amount: 1400, date: '2026-10-28', movementId: 'petty_V_BANK', source: 'pettyVoucher', linkId: 'V_BANK'},
     fm_petty_V_HAND: {accountId: 'cash_on_hand', dir: 'out', amount: 1400, date: '2026-10-01', movementId: 'petty_V_HAND', source: 'pettyVoucher', linkId: 'V_HAND'},
@@ -79,17 +82,20 @@ const world = () => ({
     C1: {shiftId: 'C1', amount: 5000, paidOutAmount: 4000, depositedAmount: 0, remaining: 1000, closedAt: 1, status: 'partially_paid_out'},
     C2: {shiftId: 'C2', amount: 2000, paidOutAmount: 0, depositedAmount: 0, remaining: 2000, closedAt: 2, status: 'awaiting_deposit'},
     J: {shiftId: 'J', amount: 2997, paidOutAmount: 2997, depositedAmount: 0, remaining: 0, closedAt: 0, status: 'paid_out'},
+    petty_void_V_VOID: {shiftId: 'petty_void_V_VOID', amount: 5075, paidOutAmount: 0, depositedAmount: 0, remaining: 5075, closedAt: at('2026-10-10'), status: 'awaiting_deposit', movementId: 'petty_void_V_VOID'},
   },
   // The 7 Oct state: J shows ₱2,664.01 in the projection although it is fully paid out.
   cashCustodyOpenIndex: {
     C1: {id: 'C1', amount: 5000, paidOutAmount: 4000, depositedAmount: 0, remaining: 1000, closedAt: 1},
     C2: {id: 'C2', amount: 2000, paidOutAmount: 0, depositedAmount: 0, remaining: 2000, closedAt: 2},
     J: {id: 'J', amount: 2997, paidOutAmount: 332.99, depositedAmount: 0, remaining: 2664.01, closedAt: 0},
+    petty_void_V_VOID: {id: 'petty_void_V_VOID', amount: 5075, paidOutAmount: 0, depositedAmount: 0, remaining: 5075, closedAt: at('2026-10-10'), movementId: 'petty_void_V_VOID'},
   },
   undepositedLedgerPageIndex: {
     petty_correct_V_LEGACY_1: {id: 'petty_correct_V_LEGACY_1', occurredAt: NOW, type: 'petty_cash_payment_correction', sourceId: 'V_LEGACY', sourceType: 'pettyVoucher', inAmount: 1400, outAmount: 1400, netAmount: 0},
     petty_correct_V_LEGACY_2: {id: 'petty_correct_V_LEGACY_2', occurredAt: NOW, type: 'petty_cash_payment_correction', sourceId: 'V_LEGACY', sourceType: 'pettyVoucher', inAmount: 1400, outAmount: 1400, netAmount: 0},
     petty_correct_OTHER_1: {id: 'petty_correct_OTHER_1', occurredAt: NOW - 1, type: 'petty_cash_payment_correction', sourceId: 'OTHER', sourceType: 'pettyVoucher', inAmount: 50, outAmount: 50, netAmount: 0},
+    petty_void_V_VOID: {id: 'petty_void_V_VOID', occurredAt: at('2026-10-10'), type: 'revolving_fund_owner_withdrawal_void', sourceId: 'V_VOID', sourceType: 'pettyVoucher', voucherNo: 'PV-202610-0034', inAmount: 5075, outAmount: 0, netAmount: 5075},
   },
   pettyVoucherPostingIndex: {V_BANK: 'petty_V_BANK', V_POOL: 'petty_V_POOL'},
   pettyVoucherAttentionIndex: {missing: {V_BANK: {id: 'V_BANK', voucherNo: 'PV-202610-0015', amount: 1400, status: 'approved'}}},
@@ -203,7 +209,22 @@ await refused(correct('super_uid', 'V_RECON', {date: '2026-10-03', amount: 1400,
 await refused(F.managePettyVoucher({auth: {uid: 'super_uid', token: {}}, data: {action: 'approve', voucherId: 'V_PEND', approvalId: 'approval_none'}}), /in the future/, 'a future-dated pending voucher cannot be approved');
 await refused(F.managePettyVoucher({auth: {uid: 'super_uid', token: {}}, data: {action: 'correct', voucherId: 'V_PEND', date: '2026-10-09', amount: 1400, category: 'office_supplies', payee: 'MARIA', purpose: 'x', reason: 'r'}}), /in the future/, 'a pending voucher cannot be edited to a future date');
 
-/* 5. Undeposited Collection funding: custody moves by the difference only, projection written with it. */
+/* 5. The 21-character reversal-date action reaches the live correction branch without creating a new movement. */
+const movementKeysBeforeDateRepair = Object.keys(await val('financialMovements')).sort();
+const dateRepair = await F.managePettyVoucher({auth: {uid: 'super_uid', token: {}}, data: {action: 'correct_reversal_date', voucherId: 'V_VOID', expectedRevision: 0, accountingDate: '2026-09-29', reason: 'Correct reversal date to match the intended accounting period'}});
+assert.equal(dateRepair.result, 'reversal_date_corrected');
+assert.equal((await val('financialMovements/petty_void_V_VOID')).occurredAt, at('2026-09-29'));
+assert.equal((await val('books/journal/petty_void_V_VOID')).date, '2026-09-29');
+assert.equal((await val('pettyCashVouchers/V_VOID')).reversalAccountingDate, '2026-09-29');
+assert.equal((await val('pettyCashVouchers/V_VOID')).reversalAccountingDateRevision, 1);
+assert.equal((await val('cashCustody/petty_void_V_VOID')).closedAt, at('2026-09-29'));
+assert.equal((await val('cashCustodyOpenIndex/petty_void_V_VOID')).closedAt, at('2026-09-29'));
+assert.equal((await val('undepositedLedgerPageIndex/petty_void_V_VOID')).occurredAt, at('2026-09-29'));
+assert.deepEqual(Object.keys(await val('financialMovements')).sort(), movementKeysBeforeDateRepair, 'correcting the reversal date must not create or replace any financial-movement key');
+assert.equal((await val('cashJournalRevisions/petty_void_V_VOID/1')).after.accountingDate, '2026-09-29');
+assert.equal((await val(`operationalAudit/${NOW}_petty_reversal_date_V_VOID_1`)).action, 'correct_petty_voucher_reversal_date');
+
+/* 6. Undeposited Collection funding: custody moves by the difference only, projection written with it. */
 change = Object.assign({expectedRev: 0, date: '2026-09-29', amount: 4000}, base, {purpose: 'PAYMENT FOR FUEL', category: 'transport'});
 await correct('super_uid', 'V_POOL', {date: '2026-09-29', amount: 4000, category: 'transport', payee: 'MARIA', purpose: 'PAYMENT FOR FUEL'}, await approve('V_POOL', change));
 const poolRev = await val('financialMovements/petty_corr_V_POOL_r1_rev'), poolPost = await val('financialMovements/petty_corr_V_POOL_r1_post');
