@@ -55,6 +55,12 @@ for(const marker of ['SAMPLE_ENTRY_IDS','_sample_backup','entries: []','const us
 if((booksHtml.match(/\["2020","Due to Platforms","Liability"/g)||[]).length<2)fail('Due to Platforms must exist in both the default chart and existing-browser migration');
 for(const marker of ['["1290","Inventory Receiving Clearing"','["2090","Unrecorded Payables Clearing"','["5090","Unposted COGS Clearing"','Sync all Finance transactions','ensureBooksJournal'])if(!booksHtml.includes(marker)&&!functionsSource.includes(marker))fail(`Books historical sync marker missing: ${marker}`);
 for(const marker of ['window.__booksSync=function(){var ensureLedger=httpsCallable(fns,"ensureFinancialLedger"),ensureJournal=httpsCallable(fns,"ensureBooksJournal")','includeInAuthoritativeBooks','sales_authority_','authoritative net sales: '])if(!booksHtml.includes(marker)&&!functionsSource.includes(marker)&&!booksBridgeSource.includes(marker))fail(`Authoritative sales reconciliation marker missing: ${marker}`);
+// Stage 1 integrity hardening: commitFinancial must assert balance at the single write
+// choke-point, and both journal mirror triggers must carry retry:true so a transient
+// failure redelivers (bounded) instead of silently dropping a journal entry or COGS leg.
+if(!functionsSource.includes('Financial.assertBalanced(record.lines)'))fail('commitFinancial balance assertion missing');
+if(!functionsSource.includes('{ref: "/financialMovements/{movementId}", region: "asia-southeast1", retry: true}'))fail('Journal mirror trigger must retry (bounded) on transient failure');
+if(!functionsSource.includes('{ref: "/orders/{orderId}/cogsSnapshot", region: "asia-southeast1", retry: true}'))fail('COGS mirror trigger must retry (bounded) on transient failure');
 for(const marker of ['authoritativeEntries=ents.filter(e=>e&&e.source==="pos")','manualEntries=ents.filter(e=>!e||e.source!=="pos")','Unverified manual sales — excluded from net sales','Admin-authorized bridge entries only'])if(!booksHtml.includes(marker))fail(`Books net-sales source boundary missing: ${marker}`);
 const platformBridgeSource=fs.readFileSync(path.join(root,'functions','lib','books-bridge.js'),'utf8');
 for(const marker of ['"expense:platform_variance:va_refund": "6085"','"revenue:platform_variance:va_refund_recovery": "4990"'])if(!platformBridgeSource.includes(marker))fail(`Platform refund classification guard missing: ${marker}`);

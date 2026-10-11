@@ -353,6 +353,9 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
       custodyIndex=custodyIndexWrites(touched,extraWrites);
     }
     if(record.reversalOf){const source=(await db.ref(`/financialMovements/${financeKey(record.reversalOf,'Reversal source')}`).get()).val();if(source&&Number(source.revision)>0&&CashJournalEdit.eligible(source))throw new HttpsError('failed-precondition','This cash journal has an audited revision. Refresh and use Edit / correct; journal-only reversal would break its custody link.');}
+    // Defense-in-depth: every posted movement must balance at the single write choke-point,
+    // even if a future caller forgets to assert it at the construction site.
+    Financial.assertBalanced(record.lines);
     const writes = Object.assign({}, extraWrites, custodyIndex, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
     await safeFinancialUpdate(db, writes, "financial");
     if (run) run.written += 1;

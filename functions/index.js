@@ -413,7 +413,7 @@ async function booksSingleEntry(db,mv,cashMap){
 }
 
 exports.mirrorPosMovementToBooks = onValueCreated(
-  {ref: "/financialMovements/{movementId}", region: "asia-southeast1"},
+  {ref: "/financialMovements/{movementId}", region: "asia-southeast1", retry: true},
   async (event) => {
     const mv = event.data.val();
     if (!mv || !Array.isArray(mv.lines) || !mv.lines.length) return;
@@ -445,7 +445,7 @@ exports.mirrorPosMovementToBooks = onValueCreated(
 // COGS leg: when an order's COGS snapshot is written, fold Dr COGS / Cr Inventory
 // into the same daily-summary-per-channel entry. Idempotent via sources[cogs_<orderId>].
 exports.mirrorPosCogsToBooks = onValueWritten(
-  {ref: "/orders/{orderId}/cogsSnapshot", region: "asia-southeast1"},
+  {ref: "/orders/{orderId}/cogsSnapshot", region: "asia-southeast1", retry: true},
   async (event) => {
     const after = event.data && event.data.after && event.data.after.val();
     if (!(Number(after) > 0)) return;
@@ -6398,6 +6398,9 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
       custodyIndex=custodyIndexWrites(touched,extraWrites);
     }
     if(record.reversalOf){const source=(await db.ref(`/financialMovements/${financeKey(record.reversalOf,'Reversal source')}`).get()).val();if(source&&Number(source.revision)>0&&CashJournalEdit.eligible(source))throw new HttpsError('failed-precondition','This cash journal has an audited revision. Refresh and use Edit / correct; journal-only reversal would break its custody link.');}
+    // Defense-in-depth: every posted movement must balance at the single write choke-point,
+    // even if a future caller forgets to assert it at the construction site.
+    Financial.assertBalanced(record.lines);
     const writes = Object.assign({}, extraWrites, custodyIndex, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
     await safeFinancialUpdate(db, writes, "financial");
     if (run) run.written += 1;
