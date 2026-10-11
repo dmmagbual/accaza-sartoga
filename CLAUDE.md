@@ -42,33 +42,31 @@ For substantive investigations or corrections, trace the affected workflow top t
 
 ## Specialist Agent Orchestration
 
-The primary agent owns every Accaza task and delegates to the project specialists installed under `.claude/agents` (Claude) and `.codex/agents` (Codex) only when their expertise materially improves the result. Select specialists from the task itself:
+The primary agent owns the task and automatically consults only the minimum specialist(s) whose expertise materially improves the outcome. Do not invoke specialists for trivial, low-risk edits unless genuinely relevant. Avoid duplicate analysis; use independent review only when it materially reduces risk.
 
-- **Product Manager** (`product-manager`): requirements, workflows, acceptance criteria, feature definition, business-rule clarification.
-- **Senior Project Manager** (`project-manager-senior`): scope, sequencing, dependencies, implementation planning, preventing unnecessary scope expansion.
-- **Software Architect** (`engineering-software-architect`): architecture, domain boundaries, cross-module design, integrations, scalability, major structural decisions.
-- **Database Optimizer** (`engineering-database-optimizer`): schema changes, migrations, indexes, queries, inventory/FIFO data structures, transactional integrity, database performance.
-- **Frontend Developer** (`engineering-frontend-developer`): POS/admin UI, responsive behavior, accessibility, frontend interactions and presentation.
-- **Identity & Access Engineer** (`engineering-identity-access-engineer`): authentication, authorization, roles, permissions, approvals, branch/franchise access boundaries, security-sensitive access control.
-- **Bookkeeper & Controller** (`finance-bookkeeper-controller`): accounting lifecycle, COGS, inventory valuation, financial postings, reconciliations, corrections/reversals, auditability, Finance Books/General Ledger behavior.
-- **Financial Analyst** (`finance-financial-analyst`): margins, profitability, KPIs, management reporting, financial-analysis logic.
-- **Sprint Prioritizer** (`product-sprint-prioritizer`): prioritization when competing tasks, backlog items or implementation alternatives need sequencing.
-- **Code Reviewer** (`engineering-code-reviewer`): final review of material code changes for correctness, regressions, maintainability and compliance with Accaza project rules.
+Select specialists by task:
 
-Rules:
+- **Product Manager** (`product-manager`) — requirements, workflows, acceptance criteria, feature definition, business rules.
+- **Senior Project Manager** (`project-manager-senior`) — scope, sequencing, dependencies, implementation planning, preventing unnecessary scope expansion.
+- **Software Architect** (`engineering-software-architect`) — architecture, domain boundaries, integrations, scalability, or major structural decisions.
+- **Database Optimizer** (`engineering-database-optimizer`) — schema, migrations, indexes, queries, inventory/FIFO structures, transactional integrity, or database performance.
+- **Frontend Developer** (`engineering-frontend-developer`) — material POS/admin UI, responsiveness, accessibility, interactions, or presentation.
+- **Identity & Access Engineer** (`engineering-identity-access-engineer`) — authentication, authorization, roles, permissions, approvals, franchise/branch boundaries, or security-sensitive access.
+- **Bookkeeper & Controller** (`finance-bookkeeper-controller`) — accounting lifecycle, COGS, inventory valuation, postings, reconciliations, reversals/corrections, auditability, or Finance Books/General Ledger behavior.
+- **Financial Analyst** (`finance-financial-analyst`) — margins, profitability, KPIs, management reporting, or financial-analysis logic.
+- **Sprint Prioritizer** (`product-sprint-prioritizer`) — prioritization among competing work, backlog items, or implementation alternatives.
+- **Code Reviewer** (`engineering-code-reviewer`) — final review of material code changes for correctness, regressions, maintainability, and compliance.
 
-1. The primary agent remains responsible for the task and delegates to specialists when their expertise materially improves the result.
-2. Do not invoke every specialist on every task.
-3. Do not invoke specialists for trivial edits, typo fixes, simple copy changes or other low-risk changes unless specialist review is genuinely relevant.
-4. For cross-domain features, automatically use the minimum appropriate combination of specialists.
-5. Financial or inventory-impacting changes must involve Bookkeeper & Controller; their database-impacting portions should involve Database Optimizer where relevant.
-6. Authentication, authorization, role, permission or approval-control changes must involve Identity & Access Engineer.
-7. Material architectural changes must involve Software Architect before implementation.
-8. Material UI changes should involve Frontend Developer.
-9. Material completed implementations should receive Code Reviewer review before final handoff.
-10. Specialist recommendations are advisory. They must not override Accaza's existing permanent project rules, server-authority requirements, financial lifecycle safeguards, testing requirements or explicit user instructions.
-11. When specialists disagree, the primary agent reconciles the trade-offs against Accaza's existing project rules and explains any consequential decision.
-12. Avoid duplicate analysis: do not invoke one specialist when another already adequately covers the issue, unless independent review materially reduces risk.
+Required routing:
+
+- Financial or inventory-impacting work: involve **Bookkeeper & Controller**; also involve **Database Optimizer** when database work is relevant.
+- Authentication, authorization, permissions, roles, or approval controls: involve **Identity & Access Engineer**.
+- Material architectural changes: involve **Software Architect** before implementation.
+- Material UI changes: involve **Frontend Developer**.
+- Material completed implementations: obtain **Code Reviewer** review before final handoff.
+- Cross-domain work: use the minimum appropriate combination of specialists.
+
+Specialist recommendations are advisory and cannot override existing Accaza rules, server-authority requirements, financial lifecycle safeguards, testing requirements, or explicit user instructions. If specialists disagree, the primary agent reconciles the trade-offs under existing project rules and explains consequential decisions. Specialist names must match the agents installed in `.claude/agents` and `.codex/agents`.
 
 ## Output and Token Efficiency
 
@@ -86,9 +84,16 @@ These rules govern how work is reported and how effort is spent. They never over
 10. Do not repeat project background, findings, or explanations already established unless they changed or are necessary for a decision.
 11. Give specialists only the context necessary for their assignment where practical.
 12. Keep specialist results focused on findings, risks and recommendations rather than long reports.
-13. Use targeted tests during development when safe, followed by the project's required full validation (`npm run test:ci`) at the appropriate checkpoint. Do not repeatedly run expensive full suites after inconsequential intermediate changes.
-14. Keep normal final responses to approximately 500 words or less. Exceed this only when a serious risk or necessary business decision genuinely requires more explanation.
-15. Keep detailed engineering analysis in an artifact or project document when useful rather than reproducing it in chat.
+13. Diagnosis does not authorize implementation. For check, explain, review, audit or investigate requests, stop after the evidence-backed answer and recommendation unless Danilo explicitly asks to change, build or fix something.
+14. Freeze the approved scope and acceptance criteria before implementation. Treat Danilo's follow-ups cumulatively, but when one materially expands the task, state the added scope and finish or re-plan the smallest coherent increment instead of silently widening the build.
+15. Limit routine repository reads and searches to the relevant files, matches and line ranges, normally no more than 200 output lines per command. If a routine read or search result is truncated, narrow the query, path or range; do not repeat or broaden the same command.
+16. After two substantially similar command, patch, or test failures, stop retrying, identify the common cause and choose one corrected approach before continuing.
+17. If Danilo says token use is high, sessions are being consumed, or the task is wasting tokens, immediately freeze scope, stop new optional skills, agents, design discussion and broad research, then complete the minimum already-approved outcome with the required verification.
+18. Do not pass the full conversation history to a specialist when a bounded dispatch can carry the necessary context. Provide only the scope, verified evidence, constraints and requested deliverable; reuse an existing specialist and its findings instead of spawning a replacement for the same role.
+19. Give reviewers only the task requirements, acceptance criteria, relevant diff, and test results unless broader history is essential to assess a specific risk.
+20. Use targeted tests during development when safe, followed by the project's required full validation (`npm run test:ci`) at the appropriate checkpoint. Do not repeatedly run expensive full suites after inconsequential intermediate changes.
+21. Keep normal final responses to approximately 500 words or less. Exceed this only when a serious risk or necessary business decision genuinely requires more explanation.
+22. Keep detailed engineering analysis in an artifact or project document when useful rather than reproducing it in chat.
 
 Default final response format:
 
