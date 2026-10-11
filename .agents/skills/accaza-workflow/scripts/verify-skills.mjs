@@ -25,6 +25,12 @@ function read(path) {
   return text;
 }
 
+function instructionSection(text, title) {
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = text.match(new RegExp(`^#{2,3} ${escaped}\\r?\\n([\\s\\S]*?)(?=^#{2,3} |(?![\\s\\S]))`, 'm'));
+  return (match?.[1] ?? '').replace(/\r\n/g, '\n').trim();
+}
+
 function metadata(path, folder) {
   const text = read(path);
   const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
@@ -80,6 +86,43 @@ for (const name of ['AGENTS.md', 'CLAUDE.md']) {
   const text = read(resolve(root, name));
   if (!text.includes('docs/accaza-capability-map.md') || !text.includes('Default to these root instructions')) {
     errors.push(`Missing root activation route: ${name}`);
+  }
+}
+
+const tokenEfficiencyContract = [
+  'Diagnosis does not authorize implementation',
+  'Freeze the approved scope and acceptance criteria before implementation',
+  'If a routine read or search result is truncated',
+  'After two substantially similar command, patch, or test failures',
+  'If Danilo says token use is high',
+  'Do not pass the full conversation history to a specialist',
+  'Give reviewers only the task requirements, acceptance criteria, relevant diff, and test results',
+  'They never override correctness, financial integrity, inventory integrity, security, authorization, auditability, testing requirements, server authority',
+];
+for (const name of ['AGENTS.md', 'CLAUDE.md']) {
+  const text = files.get(resolve(root, name)) ?? '';
+  for (const term of tokenEfficiencyContract) {
+    if (!text.includes(term)) errors.push(`Root token-efficiency safeguard missing in ${name}: ${term}`);
+  }
+}
+
+const agentsInstructions = files.get(resolve(root, 'AGENTS.md')) ?? '';
+const claudeInstructions = files.get(resolve(root, 'CLAUDE.md')) ?? '';
+for (const title of ['Specialist Agent Orchestration', 'Output and Token Efficiency']) {
+  const agentsSection = instructionSection(agentsInstructions, title);
+  const claudeSection = instructionSection(claudeInstructions, title);
+  if (!agentsSection || !claudeSection) errors.push(`Missing synchronized instruction section: ${title}`);
+  else if (agentsSection !== claudeSection) errors.push(`Instruction section drift: ${title}`);
+}
+for (const term of [
+  'Financial or inventory-impacting work: involve **Bookkeeper & Controller**; also involve **Database Optimizer** when database work is relevant',
+  'Authentication, authorization, permissions, roles, or approval controls: involve **Identity & Access Engineer**',
+  'Material architectural changes: involve **Software Architect** before implementation',
+  'Material UI changes: involve **Frontend Developer**',
+  'Material completed implementations: obtain **Code Reviewer** review before final handoff',
+]) {
+  for (const [name, text] of [['AGENTS.md', agentsInstructions], ['CLAUDE.md', claudeInstructions]]) {
+    if (!text.includes(term)) errors.push(`Mandatory specialist routing missing in ${name}: ${term}`);
   }
 }
 
