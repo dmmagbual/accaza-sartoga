@@ -299,6 +299,40 @@ function cogsMovement(order, orderId, inventory, categories){
   };
 }
 
+/* Reversal of an order's COGS leg when its stock is returned (void or refund with restock).
+   Inverts cogsLines (Dr Inventory / Cr COGS) so a cancelled sale leaves no stale COGS and the
+   Inventory GL stays equal to physical stock. This is a pseudo-movement folded into the daily
+   summary — never a /financialMovements record — so netMovementCorrection (fullOrderVoidMovement,
+   void_balance_correction) can never double-net it. Amount rule: void reverses the ORIGINAL
+   cogsSnapshot (the void's netMovementCorrection already netted the correction delta to zero);
+   refund-only reverses the corrected snapshot (fallback original). Occurred at the void accounting
+   date (order.voidAccountingDate) or the refund date (order.refundedAt), so the reversal lands in
+   the same period as the revenue reversal. */
+function cogsReversalMovement(order, orderId, inventory, categories){
+  order = order || {};
+  // Only an order whose stock was actually returned (void/refund with restock) reverses COGS.
+  if (order.inventoryReversed !== true) return null;
+  const voided = order.voided === true;
+  const corrected = !voided && order.correctedCogsSnapshot != null;
+  const synthetic = corrected ? Object.assign({}, order, {
+    cogsSnapshot: order.correctedCogsSnapshot,
+    cogsAccountSnapshot: order.correctedCogsAccountSnapshot || order.cogsAccountSnapshot,
+    cogsCategorySnapshot: order.correctedCogsCategorySnapshot || order.cogsCategorySnapshot,
+    cogsDetail: undefined,
+  }) : order;
+  const lines = cogsLines(synthetic, inventory, categories).map(function(line){ return {account: line.account, debit: line.credit, credit: line.debit}; });
+  if (!lines.length) return null;
+  const occurredAt = voided
+    ? (Date.parse((order.voidAccountingDate || businessDate(Number(order.voidedAt || Date.now()))) + "T00:00:00+08:00") || Number(order.voidedAt || Date.now()))
+    : Number(order.refundedAt || Date.now());
+  return {
+    id: "cogs_reversal_" + orderId, type: "order_cogs_reversal", sourceType: "order",
+    channel: String(order.channel || "instore").toLowerCase(),
+    occurredAt,
+    lines,
+  };
+}
+
 function recognizedOrderForCogs(order){
   order=order||{};var status=order.status==='Archived'?order.prevStatus:order.status;
   return order.voided!==true&&order.paymentStatus!=='pending'&&(status==='Completed'||status==='Received');
@@ -338,4 +372,4 @@ function inventoryReconciliationSnapshot(inventory,journal){
   return{rows:rows,totalStock:r2(rows.reduce(function(sum,row){return sum+row.stockValue;},0)),totalBooks:r2(rows.reduce(function(sum,row){return sum+row.booksValue;},0)),totalDifference:totalDifference,clearingBalance:r2(books["1290"]),unmapped:unmapped};
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, fullyVoidedSourceIds, includeInRecognizedBooks, includeInAuthoritativeBooks, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue, inventoryReconciliationSnapshot, openingRebalanceLines};
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, fullyVoidedSourceIds, includeInRecognizedBooks, includeInAuthoritativeBooks, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, cogsReversalMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue, inventoryReconciliationSnapshot, openingRebalanceLines};

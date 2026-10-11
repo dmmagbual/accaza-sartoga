@@ -61,6 +61,12 @@ for(const marker of ['window.__booksSync=function(){var ensureLedger=httpsCallab
 if(!functionsSource.includes('Financial.assertBalanced(record.lines)'))fail('commitFinancial balance assertion missing');
 if(!functionsSource.includes('{ref: "/financialMovements/{movementId}", region: "asia-southeast1", retry: true}'))fail('Journal mirror trigger must retry (bounded) on transient failure');
 if(!functionsSource.includes('{ref: "/orders/{orderId}/cogsSnapshot", region: "asia-southeast1", retry: true}'))fail('COGS mirror trigger must retry (bounded) on transient failure');
+// Stage 2 determinism + COGS reversal: a voided/refunded order whose stock is returned must reverse
+// its Books COGS leg (Dr Inventory / Cr COGS) as a pseudo-movement folded into the daily summary, never
+// a /financialMovements record, and the rebuild must reconstruct it and fold every movement symmetrically.
+for(const marker of ['BooksBridge.cogsReversalMovement','cogs_reversal_<orderId>'])if(!functionsSource.includes(marker))fail(`COGS reversal pseudo-movement missing: ${marker}`);
+if(!functionsSource.includes('// Deterministic projection: fold EVERY movement exactly as the live mirror does'))fail('Deterministic rebuild projection missing');
+for(const marker of ['order_cogs_reversal','inventoryReversed !== true'])if(!booksBridgeSource.includes(marker))fail(`COGS reversal lib guard missing: ${marker}`);
 for(const marker of ['authoritativeEntries=ents.filter(e=>e&&e.source==="pos")','manualEntries=ents.filter(e=>!e||e.source!=="pos")','Unverified manual sales — excluded from net sales','Admin-authorized bridge entries only'])if(!booksHtml.includes(marker))fail(`Books net-sales source boundary missing: ${marker}`);
 const platformBridgeSource=fs.readFileSync(path.join(root,'functions','lib','books-bridge.js'),'utf8');
 for(const marker of ['"expense:platform_variance:va_refund": "6085"','"revenue:platform_variance:va_refund_recovery": "4990"'])if(!platformBridgeSource.includes(marker))fail(`Platform refund classification guard missing: ${marker}`);
