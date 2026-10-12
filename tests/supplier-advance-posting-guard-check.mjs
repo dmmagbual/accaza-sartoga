@@ -172,7 +172,24 @@ assert.deepEqual(
   'an unlinked void credit must not be treated as proof, and must not erase a real posting either',
 );
 
-// ---------- 4. the retired register route stays retired ----------
+// ---------- 4. Supplier Advances stays closed to manual journals ----------
+// The replacement journal in the live Oct 2026 case reached 1115 through the chart code (coa:1115),
+// which is exactly why the reconciliation had to resolve by code. The rule that a manual journal may
+// not post to 1115 exists and is enforced on the chart code the journal carries, so the chart form
+// cannot slip past it again.
+const accountRules = read('src/functions/40-sales-finance.js');
+assert.match(accountRules, /"1115":\{postingRule:"blocked"/, 'Supplier Advances must refuse manual journals');
+assert.match(accountRules, /"1110":\{postingRule:"blocked"/, 'receivable control accounts must refuse manual journals too');
+const manualJournal = read('src/functions/42c-financial-command-controls.js');
+assert.match(manualJournal, /action === "manual_journal"/, 'the manual journal command must exist');
+assert.match(
+  manualJournal,
+  /manualCodes=new Set\(\(Array\.isArray\(data\.lines\)\?data\.lines:\[\]\)\.map\(\(line\)=>String\(line&&line\.code\|\|""\)\)\)/,
+  'the control-account rule must be checked against the chart code each line carries, not the account string',
+);
+assert.match(manualJournal, /if\(blockedRow\)throw new HttpsError\("failed-precondition",blockedRow\.message/, 'a blocked control account must refuse the journal outright');
+
+// ---------- 5. the retired register route stays retired ----------
 const register = read('src/admin/register/40-revolving-fund.js');
 assert.ok(!/type:'purchase_advance'/.test(register), 'the register must never write a purchase_advance pay-out again');
 assert.ok(!/Release cash for a purchase/.test(register), 'the drawer-release form is gone, not merely shadowed by an early return');

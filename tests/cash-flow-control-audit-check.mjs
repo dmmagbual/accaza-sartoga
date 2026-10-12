@@ -69,4 +69,30 @@ await assert.rejects(
   'a conversion record must never be recreated as a new Undeposited cash payment',
 );
 assert.equal((await db.ref('financialMovements/petty_ADOPTED').get()).exists(), false, 'the blocked repair leaves the original cash history unchanged');
+// Oct 2026: account 1115 is reached in two account-string forms — the per-advance key a payment
+// workflow writes, and the chart code (coa:1115) a validated manual journal or its correction
+// carries. The audit must compare the ACCOUNT, not the string; matching the string reported a
+// critical mismatch for a reclassified advance that reconciled (live case PV-202609-0001).
+const liveDb = createFakeDatabase({
+  admins: {manager_uid: 'manager'},
+  financialMovements: {
+    petty_live: {type: 'revolving_fund_purchase_advance', sourceType: 'pettyVoucher', sourceId: 'pv_live', occurredAt: NOW, reversedByMovementId: 'books_edit_reverse_live', lines: [line('asset:purchase_cash_advance:pv_live', 5637.5, 0), line('asset:cash_account:wallet', 0, 5637.5)]},
+    books_edit_reverse_live: {type: 'manual_books_journal_correction_reversal', sourceType: 'pettyVoucher', sourceId: 'pv_live', occurredAt: NOW, reversalOf: 'petty_live', lines: [line('asset:purchase_cash_advance:pv_live', 0, 5637.5), line('asset:cash_account:wallet', 5637.5, 0)]},
+    books_edit_replace_live: {type: 'manual_books_journal', sourceType: 'booksManualJournal', occurredAt: NOW, lines: [line('coa:1115', 5637.5, 0), line('asset:cash_account:wallet', 0, 5637.5)]},
+    purchase_cash_live: {type: 'purchase_cash', sourceType: 'purchaseInvoice', occurredAt: NOW, lines: [line('coa:1230', 5637.5, 0), line('asset:purchase_cash_advance:pv_live', 0, 5637.5)]},
+  },
+});
+const liveAudit = await loadFunctions(liveDb, {now: NOW}).exports.auditFinancialControls(request);
+assert.equal(liveAudit.issues.find((issue) => issue.kind === 'supplier_advances_control_mismatch'), undefined, 'a supplier advance reclassified through the chart code must not be reported as a mismatch when the account reconciles');
+
+const brokenDb = createFakeDatabase({
+  admins: {manager_uid: 'manager'},
+  financialMovements: {orphan: {type: 'purchase_cash', sourceType: 'purchaseInvoice', occurredAt: NOW, lines: [line('asset:purchase_cash_advance:missing', 0, 120), line('coa:1230', 120, 0)]}},
+});
+const brokenAudit = await loadFunctions(brokenDb, {now: NOW}).exports.auditFinancialControls(request);
+const brokenAdvance = brokenAudit.issues.find((issue) => issue.kind === 'supplier_advances_control_mismatch');
+assert.ok(brokenAdvance, 'a real supplier-advance mismatch must still be reported');
+assert.equal(brokenAdvance.amount, -120, 'the reported difference must be the account-level gap');
+assert.equal(brokenAdvance.severity, 'critical', 'a real control mismatch stays critical');
+
 console.log('PASS: the Cash Flow control audit excludes proven conversions, reports real remaining exceptions, and exposes only the safe bank-register repair.');

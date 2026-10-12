@@ -30,7 +30,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
+
+// The same Books bridge the server uses, so an account string resolves to its GL code here too.
+const require = createRequire(import.meta.url);
+const BooksBridge = require('../functions/lib/books-bridge.js');
 
 /** Advanced payments are stored per advance: asset:purchase_cash_advance:<advanceId>. */
 export const ADVANCE_PREFIX = 'asset:purchase_cash_advance:';
@@ -138,10 +143,13 @@ export function supplierAdvanceRollforward(input) {
 
   const advances = new Map();
   const unattributed = [];
+  const chartFormLines = [];
   let glDebit = 0;
   let glCredit = 0;
   let reversedDebit = 0;
   let reversedCredit = 0;
+  let chartFormDebit = 0;
+  let chartFormCredit = 0;
 
   Object.keys(movements).forEach((movementId) => {
     const movement = movements[movementId] || {};
@@ -149,12 +157,24 @@ export function supplierAdvanceRollforward(input) {
     const date = movementDate(movement);
     toList(movement.lines).forEach((line) => {
       const account = String((line && line.account) || '');
-      if (account.indexOf(ADVANCE_PREFIX) !== 0) return;
-      const advanceId = account.slice(ADVANCE_PREFIX.length);
       const debit = money(line.debit);
       const credit = money(line.credit);
-      // The server audit matches the prefix, so a line with no advance id still counts in the
-      // 1115 total. Keep it in the totals and report it separately.
+      const perAdvance = account.indexOf(ADVANCE_PREFIX) === 0;
+      // Account 1115 is reached in two forms: the per-advance key a payment workflow writes, and
+      // the bare chart code a validated manual journal (or its correction) carries. Both are the
+      // same account, so both belong in the total the control audit compares; only the per-advance
+      // form can be attributed to one advance. Counting just the per-advance form is what made a
+      // correctly reclassified advance look like a critical mismatch (Oct 2026).
+      const resolvedCode = perAdvance ? '1115' : String((BooksBridge.mapAccount(account, 'instore', {}) || {}).code || '');
+      if (!perAdvance && resolvedCode !== '1115') return;
+      const advanceId = perAdvance ? account.slice(ADVANCE_PREFIX.length) : '';
+      if (!perAdvance) {
+        chartFormDebit = money(chartFormDebit + debit);
+        chartFormCredit = money(chartFormCredit + credit);
+        if (chartFormLines.length < 40) {
+          chartFormLines.push({id: movementId, type: text(movement.type, 80), date, debit, credit, account: text(account, 80), memo: text(line.description || line.memo, 120)});
+        }
+      }
       glDebit = money(glDebit + debit);
       glCredit = money(glCredit + credit);
       if (reversed) {
@@ -162,7 +182,7 @@ export function supplierAdvanceRollforward(input) {
         reversedCredit = money(reversedCredit + credit);
       }
       if (!advanceId) {
-        unattributed.push({movementId, type: text(movement.type, 80), date, debit, credit});
+        if (perAdvance) unattributed.push({movementId, type: text(movement.type, 80), date, debit, credit});
         return;
       }
       const entry = entryFor(advances, advanceId);
@@ -404,6 +424,10 @@ export function supplierAdvanceRollforward(input) {
     },
     auditSubledger: {revolving, shift, total: auditSubledgerTotal, indexUsed},
     gap: money(money(glDebit - glCredit) - auditSubledgerTotal),
+    // True when the account itself agrees with the open subledger, whatever form the postings took.
+    // Per-advance verdicts below then describe presentation, not a financial error to correct.
+    accountReconciled: Math.abs(money(money(glDebit - glCredit) - auditSubledgerTotal)) < 0.005,
+    chartForm: {debit: money(chartFormDebit), credit: money(chartFormCredit), net: money(chartFormDebit - chartFormCredit), count: chartFormLines.length, lines: chartFormLines},
     totals: {
       advances: list.length,
       creditsWithoutOriginalPayment: money(list.reduce((total, row) => total + (row.verdict === VERDICTS.CREDIT_WITHOUT_ORIGINAL_PAYMENT ? -row.glNet : 0), 0)),
@@ -425,6 +449,10 @@ export function renderSummary(report) {
   lines.push(`Finance Books: debit ${peso(report.gl.debit)} · credit ${peso(report.gl.credit)} · net ${peso(report.gl.net)}`);
   lines.push(`Audit open subledger: ${peso(report.auditSubledger.total)} (revolving ${peso(report.auditSubledger.revolving)} + shift ${peso(report.auditSubledger.shift)})`);
   lines.push(`Gap (audit compares these two figures): ${peso(report.gap)}`);
+  if (report.accountReconciled) {
+    lines.push('ACCOUNT RECONCILES — no correction needed. Account 1115 agrees with the open subledger.');
+    if (Math.abs(report.chartForm.net) >= 0.005) lines.push(`  ${peso(report.chartForm.net)} of it was posted through the chart code (coa:1115) rather than a per-advance key; the two forms offset each other. Any per-advance verdict below is presentation, not a financial error.`);
+  }
   if (!report.auditSubledger.indexUsed) lines.push('NOTE: no /supplierAdvanceShifts index in the input, so every shift provided was used. The server audit only counts indexed shifts.');
   lines.push(`Advances named: ${report.totals.advances} · credits with no original payment: ${peso(report.totals.creditsWithoutOriginalPayment)} · open but never posted: ${peso(report.totals.openAdvancesNeverPosted)}`);
   if (Math.abs(report.totals.excludedCashDifferenceAdvances) >= 0.005) lines.push(`NOTE: ${peso(report.totals.excludedCashDifferenceAdvances)} of cash-difference advances carry a 1115 debit but are excluded from the audit open-subledger total.`);
@@ -439,7 +467,7 @@ export function renderSummary(report) {
       lines.push(`    ${movement.date || 'undated'} ${movement.type} ${movement.id}${movement.reversed ? ' (reversal line)' : ''} debit ${peso(movement.debit)} credit ${peso(movement.credit)}`);
     });
     if (row.movementCount > 5) lines.push(`    … ${row.movementCount - 5} more movement(s) in the JSON report`);
-    lines.push(`    Next: ${row.nextStep}`);
+    lines.push(`    ${report.accountReconciled ? 'No action: account 1115 reconciles.' : 'Next: ' + row.nextStep}`);
     lines.push('');
   });
   return lines.join('\n');

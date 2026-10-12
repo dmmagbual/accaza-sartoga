@@ -185,4 +185,41 @@ assert.ok(!/\bref\(|firebase-admin|firebase\/database|firebase\/app|googleapis/.
 assert.ok(!/\.writeFileSync\([^)]*financialMovements|\.writeFileSync\([^)]*pettyCash/.test(source), 'it may only write its own report');
 assert.equal(live.readOnly, true);
 
+// --- The two posting forms of account 1115 ---------------------------------
+// Live case PV-202609-0001: the payment workflow wrote the per-advance key, a validated manual
+// correction re-posted the same value as the chart code (coa:1115), and the purchase then consumed
+// the per-advance key. Only the per-advance form is attributable to an advance, but the ACCOUNT
+// reconciles — so the tool must say so instead of proposing a correction that would break it.
+const twoForms = supplierAdvanceRollforward({
+  movements: {
+    petty_pv_live: {type: 'revolving_fund_purchase_advance', sourceType: 'pettyVoucher', sourceId: 'pv_live', occurredAt: AT, reversedByMovementId: 'books_edit_reverse_pv_live', lines: [line(`${ADVANCE_PREFIX}pv_live`, 5637.5, 0), line('asset:cash_account:wallet', 0, 5637.5)]},
+    books_edit_reverse_pv_live: {type: 'manual_books_journal_correction_reversal', sourceType: 'pettyVoucher', sourceId: 'pv_live', occurredAt: AT, reversalOf: 'petty_pv_live', lines: [line(`${ADVANCE_PREFIX}pv_live`, 0, 5637.5), line('asset:cash_account:wallet', 5637.5, 0)]},
+    books_edit_replace_pv_live: {type: 'manual_books_journal', sourceType: 'booksManualJournal', occurredAt: AT, lines: [line('coa:1115', 5637.5, 0), line('asset:cash_account:wallet', 0, 5637.5)]},
+    purchase_cash_live: {type: 'purchase_cash', sourceType: 'purchaseInvoice', occurredAt: AT, lines: [line('coa:1230', 5637.5, 0), line(`${ADVANCE_PREFIX}pv_live`, 0, 5637.5)]},
+  },
+  pettyVouchers: {pv_live: approvedAdvance({amount: 5637.5, remainingAmount: 0, recipient: 'Airuss Printing Company'})},
+});
+assert.equal(twoForms.gl.debit, 11275, 'both posting forms belong to account 1115');
+assert.equal(twoForms.gl.credit, 11275);
+assert.equal(twoForms.gl.net, 0, 'the two forms offset exactly');
+assert.equal(twoForms.chartForm.net, 5637.5, 'the chart-form posting is reported separately');
+assert.equal(twoForms.chartForm.count, 1);
+assert.equal(twoForms.chartForm.lines[0].account, 'coa:1115');
+assert.equal(twoForms.auditSubledger.total, 0);
+assert.equal(twoForms.gap, 0);
+assert.equal(twoForms.accountReconciled, true, 'the account reconciles against the open subledger');
+
+const reconciledSummary = renderSummary(twoForms);
+assert.match(reconciledSummary, /ACCOUNT RECONCILES — no correction needed/);
+assert.match(reconciledSummary, /posted through the chart code/);
+assert.match(reconciledSummary, /No action: account 1115 reconciles\./);
+assert.ok(!/Next: More was applied to purchases/.test(reconciledSummary), 'a reconciled account must never propose a correction');
+// The same account with a genuine imbalance must still be reported as unreconciled.
+const unbalanced = supplierAdvanceRollforward({
+  movements: {purchase_cash_x: {type: 'purchase_cash', sourceType: 'purchaseInvoice', occurredAt: AT, lines: [line('coa:1230', 120, 0), line(`${ADVANCE_PREFIX}missing`, 0, 120)]}},
+});
+assert.equal(unbalanced.accountReconciled, false);
+assert.equal(unbalanced.gap, -120);
+assert.ok(!/ACCOUNT RECONCILES/.test(renderSummary(unbalanced)));
+
 console.log('supplier advance roll-forward: 1115 attribution, audit parity and read-only contract verified');
