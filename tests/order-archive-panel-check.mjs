@@ -1,3 +1,4 @@
+// mojibake-check: allow - this check deliberately asserts the absence of mojibake and the correct peso sign.
 // Order Archive panel (split out of admin core.mjs, Oct 2026). Renders the archived-order
 // summary and cards from the live map core supplies, shows the delete button only to an admin
 // and only for a rejected order past the 90-day retention, and deletes only after manager

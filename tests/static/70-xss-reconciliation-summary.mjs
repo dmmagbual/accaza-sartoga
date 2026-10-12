@@ -1,3 +1,4 @@
+// mojibake-check: allow - this check deliberately matches mojibake and replacement characters in printed output.
 // Kitchen-ticket XSS regression, reconciliation audit, and result summary.
 export function run(context){
 const {fs,path,vm,spawnSync,root,require,htmlFiles,temp,state,fail,section,adminScripts,customerScripts,booksScripts,adminStyles,customerStyles,adminHtml,customerHtml,booksPageHtml,adminSource,customerSource,booksSource,financialSource}=context;
