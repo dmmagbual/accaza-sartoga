@@ -28,6 +28,7 @@ already contains.
 | refs | #697 | `PUR-YYYY-NNNN` purchase numbers (`purchaseDocumentNumber`) shown instead of `pinv_…`, plus Super-Admin `backfillPurchaseDocumentNumbers` | `tests/purchase-document-number-check.mjs` |
 | — | #719 | Purchase amendments can no longer be used as AP payments | `tests/purchase-settlement-binding-check.mjs` (family) |
 | — | #698 | Claim released after every payment (custody claim release discipline) | covered by the 0.4/0.5 guards |
+| 0.2 | #749 | Legacy supplier sweep stops once the migration is complete — it skips **before** the unlinked scans and `force:true` is the deliberate re-run | `tests/supplier-legacy-sweep-guard-check.mjs` |
 
 **0.3 baseline result** (27 bills, 137 purchases): all critical checks zero; 10 display-only mirror
 drifts; 2 confirmed-separate "duplicate" groups (Ice Plant "NO REF", Shopee) — no invoice issued.
@@ -43,8 +44,8 @@ drifts; 2 confirmed-separate "duplicate" groups (Ice Plant "NO REF", Shopee) —
 Each is propose → approve → build → PR (no merge). The one-line scope below comes from the handover;
 the first action of each step is to re-verify that scope against current source.
 
-- [ ] **0.2 — sweep freeze** *(recommended next; proposal below)*
-- [ ] **0.6 — reverse Undeposited-funded payments** (AP-14): now safe to build on the 0.5 custody lock.
+- [x] **0.2 — sweep freeze** — built, PR #749 open. Guard `tests/supplier-legacy-sweep-guard-check.mjs`.
+- [ ] **0.6 — reverse Undeposited-funded payments** (AP-14): approved 12 Oct 2026, now safe on the 0.5 custody lock. **Implementation note in §5.**
 - [ ] **0.7 — explicit permission table + audit** (light; owner-operated, no second-person approval).
 - [ ] **0.8 — purchase verification + orphan detector** (AP-04): purchase → AP posting is
       client-orchestrated and non-atomic, so stock can be received with no liability.
@@ -94,10 +95,45 @@ migration is needed either way.
 **Specialists.** Bookkeeper & Controller (AP lifecycle), Identity & Access Engineer (the
 Super-Admin-only guard and audit), Code Reviewer before handoff.
 
-## 5. Decisions log
+
+## 5. Step 0.6 implementation note (approved 12 Oct 2026 — not built)
+
+**Blocker:** `src/functions/42d-financial-command-close.js:133` refuses to reverse a bill payment whose
+`paidFrom` is `undeposited`, because "restoring the exact cash custody allocations" is not implemented.
+Everything around it is already strict: Super-Admin only, reason required, bill claimed, settlement link
+verified, already-reversed refused, idempotent by `payable_payment_reverse_<paymentId>`, accounting
+period asserted, and the GL side reverses correctly on its own (Dr `asset:cash_awaiting_deposit` / Cr AP).
+
+**To build:** under `claimCustodyPool(db, commandId, apClaimSets)`, restore the rows the original payment
+consumed (its `custodyAllocations`) by incrementing each row's `remaining`/`amount`, clearing
+`lastPaymentMovementId`, and keeping the pool projections consistent — `cashCustodyOpenIndex` and
+`undepositedLedgerPageIndex` — in the same atomic commit as the payable and ledger reversal. Skip the
+bank-register row (`addCash`) for this source: the reversed movement already restores its GL side.
+
+**Trap:** `poolCustodyInflowRecord(cid, …)` (`src/functions/40a-custody-pool.js:75`) **replaces the whole
+`cashCustody/<id>` row** — it exists for a new pool deposit and would wipe an existing row's
+`depositedAmount`, `retainedFloat` and history. Do not use it to restore existing rows.
+
+**Fail closed, never partial:** refuse when the original carries no `custodyAllocations`, when they do
+not sum to the payment value, or when a referenced custody row is missing — with a message pointing at
+the custody repair in Undeposited Collection.
+
+**Tests:** extend `tests/payable-payment-reversal-check.mjs` — an Undeposited-funded payment reverses
+and restores the exact rows and their index projection; missing or short allocations refuse and write
+nothing; a retry is idempotent (no double inflow); the pool claim is released on success **and** on
+failure; shift close and the Z report still never wait on the pool lock.
+
+**Rollback:** revert the branch and rebuild; the reversal is idempotent and refuses rather than
+half-writing, so no data repair is needed either way.
+
+**Specialists:** Bookkeeper & Controller (AP and custody lifecycle), Identity & Access Engineer
+(Super-Admin-only and audit trail), Code Reviewer before handoff.
+
+## 6. Decisions log
 
 | Date | Decision |
 |---|---|
 | 6 Oct 2026 | AP Integrity Remediation Plan approved (original project document). |
 | 7 Oct 2026 | Purchases & Payments Consolidation Plan adopted; AP plan wins on conflict. |
 | 12 Oct 2026 | This working copy created because the original was never committed. Status sourced from merged commits (#693–#697, #719) and `docs/archive/CODEX_HANDOVER.md`. |
+| 12 Oct 2026 | 0.2 built as PR #749 (the sweep stops once complete, before its unlinked scans). 0.6 approved with the implementation note in §5. |
