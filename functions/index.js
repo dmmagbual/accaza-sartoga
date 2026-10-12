@@ -3740,6 +3740,11 @@ exports.updateCashBalanceSummary = onValueWritten(
 );
 // Keep public catalog freshness separate from the catalog payload. Customers
 // listen to this tiny marker and fetch menu data only when it changes.
+//
+// maxInstances: the region's Cloud Run CPU quota is shared with every other function, and an
+// uncapped burst of freshly created revisions is what failed the production deploy (Oct 2026:
+// the catalog-version triggers failed every attempt). Bumping a version marker needs at most a
+// couple of instances, so the ceiling costs nothing and removes that burst.
 function bumpPublicCatalogVersion(source){
   return async function(){
     await getDatabase().ref('/publicCatalogVersion').transaction(function(current){
@@ -3748,10 +3753,10 @@ function bumpPublicCatalogVersion(source){
     },undefined,false);
   };
 }
-exports.updatePublicCatalogVersionOnCategories = onValueWritten({ref:'/categories',region:ORDER_REGION,retry:true},bumpPublicCatalogVersion('categories'));
-exports.updatePublicCatalogVersionOnMenuItems = onValueWritten({ref:'/menuItems',region:ORDER_REGION,retry:true},bumpPublicCatalogVersion('menuItems'));
-exports.updatePublicCatalogVersionOnOptionGroups = onValueWritten({ref:'/optionGroups',region:ORDER_REGION,retry:true},bumpPublicCatalogVersion('optionGroups'));
-exports.updatePublicCatalogVersionOnPackages = onValueWritten({ref:'/packages',region:ORDER_REGION,retry:true},bumpPublicCatalogVersion('packages'));
+exports.updatePublicCatalogVersionOnCategories = onValueWritten({ref:'/categories',region:ORDER_REGION,retry:true,maxInstances:2},bumpPublicCatalogVersion('categories'));
+exports.updatePublicCatalogVersionOnMenuItems = onValueWritten({ref:'/menuItems',region:ORDER_REGION,retry:true,maxInstances:2},bumpPublicCatalogVersion('menuItems'));
+exports.updatePublicCatalogVersionOnOptionGroups = onValueWritten({ref:'/optionGroups',region:ORDER_REGION,retry:true,maxInstances:2},bumpPublicCatalogVersion('optionGroups'));
+exports.updatePublicCatalogVersionOnPackages = onValueWritten({ref:'/packages',region:ORDER_REGION,retry:true,maxInstances:2},bumpPublicCatalogVersion('packages'));
 const POS_HEALTH_MAX_AGE_MS=120000;
 // 17 Sep 2026 download audit (F-5): one health ping per active till per minute made the
 // portal-role lookup and the open-shift row 2-3 reads per call, while both change rarely

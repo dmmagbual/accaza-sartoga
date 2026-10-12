@@ -84,7 +84,13 @@ jobs:
           # one --force pass over the ~50 retrying functions exceeded the region's Cloud Run CPU
           # quota while each revision health-checked. Deploy in small batches so each pass stays
           # under the burst limit; each batch still retries once after 60s.
-          batch_size=20
+          #
+          # #739 attempt 1 hit the same quota in a 20-function batch, so the batch is smaller and
+          # each pass now pauses before the next burst, letting the previous revisions finish
+          # health-checking and release their CPU. The catalog-version triggers, which failed every
+          # time, also cap maxInstances in code (src/functions/24-public-catalog-version.js).
+          batch_size=6
+          batch_pause=20
           deploy_batch() {
             local batch_list="$1"
             set +e
@@ -96,6 +102,7 @@ jobs:
               sleep 60
               firebase deploy --only "$batch_list" --project accaza-sartoga --non-interactive --force
             fi
+            sleep "$batch_pause"
           }
           batch=""
           count=0
