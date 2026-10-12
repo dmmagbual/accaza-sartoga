@@ -82,7 +82,7 @@ SENSITIVE_BOOKS_CODES.add("1001");
 const CONTROL_ACCOUNT_RULES = {
   "1000":{postingRule:"open",correctionMessage:"Use Admin > Register"},
   "1001":{postingRule:"open",correctionMessage:"Use Finance > Undeposited Collection"},
-  "1005":{postingRule:"open",correctionMessage:"Use Admin > POS Settings"},
+  "1005":{postingRule:"blocked",correctionMessage:"Register Cash Float is a fixed imprest tied to POS Settings (Danilo, Oct 2026). Change it in Admin > POS Settings; it is never posted through a journal."},
   "1010":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},
   "1011":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},
   "1012":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},

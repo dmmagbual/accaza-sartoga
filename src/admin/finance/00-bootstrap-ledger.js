@@ -48,7 +48,7 @@ function dateFromTs(ts){return manilaKey(ts||Date.now());}
 function cfPick(opts,cb){
   if(!accList().length&&!opts.includeCashSources){alert('Add a bank / e-wallet account first in Finance Books → Cash Flow.');return;}
   var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
-  var cashOpts=opts.includeCashSources?'<option value="cash_on_hand">Cash on Hand ('+peso(currentCashBalance('cash_on_hand'))+')</option><option value="undeposited">Undeposited Collection ('+peso(currentCashBalance('undeposited'))+')</option>':'',accOpts=cashOpts+accList().map(function(x){return '<option value="'+x.id+'">'+esc(x.name)+' ('+peso(acctBalance(x.id))+')</option>';}).join('');
+  var cashOpts=opts.includeCashSources?'<option value="undeposited">Undeposited Collection ('+peso(currentCashBalance('undeposited'))+')</option>':'',accOpts=cashOpts+accList().map(function(x){return '<option value="'+x.id+'">'+esc(x.name)+' ('+peso(acctBalance(x.id))+')</option>';}).join('');
   mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:420px;width:100%;padding:1.2rem;">'
     +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.4rem;">'+esc(opts.title||'Post to account')+'</div>'
     +'<div style="margin-bottom:0.5rem;"><span class="pz-lbl">Account</span><select class="pz-in" id="cfpAcct">'+accOpts+'</select></div>'
