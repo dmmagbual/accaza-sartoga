@@ -107,7 +107,7 @@ for (const file of ['assets/js/books/controlled-transactions.js', 'src/books/app
 {
   const s = read('functions/index.js');
   must(s, 'const restoreCustody = paidFrom === "undeposited";', 'the reversal must handle Undeposited-funded payments instead of refusing them.');
-  must(s, 'if (restoreCustody) await claimCustodyPool(db, commandId, apClaimSets);', 'the custody restoration must run under the 0.5 pool claim, so a concurrent cash-out cannot read a half-restored pool.');
+  must(s, 'await claimCustodyPool(db, commandId, apClaimSets);', 'the custody restoration must run under the 0.5 pool claim, so a concurrent cash-out cannot read a half-restored pool.');
   must(s, 'This Undeposited-funded payment does not record which cash custody rows it consumed', 'a payment with no recorded allocations must be refused, never partially restored.');
   must(s, 'this payment consumed no longer exists', 'a missing custody row must refuse rather than restore a guess.');
   must(s, 'does not show this payment', 'a row that never recorded the consumption must refuse rather than invent a balance.');
@@ -117,6 +117,13 @@ for (const file of ['assets/js/books/controlled-transactions.js', 'src/books/app
   must(s, 'writes[`cashCustodyOpenIndex/${id}`] = remaining > 0 ? cashCustodyProjection(', 'a row the deposit path removed must be listed again, or the restored cash stays invisible to the pool.');
   must(s, 'writes[`cashCustody/${id}/lastPaymentReversalMovementId`] = reverseId;', 'the restoration must link the reversal movement for the audit trail.');
   must(s, 'paidFrom !== "undeposited") addCash(', 'an Undeposited-funded reversal must not also write a bank register row.');
+  /* The block below is the close-side half of AP 0.6: a reversal restores custody in place on a row
+     that already existed at the cutoff, so the close must take that restoration back out. Without it
+     a close whose cutoff falls between the payment and the reversal compares a post-reversal custody
+     balance against a pre-reversal GL balance and raises a false cash_custody exception. */
+  must(s, 'custodyRestoredAllocations: restoredAllocations', 'the reversal must record the allocations it restored, or the close cannot reconstruct the cutoff.');
+  must(read('functions/lib/financial-close.js'), 'futureRestored[row.id]', 'the close reconstruction must subtract restorations that happened after the cutoff.');
+  must(read('src/functions/42a-financial-command-entry.js'), 'custodyRestoredAllocations:restoredAllocations', 'the multi-bill reversal had the same hole and must record its restorations too.');
   check(!s.includes('Reversing it must also restore the exact cash custody allocations, which this correction does not do.'),
     'the old refusal must be gone: the correction now restores the allocations it named.');
 }
