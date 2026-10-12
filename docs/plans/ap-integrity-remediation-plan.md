@@ -56,7 +56,7 @@ the first action of each step is to re-verify that scope against current source.
 - [ ] **0.11 — duplicate supplier invoice refs** with a **"No receipt" exemption** (Danilo decision A:
       no-receipt purchases skip the duplicate check but are listed for review).
 
-## 4. Step 0.2 proposal (awaiting approval — not started)
+## 4. Step 0.2 proposal (built as PR #749)
 
 **Scope.** Stop the legacy supplier sweep from running implicitly, without breaking the migration for
 data that still needs it.
@@ -71,15 +71,9 @@ data that still needs it.
   completed migration status (`supplierMigrations/legacyToMaster`) before firing — the quoted lines
   are truncated at the call itself, and that determines whether the server guard alone is enough.
 
-**Reason.** On Books sign-in it can auto-create masters and overwrite historical `party` / `supplier`
-names, mutating historic AP records without an explicit, audited operator action. That is the
-"legacy sweep" risk the handover records as the recommended next step.
+**Reason (verified against the code on 12 Oct 2026 — this corrects the handover wording).** The sweep writes only to records that have **no** `supplierId`, reads only unlinked rows through indexed queries rather than whole nodes, runs at most once a day, and audits every write, so it cannot overwrite an already-linked historical name. The residual risk — and what 0.2 actually fixed — was narrower: once the migration was complete an automatic run could still fire daily and **create a supplier master from a name on its own** for a record that had newly lost its link.
 
-**Proposed change.** Remove the automatic call from both bundles; make the sweep an explicit
-Super-Admin action that previews what it would link before writing, shows the migration status from
-`supplierMigrations/legacyToMaster`, and stays available for any data still unlinked. Server side:
-refuse `initialize_legacy` unless it carries the explicit confirmation the new action sends, so a
-stale cached bundle cannot sweep either.
+**Built (server only).** `initialize_legacy` returns `{skipped:true, reason:"migration_complete"}` when `supplierMigrations/legacyToMaster` is complete and no `force` flag is passed, and it decides that **before** reading the unlinked rows, so a completed workspace pays nothing on sign-in. `force:true` remains the deliberate Super Admin re-run and the 24-hour throttle is unchanged. Deliberately **no client change**: the two bundles may keep calling and simply receive the skip, so no till bundle, cache or build marker moves.
 
 **Affected areas.** `src/functions/20-portal-auth.js` (guard + confirmation), the two client
 subscriptions, the supplier/AP UI that would host the explicit action, and the static guards that pin
