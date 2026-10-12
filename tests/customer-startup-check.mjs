@@ -55,11 +55,10 @@ function navigationHrefs(html,page){
 }
 assert.deepEqual(navigationHrefs(aboutHtml,'About page'),navigationHrefs(customerHtml,'Home page'),'About navigation must stay synchronized with Home navigation');
 for(const [page,html] of [['Home page',customerHtml],['About page',aboutHtml],['Reservations page',reservationsHtml],['Contact page',contactHtml],['Rewards page',rewardsHtml]]){
-  assert.ok(/href="rewards\.html"/.test(html),`${page} must expose the standalone Rewards page`);
-  assert.ok(/<div class="footer-links">[\s\S]*?href="rewards\.html"/.test(html),`${page} footer must expose the standalone Rewards page`);
+  assert.ok(!/<ul class="nav-links">[\s\S]*?href="rewards\.html"/.test(html),`${page} must keep the direct-link-only Rewards page out of public navigation`);
+  assert.ok(!/<div class="footer-links">[\s\S]*?href="rewards\.html"/.test(html),`${page} footer must keep the direct-link-only Rewards page hidden`);
 }
-assert.ok(/<li><a href="rewards\.html">Rewards<\/a><\/li>\s*<li class="nav-has-sub"><a href="about\.html">About/.test(customerNavigationSource),'Home navigation must place Rewards before, not inside, About');
-assert.ok(!/<ul class="nav-sub">[\s\S]*?href="rewards\.html"/.test(customerNavigationSource),'Rewards must never be nested under the About menu');
+assert.ok(!/href="rewards\.html"/.test(customerNavigationSource),'Home navigation source must keep Rewards accessible only by its direct link or counter QR');
 assert.ok(/@media\(max-width:1180px\)\{\.hamburger\{display:flex;\}\.nav-links\{display:none;\}\}/.test(customerStyles),'Customer navigation must switch to the mobile menu before Rewards causes a wrapped desktop header');
 for(const marker of ['.nav-has-sub{position:relative;}','.nav-has-sub:focus-within .nav-sub','.nav-links.nav-open .nav-sub'])if(!staticStyles.includes(marker))throw new Error(`About navigation submenu style missing: ${marker}`);
 for(const marker of ['Our Mission','Our Vision','6:00 AM – 12:00 Midnight','href="index.html#menu">View Live Menu'])if(!aboutHtml.includes(marker))throw new Error(`About purpose, hours, or live-menu link missing: ${marker}`);

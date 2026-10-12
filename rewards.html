@@ -23,6 +23,11 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon_32x32.png"/>
 <link rel="apple-touch-icon" sizes="180x180" href="/favicon_180x180.png"/>
 <meta name="theme-color" content="#19241b"/>
+<link rel="manifest" href="/manifest-rewards.json"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Accaza Rewards"/>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="styles.css"/>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-T4ZZ6HWHJK"></script>
@@ -64,8 +69,11 @@
   .rw-progress{margin:.45rem 0 .15rem;background:#eceee9;border-radius:999px;height:8px;overflow:hidden;}
   .rw-progress i{display:block;height:100%;background:#c9a36a;border-radius:999px;}
   .rw-progress-note{display:block;font-size:.76rem;color:#8a978c;}
-  .rw-how{margin-top:1.6rem;}
-  .rw-how li{margin-bottom:.45rem;line-height:1.55;}
+.rw-install{margin:0 0 1.35rem;padding:1.1rem;border:1px solid #e1d2b8;border-radius:14px;background:#fbf7ef;}
+.rw-install h3{margin:0 0 .35rem;color:#19241b;font-size:1.02rem;}
+.rw-install p{margin:.35rem 0 .8rem;color:#5c6b5e;font-size:.84rem;line-height:1.5;}
+.rw-install .rw-consent{margin:.8rem 0;}
+.rw-install .rw-btn{margin-top:.2rem;}
   .rw-quest{margin:1.5rem 0 0;padding:1.2rem;border-radius:16px;background:linear-gradient(145deg,#18251b,#2d4634);color:#f6f2ea;box-shadow:0 12px 28px rgba(25,36,27,.2);}
   .rw-quest.rw-quest-welcome{animation:questGlow 1.8s ease-out 2;}
   .rw-quest-kicker{margin:0 0 .3rem;color:#e2bd79;text-transform:uppercase;letter-spacing:.12em;font-size:.7rem;font-weight:600;}
@@ -100,7 +108,7 @@
   <a class="nav-logo" href="index.html">Accaza Coffee House</a>
   <ul class="nav-links">
     <li><a href="index.html">Home</a></li><li><a href="index.html#menu">Menu</a></li><li><a href="reservations.html">Reservations</a></li>
-    <li class="nav-has-sub"><a href="about.html" class="active">About ▾</a><ul class="nav-sub"><li><a href="about.html">About Us</a></li><li><a href="rewards.html" aria-current="page">Rewards &amp; Dragon Quest</a></li><li><a href="index.html#reel">Reel</a></li><li><a href="index.html#reviews">Reviews</a></li><li><a href="index.html#feedback">Feedback</a></li><li><a href="index.html#gallery">Gallery</a></li></ul></li><li><a href="contact.html">Contact</a></li>
+    <li class="nav-has-sub"><a href="about.html" class="active">About ▾</a><ul class="nav-sub"><li><a href="about.html">About Us</a></li><li><a href="index.html#reel">Reel</a></li><li><a href="index.html#reviews">Reviews</a></li><li><a href="index.html#feedback">Feedback</a></li><li><a href="index.html#gallery">Gallery</a></li></ul></li><li><a href="contact.html">Contact</a></li>
     <li><a class="nav-cta order-availability-checking" data-order-availability href="index.html#order">Order Now</a></li>
     <li id="navAvail" style="display:none;"><a href="index.html#availSection" style="color:#c9a36a;font-weight:500;">&#128260; Availability</a></li>
     <li id="navComments" style="display:none;"><a href="index.html#commentsSection" style="color:#c9a36a;font-weight:500;">&#128233; Comments</a></li>
@@ -144,11 +152,16 @@
       <button class="rw-btn ghost" id="recoverBtn" type="button">Lost your badge? Get it back</button>
       <p class="rw-err" id="signupError"></p>
     </form>
-    <ol class="rw-note rw-how">
-      <li>1 red stamp on every visit &mdash; 10 red stamps is a free drink.</li>
-      <li>Yellow stamps come with bigger orders &mdash; 30 yellow is 20% off.</li>
-      <li>We text you a code to confirm the number is yours. That is the only text you get unless you ask for more.</li>
-    </ol>
+    <div class="rw-install" id="saveRewardsCard" hidden>
+      <h3>Keep Accaza Rewards on your phone</h3>
+      <p>Add the Accaza Rewards icon to your Home Screen so you can return to your badge and quest progress without finding the link again.</p>
+      <label class="rw-consent">
+        <input id="installRewardsConsent" type="checkbox"/>
+        <span>I consent to add the Accaza Rewards icon to this device&rsquo;s Home Screen.</span>
+      </label>
+      <button class="rw-btn" id="installRewardsBtn" type="button" disabled>Add Accaza Rewards</button>
+      <p id="installRewardsStatus" role="status" aria-live="polite"></p>
+    </div>
   </section>
 
   <!-- Linking an extra phone to a membership that already exists. The code goes to the
@@ -280,7 +293,7 @@
   <div class="footer-inner">
     <div class="footer-logo">Accaza Coffee House</div>
     <p>Saratoga Ave, La Mediterranea, Dasmari&ntilde;as, Cavite &middot; Open daily 6AM&ndash;12MN</p>
-    <div class="footer-links"><a href="index.html">Home</a><a href="index.html#menu">Menu</a><a href="reservations.html">Reservations</a><a href="rewards.html">Rewards</a><a href="about.html">About</a><a href="contact.html">Contact</a><a href="index.html#order">Order</a></div>
+    <div class="footer-links"><a href="index.html">Home</a><a href="index.html#menu">Menu</a><a href="reservations.html">Reservations</a><a href="about.html">About</a><a href="contact.html">Contact</a><a href="index.html#order">Order</a></div>
     <p class="footer-copy">&copy; <span id="yr">2026</span> Accaza Coffee House. All rights reserved.</p>
   </div>
 </footer>
@@ -303,5 +316,6 @@ if(ss.role==="staff"){var a=document.getElementById("navAvail");if(a)a.style.dis
 </script>
 <script type="module" src="assets/js/customer/order-availability.mjs"></script>
 <script type="module" src="assets/js/customer/rewards.js"></script>
+<script src="assets/js/customer/rewards-install.js"></script>
 </body>
 </html>

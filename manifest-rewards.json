@@ -1,0 +1,15 @@
+{
+  "id": "/rewards",
+  "name": "Accaza Rewards",
+  "short_name": "Accaza Rewards",
+  "description": "Your Accaza Coffee House badge, Daily Quest progress, and future Dragon Quest journey.",
+  "start_url": "/rewards.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f2ea",
+  "theme_color": "#19241b",
+  "icons": [
+    {"src":"/favicon_192x192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"/favicon_512x512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}
