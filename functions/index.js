@@ -7071,13 +7071,13 @@ exports.postFinancialCommand = onCall(
       await assertAccountingPeriodOpen(db,date,'reversing this supplier payment');
       const lines=[Financial.line(asset,value,0,'Reverse supplier bill payment'),Financial.line(liability,0,value,'Restore supplier payable')];
       if(!BooksBridge.linesBalanced(lines))throw new HttpsError('failed-precondition','The calculated batch-payment reversal is unbalanced.');
-      const extra={};
+      const extra={};let restoredAllocations={};
       if(!ownerPaid&&paidFrom!=='undeposited')extra[`cfLedger/fm_${reverseId}`]=cashLedgerRecord({date,accountId:paidFrom,dir:'in',category:'AP payment reversed',amount:value,party:doc.party,ref:reference},reverseId,{type:'payable_batch_payment_reversed',sourceType:'payable',sourceId:docId},actor);
       if(paidFrom==='undeposited'){
-        const allocations=original.custodyAllocations||{};if(!Object.keys(allocations).length)throw new HttpsError('failed-precondition','The original Undeposited Collection allocations are missing; restore custody manually before reversing.');
+        const allocations=original.custodyAllocations||{};if(!Object.keys(allocations).length)throw new HttpsError('failed-precondition','The original Undeposited Collection allocations are missing; restore custody manually before reversing.');restoredAllocations=allocations;
         await claimCustodyPool(db,commandId,apClaimSets);for(const [cid,raw] of Object.entries(allocations)){const use=Financial.money(raw),row=(await db.ref(`/cashCustody/${financeKey(cid,'Custody ID')}`).get()).val();if(!(use>0)||!row)throw new HttpsError('failed-precondition','A custody row from the original payment is missing.');const next=Financial.money(Number(row.remaining||0)+use);extra[`cashCustody/${cid}/remaining`]=next;extra[`cashCustody/${cid}/status`]='awaiting_deposit';extra[`cashCustody/${cid}/reversalMovementId`]=reverseId;extra[`cashCustodyOpenIndex/${cid}`]=cashCustodyProjection(cid,Object.assign({},row,{remaining:next,status:'awaiting_deposit',reversalMovementId:reverseId}));}
       }
-      const movement=Financial.movement('payable_batch_payment_reversed','payable',docId,lines,{occurredAt:accountingTimestamp(date,now),actorName:actor.role,reference,reason,reversalOf:parentId,reversesMovementId:parentId,paymentSource:paidFrom,batchId:settlement.batchId});
+      const movement=Financial.movement('payable_batch_payment_reversed','payable',docId,lines,{occurredAt:accountingTimestamp(date,now),actorName:actor.role,reference,reason,reversalOf:parentId,reversesMovementId:parentId,paymentSource:paidFrom,batchId:settlement.batchId,custodyRestoredAllocations:restoredAllocations});
       extra[`payables/${docId}/status`]='open';extra[`payables/${docId}/remainingAmount`]=nextRemaining;extra[`payables/${docId}/paidAmount`]=nextPaid;extra[`payables/${docId}/settlements/${paymentId}/status`]='reversed';extra[`payables/${docId}/settlements/${paymentId}/reversalMovementId`]=reverseId;extra[`payables/${docId}/settlements/${paymentId}/reversalReason`]=reason;extra[`payablePayments/${paymentId}/status`]='reversed';extra[`payablePayments/${paymentId}/reversalMovementId`]=reverseId;extra[`payablePayments/${paymentId}/reversedAt`]=now;if(doc.purchaseInvoiceId){extra[`purchaseInvoices/${doc.purchaseInvoiceId}/paymentStatus`]=nextPaid>0?'partially_paid':'unpaid';extra[`purchaseInvoices/${doc.purchaseInvoiceId}/paidAmount`]=nextPaid;extra[`purchaseInvoices/${doc.purchaseInvoiceId}/remainingAmount`]=nextRemaining;extra[`purchaseInvoices/${doc.purchaseInvoiceId}/lastPaymentReversalMovementId`]=reverseId;}extra[`operationalAudit/${now}_payable_batch_payment_reverse_${docId}_${paymentId}`]=operationalAuditRecord('payable_batch_payment_reversed','payable',docId,actor,{movementId:reverseId,reversedMovementId:parentId,amount:value,date,reference,reason,paidFrom,batchId:settlement.batchId,accounting:'Reverse only the selected bill allocation and restore its outstanding balance; preserve the other allocations in the batch.'});
       Object.assign(extra,apClaim.releaseWrites);extra[`payables/${docId}/rev`]=apClaim.nextRev(docId);const committed=await commitFinancial(db,reverseId,movement,actor,extra);return{movementId:reverseId,documentId:docId,amount:value,duplicate:committed.duplicate};
     }
@@ -7440,7 +7440,7 @@ exports.postFinancialCommand = onCall(
          claim from 0.5 keeps a concurrent cash-out from reading a half-restored pool, and the
          reversal movement itself restores the GL side (Dr asset:cash_awaiting_deposit / Cr AP). */
       const restoreCustody = paidFrom === "undeposited";
-      if (restoreCustody) await claimCustodyPool(db, commandId, apClaimSets);
+      let restoredAllocations = {};
       const reverseId = `payable_payment_reverse_${paymentId}`;
       if ((await db.ref(`/financialMovements/${reverseId}`).get()).exists()) return {movementId: reverseId, documentId: docId, duplicate: true};
       const date = financeDate(data.date), reference = financeText(data.ref, 120) || financeText(doc.settlementReference, 120);
@@ -7450,7 +7450,10 @@ exports.postFinancialCommand = onCall(
       if (!BooksBridge.linesBalanced(reversal.lines)) throw new HttpsError("failed-precondition", "The calculated payment reversal is unbalanced. Review the original movement before correcting.");
       const value = amount(Financial.totals(reversal.lines).debit);
       if (restoreCustody) {
-        const allocations = original.custodyAllocations && typeof original.custodyAllocations === "object" ? original.custodyAllocations : {}, custodyIds = Object.keys(allocations);
+        // Claim the pool only now, after every cheap validation, so a rejected command never holds it.
+        await claimCustodyPool(db, commandId, apClaimSets);
+        restoredAllocations = original.custodyAllocations && typeof original.custodyAllocations === "object" ? original.custodyAllocations : {};
+        const allocations = restoredAllocations, custodyIds = Object.keys(allocations);
         const allocated = Financial.money(custodyIds.reduce((sum, id) => sum + Number(allocations[id] || 0), 0));
         // Fail closed rather than restore a guess: without the exact rows the pool would be left short.
         if (!custodyIds.length || Math.abs(allocated - value) > 0.009) throw new HttpsError("failed-precondition", "This Undeposited-funded payment does not record which cash custody rows it consumed, so it cannot be reversed cleanly. Repair the cash custody rows in Undeposited Collection first.");
@@ -7470,7 +7473,7 @@ exports.postFinancialCommand = onCall(
         });
       }
       movementIdOverride = reverseId;
-      movement = Object.assign(reversal, {sourceType: "payable", sourceId: docId, occurredAt: accountingTimestamp(date, now), actorName: actor.role, reference, sourceReference: financeText(doc.ref, 120), reason, reversalOf: paymentId, reversesMovementId: paymentId, paymentSource: paidFrom});
+      movement = Object.assign(reversal, {sourceType: "payable", sourceId: docId, occurredAt: accountingTimestamp(date, now), actorName: actor.role, reference, sourceReference: financeText(doc.ref, 120), reason, reversalOf: paymentId, reversesMovementId: paymentId, paymentSource: paidFrom, custodyRestoredAllocations: restoredAllocations});
       if (financeText(original.type, 60) !== "payable_paid_owner_capital" && paidFrom && paidFrom !== "owner_capital" && paidFrom !== "undeposited") addCash(`fm_${reverseId}`, {date, accountId: paidFrom, dir: "in", category: "AP payment reversed", amount: value, party: doc.party, ref: reference});
       const currentRemaining=Financial.money(doc.remainingAmount!=null?doc.remainingAmount:Math.max(0,Number(doc.amount||0)-Number(doc.paidAmount||0))),nextRemaining=Financial.money(currentRemaining+value),nextPaid=Math.max(0,Financial.money(Number(doc.paidAmount||0)-value));
       if(nextRemaining>Financial.money(doc.amount)+0.009)throw new HttpsError("failed-precondition","Reversing this payment would make the outstanding balance exceed the original bill. Refresh and review the payment history.");

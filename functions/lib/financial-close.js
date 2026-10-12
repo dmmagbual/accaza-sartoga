@@ -22,18 +22,22 @@ function exception(control,category,sourceId,expected,actual,message,extra) { co
 function controlAccount(key,label,glBalance,subledgerBalance,subledgerLabel) { const difference=money(Number(glBalance||0)-Number(subledgerBalance||0));return{key,label,glBalance:money(glBalance),subledgerBalance:money(subledgerBalance),subledgerLabel,difference,reconciled:Math.abs(difference)<0.01,hasOutstandingBalance:Math.abs(Number(subledgerBalance)||0)>=0.01}; }
 
 function custodyAtCutoff(cashCustody,movements,cutoff) {
-  const futureOutflows={};
+  const futureOutflows={},futureRestored={};
   (movements||[]).filter((movement)=>stamp(movement)>cutoff).forEach((movement)=>{
     const allocations=movement.custodyAllocations||{};
     const poolReduction=money((movement.lines||[]).reduce((sum,line)=>sum+(line.account==="asset:cash_awaiting_deposit"?Number(line.credit||0)-Number(line.debit||0):0),0));
-    if(!(poolReduction>0))return;
-    Object.keys(allocations).forEach((id)=>{futureOutflows[id]=money((futureOutflows[id]||0)+Number(allocations[id]||0));});
+    if(poolReduction>0)Object.keys(allocations).forEach((id)=>{futureOutflows[id]=money((futureOutflows[id]||0)+Number(allocations[id]||0));});
+    /* A reversal restores custody in place on a row that already existed at the cutoff, so its
+       restoration has to be taken back out (AP 0.6); without this the close would compare a
+       post-reversal custody balance against a pre-reversal GL balance and raise a false exception. */
+    const restored=movement.custodyRestoredAllocations||{};
+    Object.keys(restored).forEach((id)=>{futureRestored[id]=money((futureRestored[id]||0)+Number(restored[id]||0));});
   });
   return money(rows(cashCustody).reduce((sum,row)=>{
     const created=Number(row.closedAt||row.createdAt||0);
     if(created&&created>cutoff)return sum;
     const laterRecoveries=rows(row.recoveries||{}).filter((recovery)=>Number(recovery.recoveredAt||0)>cutoff).reduce((total,recovery)=>total+Number(recovery.amount||0),0);
-    return sum+Number(row.remaining||0)+Number(futureOutflows[row.id]||0)-laterRecoveries;
+    return sum+Number(row.remaining||0)+Number(futureOutflows[row.id]||0)-Number(futureRestored[row.id]||0)-laterRecoveries;
   },0));
 }
 
