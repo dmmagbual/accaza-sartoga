@@ -45,6 +45,9 @@ export const MANUAL_TOOLS = new Set([
   'ensureFinancialLedger', 'auditFinancialControls', 'apIntegrityBaseline', 'ensureBooksJournal', 'ensureInventoryLedger', 'repairFinanceDates',
   'repairPettyExpenseClassifications', 'reconcileUndepositedCustody', 'retireRevolvingFund', 'legacyOwnerCapitalReset',
   'runDatabaseBackupNow', 'repairOrderInventoryMarker', 'runFinancialClose', 'backfillPurchaseDocumentNumbers',
+  // An Owner / Admin presses this on purpose to re-date a void whose reversal landed in the wrong
+  // month; it reads the Admin ledger projection to list candidates and never runs on a sale path.
+  'repairReversalAccountingDate',
 ]);
 const BACKUP_FUNCTIONS = new Set(['backupDatabaseDaily', 'runDatabaseBackupNow']);
 const KINDS = new Set(['migration', 'fallback', 'manual', 'action', 'catalog', 'bounded', 'backup']);

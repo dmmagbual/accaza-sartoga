@@ -41,6 +41,7 @@ function financeText(value, max = 160) { return String(value == null ? "" : valu
 function financeDate(value, allowFuture) {
   const date = String(value || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpsError("invalid-argument", "Date must use YYYY-MM-DD.");
+  if (!Number.isFinite(Date.parse(`${date}T00:00:00+08:00`))) throw new HttpsError("invalid-argument", `That date (${date}) is not a real calendar date.`);
   if (allowFuture !== true) {
     const maxDate = financeDateFromTimestamp((Date.parse(`${financeDateFromTimestamp(Date.now())}T00:00:00+08:00`) || Date.now()) + 86400000);
     if (date > maxDate) throw new HttpsError("invalid-argument", `That date (${date}) is in the future. Postings can\u2019t be future-dated \u2014 use today\u2019s date or the date it actually happened.`);
