@@ -106,10 +106,17 @@ exports.manageSupplier = onCall(
     if(["merge","delete"].includes(action)&&actor.role!=="superadmin")throw new HttpsError("permission-denied","Only a Super Admin can merge or delete a supplier master record.");
     if(action==="validate"){const supplier=await requireActiveSupplier(db,data.supplierId,data.name);return{supplierId:supplier.id,name:supplier.name,active:true};}
     if(action==="initialize_legacy"){
-      // Finance Books calls this on every sign-in. The legacy link sweep reads six whole
-      // nodes (including petty vouchers with receipt images), so it runs at most once a day.
+      // Finance Books calls this on every sign-in. The legacy link sweep reads unlinked rows across
+      // six nodes (including petty vouchers with receipt images), so it runs at most once a day —
+      // and not at all once the migration is complete (AP 0.2, Oct 2026): a completed sweep must
+      // never again create a supplier master from a name on its own, days after a human reviewed the
+      // result. Re-running it is a deliberate Super Admin action, which passes force:true.
       const sweepRef=db.ref("/supplierMigrations/legacySweepCheckedAt"),lastSweep=Number((await sweepRef.get()).val()||0);
-      if(data.force!==true&&now-lastSweep<86400000)return{initialized:true,skipped:true,linkedWrites:0};
+      if(data.force!==true){
+        if(now-lastSweep<86400000)return{initialized:true,skipped:true,linkedWrites:0};
+        const migration=(await db.ref("/supplierMigrations/legacyToMaster").get()).val()||{};
+        if(String(migration.status||"")==="complete")return{initialized:true,skipped:true,reason:"migration_complete",linkedWrites:0};
+      }
       await sweepRef.set(now);
       // Only records that still have no supplier id are read (indexed supplierId equal to null
       // or ""); the supplier list is read only when one of them needs a link.
