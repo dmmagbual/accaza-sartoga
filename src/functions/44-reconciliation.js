@@ -342,10 +342,16 @@ exports.auditFinancialControls = onCall(
       // Supplier Advances (1115) and Accounts Payable (2000) must agree with their open subledgers,
       // exactly as buildClose checks them — otherwise a manager using only this audit tool sees no
       // AR/AP/supplier-advance drift. The ledger is already loaded; subledgers use bounded indexes.
-      const accountNet = (accountTest) => { let total = 0; Object.values(movements).forEach((m) => (m && m.lines || []).forEach((line) => { if (accountTest(String(line && line.account || ""))) total = Financial.money(total + (Number(line.debit) || 0) - (Number(line.credit) || 0)); })); return Financial.money(total); };
-      const otherReceivablesGl = accountNet((account) => account.indexOf("asset:receivable:") === 0);
-      const supplierAdvancesGl = accountNet((account) => account.indexOf("asset:purchase_cash_advance:") === 0);
-      const accountsPayableGl = Financial.money(-accountNet((account) => /^liability:(payable|grni|due_to_owner):/.test(account)));
+      // A control account arrives in more than one account-string form: the per-record form its
+      // workflow writes (asset:purchase_cash_advance:<id>, asset:receivable:<id>,
+      // liability:payable:<id>) and the chart form a validated manual journal or its correction
+      // carries (coa:1115). Matching the string alone missed the chart form and reported a critical
+      // Supplier Advances mismatch that did not exist (Oct 2026, PV-202609-0001: the two forms
+      // netted to zero while the string test read -5637.50). Resolve to the Books code instead.
+      const codeNet = (codes) => { const wanted = new Set(codes); let total = 0; Object.values(movements).forEach((m) => (m && m.lines || []).forEach((line) => { const mapped = BooksBridge.mapAccount(String(line && line.account || ""), "", resolvedCashCodes || {}), code = String(mapped && mapped.code || ""); if (!wanted.has(code)) return; total = Financial.money(total + (Number(line.debit) || 0) - (Number(line.credit) || 0)); })); return Financial.money(total); };
+      const otherReceivablesGl = codeNet(["1110"]);
+      const supplierAdvancesGl = codeNet(["1115"]);
+      const accountsPayableGl = Financial.money(-codeNet(["2000", "2050", "2090"]));
       const openReceivables = Object.values(ars).filter((x) => x && x.status === "open"), supplierPayables = Object.values(aps).filter((x) => x && x.status === "open" && x.type !== "customer_change_refund");
       const subledgerRemaining = (rows) => Financial.money(rows.reduce((sum, row) => sum + Number(row && (row.remainingAmount != null ? row.remainingAmount : row.amount) || 0), 0));
       const pettyAdvances = /* download-ok: manual control audit */ (await db.ref("/pettyCashVouchers").orderByChild("transactionType").equalTo("purchase_advance").get()).val() || {};
