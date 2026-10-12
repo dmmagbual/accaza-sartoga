@@ -5,6 +5,29 @@
 // fills it from each shift's payOuts child only. The fill never removes an entry, so it
 // cannot undo a concurrent trigger; a stale entry only costs one small payOuts read.
 const SUPPLIER_ADVANCE_SHIFT_INDEX_VERSION = 1;
+
+// Fail-closed proof that a supplier advance has its original payment in Finance Books
+// (Oct 2026). Every route that CREDITS Supplier Advances (1115) -- applying the advance to a
+// purchase, returning the unallocated balance, voiding it -- must first show the debit. Without
+// it, Finance Books ends up with a negative Supplier Advances balance that the control audit
+// reports as a critical control mismatch, and a purchase looks paid although no posted cash ever
+// left. The retired drawer-funded register release is how that happened historically.
+//
+// Cost: at most three single-record reads. Never a whole-node download, and no new listener.
+// The remedy named in the error is the audited backfill, not a manual journal: 1115 refuses
+// manual journals by design.
+async function requireSupplierAdvancePosting(db, advanceId, options) {
+  const ids = SupplierAdvancePosting.candidateMovementIds(advanceId, options);
+  const entries = await Promise.all(ids.map(async (movementId) => [movementId, (await db.ref(`/financialMovements/${movementId}`).get()).val()]));
+  const movements = {};
+  entries.forEach(([movementId, row]) => { if (row) movements[movementId] = row; });
+  const proof = SupplierAdvancePosting.postingEvidence(advanceId, movements);
+  if (!proof) {
+    throw new HttpsError("failed-precondition", `Supplier payment ${advanceId} has no original posting in Finance Books, so it cannot be used yet. Post the original payment first: for cash released from the register drawer run Admin > Finance > Cash Flow > "Backfill / verify 3C financial ledger" (idempotent, it posts only what is missing); for a converted or adopted advance whose Finance Books entry is missing or reversed, repair the conversion from Finance Books > the suspense journal > Convert to supplier advance; otherwise record or correct the payment in Admin > Cash Payments. Finance Books refuses a manual journal to Supplier Advances.`);
+  }
+  return proof;
+}
+
 function hasPurchaseAdvancePayOut(payOuts) {
   return Array.isArray(payOuts) && payOuts.some((row) => row && row.type === "purchase_advance");
 }
