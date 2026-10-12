@@ -25,6 +25,7 @@ callableNames.unshift('managePosShiftCrew','managePosSaleRecovery');
 callableNames.unshift('manageUncostedSales');
 callableNames.unshift('manageOrderService');
 callableNames.unshift('repairShiftDeclaredTips');
+callableNames.unshift('repairReversalAccountingDate');
 callableNames.unshift('setTaxSettings');
 callableNames.unshift('prepareQuarterlyTaxReturn');
 callableNames.unshift('setCompanyInfo');

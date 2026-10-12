@@ -3460,6 +3460,88 @@ exports.repairPettyVoucherFinancial = onCall(
   },
 );
 
+// A void recorded before the posting-date rule went in was dated by the moment the Void button was
+// pressed, so a payment that left and returned in one month was reversed in a later month and both
+// months were misstated (owner: PV-202610-0034, paid 29 Sep 2026, voided 10 Oct 2026). This re-dates
+// the reversal that already exists — the movement, its Finance Books journal, the custody return row,
+// the bank register row and the Admin ledger projection move with it — at the SAME movement id: no
+// second journal, nothing deleted, amounts, accounts and custody totals untouched. Both the month it
+// sits in and the month it moves to must be open, the change is stamped and audited, and re-running it
+// is a no-op. Preview first; apply is Owner / Super Admin / Admin only.
+const REVERSAL_DATE_REPAIR_ROLES = ["owner", "superadmin", "admin"];
+function reversalDateRowLocked(row) {
+  return !!row && (row.bankReconciled === true || row.reconciled === true || !!row.reconciledAt || !!row.bankReconciliationId || !!row.statementId);
+}
+async function reversalDateRepairDetail(db, voucherId) {
+  const key = financeKey(voucherId, "Voucher ID"), movementId = `petty_void_${key}`;
+  const [date, voided, amount, number, accounting, movementSnap, journalSnap, custodySnap, ledgerSnap] = await Promise.all([
+    db.ref(`/pettyCashVouchers/${key}/date`).get(), db.ref(`/pettyCashVouchers/${key}/voided`).get(), db.ref(`/pettyCashVouchers/${key}/amount`).get(),
+    db.ref(`/pettyCashVouchers/${key}/voucherNo`).get(), db.ref(`/pettyCashVouchers/${key}/reversalAccountingDate`).get(),
+    db.ref(`/financialMovements/${movementId}`).get(), db.ref(`/books/journal/${movementId}`).get(),
+    db.ref(`/cashCustody/${movementId}`).get(), db.ref(`/cfLedger/fm_${movementId}`).get(),
+  ]);
+  const paidDate = financeText(date.val(), 10);
+  if (!paidDate) throw new HttpsError("not-found", "The cash voucher was not found.");
+  if (voided.val() !== true) throw new HttpsError("failed-precondition", "Only a voided cash voucher has a reversal to re-date.");
+  const movement = movementSnap.val();
+  if (!movement || !Array.isArray(movement.lines)) throw new HttpsError("failed-precondition", "The void reversal posting is missing, so there is nothing to re-date.");
+  const journal = journalSnap.val() || null, custody = custodySnap.val() || null, ledger = ledgerSnap.val() || null;
+  return {
+    voucherId: key, voucherNo: financeText(number.val(), 60), amount: Financial.money(amount.val()), paidDate,
+    reversalAccountingDate: financeText(accounting.val(), 10), movementId, movement, journal, custody, ledger,
+    currentDate: BooksBridge.businessDate(Number(movement.occurredAt) || 0),
+    journalDate: journal ? financeText(journal.date, 10) : "",
+    custodyDate: custody ? BooksBridge.businessDate(Number(custody.closedAt) || 0) : "",
+    custodyRemaining: custody ? Financial.money(custody.remaining) : 0,
+    registerLocked: reversalDateRowLocked(ledger),
+  };
+}
+exports.repairReversalAccountingDate = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["petty", "cashflow"]), data = request.data || {}, action = financeText(data.action, 20) || "preview";
+    if (action === "candidates") {
+      const rows = (/* download-ok: manual reversal-date repair; Admin projection rows only, never voucher receipts */(await db.ref("/undepositedLedgerPageIndex").get()).val()) || {};
+      const voidRows = Object.values(rows).filter((row) => row && row.sourceType === "pettyVoucher" && row.sourceId && /_void$/.test(String(row.type || ""))).slice(0, 50), candidates = [];
+      for (const row of voidRows) {
+        const paidDate = financeText((await db.ref(`/pettyCashVouchers/${financeKey(row.sourceId, "Voucher ID")}/date`).get()).val(), 10), reversalDate = BooksBridge.businessDate(Number(row.occurredAt) || 0);
+        if (!paidDate || paidDate === reversalDate) continue;
+        candidates.push({voucherId: row.sourceId, voucherNo: financeText(row.voucherNo, 60), amount: Financial.money(row.inAmount || row.amount), paidDate, reversalDate, movementId: row.id});
+      }
+      return {action: "candidates", scanned: voidRows.length, candidates};
+    }
+    if (action !== "preview" && action !== "apply") throw new HttpsError("invalid-argument", "Choose candidates, preview or apply.");
+    const detail = await reversalDateRepairDetail(db, data.voucherId);
+    const targetDate = financeText(data.accountingDate, 10) || detail.reversalAccountingDate || detail.paidDate;
+    financeDate(targetDate, true);
+    if (targetDate < detail.paidDate) throw new HttpsError("invalid-argument", `The reversal cannot be dated before the payment itself (${detail.paidDate}).`);
+    const report = Object.assign({}, detail, {action, targetDate, movesMonth: targetDate.slice(0, 7) !== detail.currentDate.slice(0, 7), unchanged: targetDate === detail.currentDate, canApply: REVERSAL_DATE_REPAIR_ROLES.includes(actor.role)});
+    if (action === "preview") return report;
+    if (!REVERSAL_DATE_REPAIR_ROLES.includes(actor.role)) throw new HttpsError("permission-denied", "Only an Owner, Super Admin or Admin may re-date a posted reversal.");
+    const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
+    if (targetDate === detail.currentDate || (detail.movement.reversalAccountingDateRepair && financeText(detail.movement.reversalAccountingDateRepair.toDate, 10) === targetDate)) return Object.assign({}, report, {duplicate: true});
+    assertVoucherDateNotFuture(targetDate, Date.now());
+    if (detail.registerLocked) throw new HttpsError("failed-precondition", "This reversal is already reconciled in the bank register. Un-reconcile it before re-dating it.");
+    await assertAccountingPeriodOpen(db, detail.currentDate, "moving this void reversal");
+    await assertAccountingPeriodOpen(db, targetDate, "moving this void reversal");
+    const now = Date.now(), targetTs = Date.parse(`${targetDate}T00:00:00+08:00`), stamp = {fromDate: detail.currentDate, toDate: targetDate, reason, repairedAt: now, repairedBy: actor.uid, schemaVersion: 1};
+    const updatedMovement = Object.assign({}, detail.movement, {occurredAt: targetTs, reversalAccountingDateRepair: stamp});
+    const writes = {[`financialMovements/${detail.movementId}`]: updatedMovement};
+    if (detail.journal) writes[`books/journal/${detail.movementId}`] = Object.assign({}, detail.journal, {date: targetDate, reversalDateRevision: Number(detail.journal.reversalDateRevision || 0) + 1, updatedAt: now, updatedBy: actor.uid, reversalAccountingDateRepair: stamp});
+    if (detail.custody) { writes[`cashCustody/${detail.movementId}/closedAt`] = targetTs; const index = cashCustodyProjection(detail.movementId, Object.assign({}, detail.custody, {closedAt: targetTs})); if (index) writes[`cashCustodyOpenIndex/${detail.movementId}`] = index; }
+    const ledgerIndex = undepositedMovementProjection(detail.movementId, updatedMovement); if (ledgerIndex) writes[`undepositedLedgerPageIndex/${detail.movementId}`] = ledgerIndex;
+    if (detail.ledger) writes[`cfLedger/fm_${detail.movementId}`] = Object.assign({}, detail.ledger, {date: targetDate, updatedAt: now, updatedBy: actor.uid});
+    writes[`pettyCashVouchers/${detail.voucherId}/reversalAccountingDate`] = targetDate;
+    writes[`pettyCashVouchers/${detail.voucherId}/reversalAccountingTimestamp`] = targetTs;
+    writes[`pettyCashVouchers/${detail.voucherId}/reversalAccountingDateReason`] = reason;
+    writes[`pettyCashVouchers/${detail.voucherId}/reversalAccountingDateRepairedAt`] = now;
+    writes[`operationalAudit/${now}_reversal_date_${detail.voucherId}`] = operationalAuditRecord("repair_reversal_accounting_date", "pettyVoucher", detail.voucherId, actor, {movementId: detail.movementId, voucherNo: detail.voucherNo, amount: detail.amount, from: detail.currentDate, to: targetDate, reason, custodyRowRestated: !!detail.custody, journalRestated: !!detail.journal, registerRowRestated: !!detail.ledger, accounting: "The void reversal is dated the day the cash came back, so the month carrying the payment also carries its return. Amounts, accounts, custody totals and all-time balances are unchanged; voidedAt still records when the void was executed."});
+    assertNoOverlappingUpdatePaths(writes, "reversal accounting date repair");
+    await safeFinancialUpdate(db, writes, "reversal accounting date repair");
+    if (detail.journal) await applyBooksMonthlyDelta(db, detail.journal, writes[`books/journal/${detail.movementId}`]);
+    return Object.assign({}, report, {duplicate: false, custodyRestated: !!detail.custody, journalRestated: !!detail.journal, registerRestated: !!detail.ledger});
+  },
+);
 exports.archiveActivityLog = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
@@ -6096,6 +6178,7 @@ function financeText(value, max = 160) { return String(value == null ? "" : valu
 function financeDate(value, allowFuture) {
   const date = String(value || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpsError("invalid-argument", "Date must use YYYY-MM-DD.");
+  if (!Number.isFinite(Date.parse(`${date}T00:00:00+08:00`))) throw new HttpsError("invalid-argument", `That date (${date}) is not a real calendar date.`);
   if (allowFuture !== true) {
     const maxDate = financeDateFromTimestamp((Date.parse(`${financeDateFromTimestamp(Date.now())}T00:00:00+08:00`) || Date.now()) + 86400000);
     if (date > maxDate) throw new HttpsError("invalid-argument", `That date (${date}) is in the future. Postings can\u2019t be future-dated \u2014 use today\u2019s date or the date it actually happened.`);
