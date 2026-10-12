@@ -7435,7 +7435,12 @@ exports.postFinancialCommand = onCall(
       if (financeText(original.sourceId, 160) !== docId) throw new HttpsError("failed-precondition", "The recorded settlement belongs to a different bill. Repair the settlement link before reversing anything.");
       if (original.reversedByMovementId) throw new HttpsError("failed-precondition", "This payment movement has already been reversed.");
       const paidFrom = financeText(settlement.accountId || original.paymentSource || doc.accountId, 120);
-      if (paidFrom === "undeposited") throw new HttpsError("failed-precondition", "This bill was paid from Undeposited Collection. Reversing it must also restore the exact cash custody allocations, which this correction does not do.");
+      /* An Undeposited-funded payment consumed cash custody rows, so reversing it must put the exact
+         rows back (AP 0.6). The allocation is already recorded on the original movement, the pool
+         claim from 0.5 keeps a concurrent cash-out from reading a half-restored pool, and the
+         reversal movement itself restores the GL side (Dr asset:cash_awaiting_deposit / Cr AP). */
+      const restoreCustody = paidFrom === "undeposited";
+      if (restoreCustody) await claimCustodyPool(db, commandId, apClaimSets);
       const reverseId = `payable_payment_reverse_${paymentId}`;
       if ((await db.ref(`/financialMovements/${reverseId}`).get()).exists()) return {movementId: reverseId, documentId: docId, duplicate: true};
       const date = financeDate(data.date), reference = financeText(data.ref, 120) || financeText(doc.settlementReference, 120);
@@ -7444,9 +7449,29 @@ exports.postFinancialCommand = onCall(
       const reversal = Financial.reverseMovement(Object.assign({}, original, {id: paymentId}), "payable_payment_reversed", "Reverse payment");
       if (!BooksBridge.linesBalanced(reversal.lines)) throw new HttpsError("failed-precondition", "The calculated payment reversal is unbalanced. Review the original movement before correcting.");
       const value = amount(Financial.totals(reversal.lines).debit);
+      if (restoreCustody) {
+        const allocations = original.custodyAllocations && typeof original.custodyAllocations === "object" ? original.custodyAllocations : {}, custodyIds = Object.keys(allocations);
+        const allocated = Financial.money(custodyIds.reduce((sum, id) => sum + Number(allocations[id] || 0), 0));
+        // Fail closed rather than restore a guess: without the exact rows the pool would be left short.
+        if (!custodyIds.length || Math.abs(allocated - value) > 0.009) throw new HttpsError("failed-precondition", "This Undeposited-funded payment does not record which cash custody rows it consumed, so it cannot be reversed cleanly. Repair the cash custody rows in Undeposited Collection first.");
+        const custodyRows = await Promise.all(custodyIds.map(async (id) => [id, (await db.ref(`/cashCustody/${id}`).get()).val()]));
+        custodyRows.forEach(([id, row]) => {
+          if (!row) throw new HttpsError("failed-precondition", `The cash custody row ${id} this payment consumed no longer exists. Repair Undeposited Collection before reversing.`);
+          const restore = Financial.money(allocations[id]), paidOut = Financial.money(Number(row.paidOutAmount || 0) - restore), remaining = Financial.money(Number(row.remaining != null ? row.remaining : row.amount) + restore);
+          if (paidOut < -0.009) throw new HttpsError("failed-precondition", `The cash custody row ${id} does not show this payment's consumption, so it cannot be restored. Repair Undeposited Collection first.`);
+          writes[`cashCustody/${id}/remaining`] = remaining;
+          writes[`cashCustody/${id}/paidOutAmount`] = paidOut;
+          writes[`cashCustody/${id}/status`] = "awaiting_deposit";
+          writes[`cashCustody/${id}/lastPaymentReversalAt`] = now;
+          writes[`cashCustody/${id}/lastPaymentReversalMovementId`] = reverseId;
+          // The open index is a superset filtered by remaining > 0, but a row removed by the deposit
+          // path must be listed again or the restored cash would be invisible to the pool.
+          writes[`cashCustodyOpenIndex/${id}`] = remaining > 0 ? cashCustodyProjection(id, Object.assign({}, row, {remaining, paidOutAmount: paidOut, status: "awaiting_deposit"})) : null;
+        });
+      }
       movementIdOverride = reverseId;
       movement = Object.assign(reversal, {sourceType: "payable", sourceId: docId, occurredAt: accountingTimestamp(date, now), actorName: actor.role, reference, sourceReference: financeText(doc.ref, 120), reason, reversalOf: paymentId, reversesMovementId: paymentId, paymentSource: paidFrom});
-      if (financeText(original.type, 60) !== "payable_paid_owner_capital" && paidFrom && paidFrom !== "owner_capital") addCash(`fm_${reverseId}`, {date, accountId: paidFrom, dir: "in", category: "AP payment reversed", amount: value, party: doc.party, ref: reference});
+      if (financeText(original.type, 60) !== "payable_paid_owner_capital" && paidFrom && paidFrom !== "owner_capital" && paidFrom !== "undeposited") addCash(`fm_${reverseId}`, {date, accountId: paidFrom, dir: "in", category: "AP payment reversed", amount: value, party: doc.party, ref: reference});
       const currentRemaining=Financial.money(doc.remainingAmount!=null?doc.remainingAmount:Math.max(0,Number(doc.amount||0)-Number(doc.paidAmount||0))),nextRemaining=Financial.money(currentRemaining+value),nextPaid=Math.max(0,Financial.money(Number(doc.paidAmount||0)-value));
       if(nextRemaining>Financial.money(doc.amount)+0.009)throw new HttpsError("failed-precondition","Reversing this payment would make the outstanding balance exceed the original bill. Refresh and review the payment history.");
       writes[`payables/${docId}/status`] = "open";
