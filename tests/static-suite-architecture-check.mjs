@@ -96,6 +96,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // AR/AP/supplier-advances reconciliation, the date-anchored register float entry, and the client
 // manual-journal net-sales boundary.
 // Reviewed guard count 569 -> 572; executable checks unchanged at 33.
-if(guardDigest!=='167b2a3574906429cec973011655bc7224522e9270622abc16ba2cf4de458a5c')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (deploy batching): the retry-acknowledgement --force guard now requires the shared
+// "$batch_list" split from "$only" (PR #730/#732 hit the region Cloud Run CPU quota with a single
+// --force pass). Assertion meaning unchanged; guard count stays at 572.
+if(guardDigest!=='321b1722582faaa5258e1367e6fe1b543c9e22d684f92d1224f212d5a758aa69')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 572 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

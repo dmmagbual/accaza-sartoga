@@ -78,15 +78,38 @@ jobs:
           # the run even though everything else deployed. Runs 411 and 412 both failed this way
           # with 176 of 177 functions already updated. One retry after the per-minute quota
           # window clears resolves it without anyone having to notice and click Re-run.
-          set +e
-          firebase deploy --only "$only" --project accaza-sartoga --non-interactive --force
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            echo "::warning title=Retry acknowledgement deploy::firebase deploy exited ${status}; waiting 60s for the Cloud Functions quota window to clear then retrying once."
-            sleep 60
-            firebase deploy --only "$only" --project accaza-sartoga --non-interactive --force
-          fi
+          #
+          # PR #730 and PR #732 both failed the single-burst deploy with
+          # "Quota exceeded for total allowable CPU per project per region" in asia-southeast1:
+          # one --force pass over the ~50 retrying functions exceeded the region's Cloud Run CPU
+          # quota while each revision health-checked. Deploy in small batches so each pass stays
+          # under the burst limit; each batch still retries once after 60s.
+          batch_size=20
+          deploy_batch() {
+            local batch_list="$1"
+            set +e
+            firebase deploy --only "$batch_list" --project accaza-sartoga --non-interactive --force
+            local batch_status=$?
+            set -e
+            if [ "$batch_status" -ne 0 ]; then
+              echo "::warning title=Retry acknowledgement deploy::firebase deploy exited ${batch_status}; waiting 60s for the Cloud Functions quota window to clear then retrying once."
+              sleep 60
+              firebase deploy --only "$batch_list" --project accaza-sartoga --non-interactive --force
+            fi
+          }
+          batch=""
+          count=0
+          IFS=',' read -r -a fns <<< "$only"
+          for fn in "${fns[@]}"; do
+            if [ -n "$batch" ]; then batch="${batch},${fn}"; else batch="${fn}"; fi
+            count=$((count + 1))
+            if [ "$count" -ge "$batch_size" ]; then
+              deploy_batch "$batch"
+              batch=""
+              count=0
+            fi
+          done
+          if [ -n "$batch" ]; then deploy_batch "$batch"; fi
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
