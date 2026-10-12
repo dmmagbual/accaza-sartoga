@@ -80,7 +80,7 @@ function stmtCategory(m,net){
     case 'order_void':return 'Voided sales';
     case 'platform_payout_deposit':return 'Platform payouts received';
     case 'receivable_collected':return 'Receivable collections';
-    case 'payable_paid':return 'Supplier / bill payments';
+    case 'payable_paid':case 'payable_paid_batch':return 'Supplier / bill payments';
     case 'shift_payin':return 'Register cash-ins';
     case 'shift_tips_declared':return 'Customer tips declared in Z report';
     case 'shift_payout':return 'Register pay-outs';
