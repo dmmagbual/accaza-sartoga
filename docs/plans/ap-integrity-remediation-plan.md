@@ -29,15 +29,19 @@ already contains.
 | — | #719 | Purchase amendments can no longer be used as AP payments | `tests/purchase-settlement-binding-check.mjs` (family) |
 | — | #698 | Claim released after every payment (custody claim release discipline) | covered by the 0.4/0.5 guards |
 | 0.2 | #749 | Legacy supplier sweep stops once the migration is complete — it skips **before** the unlinked scans and `force:true` is the deliberate re-run | `tests/supplier-legacy-sweep-guard-check.mjs` |
+| 0.6 | #751, #752 | An Undeposited-funded bill payment reverses by restoring the exact custody rows it consumed; the close subtracts restorations after its cutoff | `tests/payable-payment-reversal-check.mjs`, `tests/financial-close-check.cjs` |
 
 **0.3 baseline result** (27 bills, 137 purchases): all critical checks zero; 10 display-only mirror
 drifts; 2 confirmed-separate "duplicate" groups (Ice Plant "NO REF", Shopee) — no invoice issued.
 
-## 2. Pending manual action for Danilo (not code)
+## 2. Manual action — done 12 Oct 2026
 
-- Run **Finance Books → Payables → "Number old purchases"** once, after the #697 deploy and **before**
-  posting new purchases, so numbering stays in date order. Idempotent; the preview changes nothing.
-  Then confirm a Shopee/Ice Plant row shows `PUR-2026-…`.
+Danilo ran **Finance Books → Payables → "Number old purchases"**. Verified read-only against live data on
+12 Oct 2026: **182 purchases, 0 without a purchase number, 0 duplicates**, every number well formed as
+`PUR-YYYY-NNNN` and continuous from `PUR-2026-0001` to `PUR-2026-0182`.
+
+The field is **`documentNo`**; `documentNumber` is the helper name. Checking the wrong name first produced
+a false "nothing is numbered" reading, which is recorded here so the next reader does not repeat it.
 
 ## 3. Remaining Phase 0 steps
 
@@ -45,7 +49,7 @@ Each is propose → approve → build → PR (no merge). The one-line scope belo
 the first action of each step is to re-verify that scope against current source.
 
 - [x] **0.2 — sweep freeze** — built, PR #749 open. Guard `tests/supplier-legacy-sweep-guard-check.mjs`.
-- [ ] **0.6 — reverse Undeposited-funded payments** (AP-14): approved 12 Oct 2026, now safe on the 0.5 custody lock. **Implementation note in §5.**
+- [x] **0.6 — reverse Undeposited-funded payments** (AP-14) — built and merged (#751; blocker fix #752; behavioural guard #753). Implementation record in §5.
 - [ ] **0.7 — explicit permission table + audit** (light; owner-operated, no second-person approval).
 - [ ] **0.8 — purchase verification + orphan detector** (AP-04): purchase → AP posting is
       client-orchestrated and non-atomic, so stock can be received with no liability.
@@ -90,7 +94,7 @@ migration is needed either way.
 Super-Admin-only guard and audit), Code Reviewer before handoff.
 
 
-## 5. Step 0.6 implementation note (approved 12 Oct 2026 — not built)
+## 5. Step 0.6 implementation record (built and merged 12 Oct 2026)
 
 **Blocker:** `src/functions/42d-financial-command-close.js:133` refuses to reverse a bill payment whose
 `paidFrom` is `undeposited`, because "restoring the exact cash custody allocations" is not implemented.
@@ -123,6 +127,25 @@ half-writing, so no data repair is needed either way.
 **Specialists:** Bookkeeper & Controller (AP and custody lifecycle), Identity & Access Engineer
 (Super-Admin-only and audit trail), Code Reviewer before handoff.
 
+### Review outcome (12 Oct 2026)
+
+An independent Code Reviewer pass found a **blocker** in the first cut, which had already merged as #751:
+the close reconstructs custody at a cutoff as *current remaining + outflows after the cutoff*, but a
+reversal restores custody **in place** on a row that existed at the cutoff and `Financial.reverseMovement`
+drops the custody fields. A close whose cutoff fell between the payment and the reversal therefore
+compared a post-reversal custody balance with a pre-reversal GL balance and raised a **false blocking
+`cash_custody` exception** — money and custody rows were correct, but the close demanded an adjustment
+that must not be made. Fixed in #752: the reversal records `custodyRestoredAllocations`,
+`custodyAtCutoff` subtracts post-cutoff restorations, and the multi-bill reversal in `42a` records its
+restorations too (the identical pre-existing hole). The pool claim is now taken after cheap validation,
+so a rejected command never holds the single pool lock. #753 adds the behavioural `buildClose` case,
+with a negative control proving it fails without the subtraction rather than merely passing.
+
+**Two convention notes recorded for the Bookkeeper & Controller** (deliberately unchanged, because the
+shipped multi-bill reversal behaves the same way): the reversal skips the `cfLedger` in-row for
+Undeposited Collection while the payment writes an out-row; and a restored row is labelled
+`awaiting_deposit` even when `depositedAmount > 0` (display-only).
+
 ## 6. Decisions log
 
 | Date | Decision |
@@ -131,3 +154,4 @@ half-writing, so no data repair is needed either way.
 | 7 Oct 2026 | Purchases & Payments Consolidation Plan adopted; AP plan wins on conflict. |
 | 12 Oct 2026 | This working copy created because the original was never committed. Status sourced from merged commits (#693–#697, #719) and `docs/archive/CODEX_HANDOVER.md`. |
 | 12 Oct 2026 | 0.2 built as PR #749 (the sweep stops once complete, before its unlinked scans). 0.6 approved with the implementation note in §5. |
+| 12 Oct 2026 | 0.6 merged (#751), its review blocker fixed and merged (#752), behavioural close guard added (#753). "Number old purchases" run by Danilo and verified: 182 purchases, all numbered `PUR-2026-0001`–`0182`, none blank, none duplicated. |
