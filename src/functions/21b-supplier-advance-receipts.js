@@ -23,7 +23,7 @@ async function requireSupplierAdvancePosting(db, advanceId, options) {
   entries.forEach(([movementId, row]) => { if (row) movements[movementId] = row; });
   const proof = SupplierAdvancePosting.postingEvidence(advanceId, movements);
   if (!proof) {
-    throw new HttpsError("failed-precondition", `Supplier payment ${advanceId} has no original posting in Finance Books, so it cannot be used yet. Post the original payment first: for cash released from the register drawer run Admin > Finance > Cash Flow > "Backfill / verify 3C financial ledger" (idempotent, it posts only what is missing); for a converted or adopted advance whose Finance Books entry is missing or reversed, repair the conversion from Finance Books > the suspense journal > Convert to supplier advance; otherwise record or correct the payment in Admin > Cash Payments. Finance Books refuses a manual journal to Supplier Advances.`);
+    throw new HttpsError("failed-precondition", `Supplier payment ${advanceId} has no original posting in Finance Books, so it cannot be applied, returned or voided yet. Post the original payment first: for cash released from the register drawer run Admin > Finance > Cash Flow > "Backfill / verify 3C financial ledger" (idempotent, it posts only what is missing); for a converted or adopted advance whose Finance Books entry is missing or reversed, repair the conversion from Finance Books > the suspense journal > Convert to supplier advance; otherwise record or correct the payment in Admin > Cash Payments. Finance Books refuses a manual journal to Supplier Advances.`);
   }
   return proof;
 }
