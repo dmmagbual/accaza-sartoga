@@ -107,6 +107,10 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // that failed every quota-degraded deploy. These assertions replace nothing: they are new guards,
 // reviewed against the failed runs (#730/#732, #739 attempt 1, runs 411/412).
 // Reviewed guard count 573 -> 577; executable checks unchanged at 33.
-if(guardDigest!=='9005ae5e139937c7ca2dc2281746b8afb184b1df0fb4af15088d07cf66e3b496')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (register cash is not a spending source): the Purchase Balance Sheet cash-account guard
+// now expects the live-register label and its disabled reason instead of "available above float",
+// because the live register was removed from every spending source. Same single guard, widened for
+// the approved change; guard count stays at 577 and executable checks stay at 33.
+if(guardDigest!=='f3f495cf296e0f1d16e7d865d4416cb4816373e47f503171af2d6e13d12618be')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

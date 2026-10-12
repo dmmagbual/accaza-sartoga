@@ -94,6 +94,15 @@ const brokenAdvance = brokenAudit.issues.find((issue) => issue.kind === 'supplie
 assert.ok(brokenAdvance, 'a real supplier-advance mismatch must still be reported');
 assert.equal(brokenAdvance.amount, -120, 'the reported difference must be the account-level gap');
 assert.equal(brokenAdvance.severity, 'critical', 'a real control mismatch stays critical');
+// A real mismatch must name the advance, not print one net figure: the message a manager reads has
+// to carry the culprit, and the structured list has to be usable by the Finance Books screen.
+assert.match(brokenAdvance.detail, /Largest: missing/, 'the exception must name the advance behind the gap');
+assert.match(brokenAdvance.detail, /net -120\.00, open 0\.00/, 'the named advance must carry its ledger net and open subledger amount');
+assert.ok(Array.isArray(brokenAdvance.advances) && brokenAdvance.advances.length === 1, 'the exception must expose the attributed advances');
+assert.equal(brokenAdvance.advances[0].advanceId, 'missing');
+assert.equal(brokenAdvance.advances[0].gap, -120, 'the attributed gap must equal the exception amount');
+// The reconciled case must stay silent and must not carry attribution noise.
+assert.equal(liveAudit.issues.find((issue) => issue.kind === 'supplier_advances_control_mismatch'), undefined);
 
 // Oct 2026, same class as the Supplier Advances case: Undeposited Collection is reached in the
 // workflow form and in the chart form a validated manual journal carries (coa:1001). The custody

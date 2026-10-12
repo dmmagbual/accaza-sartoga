@@ -1,5 +1,5 @@
 import{auth,db,ref,get,set,push,remove,onValue,onDisconnect,serverTimestamp,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence}from"./firebase-client.mjs";
-import{aggregatePortalPresence,startPortalPresence,runningBuild}from"../shared/portal-presence.mjs?v=668";
+import{aggregatePortalPresence,startPortalPresence,runningBuild}from"../shared/portal-presence.mjs?v=669";
 import{startPortalIdle}from"../shared/portal-idle.mjs";
 
 // staff-access.js is lazy-loaded after this module. Keep its device grouping identical to the

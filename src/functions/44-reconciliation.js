@@ -363,7 +363,24 @@ exports.auditFinancialControls = onCall(
         {kind: "supplier_advances_control_mismatch", source: "supplier_advances", label: "Supplier Advances (1115)", gl: supplierAdvancesGl, sub: Financial.money(revolvingSupplierAdvances + shiftSupplierAdvances)},
         {kind: "payables_control_mismatch", source: "payables", label: "Accounts Payable (2000)", gl: accountsPayableGl, sub: subledgerRemaining(supplierPayables)},
       ];
-      controls.forEach((control) => { const difference = Financial.money(control.gl - control.sub); if (Math.abs(difference) > 0.009) issues.push({severity: "critical", kind: control.kind, source: control.source, sourceLabel: `${control.label} · Finance Books ${control.gl.toFixed(2)} vs open subledger ${control.sub.toFixed(2)}`, detail: `Finance Books ${control.gl.toFixed(2)}; open subledger ${control.sub.toFixed(2)}`, amount: difference, expected: control.sub, actual: control.gl}); });
+      // When Supplier Advances really is out, name the advances instead of printing one net figure.
+      // Everything needed is already loaded — the movements, the approved purchase-advance vouchers
+      // and the indexed shift pay-outs — so this adds no Firebase read and no listener.
+      const advanceAttribution = () => {
+        const rows = new Map();
+        const entry = (value) => { const key = String(value || ""); if (!rows.has(key)) rows.set(key, {advanceId: key, label: "", glDebit: 0, glCredit: 0, open: 0}); return rows.get(key); };
+        let chartFormNet = 0;
+        Object.values(movements).forEach((movement) => (movement && movement.lines || []).forEach((line) => {
+          const account = String(line && line.account || ""), debit = Financial.money(line.debit), credit = Financial.money(line.credit);
+          if (account.indexOf("asset:purchase_cash_advance:") === 0) { const row = entry(account.slice("asset:purchase_cash_advance:".length)); row.glDebit = Financial.money(row.glDebit + debit); row.glCredit = Financial.money(row.glCredit + credit); return; }
+          // The chart form carries no advance id, so it can only be reported as a total.
+          if (String((BooksBridge.mapAccount(account, "", {}).code) || "") === "1115") chartFormNet = Financial.money(chartFormNet + debit - credit);
+        }));
+        Object.keys(pettyAdvances).forEach((id) => { const row = pettyAdvances[id] || {}; if (row.status !== "approved" || row.voided === true) return; const target = entry(id); target.label = target.label || financeText(row.recipient || row.supplierName, 160); target.open = Financial.money(target.open + Number(row.remainingAmount != null ? row.remainingAmount : row.amount || 0)); });
+        Object.values(shiftPayOuts).forEach((list) => (Array.isArray(list) ? list : []).forEach((row) => { if (!row || row.type !== "purchase_advance" || row.voided === true || row.status === "cancelled") return; const target = entry(row.id); target.label = target.label || financeText(row.recipient, 160); target.open = Financial.money(target.open + Number(row.remainingAmount != null ? row.remainingAmount : row.amount || 0)); }));
+        return {rows: [...rows.values()].map((row) => { const glNet = Financial.money(row.glDebit - row.glCredit); return {advanceId: row.advanceId, label: row.label, glNet, open: row.open, gap: Financial.money(glNet - row.open)}; }).filter((row) => Math.abs(row.gap) > 0.009).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap)), chartFormNet: Financial.money(chartFormNet)};
+      };
+      controls.forEach((control) => { const difference = Financial.money(control.gl - control.sub); if (Math.abs(difference) <= 0.009) return; const issue = {severity: "critical", kind: control.kind, source: control.source, sourceLabel: `${control.label} · Finance Books ${control.gl.toFixed(2)} vs open subledger ${control.sub.toFixed(2)}`, detail: `Finance Books ${control.gl.toFixed(2)}; open subledger ${control.sub.toFixed(2)}`, amount: difference, expected: control.sub, actual: control.gl};if (control.kind === "supplier_advances_control_mismatch") { const attribution = advanceAttribution(), worst = attribution.rows.slice(0, 3).map((row) => `${row.advanceId}${row.label ? ` · ${row.label}` : ""} net ${row.glNet.toFixed(2)}, open ${row.open.toFixed(2)}`); if (worst.length) issue.detail = `${issue.detail}. Largest: ${worst.join("; ")}`; if (Math.abs(attribution.chartFormNet) > 0.009) issue.detail = `${issue.detail}. Posted through the chart code: ${attribution.chartFormNet.toFixed(2)}`; issue.advances = attribution.rows.slice(0, 20); } issues.push(issue); });
     } catch(e){logger.warn("auditFinancialControls: receivable/advance/payable control check skipped",{error:String(e)});}
     // Never expose an internal key as the business-facing reference. Keep the
     // raw source for controlled actions, but present the actual transaction
