@@ -368,6 +368,7 @@ function goto(screen) {
 async function showBadge(member, welcomeToQuest) {
   goto("screenBadge");
   badgeChrome(true);
+  window.AccazaRewardsInstall?.show();
   await paintBadge(member);
   await refreshCard(member, false);
   await refreshDragonQuest({member}, true);
@@ -384,6 +385,7 @@ async function showBadge(member, welcomeToQuest) {
 function showLinkedCard(card) {
   goto("screenBadge");
   badgeChrome(false);
+  window.AccazaRewardsInstall?.show();
   setText("badgeName", (card.firstName ? card.firstName + "'s stamps" : "Your stamps"));
   setText("badgePhone", card.maskedPhone || "");
   if (badgeTimer) { clearInterval(badgeTimer); badgeTimer = null; }

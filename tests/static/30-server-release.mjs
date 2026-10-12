@@ -167,7 +167,7 @@ for(const url of precache.concat(adminPrecache)){
   const local=path.join(root,String(url).split('?')[0].replace(/^\//,''));
   if(!fs.existsSync(local))fail(`service-worker precache file does not exist: ${url}`);
 }
-for(const manifestName of ['manifest.json','manifest-admin.json']){
+for(const manifestName of ['manifest.json','manifest-admin.json','manifest-rewards.json']){
   const manifest=JSON.parse(fs.readFileSync(path.join(root,manifestName),'utf8'));
   if(!manifest.id||!manifest.start_url||manifest.display!=='standalone')fail(`Phase 5A invalid PWA manifest: ${manifestName}`);
   if(!Array.isArray(manifest.icons)||!manifest.icons.some(icon=>icon.sizes==='192x192')||!manifest.icons.some(icon=>icon.sizes==='512x512'))fail(`Phase 5A required PWA icons missing: ${manifestName}`);
