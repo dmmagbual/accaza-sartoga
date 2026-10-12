@@ -27,7 +27,7 @@ for(const file of expected){
   if(Buffer.byteLength(source,'utf8')>47500){const message=`tests/static/${file} is ${Buffer.byteLength(source,'utf8')} bytes of its 50 KB bound. Split it before adding more guards.`;console.warn('STATIC MODULE SIZE WARNING: '+message);if(process.env.GITHUB_ACTIONS)console.log(`::warning file=tests/static/${file}::${message}`);}
   if(file!=='00-context.mjs'&&!runner.includes(`./static/${file}`))throw new Error(`Static-check runner omits domain: ${file}`);
 }
-if((combined.match(/\bfail\(/g)||[]).length!==573)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 573');
+if((combined.match(/\bfail\(/g)||[]).length!==577)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 577');
 if((combined.match(/spawnSync\(/g)||[]).length!==33)throw new Error('Static-check executable-check inventory changed from the reviewed baseline of 33');
 const guardSource=combined.split(/\r?\n/).filter(line=>/\bfail\(|spawnSync\(/.test(line)).map(line=>line.trim()).join('\n');
 const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
@@ -102,6 +102,11 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // Oct 2026 (payable batch cash-flow label): one new reviewed guard pins payable_paid_batch to the
 // supplier-payment category so batch bill payments are not mislabeled as other cash out.
 // Reviewed guard count 572 -> 573; executable checks unchanged at 33.
-if(guardDigest!=='ca78139707372423ff8926f87a324d9afc18eaa1dfb7d57286a78056ab1cc25f')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (region Cloud Run CPU quota): the deploy guard now also requires small acknowledgement
+// batches with a pause between bursts, and an instance ceiling on the four catalog-version triggers
+// that failed every quota-degraded deploy. These assertions replace nothing: they are new guards,
+// reviewed against the failed runs (#730/#732, #739 attempt 1, runs 411/412).
+// Reviewed guard count 573 -> 577; executable checks unchanged at 33.
+if(guardDigest!=='9005ae5e139937c7ca2dc2281746b8afb184b1df0fb4af15088d07cf66e3b496')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
-console.log('PASS: all 573 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
+console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

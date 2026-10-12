@@ -134,6 +134,16 @@ if(!forcedDeployLines.length||forcedScopes!=='"$batch_list"'||JSON.stringify(onl
 const fullDeployLines=deployWorkflow.split(/\r?\n/).filter(line=>line.includes('firebase deploy')&&line.includes('--only functions,database,firestore,storage'));
 if(!fullDeployLines.length||fullDeployLines.some(line=>line.includes('--force')))fail('full production Firebase deployment must never use --force');
 for(const name of retryPolicyFunctions)if(!functionsSource.includes(`exports.${name} = `)&&!functionsSource.includes(`exports.${name}=`))fail(`retry-policy deployment target is not exported: ${name}`);
+// The region Cloud Run CPU quota is per project per region and was exhausted repeatedly while
+// freshly created revisions health-checked (PR #730/#732, #739 attempt 1, runs 411/412). A small
+// batch with a pause between bursts, plus a low instance ceiling on the catalog-version triggers
+// that failed every time, keeps a production deploy reproducible instead of needing a manual re-run.
+const batchSize=(deployWorkflow.match(/^\s*batch_size=(\d+)\s*$/m)||[])[1];
+if(!batchSize||Number(batchSize)>8)fail(`the retry acknowledgement must deploy in small batches (batch_size is ${batchSize||'missing'}); a wide burst over the region Cloud Run CPU quota fails the run and skips the production deploy`);
+const batchPause=(deployWorkflow.match(/^\s*batch_pause=(\d+)\s*$/m)||[])[1];
+if(!batchPause||Number(batchPause)<5)fail('each acknowledgement batch must pause before the next burst so revisions finish health-checking');
+if(!/deploy_batch\(\)\s*\{[\s\S]*?sleep "\$batch_pause"/.test(deployWorkflow))fail('the batch pause must actually be used between batches');
+for(const name of ['updatePublicCatalogVersionOnCategories','updatePublicCatalogVersionOnMenuItems','updatePublicCatalogVersionOnOptionGroups','updatePublicCatalogVersionOnPackages'])if(!new RegExp(`exports\\.${name}\\s*=\\s*onValueWritten\\(\\{[^}]*maxInstances`).test(functionsSource))fail(`${name} must cap maxInstances so a catalog edit cannot demand a burst of instances against the shared region quota`);
 for(const marker of ['exports.backupDatabaseDaily = onSchedule(','exports.runDatabaseBackupNow = onCall(']){
   const backupDeclaration=section(functionsSource,marker,');');
   if(!backupDeclaration.includes('memory: "512MiB"'))fail(`database backup memory safeguard missing: ${marker}`);
