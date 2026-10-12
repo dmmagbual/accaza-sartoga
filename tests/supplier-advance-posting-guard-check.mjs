@@ -17,7 +17,7 @@ const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const posting = require('../functions/lib/supplier-advance-posting.js');
-const {ADVANCE_PREFIX, candidateMovementIds, isActiveMovement, postingEvidence} = posting;
+const {ADVANCE_PREFIX, candidateMovementIds, isActiveMovement, advanceNet, postingEvidence} = posting;
 
 const line = (account, debit, credit) => ({account, debit, credit});
 const advanceAccount = (id) => `${ADVANCE_PREFIX}${id}`;
@@ -198,5 +198,45 @@ assert.ok(!/'purchase_cash_advance'/.test(register), 'the register no longer req
 // Cash-in and the shift lifecycle must survive untouched.
 assert.match(read('src/admin/register/50-cash-movements.js'), /payIns/, 'cash-in still writes the drawer pay-ins');
 assert.match(register, /revolving_fund_replenishment/, 'the revolving-fund replenish path is untouched');
+
+// ---------- 5. void-and-replace is net-neutral on 1115 and re-provable only through the replacement ----------
+// The legacy void-and-replace route reverses the original and posts a linked replacement against the
+// same account. On 1115 the two legs cancel, and because the original is linked as reversed only the
+// replacement can prove an advance afterwards. Nothing pinned that before.
+{
+  const original = {id: 'petty_LEG', lines: [line(advanceAccount('LEG'), 1000, 0), line('asset:cash_account:bank', 0, 1000)], reversedByMovementId: 'petty_void_LEG'};
+  const voidLeg = {id: 'petty_void_LEG', type: 'manual_books_journal_correction_reversal', lines: [line(advanceAccount('LEG'), 0, 1000), line('asset:cash_account:bank', 1000, 0)]};
+  const replacement = {id: 'petty_LEG_replace', lines: [line(advanceAccount('LEG_replace'), 1000, 0), line('asset:cash_account:bank', 0, 1000)]};
+  assert.equal(advanceNet(original, 'LEG') + advanceNet(voidLeg, 'LEG'), 0, 'the replaced original must be fully reversed on 1115');
+  assert.equal(advanceNet(replacement, 'LEG_replace'), 1000, 'the replacement carries the advance value under its own key');
+  assert.equal(postingEvidence('LEG', {petty_LEG: original}), null, 'the replaced original must not prove an advance any more');
+  assert.deepEqual(postingEvidence('LEG_replace', {petty_LEG_replace: replacement}), {movementId: 'petty_LEG_replace', amount: 1000}, 'the replacement carries the provable advance');
+  const legacy = read('src/functions/21c-voucher-correction.js');
+  assert.match(legacy, /\[`financialMovements\/\$\{originalId\}\/reversedByMovementId`\]:reverseId/, 'void-and-replace must link the original it replaced');
+  assert.match(legacy, /postId = `petty_\$\{replacementId\}`|postId=`petty_\$\{replacementId\}`/, 'void-and-replace must post the replacement under its own key');
+  assert.match(legacy, /reverseId = `petty_void_\$\{id\}`|reverseId=`petty_void_\$\{id\}`/, 'void-and-replace must post the reversal under the void key');
+}
+
+// ---------- 6. the advance key the guard proves is the key the posting writes ----------
+// The shift pay-out posting writes asset:purchase_cash_advance:${financeKey(entry.id)}, while the guard
+// builds its account from the raw id. That is safe only while financeKey returns the key unchanged, so
+// the invariant is pinned here: if financeKey ever starts normalising ids, this test fails first and
+// points at the guard instead of silently refusing valid advances.
+{
+  const bundle = read('functions/index.js');
+  const start = bundle.indexOf('function financeKey(');
+  assert.ok(start > 0, 'financeKey must exist in the Functions bundle');
+  let depth = 0, end = bundle.indexOf('{', start);
+  for (let i = end; i < bundle.length; i += 1) { if (bundle[i] === '{') depth += 1; else if (bundle[i] === '}' && --depth === 0) { end = i + 1; break; } }
+  // HttpsError lives in the bundle's scope, so the extracted function gets a stand-in that keeps the
+  // same shape: the first argument is the code, the second is the human message.
+  class FakeHttpsError extends Error { constructor(code, message) { super(message || code); this.code = code; } }
+  const financeKey = new Function('HttpsError', `${bundle.slice(start, end)}\nreturn financeKey;`)(FakeHttpsError);
+  for (const id of ['pv_mtk3lbxtkn2', 'padv_live', 'variance_purchase_disc_mv2zxhlexd6_amv4u1a9j0', 'journal_staff_advance_books_edit_1', 'suspense_advance_books_manual_1']) {
+    assert.equal(financeKey(id, 'Advance ID'), id, `financeKey must not transform a valid advance key (${id}); the posting and the guard must agree on the account`);
+  }
+  assert.equal(financeKey('  pv_trim_me  ', 'Advance ID'), 'pv_trim_me', 'financeKey trims surrounding whitespace');
+  assert.throws(() => financeKey('bad.key', 'Advance ID'), (error) => error instanceof FakeHttpsError && error.code === 'invalid-argument' && /is invalid/.test(error.message), 'financeKey still refuses a key the ledger cannot hold');
+}
 
 console.log('supplier advance posting guard: proof rule, apply/return/void credit paths, void linking and the retired register route verified');
