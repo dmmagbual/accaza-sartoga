@@ -95,4 +95,24 @@ assert.ok(brokenAdvance, 'a real supplier-advance mismatch must still be reporte
 assert.equal(brokenAdvance.amount, -120, 'the reported difference must be the account-level gap');
 assert.equal(brokenAdvance.severity, 'critical', 'a real control mismatch stays critical');
 
+// Oct 2026, same class as the Supplier Advances case: Undeposited Collection is reached in the
+// workflow form and in the chart form a validated manual journal carries (coa:1001). The custody
+// comparison must count both, or a chart-form posting raises a false critical mismatch.
+const undepositedDb = createFakeDatabase({
+  admins: {manager_uid: 'manager'},
+  financialMovements: {dep_coa: {type: 'manual_books_journal', sourceType: 'booksManualJournal', occurredAt: NOW, lines: [line('coa:1001', 500, 0), line('coa:3100', 0, 500)]}},
+  cashCustody: {c1: {movementId: 'dep_coa', amount: 500, remaining: 500, status: 'awaiting_deposit', closedAt: NOW}},
+});
+const undepositedAudit = await loadFunctions(undepositedDb, {now: NOW}).exports.auditFinancialControls(request);
+assert.equal(undepositedAudit.issues.find((issue) => issue.kind === 'undeposited_subledger_mismatch'), undefined, 'a chart-form Undeposited posting with matching custody must not be reported');
+assert.equal(undepositedAudit.cashAwaitingDeposit.amount, 500, 'the custody figure is unchanged by how the ledger was posted');
+
+const missingCustodyAudit = await loadFunctions(createFakeDatabase({
+  admins: {manager_uid: 'manager'},
+  financialMovements: {dep_coa: {type: 'manual_books_journal', sourceType: 'booksManualJournal', occurredAt: NOW, lines: [line('coa:1001', 500, 0), line('coa:3100', 0, 500)]}},
+}), {now: NOW}).exports.auditFinancialControls(request);
+const missingCustody = missingCustodyAudit.issues.find((issue) => issue.kind === 'undeposited_subledger_mismatch');
+assert.ok(missingCustody, 'Undeposited cash with no custody must still be reported');
+assert.equal(missingCustody.amount, 500, 'the reported difference must be the account-level gap');
+
 console.log('PASS: the Cash Flow control audit excludes proven conversions, reports real remaining exceptions, and exposes only the safe bank-register repair.');
