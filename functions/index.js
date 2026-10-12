@@ -2410,6 +2410,8 @@ exports.managePettyVoucher = onCall(
     } else if (action === "void") {
       if (voucher.status !== "approved" || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active approved voucher can be voided.");
       if (voucher.transactionType === "purchase_advance" && (Object.keys(voucher.allocations || {}).length || voucher.returnedAt)) throw new HttpsError("failed-precondition", "An allocated or returned supplier payment cannot be voided. Reverse its linked activity first.");
+      /* Voiding posts the reversal of what Finance Books holds. For a supplier payment whose original posting is missing, that reversal is a credit to 1115 with nothing behind it — the Oct 2026 negative Supplier Advances balance. Refuse before the void approval is consumed; the remedy is to post the original payment, never to void it. */
+      if (voucher.transactionType === "purchase_advance") await requireSupplierAdvancePosting(db, id, {voucher});
       if (voucher.transactionType === "staff_advance" && Object.values(voucher.settlements || {}).some((row) => row && !row.reversedAt)) throw new HttpsError("failed-precondition", "A liquidated staff advance cannot be voided. Reverse its settlements first.");
       if (!reason) throw new HttpsError("invalid-argument", "A void reason is required.");
       reversalAccountingDate = assertVoucherDateNotFuture(data.accountingDate, now);
@@ -2828,7 +2830,7 @@ async function requireSupplierAdvancePosting(db, advanceId, options) {
   entries.forEach(([movementId, row]) => { if (row) movements[movementId] = row; });
   const proof = SupplierAdvancePosting.postingEvidence(advanceId, movements);
   if (!proof) {
-    throw new HttpsError("failed-precondition", `Supplier payment ${advanceId} has no original posting in Finance Books, so it cannot be used yet. Post the original payment first: for cash released from the register drawer run Admin > Finance > Cash Flow > "Backfill / verify 3C financial ledger" (idempotent, it posts only what is missing); for a converted or adopted advance whose Finance Books entry is missing or reversed, repair the conversion from Finance Books > the suspense journal > Convert to supplier advance; otherwise record or correct the payment in Admin > Cash Payments. Finance Books refuses a manual journal to Supplier Advances.`);
+    throw new HttpsError("failed-precondition", `Supplier payment ${advanceId} has no original posting in Finance Books, so it cannot be applied, returned or voided yet. Post the original payment first: for cash released from the register drawer run Admin > Finance > Cash Flow > "Backfill / verify 3C financial ledger" (idempotent, it posts only what is missing); for a converted or adopted advance whose Finance Books entry is missing or reversed, repair the conversion from Finance Books > the suspense journal > Convert to supplier advance; otherwise record or correct the payment in Admin > Cash Payments. Finance Books refuses a manual journal to Supplier Advances.`);
   }
   return proof;
 }
@@ -6857,6 +6859,13 @@ async function pettyVoucherFinancialEvent(event) {
   }
   if (after.voided === true && before.voided !== true && after.status === "approved" && value > 0) {
     const movementId=`petty_void_${id}`, occurredAt=cashVoucherReversalOccurredAt(after), writes = funding.kind==="undeposited"?poolCustodyInflowRecord(movementId, value, isAdvance?"Supplier payment voided":"Expense voided", occurredAt, movementId):{};
+    // A void reverses what Finance Books already holds. Checked before anything else so a retry of an
+    // already-posted void stays idempotent. An advance whose original payment is missing would post a
+    // credit to 1115 with nothing behind it — the Oct 2026 negative Supplier Advances balance — so it
+    // is refused, and a posted void is linked to the original so that payment can never be proved or
+    // applied again. Linking is limited to supplier advances: their proof of posting depends on it.
+    if((await db.ref(`/financialMovements/${movementId}`).get()).exists())return;
+    if(isAdvance){await requireSupplierAdvancePosting(db,id,{voucher:after});writes[`financialMovements/petty_${id}/reversedByMovementId`]=movementId;writes[`financialMovements/petty_${id}/voidedAt`]=Date.now();}
     const movement = Financial.movement(isAdvance?"revolving_fund_purchase_advance_void":posting.movementType+"_void", "pettyVoucher", id, [Financial.line(funding.account, value, 0, funding.kind==="undeposited"?"Returned to Undeposited Collection":"Returned to selected cash account"), Financial.line(isAdvance?`asset:purchase_cash_advance:${id}`:posting.account, 0, value, isAdvance?"Reverse supplier payment":"Reverse "+posting.label)], {occurredAt,actorName:"Manager",voucherNo:financeText(after.voucherNo,60),category:financeText(after.category,80),payee:financeText(after.recipient||after.requesterName,160),purpose:financeText(after.purpose,300),fundingAccountId:funding.id||"undeposited"});
     if(funding.kind!=="undeposited")writes[`cfLedger/fm_${movementId}`]=cashLedgerRecord({date:financeDateFromTimestamp(occurredAt),accountId:funding.id,dir:"in",category:isAdvance?"Supplier payment voided":"Cash voucher void",amount:value,party:financeText(after.recipient||after.requesterName,160),ref:financeText(after.voucherNo,60)},movementId,movement,actor);
     await commitFinancial(db, movementId, movement, actor, writes);

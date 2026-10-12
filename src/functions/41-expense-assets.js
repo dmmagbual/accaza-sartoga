@@ -106,6 +106,13 @@ async function pettyVoucherFinancialEvent(event) {
   }
   if (after.voided === true && before.voided !== true && after.status === "approved" && value > 0) {
     const movementId=`petty_void_${id}`, occurredAt=cashVoucherReversalOccurredAt(after), writes = funding.kind==="undeposited"?poolCustodyInflowRecord(movementId, value, isAdvance?"Supplier payment voided":"Expense voided", occurredAt, movementId):{};
+    // A void reverses what Finance Books already holds. Checked before anything else so a retry of an
+    // already-posted void stays idempotent. An advance whose original payment is missing would post a
+    // credit to 1115 with nothing behind it — the Oct 2026 negative Supplier Advances balance — so it
+    // is refused, and a posted void is linked to the original so that payment can never be proved or
+    // applied again. Linking is limited to supplier advances: their proof of posting depends on it.
+    if((await db.ref(`/financialMovements/${movementId}`).get()).exists())return;
+    if(isAdvance){await requireSupplierAdvancePosting(db,id,{voucher:after});writes[`financialMovements/petty_${id}/reversedByMovementId`]=movementId;writes[`financialMovements/petty_${id}/voidedAt`]=Date.now();}
     const movement = Financial.movement(isAdvance?"revolving_fund_purchase_advance_void":posting.movementType+"_void", "pettyVoucher", id, [Financial.line(funding.account, value, 0, funding.kind==="undeposited"?"Returned to Undeposited Collection":"Returned to selected cash account"), Financial.line(isAdvance?`asset:purchase_cash_advance:${id}`:posting.account, 0, value, isAdvance?"Reverse supplier payment":"Reverse "+posting.label)], {occurredAt,actorName:"Manager",voucherNo:financeText(after.voucherNo,60),category:financeText(after.category,80),payee:financeText(after.recipient||after.requesterName,160),purpose:financeText(after.purpose,300),fundingAccountId:funding.id||"undeposited"});
     if(funding.kind!=="undeposited")writes[`cfLedger/fm_${movementId}`]=cashLedgerRecord({date:financeDateFromTimestamp(occurredAt),accountId:funding.id,dir:"in",category:isAdvance?"Supplier payment voided":"Cash voucher void",amount:value,party:financeText(after.recipient||after.requesterName,160),ref:financeText(after.voucherNo,60)},movementId,movement,actor);
     await commitFinancial(db, movementId, movement, actor, writes);

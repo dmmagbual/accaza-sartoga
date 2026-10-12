@@ -108,11 +108,69 @@ const guard = read('src/functions/21b-supplier-advance-receipts.js');
 assert.match(guard, /async function requireSupplierAdvancePosting\(db, advanceId, options\)/, 'the guard lives with the supplier-advance code');
 assert.match(guard, /Backfill \/ verify 3C financial ledger/, 'the refusal names the controlled repair route');
 assert.match(guard, /no original posting in Finance Books/, 'the refusal explains why it is refused');
+assert.match(guard, /cannot be applied, returned or voided/, 'the refusal covers every credit path it guards');
 assert.ok(
   !/\.ref\("\/financialMovements"\)\.get\(\)/.test(guard),
   'the proof must read candidate records by key, never download every movement',
 );
 assert.match(read('src/functions/00-bootstrap-notifications.js'), /require\("\.\/lib\/supplier-advance-posting"\)/, 'the rule is loaded once with the other finance libraries');
+
+// ---------- 3b. the void path is guarded and linked ----------
+// Voiding posts the reversal of what Finance Books holds. Without the guard an unposted advance could
+// be voided into a fresh 1115 credit, and without the link the voided original still looked posted,
+// so the advance could be applied again — the exact defect this change removes.
+const voidCommand = liquidation.indexOf('} else if (action === "void") {');
+assert.ok(voidCommand > 0, 'the void action must exist in Cash Payments');
+const voidGuard = liquidation.indexOf('if (voucher.transactionType === "purchase_advance") await requireSupplierAdvancePosting(db, id, {voucher});', voidCommand);
+assert.ok(voidGuard > voidCommand, 'voiding a supplier payment must prove the original posting');
+assert.ok(
+  voidGuard < liquidation.indexOf('approvalAction = "void_petty_voucher"', voidCommand),
+  'the proof must be required before the void approval is requested',
+);
+assert.ok(
+  voidGuard < liquidation.indexOf('claimManagerApproval(db, data, approvalAction, id, value', voidCommand),
+  'the proof must be required before the void approval is claimed',
+);
+assert.ok(
+  voidGuard < liquidation.indexOf('{voided: true, status:', voidCommand),
+  'the proof must be required before the voucher is marked voided',
+);
+
+const trigger = read('src/functions/41-expense-assets.js');
+const voidBranch = trigger.indexOf('if (after.voided === true && before.voided !== true && after.status === "approved" && value > 0) {');
+assert.ok(voidBranch > 0, 'the void trigger branch must exist');
+const triggerProof = trigger.indexOf('await requireSupplierAdvancePosting(db,id,{voucher:after})', voidBranch);
+assert.ok(triggerProof > voidBranch, 'the void trigger must refuse to post a credit with nothing behind it');
+assert.ok(
+  trigger.indexOf('await commitFinancial(db, movementId, movement, actor, writes)', voidBranch) > triggerProof,
+  'the proof must be required before the void movement is committed',
+);
+assert.ok(
+  trigger.indexOf('if((await db.ref(`/financialMovements/${movementId}`).get()).exists())return;', voidBranch) > voidBranch,
+  'an already-posted void must stay idempotent and skip the proof',
+);
+const triggerIdempotent = trigger.indexOf('if((await db.ref(`/financialMovements/${movementId}`).get()).exists())return;', voidBranch);
+assert.ok(triggerIdempotent < triggerProof, 'idempotency is checked before the proof, so a replayed void cannot dead-letter');
+assert.ok(
+  trigger.includes('writes[`financialMovements/petty_${id}/reversedByMovementId`]=movementId;'),
+  'a voided supplier payment must be linked to its reversal',
+);
+assert.ok(
+  trigger.includes('writes[`financialMovements/petty_${id}/voidedAt`]=Date.now();'),
+  'the link must record when the payment was voided',
+);
+
+// A voided advance can never be proved again, even though its debit line is still on record.
+assert.equal(
+  postingEvidence('V1', {petty_V1: Object.assign({}, posted, {reversedByMovementId: 'petty_void_V1', voidedAt: 1})}),
+  null,
+  'after a linked void the original no longer proves the advance can be applied',
+);
+assert.deepEqual(
+  postingEvidence('V1', {petty_V1: posted, petty_void_V1: {lines: [line(advanceAccount('V1'), 0, 1000)]}}),
+  {movementId: 'petty_V1', amount: 1000},
+  'an unlinked void credit must not be treated as proof, and must not erase a real posting either',
+);
 
 // ---------- 4. the retired register route stays retired ----------
 const register = read('src/admin/register/40-revolving-fund.js');
@@ -124,4 +182,4 @@ assert.ok(!/'purchase_cash_advance'/.test(register), 'the register no longer req
 assert.match(read('src/admin/register/50-cash-movements.js'), /payIns/, 'cash-in still writes the drawer pay-ins');
 assert.match(register, /revolving_fund_replenishment/, 'the revolving-fund replenish path is untouched');
 
-console.log('supplier advance posting guard: proof rule, both credit paths and the retired register route verified');
+console.log('supplier advance posting guard: proof rule, apply/return/void credit paths, void linking and the retired register route verified');
