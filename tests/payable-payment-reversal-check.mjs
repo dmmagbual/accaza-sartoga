@@ -56,7 +56,12 @@ for (const file of ['functions/index.js', 'src/functions/42d-financial-command-c
   must(s, 'if (original.reversedByMovementId) throw new HttpsError', `${file}: an already-reversed movement must be refused.`);
   must(s, '"payable_paid", "payable_paid_owner_capital"', `${file}: only a genuine supplier bill payment may be reversed here.`);
   must(s, 'customer_change_refund', `${file}: a customer change/refund payable must be sent to its own path.`);
-  must(s, 'paid from Undeposited Collection', `${file}: a custody-funded payment must be blocked rather than half-undone.`);
+  /* AP 0.6 (approved 12 Oct 2026) supersedes the block that used to live here: the server refused an
+     Undeposited-funded reversal outright. The 0.5 custody pool claim removed the race that made that
+     necessary, so the requirement is now that the exact rows are restored — never half-undone. The
+     restoration itself is proven by the AP 0.6 block below; this proves the refusal is gone. */
+  check(!s.includes('Reversing it must also restore the exact cash custody allocations, which this correction does not do.'),
+    `${file}: the old Undeposited refusal must be replaced by the exact restoration.`);
   must(s, 'await assertAccountingPeriodOpen(db, date, "reversing this supplier payment");', `${file}: the reversal must respect a closed accounting month.`);
   must(s, 'writes[`payables/${docId}/status`] = "open";', `${file}: the bill must return to outstanding.`);
   must(s, 'currentRemaining+value', `${file}: only the selected payment amount must return to the subledger.`);
@@ -96,6 +101,24 @@ for (const file of ['assets/js/books/controlled-transactions.js', 'src/books/app
   must(s, "action:'reverse_payable_payment'", `${file}: the client must call the server action.`);
   must(s, "if(!reason) return alert('Enter the reason for reversing this payment.');", `${file}: the client must require a reason.`);
   must(s, 'window.__isAccountingPeriodClosed(date)', `${file}: the client must warn on a closed accounting month.`);
+}
+
+/* ---------- AP 0.6: an Undeposited-funded payment reverses by restoring its custody rows ---------- */
+{
+  const s = read('functions/index.js');
+  must(s, 'const restoreCustody = paidFrom === "undeposited";', 'the reversal must handle Undeposited-funded payments instead of refusing them.');
+  must(s, 'if (restoreCustody) await claimCustodyPool(db, commandId, apClaimSets);', 'the custody restoration must run under the 0.5 pool claim, so a concurrent cash-out cannot read a half-restored pool.');
+  must(s, 'This Undeposited-funded payment does not record which cash custody rows it consumed', 'a payment with no recorded allocations must be refused, never partially restored.');
+  must(s, 'this payment consumed no longer exists', 'a missing custody row must refuse rather than restore a guess.');
+  must(s, 'does not show this payment', 'a row that never recorded the consumption must refuse rather than invent a balance.');
+  must(s, 'writes[`cashCustody/${id}/remaining`] = remaining;', 'the consumed custody balance must be restored.');
+  must(s, 'writes[`cashCustody/${id}/paidOutAmount`] = paidOut;', 'the paid-out total must be reduced by the restored amount.');
+  must(s, 'writes[`cashCustody/${id}/status`] = "awaiting_deposit";', 'a restored row goes back to awaiting deposit.');
+  must(s, 'writes[`cashCustodyOpenIndex/${id}`] = remaining > 0 ? cashCustodyProjection(', 'a row the deposit path removed must be listed again, or the restored cash stays invisible to the pool.');
+  must(s, 'writes[`cashCustody/${id}/lastPaymentReversalMovementId`] = reverseId;', 'the restoration must link the reversal movement for the audit trail.');
+  must(s, 'paidFrom !== "undeposited") addCash(', 'an Undeposited-funded reversal must not also write a bank register row.');
+  check(!s.includes('Reversing it must also restore the exact cash custody allocations, which this correction does not do.'),
+    'the old refusal must be gone: the correction now restores the allocations it named.');
 }
 
 if (failures.length) { console.error('Supplier payment reversal check failed:\n- ' + failures.join('\n- ')); process.exit(1); }
