@@ -64,9 +64,22 @@ the first action of each step is to re-verify that scope against current source.
       matching payable and either links it (`linked_existing`) or creates and links one — so the repair
       is server-verified, refuses ambiguity, and never double-opens a liability.
 
-- [ ] **0.9 — `purchaseInvoices` create-only rules** (AP-05, client-writable) plus the one-time
-      **display-only mirror refresh** that copies each bill's payment status onto its purchase and
-      folds in the 10 known drifts.
+- [ ] **0.9 — purchase records are client-writable** (AP-05) — **confirmed open 12 Oct 2026; POS-critical fix, not yet built.**
+      Evidence: in `database.rules.json` the whole `purchaseInvoices` node carries a `.write` rule that
+      admits any signed-in account with Purchases access (or owner/superadmin/admin/manager) with **no
+      `$id` child restriction** — unlike `discrepancies` directly below it, which has one. So a Purchases
+      account can edit or delete a purchase record directly, with no audit trail and no server command,
+      and the bill/paid reconciliation can be made to disagree.
+      The screen legitimately writes the record from the browser: `src/admin/pos/20a-purchase-posting.js`
+      builds `updates['purchaseInvoices/'+invoiceId] = {supplierId, supplier, ref, date, due, ...}` in a
+      multi-path write. Other touches that must be checked before restricting anything:
+      `20-purchasing.js` (9), `11h-purchase-workspace.js` (3), `19-purchase-quantity-correction.js` (1).
+      **Why it is not a one-line rules change:** a wrong rule blocks purchase recording at the counter.
+      Required work: enumerate every client write and the exact fields each flow needs; allow the create
+      and only the legitimate later updates (or move them into server commands); add a rules test; and
+      exercise it against a **staging** database before production, because the suite does not evaluate
+      Realtime Database rules against the client. The plan entry for 0.9 is the last real Phase 0 item.
+
 - [ ] **0.10 — supplier-ID matching + backfill** (AP-06: name-based relationships).
 - [ ] **0.11 — duplicate supplier invoice refs** with a **"No receipt" exemption** (Danilo decision A:
       no-receipt purchases skip the duplicate check but are listed for review).
