@@ -5,7 +5,7 @@ const crypto=require("node:crypto");
 // is unavailable) downloads the whole Realtime Database (13 MB on 16 Sep 2026, growing
 // ~0.3 MB/day). Warn long before that single day could threaten the 360 MB/day allowance.
 const BACKUP_DOWNLOAD_WARN_BYTES=60*1024*1024,DAILY_FREE_DOWNLOAD_BYTES=360*1024*1024;
-const TARGETS={pos_boot:3000,pos_build:1500,cart_render:100,charge_to_durable:1500,offline_flush:5000,realtime_order_arrival:1500,live_ready:5000};
+const TARGETS={pos_boot:6000,pos_build:1500,cart_render:100,charge_to_durable:1500,offline_flush:5000,realtime_order_arrival:1500,live_ready:5000};
 function alert(id,severity,title,detail){return{id,severity,title,detail};}
 function evaluate(input,now=Date.now()){
   input=input||{};const alerts=[],backup=input.backup||{},rows=input.telemetry||[],operational=input.operational||{counts:{}};

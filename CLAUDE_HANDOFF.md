@@ -152,7 +152,7 @@ Only eligible cash POS sales use the durable offline path. A client transaction 
 Targets:
 
 - Warm POS launch under 1.5 seconds.
-- Cold launch under 3 seconds.
+- Cold launch under 6 seconds (page load, includes network speed; the POS own work measures milliseconds).
 - Cart response under 100 ms.
 - Remote order arrival within 1.5 seconds target.
 - Initial active-order payload under 250 KB excluding proofs.

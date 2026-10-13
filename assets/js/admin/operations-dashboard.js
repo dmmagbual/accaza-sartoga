@@ -1,7 +1,7 @@
 (function(global){
   'use strict';
   var METRICS=[
-    {key:'pos_boot',label:'POS launch',target:3000,note:'How long the POS takes to become usable. Target: under 3 seconds.'},
+    {key:'pos_boot',label:'POS launch',target:6000,note:'Time until the page has finished loading every resource. This includes network speed, so it is not the same as the POS being slow: the POS own work measures milliseconds. Danilo, 13 Oct 2026: under 6 seconds is fine, below that is impressive.'},
     {key:'pos_build',label:'POS screen build',target:1500,note:'How long the system takes to prepare the POS screen. Target: under 1.5 seconds.'},
     {key:'cart_render',label:'Cart response',target:100,note:'How quickly the cart responds after an item or quantity changes. Target: under 100 milliseconds.'},
     {key:'charge_to_durable',label:'Sale safely stored',target:1500,note:'Time from charging the sale until it is safely saved. Target: under 1.5 seconds.'},

@@ -20,7 +20,7 @@ Follow `BACKUP_RESTORE_RUNBOOK.md` exactly. It restores into an isolated emulato
 
    | Card | Target |
    |---|---:|
-   | POS launch | under 3,000 ms |
+   | POS launch | under 6,000 ms (page load, so it includes network speed; the POS own work measures milliseconds) |
    | POS screen build | under 1,500 ms |
    | Cart response | under 100 ms |
    | Sale safely stored | under 1,500 ms |

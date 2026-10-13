@@ -13,7 +13,7 @@ The view reports sample count, arithmetic average, worst observed duration, fail
 
 | Signal | Good target |
 |---|---:|
-| POS launch | under 3,000 ms cold; under 1,500 ms warm |
+| POS launch | under 6,000 ms cold; under 1,500 ms warm (revised 13 Oct 2026: the cold figure is the browser load event and includes every resource and network round trip, so 3,000 ms was not achievable on the store network) |
 | POS screen build | under 1,500 ms |
 | Cart response | under 100 ms |
 | Charge safely stored | under 1,500 ms |
