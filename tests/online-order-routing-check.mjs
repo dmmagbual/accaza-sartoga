@@ -178,6 +178,14 @@ check(goneLink.some((x) => x.id === 'routing_link_missing_bdo' && x.severity ===
 const offTill = paymentRoutingIssues([{name: 'Cash', cash: true}, {name: 'Bank Transfer', active: true, accountIds: []}], accounts, Date.now(), settings);
 check(offTill.some((x) => x.id === 'routing_link_unassigned_bdo' && x.severity === 'warning'),
   'An online account the till does not offer must be reported as a warning, not a refusal.');
+/* A renamed till method keeps its old name as an alias, and a method with no account list still
+   offers the accounts whose feed methods claim it, so neither may be reported as unassigned. */
+const renamed = paymentRoutingIssues([{name: 'Cash', cash: true}, {name: 'E-Wallet', aliases: ['GCash'], active: true, accountIds: ['acc_gcash']}], accounts, Date.now(), settings);
+check(!rows(renamed).includes('routing_link_unassigned_gcash'),
+  `A till method renamed with an alias still offers the account, got ${JSON.stringify(rows(renamed))}`);
+const feedOffered = paymentRoutingIssues([{name: 'Cash', cash: true}, {name: 'GCash', active: true}], accounts, Date.now(), settings);
+check(!rows(feedOffered).includes('routing_link_unassigned_gcash'),
+  `A till method with no account list still offers the accounts that claim it, got ${JSON.stringify(rows(feedOffered))}`);
 
 if (failures.length) { console.error('Online order routing check failed:\n- ' + failures.join('\n- ')); process.exit(1); }
 console.log('PASS: an online order posts to the bank the customer chose, refunds follow it back, and no account is ever guessed at.');
