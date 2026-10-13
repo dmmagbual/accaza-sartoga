@@ -114,6 +114,10 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // now expects the live-register label and its disabled reason instead of "available above float",
 // because the live register was removed from every spending source. Same single guard, widened for
 // the approved change; guard count stays at 577 and executable checks stay at 33.
-if(guardDigest!=='4f0aa521d18e2eb423ee701040da9c93ca54610670efdd88c15ab32368edc5ee')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (Books 154, account number): one reviewed guard line in tests/static/30-server-release.mjs
+// now pins the deferred Finance Books bundle to its new cache key (controlled-transactions.js?v=154)
+// after Books was rebuilt to record an account number on each cash account. Same guard, same meaning;
+// guard count stays at 577 and executable checks stay at 33.
+if(guardDigest!=='380855607763838d4d06ac500e22457c8c30fc0a68f2131fba1af1919bce8654')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
