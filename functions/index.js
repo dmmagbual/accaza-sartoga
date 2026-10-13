@@ -5648,7 +5648,10 @@ function readyForAutoComplete(order, now = Date.now()) {
 function activeOrderProjection(order) {
   if (!order || typeof order !== "object") return null;
   const projected = Object.assign({}, order, {projectionVersion: 2});
-  ["proof", "proofData", "orderInventoryPlan", "inventoryUsage", "cogsDetail", "cogsDetailSource", "cogsCategorySnapshot", "cogsAccountSnapshot", "audit", "history"].forEach((field) => delete projected[field]);
+  // serviceAttempt is the order-flow attempt trace (a no-change or refused tap, see
+  // functions/lib/order-service.js). It is diagnostic evidence for the order record, never
+  // something a live screen draws, so it stays out of the projection the rail downloads.
+  ["proof", "proofData", "orderInventoryPlan", "inventoryUsage", "cogsDetail", "cogsDetailSource", "cogsCategorySnapshot", "cogsAccountSnapshot", "audit", "history", "serviceAttempt"].forEach((field) => delete projected[field]);
   return projected;
 }
 

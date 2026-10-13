@@ -65,6 +65,21 @@ assert.equal((await call({action:'serve',orderId:a.order.id,requestId:'serve_req
 assert.ok(Object.keys(read('/operationalAudit')).some(k=>k.endsWith('_service_serve_req_0001')),'serving is audited');
 assert.equal(Service.needsService(read(`/orders/${a.order.id}`)),false);
 assert.equal(read(`/activeOrders/${a.order.id}/service/state`),'served','served orders remain in Shift Orders while their shift is open');
+
+// 3b. A tap that changes nothing is recorded on the order. This is the evidence that was missing
+// on 13 Oct 2026: a stale card repeated a step, the server answered "duplicate" (a success), and
+// nothing anywhere showed that the cashier's tap had done nothing.
+await call({action:'serve',orderId:a.order.id,requestId:'serve_req_0003',believedStage:'ready'},CASHIER,now+63000);
+const noChange=read(`/orders/${a.order.id}/serviceAttempt`);
+assert.equal(noChange.outcome,'no_change','a tap the server had already applied is recorded, not silently accepted');
+assert.equal(noChange.action,'serve');assert.equal(noChange.believedStage,'ready','the stage the device believed it was acting on is kept');
+assert.equal(noChange.serverState,'served');assert.equal(noChange.actorUid,CASHIER.uid);assert.equal(noChange.shiftId,'SH-SQ');
+await assert.rejects(call({action:'mark_ready',orderId:a.order.id,requestId:'ready_req_0002',believedStage:'ready'},CASHIER,now+64000),/not being prepared/);
+const refused=read(`/orders/${a.order.id}/serviceAttempt`);
+assert.equal(refused.outcome,'rejected','a refused tap is recorded too');
+assert.equal(refused.action,'mark_ready');assert.equal(refused.serverState,'served');assert.equal(refused.believedStage,'ready');
+assert.equal(read(`/orders/${a.order.id}/service/state`),'served');assert.equal(read(`/orders/${a.order.id}/total`),150,'the attempt trace never changes the sale');
+assert.equal(read(`/activeOrders/${a.order.id}/serviceAttempt`),undefined,'the attempt trace is not written into the live projection');
 await assert.rejects(call({action:'return_to_queue',orderId:a.order.id,requestId:'serve_req_0001',reason:'x'},BAR,now),/already used/,'a request ID cannot be reused for another action');
 
 // 4. Return to queue keeps the correction lock.
@@ -136,6 +151,19 @@ const fnSource=['sqIsOnline','sqNeedsService'].map(name=>{const m=posSource.matc
 const ctx={};vm.createContext(ctx);vm.runInContext(fnSource,ctx);
 const fixtures=[aOrder,read(`/orders/${a.order.id}`),read(`/orders/${v.order.id}`),ncOrder,web,Object.assign({},web,{status:'Pending'}),Object.assign({},web,{posCaptured:false}),read('/orders/GF-SQ1'),Object.assign({},aOrder,{refundAmount:150}),{source:'pos',status:'Completed'},null];
 for(const o of fixtures)assert.equal(ctx.sqNeedsService(o?structuredClone(o):o),Service.needsService(o),'POS queue and server disagree on '+(o&&o.id));
+
+// 11b. The rail may never again read the card from one state and send the tap from another: a
+// stale card then re-sends its own step, the server answers "duplicate", and the order is stuck
+// with no error, no toast and no record anywhere. Both paths must use the one view helper, and
+// every server answer must be adopted as this device's view.
+const orderServiceSource=fs.readFileSync(new URL('../functions/lib/order-service.js',import.meta.url),'utf8');
+assert.match(posSource,/function sqRows\(\)\{[\s\S]{0,400}?sqViewRow\(onlineOrdersMap\[id\]\|\|\{\},id\)/,'the rail renders one shared view of each order');
+assert.match(posSource,/function sqFind\(id\)\{[^}]*sqViewRow\(onlineOrdersMap\[id\],id\)/,'a tap resolves the same view the card showed');
+assert.ok(!/var o=Object\.assign\(\{\},live,\{id:id\}\)/.test(posSource),'the send path keeps no second, un-overridden copy of the order');
+assert.match(posSource,/sqRememberConfirmed\(id,confirmed,String\(live\.service&&live\.service\.state\|\|''\)\)/,'every server answer is adopted as this device view');
+assert.match(orderServiceSource,/traceAttempt\(options, order, action, requestId, detail, "no_change"/,'a tap that changes nothing is traced on the server');
+assert.match(orderServiceSource,/traceAttempt\(options, order, action, requestId, detail, "rejected"/,'a refused tap is traced on the server');
+assert.match(fs.readFileSync(new URL('../src/functions/30-orders.js',import.meta.url),'utf8'),/"serviceAttempt"\]/,'the attempt trace stays out of the live projection');
 
 // 12. Wiring: charge hook, queue column in every POS view, close review before the cash count, Z section.
 const pos=fs.readFileSync(new URL('../assets/js/admin/pos.js',import.meta.url),'utf8'),register=fs.readFileSync(new URL('../assets/js/admin/register.js',import.meta.url),'utf8'),fn=fs.readFileSync(new URL('../functions/index.js',import.meta.url),'utf8'),posCss=fs.readFileSync(new URL('../assets/css/admin/pos-workflow.css',import.meta.url),'utf8'),workspaceCss=fs.readFileSync(new URL('../assets/css/admin-backoffice.css',import.meta.url),'utf8');
