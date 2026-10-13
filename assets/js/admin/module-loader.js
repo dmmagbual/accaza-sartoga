@@ -46,7 +46,24 @@
     });
   };
   function loading(tab){var root=document.getElementById(roots[tab]||'');if(root&&!root.innerHTML.trim())root.innerHTML='<div style="padding:2rem;text-align:center;color:var(--tl);">Loading '+String(tab).replace(/([A-Z])/g,' $1')+'…</div>';}
-  function failed(tab,error){var root=document.getElementById(roots[tab]||'');if(root)root.innerHTML='<div style="padding:1.2rem;border:1px solid #f1b7b7;background:#fff5f5;color:#8b1e1e;border-radius:8px;">This section could not load. Check the connection and open the tab again.</div>';console.error('Accaza module load failed',tab,error);}
+  /* A page held open across a deploy can end up mixing versions: the loader already in memory predates
+     a module that the release moved or renamed, while the network now serves the new files, so a screen
+     calls a function that no longer exists. That is how Cash & Controls -> Reconciliation Issues broke
+     on 13 Oct 2026 after the register split: the old loader had no companion route, and the old
+     versioned URL returned the new register bundle. The screen is unusable either way, so reload once
+     per build to pick up a consistent set of files, and only fall back to the message below if that has
+     already been tried -- the session flag is what stops a reload loop. */
+  function failed(tab,error){
+    try{
+      var guard='accaza:moduleReload:'+(build||'unknown');
+      if(!window.sessionStorage.getItem(guard)){
+        window.sessionStorage.setItem(guard,'1');
+        console.warn('Accaza module load failed; reloading once for a consistent build',tab,error);
+        window.location.reload();
+        return;
+      }
+    }catch(_reloadError){}
+    var root=document.getElementById(roots[tab]||'');if(root)root.innerHTML='<div style="padding:1.2rem;border:1px solid #f1b7b7;background:#fff5f5;color:#8b1e1e;border-radius:8px;">This section could not load. Check the connection and open the tab again.</div>';console.error('Accaza module load failed',tab,error);}
 
   window.posSwitchTab=function(tab,button){
     var serial=++requestSerial;
