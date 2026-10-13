@@ -9794,14 +9794,14 @@ exports.markBackupDirtyDragonQuestOrderIndex = backupDirtyTrigger("dragonQuestOr
 exports.markBackupDirtyArchivedQrTickets = backupDirtyTrigger("archivedQrTickets");
 
 exports.backupDatabaseDaily = onSchedule(
-  {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "512MiB"},
+  {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "1GiB"},
   async () => {await createVerifiedDatabaseBackup();return null;},
 );
 
 // A manager may recover a missed schedule without console access. This uses
 // the exact scheduled path and returns metadata only, never backup contents.
 exports.runDatabaseBackupNow = onCall(
-  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 300, memory: "512MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 300, memory: "1GiB"},
   async (request) => {const db=getDatabase(),actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Database backup is restricted to management accounts.");return createVerifiedDatabaseBackup();},
 );
 
