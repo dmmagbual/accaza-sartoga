@@ -81,6 +81,7 @@ export const BUNDLE_BUDGETS=Object.freeze({
 // the annual accountant export. One-shot reads only (taxSettings, companyInfo,
 // taxReturns history); no standing listener. Re-baselined under the budget policy to
 // ~5% above the reviewed 265,488 bytes.
+'assets/js/admin/register-discrepancies.js':23600, // AP register split: lazily loaded discrepancies render code
 'assets/js/admin/register.js':278800,
   // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.

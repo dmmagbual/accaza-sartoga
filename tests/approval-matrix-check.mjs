@@ -7,12 +7,15 @@ const functionsSource=read('functions','index.js');
 const managerSource=read('assets','js','admin','manager-approval.mjs');
 const coreSource=read('assets','js','admin','core.mjs')+'\n'+read('assets','js','admin','order-archive-panel.mjs');
 const registerSource=read('assets','js','admin','register.js');
+/* AP register split: the discrepancies screen is a lazily loaded companion now, so its approval
+   actions (reopen_discrepancy, review_discrepancy) live here rather than in register.js. */
+const registerDiscrepancySource=read('assets','js','admin','register-discrepancies.js');
 const posSource=read('assets','js','admin','pos.js');
 const analyticsSource=read('assets','js','admin','analytics.js');
 const financeSource=read('assets','js','admin','finance.js');
 const undepositedSource=read('assets','js','admin','undeposited.js');
 const suspenseAdvanceSource=read('assets','js','books','suspense-advance.mjs');
-const clientSource=[coreSource,registerSource,posSource,analyticsSource,financeSource,undepositedSource,suspenseAdvanceSource].join('\n');
+const clientSource=[coreSource,registerSource,registerDiscrepancySource,posSource,analyticsSource,financeSource,undepositedSource,suspenseAdvanceSource].join('\n');
 const expected=[
   'validate_payment','refund','void','settle_platform_payout','reopen_cash_count','reopen_discrepancy',
   'delete_archived_order','review_discrepancy','approve_petty_voucher','correct_petty_voucher','void_replace_legacy_petty_voucher',
