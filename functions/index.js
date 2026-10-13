@@ -2103,7 +2103,9 @@ exports.reviewDiscrepancy = onCall(
     const ref = db.ref(`/discrepancies/${id}`), snap = await ref.get();
     if (!snap.exists()) throw new HttpsError("not-found", "Discrepancy not found.");
     const row = snap.val() || {}; if (row.status === "reviewed") return {discrepancyId: id, duplicate: true};
-    await assertAccountingPeriodOpen(db, financeText(row.date, 10) || financeDateFromTimestamp(Number(row.closedAt || row.ts || row.createdAt || Date.now())), "resolving this Admin cash discrepancy");
+    /* Only a cash-difference review posts to Finance Books, so the open-period rule applies to
+       cash. An inventory flag is resolved against the stock adjustment that already posted. */
+    if (row.kind === "cash") await assertAccountingPeriodOpen(db, financeText(row.date, 10) || financeDateFromTimestamp(Number(row.closedAt || row.ts || row.createdAt || Date.now())), "resolving this Admin cash discrepancy");
     const now = Date.now(); let approval, reviewedBy;
     if(row.kind==="cash"&&Number(data.caseVersion)===2){
       const short=Number(row.variance)<0,totalValue=Financial.money(Math.abs(Number(row.variance)||0)),shiftId=financeKey(row.shiftId,"Shift ID"),raw=Array.isArray(data.allocations)?data.allocations:[],prior=row.resolutionAllocations||{},priorTotal=Financial.money(Object.values(prior).reduce((sum,x)=>sum+Number(x&&x.amount||0),0)),remaining=Financial.money(totalValue-priorTotal),revision=Math.max(0,Math.floor(Number(row.resolutionRevision)||0))+1;
@@ -2210,6 +2212,52 @@ exports.reviewDiscrepancy = onCall(
       }else{target=treatment==="shortage_expense"?"expense:cash_shortage":treatment==="staff_receivable"?`asset:receivable:shift_${shiftId}`:treatment==="owner_draw"?"equity:owner_draw":"revenue:unexplained_cash_overage";const label=`Resolve ${short?"cash shortage":"cash overage"} · ${note}`;if(legacyFinal&&short&&treatment==="shortage_expense")lines=[];else{const source=legacyFinal?(short?"expense:cash_shortage":"revenue:cash_overage"):pending;lines=short?[Financial.line(target,value,0,label),Financial.line(source,0,value,label)]:[Financial.line(source,value,0,label),Financial.line(target,0,value,label)];}}
       approval=await claimManagerApproval(db,data,"review_discrepancy",id,null,`review_discrepancy_${id}`);reviewedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole;const financialStatus=treatment==="supplier_payment_pending_allocation"?"awaiting_inventory_allocation":treatment==="customer_change_refund_payable"?"awaiting_customer_refund":"resolved",writes=Object.assign({},approval.usedWrites,{[`discrepancies/${id}/status`]:"reviewed",[`discrepancies/${id}/financialStatus`]:financialStatus,[`discrepancies/${id}/treatment`]:treatment,[`discrepancies/${id}/correctionMovementId`]:correctionMovementId||null,[`discrepancies/${id}/purchaseAdvanceId`]:advanceId||null,[`discrepancies/${id}/customerRefundPayableId`]:payableId||null,[`discrepancies/${id}/reviewedAt`]:now,[`discrepancies/${id}/reviewedBy`]:reviewedBy,[`discrepancies/${id}/reviewedByUid`]:approval.record.approvedBy,[`discrepancies/${id}/reviewApprovalId`]:approval.id,[`discrepancies/${id}/resolutionMovementId`]:movementId,[`discrepancies/${id}/note`]:note,[`shifts/${shiftId}/varianceStatus`]:financialStatus,[`shifts/${shiftId}/varianceResolution`]:{treatment,note,correctionMovementId:correctionMovementId||null,purchaseAdvanceId:advanceId||null,customerRefundPayableId:payableId||null,approvalId:approval.id,approvedBy:reviewedBy,resolutionMovementId:movementId,resolvedAt:now}});if(advanceId){const shift=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},payOuts=Array.isArray(shift.payOuts)?shift.payOuts:[];writes[`shifts/${shiftId}/payOuts/${payOuts.length}`]={id:advanceId,type:"purchase_advance",status:"pending_details",amount:value,remainingAmount:value,recipient,purpose,reference,reason:`Emergency supplier payment — ${purpose}`,by:reviewedBy,approvalId:approval.id,ts:now,source:"closed_shift_variance"};}if(payableId){writes[`payables/${payableId}`]={party:recipient,type:"customer_change_refund",amount:value,remainingAmount:value,paidAmount:0,date:financeDate(row.date||new Date(now).toISOString().slice(0,10)),due:"",ref:reference,status:"open",movementId,liabilityAccount:`liability:customer_change_refund:${payableId}`,reversalOffsetAccount:pending,sourceType:"discrepancy",sourceId:id,discrepancyId:id,shiftId,approvalId:approval.id,ts:now,createdBy:actor.uid,schemaVersion:2};}
       if(!lines.length){writes[`discrepancies/${id}/resolutionMovementId`]=null;writes[`shifts/${shiftId}/varianceResolution/resolutionMovementId`]=null;await db.ref().update(writes);return{discrepancyId:id,reviewedAt:now,treatment,movementId:null,duplicate:false,legacyAlreadyPosted:true};}const varianceShift=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},committed=await commitFinancial(db,movementId,Financial.movement("shift_cash_variance_resolution","discrepancy",id,lines,{occurredAt:shiftVarianceTime(varianceShift,row,now),actorName:reviewedBy,approvalId:approval.id,treatment,shiftId,controlReason:note,legacyFinal}),actor,writes);return{discrepancyId:id,reviewedAt:now,treatment,movementId,duplicate:committed.duplicate};
+    }
+    /* Inventory flags: the stock adjustment already chose the reason and posted the Finance offset,
+       so nothing is re-posted here. A legacy row (written by the browser before this workflow) is
+       matched back to its adjustment, the real adjuster and the movement that treated it. One
+       approval and one update can close a whole batch of them. */
+    if (row.kind === "inventory") {
+      const requested = [id].concat(Array.isArray(data.inventoryDiscrepancyIds) ? data.inventoryDiscrepancyIds : []);
+      const ids = [...new Set(requested.map((value) => financeKey(value, "Discrepancy ID")))].slice(0, 100);
+      const rows = [];
+      for (const key of ids) {
+        const stored = (await db.ref(`/discrepancies/${key}`).get()).val();
+        if (stored && stored.kind === "inventory" && stored.status !== "reviewed") rows.push({key, stored});
+      }
+      if (!rows.length) return {discrepancyId: id, resolved: 0, unmatched: [], alreadyResolved: true};
+      const resolutionNote = financeText(data.note, 500);
+      if (!resolutionNote) throw new HttpsError("invalid-argument", "Explain how the stock difference was verified.");
+      approval = await claimManagerApproval(db, data, "review_discrepancy", id, null, `review_discrepancy_inventory_${ids[0]}`);
+      reviewedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
+      const writes = Object.assign({}, approval.usedWrites), resolved = [], unmatched = [];
+      for (const entry of rows) {
+        const trace = await traceStockAdjustment(db, entry.stored);
+        if (!trace) { unmatched.push(entry.key); continue; }
+        Object.assign(writes, {
+          [`discrepancies/${entry.key}/status`]: "reviewed",
+          [`discrepancies/${entry.key}/financialStatus`]: "resolved_by_stock_adjustment",
+          [`discrepancies/${entry.key}/treatment`]: "stock_adjustment",
+          [`discrepancies/${entry.key}/offsetAccount`]: trace.offsetAccount,
+          [`discrepancies/${entry.key}/adjustmentId`]: trace.adjustmentId,
+          [`discrepancies/${entry.key}/movementId`]: trace.movementId,
+          [`discrepancies/${entry.key}/resolutionMovementId`]: `invmove_${trace.movementId}`,
+          [`discrepancies/${entry.key}/reason`]: entry.stored.reason || trace.reason,
+          [`discrepancies/${entry.key}/staff`]: trace.actorName,
+          [`discrepancies/${entry.key}/actorUid`]: trace.actorUid,
+          [`discrepancies/${entry.key}/actorName`]: trace.actorName,
+          [`discrepancies/${entry.key}/reviewedAt`]: now,
+          [`discrepancies/${entry.key}/reviewedBy`]: reviewedBy,
+          [`discrepancies/${entry.key}/reviewedByUid`]: approval.record.approvedBy,
+          [`discrepancies/${entry.key}/reviewApprovalId`]: approval.id,
+          [`discrepancies/${entry.key}/note`]: resolutionNote,
+          [`discrepancies/${entry.key}/linkedAt`]: now,
+        });
+        resolved.push({discrepancyId: entry.key, adjustmentId: trace.adjustmentId, movementId: trace.movementId, offsetAccount: trace.offsetAccount});
+      }
+      writes[`operationalAudit/${now}_${id}_inventory_review`] = operationalAuditRecord("review_inventory_discrepancy", "discrepancy", id, actor, {resolved: resolved.length, unmatched, approvalId: approval.id, accounting: "No journal is posted: each flag is resolved against the stock adjustment that already moved stock and posted the Finance offset."});
+      await db.ref().update(writes);
+      return {discrepancyId: id, reviewedAt: now, resolved: resolved.length, resolutions: resolved, unmatched, duplicate: false};
     }
     approval=await claimManagerApproval(db,data,"review_discrepancy",id,null,`review_discrepancy_${id}`);reviewedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole;
     let duplicate = false; const transactionState = {seen: false};
@@ -9262,7 +9310,11 @@ async function applyInventoryMovement(db, raw, actor) {
       sourceId: String(raw.sourceId || "").slice(0, 160),
       sourceLine: String(raw.sourceLine || itemId).slice(0, 160),
       note: String(raw.note || "").slice(0, 500),
-      actorUid: actor && actor.uid || "server", actorName: String(raw.actorName || actor && actor.role || "server").slice(0, 120),
+      actorUid: actor && actor.uid || "server",
+      /* A stock adjustment is performed by the signed-in Admin, so the ledger names that person and
+         not the cashier who happens to own the open POS shift. Sales and usage keep the on-duty
+         staff name their caller supplies. */
+      actorName: String((["adjustment", "waste", "manual_edit", "revaluation"].includes(type) && actor && actor.name) ? actor.name : (raw.actorName || actor && actor.role || "server")).slice(0, 120),
       occurredAt: Number(raw.occurredAt || now), createdAt: now,
       reversalOf: String(raw.reversalOf || "").slice(0, 160), usageKind:String(raw.usageKind||"").slice(0,80),usageAccount:String(raw.usageAccount||"").slice(0,4),offsetAccount:String(raw.offsetAccount||"").slice(0,4),adjustmentNature:String(raw.adjustmentNature||"").slice(0,80),importPurpose:String(raw.importPurpose||"").slice(0,20),classificationConfirmed:raw.classificationConfirmed===true, version, schemaVersion: 3,
     };
@@ -9285,8 +9337,86 @@ async function applyInventoryMovement(db, raw, actor) {
   if (!movement && inventoryAppliedMarker(appliedEntry)) movement = (await db.ref(`/inventoryMovements/${movementId}`).get()).val();
   if (Object.keys(writes).length) await markInventoryProjected(db, itemId, [opening && opening.id, (accounting.applied || {})[movementId] === movement ? movementId : ""], accounting.version, Date.now());
   if (movement) await postInventoryMovementToBooks(db, movement, item, actor, postingContext);
+  /* A stock adjustment that clears a large (or negative-book) difference is already its own
+     treatment: the adjuster chose the reason and the Finance offset account, the movement posted
+     the ledger entry, and /inventoryAdjustments/{id} keeps that audit record. The discrepancy row
+     is therefore written HERE, once, already linked to the adjustment and the real actor, instead
+     of by the browser as an unlinked "open" row that asked a manager to choose a treatment that
+     had already been posted. */
+  if (movement && ["adjustment","waste"].includes(type) && String(movement.sourceType || "") === "inventory-adjustment") {
+    /* Best effort: the stock and the ledger entry are already committed, so a failure to write the
+       audit flag must never report the adjustment itself as failed and invite a duplicate retry. */
+    try { await recordStockAdjustmentDiscrepancy(db, movement, item, actor); }
+    catch (error) { logger.warn("Stock adjustment discrepancy flag was not written", {movementId: String(movement.id || ""), error: String(error && error.message || error)}); }
+  }
   await repairInventoryProjections(db, itemId, accounting, item);
   return {movement, duplicate};
+}
+
+// Inventory tolerance is one small settings node, cached briefly so a batch of adjustments
+// costs at most one read instead of one per movement.
+let stockAdjustmentTolerance={pct:null,loadedAt:0};
+async function stockAdjustmentTolerancePct(db) {
+  if (stockAdjustmentTolerance.pct!==null && Date.now()-stockAdjustmentTolerance.loadedAt<60000) return stockAdjustmentTolerance.pct;
+  const value=Number((await db.ref("/posSettings/tolerances/invPct").get()).val());
+  stockAdjustmentTolerance={pct:isFinite(value)&&value>=0?value:5,loadedAt:Date.now()};
+  return stockAdjustmentTolerance.pct;
+}
+function inventoryAdjustmentDiscrepancyFields(movement, item, actor, actorName, occurredAt) {
+  const before=qty6(movement.balanceBefore), after=qty6(movement.balanceAfter), qty=qty6(movement.qty), cost=qty6(movement.unitCost);
+  const reason=String(movement.adjustmentNature || movement.type || "adjustment").slice(0,80);
+  return {
+    kind:"inventory", item:String(movement.itemName || item && item.name || movement.itemId || "").slice(0,160), ing:String(movement.itemId || ""),
+    expectedQty:before, actualQty:after, variance:qty, value:money(-qty*cost),
+    type:qty<0?"shortage":"overage", reason,
+    status:"reviewed", financialStatus:"resolved_by_stock_adjustment", treatment:"stock_adjustment",
+    offsetAccount:String(movement.offsetAccount || "").slice(0,4),
+    adjustmentId:String(movement.sourceId || "").slice(0,160), movementId:String(movement.id || ""),
+    resolutionMovementId:`invmove_${String(movement.id || "")}`,
+    staff:actorName, actorUid:String(actor && actor.uid || ""), actorName,
+    reviewedAt:occurredAt, reviewedBy:actorName, reviewedByUid:String(actor && actor.uid || ""),
+    autoResolved:true, ts:occurredAt, date:financeDateFromTimestamp(occurredAt), schemaVersion:1,
+  };
+}
+async function recordStockAdjustmentDiscrepancy(db, movement, item, actor) {
+  const before=qty6(movement.balanceBefore), qty=qty6(movement.qty), cost=qty6(movement.unitCost);
+  if (!qty) return;
+  /* Same rule the adjustment screen used: a percentage of the book quantity, and any correction of
+     a negative or zero book balance stays visible because the percentage is meaningless there. */
+  const pct=before>0?Math.abs(qty)/before*100:100;
+  const tolerance=await stockAdjustmentTolerancePct(db);
+  if (!(pct>tolerance)) return;
+  const occurredAt=Number(movement.occurredAt || movement.createdAt || Date.now());
+  const actorName=String(actor && actor.name || movement.actorName || "Admin").slice(0,120);
+  const key=`inv_${String(movement.id || "").slice(0,160)}`;
+  await db.ref().update({
+    [`discrepancies/${key}`]:inventoryAdjustmentDiscrepancyFields(movement, item, actor, actorName, occurredAt),
+    [`operationalAudit/${Date.now()}_${key}`]:operationalAuditRecord("record_stock_adjustment_discrepancy","inventoryMovement",String(movement.id || ""),actor,{itemId:String(movement.itemId||""),qty,value:money(-qty*cost),variancePct:Math.round(pct*100)/100,tolerancePct:tolerance,offsetAccount:String(movement.offsetAccount||""),reason:String(movement.adjustmentNature||"")}),
+  });
+}
+// One-time repair path for legacy inventory rows written by the browser without a link: match the
+// row back to the stock adjustment that already treated it, then take the real actor from the
+// movement (actorUid is server-set) and its name from the Admin record.
+async function traceStockAdjustment(db, row) {
+  const ing=String(row && row.ing || ""); if (!ing) return null;
+  const ts=Number(row && row.ts || 0)||Date.now(), variance=qty6(row && row.variance);
+  /* download-ok: rare one-time repair of legacy stock-adjustment flags; bounded ±1 hour indexed
+     window on the ts index, then an exact item + quantity match. */
+  const snap=await db.ref("/inventoryAdjustments").orderByChild("ts").startAt(ts-3600000).endAt(ts+3600000).get();
+  const candidates=Object.keys(snap.val()||{}).map((key)=>Object.assign({id:key},snap.val()[key]||{})).filter((adj)=>String(adj.ing||"")===ing&&Math.abs(qty6(adj.delta)-variance)<0.000001);
+  if (!candidates.length) return null;
+  candidates.sort((a,b)=>Math.abs(Number(a.ts||0)-ts)-Math.abs(Number(b.ts||0)-ts));
+  const adj=candidates[0], movementId=String(adj.movementId||""); if (!movementId) return null;
+  const movement=(await db.ref(`/inventoryMovements/${financeKey(movementId,"Movement ID")}`).get()).val()||{};
+  const actorUid=String(movement.actorUid||""), admin=actorUid?((await db.ref(`/admins/${actorUid}`).get()).val()||{}):{};
+  const raw=admin&&typeof admin==="object"?admin:{};
+  return {
+    adjustmentId:String(adj.id||""), movementId,
+    offsetAccount:String(adj.offsetAccount || movement.offsetAccount || "").slice(0,4),
+    reason:String(adj.reason || movement.adjustmentNature || "adjustment").slice(0,80),
+    actorUid, actorName:String(raw.name || raw.displayName || raw.email || adj.reason || "Admin").slice(0,120),
+    occurredAt:Number(adj.ts || movement.occurredAt || ts),
+  };
 }
 
 exports.postInventoryMovements = onCall(

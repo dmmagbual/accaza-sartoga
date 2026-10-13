@@ -728,7 +728,7 @@ function finalizeRevaluation(id,onHand,newCost,reason,offsetAccount){
      offset account, the reason and the actor. Do NOT write a second node for this — an extra path
      needs its own database rule, and a failure there used to report "cost was not changed" after the
      server had already changed it, inviting a duplicate restatement. */
-  postMovements([{movementId:mid,itemId:id,type:'revaluation',qty:0,unitCost:newCost,setCost:true,offsetAccount:offsetAccount,adjustmentNature:reason,sourceType:'inventory-revaluation',sourceId:revId,note:reason,actorName:(window.__posShift&&window.__posShift.staff)||'Admin',occurredAt:now}]).then(function(){
+  postMovements([{movementId:mid,itemId:id,type:'revaluation',qty:0,unitCost:newCost,setCost:true,offsetAccount:offsetAccount,adjustmentNature:reason,sourceType:'inventory-revaluation',sourceId:revId,note:reason,occurredAt:now}]).then(function(){
     if(window.__posLog)window.__posLog('inv-revalue',i.name,peso(oldCost)+' → '+peso(newCost)+' · '+num(onHand)+' '+(i.unit||'')+' on hand · offset '+offsetAccount+' · '+peso(Math.abs(valueDelta)));
     alert('Restated '+i.name+' to '+peso(newCost)+' per '+(i.unit||'unit')+'.\nFinance offset: '+offsetAccount+' · '+peso(Math.abs(valueDelta))+'.\nCompleted orders are unchanged; future orders consume at the new cost.');
   }).catch(function(e){alert('Revaluation was NOT applied — the cost is unchanged: '+((e&&e.message)||e)+'\n\nCheck the item cost before retrying.');});
@@ -737,14 +737,13 @@ function finalizeAdjust(id,before,delta,reason,offsetAccount){
   var i=inventoryMap[id]; if(!i)return;
   var after=before+delta; var cost=Number(i.cost)||0; var varianceValue=-delta*cost;  /* stock down = +COGS */
   var a=A(), adjId=uid('adj_'), mid=movementId('adjustment',adjId,id), now=Date.now();
-  postMovements([{movementId:mid,itemId:id,type:reason==='wastage'?'waste':'adjustment',qty:delta,unitCost:cost,offsetAccount:offsetAccount,adjustmentNature:reason,sourceType:'inventory-adjustment',sourceId:adjId,note:reason,actorName:(window.__posShift&&window.__posShift.staff)||'Admin',occurredAt:now}]).then(function(){
+  postMovements([{movementId:mid,itemId:id,type:reason==='wastage'?'waste':'adjustment',qty:delta,unitCost:cost,offsetAccount:offsetAccount,adjustmentNature:reason,sourceType:'inventory-adjustment',sourceId:adjId,note:reason,occurredAt:now}]).then(function(){
     return a.set(a.ref(a.db,'inventoryAdjustments/'+adjId),{ing:id,name:i.name,unit:i.unit||'',delta:delta,before:before,after:after,reason:reason,offsetAccount:offsetAccount,unitCost:cost,varianceValue:varianceValue,movementId:mid,ts:now});
   }).then(function(){
-  var _invPct=(window.__posSettings&&window.__posSettings.tolerances&&Number(window.__posSettings.tolerances.invPct))||5;
-  var _pctMove=before>0?Math.abs(delta)/before*100:(delta!==0?100:0);
-  if(_pctMove>_invPct){
-    a.set(a.ref(a.db,'discrepancies/'+uid('disc_')),{kind:'inventory',item:i.name,ing:id,expectedQty:before,actualQty:after,variance:delta,value:varianceValue,type:delta<0?'shortage':'overage',staff:(window.__posShift&&window.__posShift.staff)||'Admin',reason:reason,status:'open',ts:Date.now()});
-  }
+  /* The server records the over-tolerance flag itself, already linked to this adjustment and to the
+     signed-in Admin. Do not create it here: a browser-written row carried the open shift's cashier
+     name and no adjustment link, so the Register kept asking for a treatment that was already
+     posted. The adjustment's reason and Finance offset ARE the treatment. */
   if(window.__posLog)window.__posLog('inv-adjust',i.name,(delta>0?'+':'')+num(delta)+' '+(i.unit||'')+' · '+reason+' · offset '+offsetAccount+' · '+peso(Math.abs(varianceValue)));
   alert('Adjusted '+i.name+' to '+num(after)+' '+(i.unit||'')+'.\nFinance offset: '+offsetAccount+' · '+peso(Math.abs(varianceValue))+' ('+reason+').');
   }).catch(function(e){alert('Adjustment FAILED — stock was not changed: '+((e&&e.message)||e));});
