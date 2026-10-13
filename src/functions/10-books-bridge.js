@@ -381,6 +381,12 @@ exports.manageCashAccount = onCall(
     if (!name || !["bank", "ewallet"].includes(type)) throw new HttpsError("invalid-argument", "Account name and a valid type are required.");
     const ref = db.ref(`/cfAccounts/${id}`), old = (await ref.get()).val() || {}, accounts=(await db.ref("/cfAccounts").get()).val()||{}, duplicateId=Object.keys(accounts).find((key)=>key!==id&&financeText(accounts[key]&&accounts[key].name,100).trim().toLowerCase()===name.trim().toLowerCase());if(duplicateId)throw new HttpsError("already-exists","A Finance cash account with this name already exists. Select the existing account instead of creating a duplicate.");const opening = Financial.money(data.opening), oldOpening = Financial.money(old.opening), date = financeDate(data.openingDate), occurredAt = Date.parse(`${date}T00:00:00+08:00`) || Date.now(), reference=financeText(data.reference,120), reason=financeText(data.reason,300);
     const feedMethods = Array.isArray(data.feedMethods) ? data.feedMethods.map((x) => financeText(x, 60)).filter(Boolean).slice(0, 20) : [];
+    // The account number is the straight identity of a bank or wallet: GCash, G-Cash and G-cash are
+    // one wallet, and only the digits say which account a customer paid. Stored as digits so the
+    // customer-facing number can be matched to this account without depending on any label. A form
+    // that does not carry the field keeps the recorded number instead of clearing it.
+    const number = data.number === undefined || data.number === null || financeText(data.number, 40) === "" ? Financial.accountNumber(old.number) : Financial.accountNumber(data.number);
+    if (number && (number.length < 6 || number.length > 24)) throw new HttpsError("invalid-argument", "An account number must be 6 to 24 digits.");
     // Every bank / e-wallet has its own Finance Books ledger account (Xero-style). A new account
     // gets the requested or next free code; an existing Asset code is linked only when it has
     // no balance of its own, so nothing is counted twice.
@@ -398,7 +404,7 @@ exports.manageCashAccount = onCall(
       const claim = await db.ref(`/books/config/cashAccountCodeClaims/${link.code}`).transaction((current) => !current || current.accountId === id || (!accounts[current.accountId] && now - Number(current.claimedAt || 0) > 120000) ? {accountId: id, claimedAt: current && current.accountId === id ? current.claimedAt : now} : undefined, undefined, false);
       if (!claim.committed) throw new HttpsError("already-exists", `Finance Books ${link.code} was just linked to another bank account. Refresh and try again.`);
     }
-    const row = {name, type, opening, openingDate: date, feedMethods, booksCode: link.code, order: Number.isFinite(Number(old.order)) ? Number(old.order) : Object.keys(accounts).length, ts: old.ts || now, updatedAt: now, updatedBy: actor.uid};
+    const row = {name, type, number, opening, openingDate: date, feedMethods, booksCode: link.code, order: Number.isFinite(Number(old.order)) ? Number(old.order) : Object.keys(accounts).length, ts: old.ts || now, updatedAt: now, updatedBy: actor.uid};
     if (old.active === false) row.active = false;
     const writes = {[`cfAccounts/${id}`]: row, [`books/config/cashAccountMap/${id}`]: link.code}, delta = Financial.money(opening - oldOpening);
     if (link.createChartRow) writes[`booksChart/${link.code}`] = {code: link.code, name, type: "Asset", note: type === "ewallet" ? "E-wallet account" : "Bank account", active: true, system: false, sensitive: true, bankAccountId: id, createdAt: now, createdBy: actor.uid, updatedAt: now, updatedBy: actor.uid, schemaVersion: 1};

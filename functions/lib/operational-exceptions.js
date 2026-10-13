@@ -2,6 +2,7 @@
 
 const {MAX_FAILED_EVENTS_PER_DAY} = require("./retry-guard");
 const OrderService = require("./order-service");
+const Financial = require("./financial");
 
 const TERMINAL = new Set(["Completed", "Received", "Rejected", "Archived"]);
 const FINALIZED = new Set(["Completed", "Received"]);
@@ -69,7 +70,7 @@ function paymentRoutingIssues(payMethods, cfAccounts, now, paymentSettings) {
       const account = accounts[id] || {};
       if (account.active === false) return false;
       const feeds = Array.isArray(account.feedMethods) ? account.feedMethods : [];
-      return feeds.some((feed) => lower(feed) === lower(name));
+      return feeds.some((feed) => Financial.methodKey(feed) === Financial.methodKey(name));
     });
     const label = (id) => String((accounts[id] || {}).name || id);
     if (claimants.length > 1) {
@@ -94,55 +95,72 @@ function paymentRoutingIssues(payMethods, cfAccounts, now, paymentSettings) {
         now, "possettings"));
     }
   });
-  /* Customer-facing payment rows. The checkout offers the bank or wallet the customer picks, and
-     the order posts to the Finance account linked to that row in the payment settings. A row the
-     customer can see without a link cannot be routed by the customer's own choice, and a link that
-     points at a missing or deactivated account would refuse the customer's payment. A link the till
-     does not offer is allowed, but the two then report different accounts, so it is reported too. */
+  /* Customer-facing payment rows. The checkout offers the bank or wallet the customer picks, and the
+     order posts to the Finance account that row pays into. The account is identified by the row, or by
+     the account number printed on it - never by a label, because GCash, G-Cash and G-cash are one
+     wallet. A row with no account cannot be routed by the customer's own choice, and an account no
+     active till method offers at all is reported so the shop can finish setting it up. */
   const settings = paymentSettings || {};
   // No payment settings at all means the customer-facing rows are not known here (or the caller
   // does not read them): report nothing rather than invent unlinked rows.
   if (!Object.keys(settings).length) return out;
   const label = (id) => String((accounts[id] || {}).name || id);
   const rows = [
-    {key: "bdo", method: "Bank Transfer", display: "BDO"},
-    {key: "ub", method: "Bank Transfer", display: "UnionBank"},
-    {key: "bank3", method: "Bank Transfer", display: String(settings.bank3Label || "").trim() || "The third bank account"},
-    {key: "bank4", method: "Bank Transfer", display: String(settings.bank4Label || "").trim() || "The fourth bank account"},
-    {key: "gcash", method: "GCash", display: "GCash"},
-    {key: "maya", method: "PayMaya", display: "PayMaya"},
+    {key: "bdo", display: "BDO"},
+    {key: "ub", display: "UnionBank"},
+    {key: "bank3", display: String(settings.bank3Label || "").trim() || "The third bank account"},
+    {key: "bank4", display: String(settings.bank4Label || "").trim() || "The fourth bank account"},
+    {key: "gcash", display: "GCash"},
+    {key: "maya", display: "PayMaya"},
   ];
-  rows.forEach(({key, method: methodName, display: rowLabel}) => {
+  /* Reachable at the till means some active electronic method can hand a payment to this account:
+     it is on that method's own account list, or - when the method lists no accounts - the account's
+     feed methods claim that method by name. The account decides; the labels below are only whatever
+     the shop called things. */
+  const offeredAtTill = (id) => methods.some((m) => {
+    if (!m || m.active === false || m.cash === true) return false;
+    if (Array.isArray(m.accountIds)) return m.accountIds.indexOf(id) >= 0;
+    const names = [m.name].concat(Array.isArray(m.aliases) ? m.aliases : []).map(Financial.methodKey).filter(Boolean);
+    return names.some((name) => Array.isArray((accounts[id] || {}).feedMethods) && accounts[id].feedMethods.some((feed) => Financial.methodKey(feed) === name));
+  });
+  rows.forEach(({key, display: rowLabel}) => {
     if (settings[`${key}Enabled`] === false) return;
     // Only a row the customer can actually see: the fixed rows show unless switched off, while the
     // two spare banks and PayMaya need an account number before the customer sees them.
-    const visible = key === "bdo" || key === "ub" || key === "gcash" || String(settings[`${key}Num`] || "").trim();
+    const rowNumber = String(settings[`${key}Num`] || "").trim();
+    const visible = key === "bdo" || key === "ub" || key === "gcash" || rowNumber;
     if (!visible) return;
-    const id = String(settings[`${key}AccountId`] || "").trim();
-    if (!id) {
-      out.push(item("payment_routing", "warning", `routing_unlinked_${key}`,
-        `${rowLabel} is visible to customers but not linked to a receiving account`,
-        `Customers can see ${rowLabel} at checkout, but no receiving account is linked to it, so that payment cannot be routed by the customer's own choice. Link ${rowLabel} to its Finance account in POS Settings.`,
-        now, "possettings"));
-      return;
-    }
-    if (!accounts[id] || accounts[id].active === false) {
+    const account = Financial.receivingAccountForRow(key, settings, accounts);
+    if (account && account.missing) {
       out.push(item("payment_routing", "critical", `routing_link_missing_${key}`,
         `${rowLabel} is linked to a receiving account that is gone`,
         `Customers are offered ${rowLabel}, but its linked Finance account no longer exists or is deactivated, so a payment to ${rowLabel} would be refused. Link the row to the real receiving account in POS Settings.`,
         now, "possettings"));
       return;
     }
-    // Mirror how the till resolves a method's accounts (paymentAccountIds): a renamed method keeps
-    // its old name as an alias, an explicit account list wins, and a method with no list falls back
-    // to the accounts whose feed methods claim the method name or one of those aliases.
-    const method = methods.find((m) => m && m.cash !== true && (lower(m.name) === lower(methodName) || (Array.isArray(m.aliases) && m.aliases.some((alias) => lower(alias) === lower(methodName)))));
-    const claims = (account) => [methodName].concat(method && Array.isArray(method.aliases) ? method.aliases : []).some((name) => Array.isArray(account.feedMethods) && account.feedMethods.some((feed) => lower(feed) === lower(name)));
-    const assigned = method ? (Array.isArray(method.accountIds) ? method.accountIds.indexOf(id) >= 0 : claims(accounts[id])) : false;
-    if (!assigned) {
+    if (!account) {
+      out.push(item("payment_routing", "warning", `routing_unlinked_${key}`,
+        `${rowLabel} is visible to customers but no receiving account answers for it`,
+        rowNumber
+          ? `Customers can see ${rowLabel} at checkout and pay the number ${rowNumber}, but no Finance account is linked to it and no account records that number, so the payment cannot be routed by the customer's own choice. Link ${rowLabel} in POS Settings, or record ${rowNumber} on the receiving account.`
+          : `Customers can see ${rowLabel} at checkout, but no receiving account is linked to it, so that payment cannot be routed by the customer's own choice. Link ${rowLabel} to its Finance account in POS Settings.`,
+        now, "possettings"));
+      return;
+    }
+    // The number printed on the row and the account it pays into must be the same account: the
+    // digits are the identity, so a mismatch is reported whatever either side is called.
+    const recorded = String((accounts[account.id] || {}).number || "").trim();
+    if (rowNumber && recorded && Financial.accountNumber(rowNumber) !== Financial.accountNumber(recorded)) {
+      out.push(item("payment_routing", "critical", `routing_number_mismatch_${key}`,
+        `${rowLabel} shows a different account number than the account it pays into`,
+        `Customers pay the number ${rowNumber} on the ${rowLabel} row, but that payment posts to ${label(account.id)}, whose recorded number is ${recorded}. One of the two is out of date, so the money would be booked to the wrong account. Correct the number on the row or on ${label(account.id)}.`,
+        now, "possettings"));
+      return;
+    }
+    if (!offeredAtTill(account.id)) {
       out.push(item("payment_routing", "warning", `routing_link_unassigned_${key}`,
-        `${rowLabel} receives online payments an account the till does not offer`,
-        `Customers can choose ${rowLabel} and their payment posts to ${label(id)}, but ${label(id)} is not one of the receiving accounts assigned to ${methodName} at the till. That is allowed, but the till and the online checkout then report different accounts. Assign ${label(id)} to ${methodName} if the shop should offer it at the till too.`,
+        `${rowLabel} receives online payments an account no till method offers`,
+        `Customers can choose ${rowLabel} and their payment posts to ${label(account.id)}, but no active payment method at the till offers ${label(account.id)}, so the same payment could not be taken at the counter. Assign ${label(account.id)} to the method the shop uses at the till if it should be offered there too.`,
         now, "possettings"));
     }
   });
