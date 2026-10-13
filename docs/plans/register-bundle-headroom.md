@@ -1,8 +1,34 @@
 # Register bundle headroom — split plan
 
-**Status:** planned, not started. Written 12 Oct 2026 from the analysis in this session.
-**Owner step:** execute as **step 1 of the next register feature**, in a fresh session, or as a
-standalone pass if headroom is wanted sooner. See "Alternative" for a smaller safe rehearsal.
+**Status: attempted 13 Oct 2026 and REVERTED the same day. Do not repeat the steps below as written.**
+**Owner step:** only once the wrapper constraint recorded here is solved, as step 1 of the next register
+feature in a fresh session.
+
+## REVERTED 13 Oct 2026 — read this before attempting anything
+
+The split described in this document was implemented, merged (#765) and **reverted (#771)** on
+13 Oct 2026, because it broke **Cash & Controls → Reconciliation Issues** in production with
+`ReferenceError: discList is not defined`. The cause is a fact this plan never checked:
+
+> **The whole register bundle is wrapped in an IIFE.** `assets/js/admin/register.js` begins with
+> `(function(){ 'use strict';` and ends with `})();`, so every function inside it is **private to that
+> wrapper**. Before the split, the discrepancies code lived inside the same wrapper and shared that
+> scope. Moving it into a separately loaded script crosses the wrapper boundary, and a companion script
+> can never see the bundle's functions. The browser state proved it: `renderDiscrepancies=function`
+> (from the companion) while `updateDiscBadge=undefined` and `discList=undefined` (inside
+> `register.js`), even though that code is textually in the served file.
+
+**Consequences for any future attempt:**
+
+- `exclude`/`include` alone **cannot** split this bundle. That pattern works for `src/books/app`
+  because those targets are not wrapped the same way — **check the target's wrapper first** instead of
+  copying the pattern.
+- A companion is viable only if what it needs is **exposed on `window`** by an API the wrapper
+  publishes, or if the wrapper itself is restructured (each section its own IIFE with a shared
+  namespace, or ES modules). Both are real refactors needing their own verification.
+- The ceiling is **300,000 bytes** (re-based 13 Oct 2026, reason recorded in
+  `tests/bundle-budgets.mjs`) and the bundle sits at ~277 KB, so there is headroom and **no urgent
+  need** to touch this at all.
 
 ## Why
 
@@ -73,9 +99,10 @@ companion load can hang on.
 2. **Leave the on-demand code in place.** `renderDiscrepancies`, `reviewDiscrepancy`,
    `cashDifferenceCase`, `finishIncompleteDiscrepancy`, `exportDiscrepancies`, `discrepancyOutcome`
    stay in `src/admin/register/30-discrepancy-controls.js`, which becomes the companion bundle.
-3. **Split the bundle** in `tools/build-runtime-bundles.mjs`:
-   - register bundle gains `exclude:['30-discrepancy-controls.js']`
-   - new entry `{source:'src/admin/register',target:'assets/js/admin/register-discrepancies.js',include:['30-discrepancy-controls.js']}`
+3. ~~**Split the bundle** in `tools/build-runtime-bundles.mjs`~~ — **INVALID: this is the step that
+   broke the reconciliation screen on 13 Oct 2026.** An `exclude`/`include` split cannot cross the
+   bundle's IIFE wrapper; see the REVERTED section at the top. Any split must first expose what the
+   companion needs on `window`.
 4. **Wire the loader** in `assets/js/admin/module-loader.js`:
    - `files`: `registerdiscrepancies:'register-discrepancies.js'`
    - `routes.discrepancy`: add the module **after** `'register'`. **Confirmed safe 13 Oct 2026** by
