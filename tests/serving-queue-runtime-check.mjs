@@ -52,13 +52,18 @@ assert.doesNotMatch(els.posServeQueue.innerHTML,/POS-READY|Lana/,'a server-confi
 // Now preparing for 43 minutes and was handed over at shift close).
 function staleTarget(id){return {closest(){return this;},hasAttribute(name){return name==='data-sq-stage';},getAttribute(name){return name==='data-sq-stage'?id:'';}};}
 const staleAt=now-30000,sent=[],expected=[['start_preparing','queued'],['mark_ready','preparing']];
-subs.activeOrders({val:()=>({'POS-STALE':{source:'pos',channel:'instore',shiftId:'S1',status:'Completed',name:'Nico',total:120,timestamp:staleAt,lineItems:[{name:'Brewed Coffee (M)',qty:1}],service:{state:'queued',queuedAt:staleAt}}})});
+const staleOrder=state=>({'POS-STALE':{source:'pos',channel:'instore',shiftId:'S1',status:'Completed',name:'Nico',total:120,timestamp:staleAt,lineItems:[{name:'Brewed Coffee (M)',qty:1}],service:{state,queuedAt:staleAt}}});
+subs.activeOrders({val:()=>staleOrder('queued')});
 ctx.__accaza.callables.manageOrderService=command=>{const want=expected[sent.length];assert.ok(want,'the rail stopped tapping after it converged');assert.equal(command.action,want[0],'tap '+(sent.length+1)+' sends the step the card is showing');assert.equal(command.believedStage,want[1],'the device reports the stage it believed it was acting on');sent.push(command.action);return Promise.resolve({data:{state:command.action==='start_preparing'?'preparing':'ready',duplicate:command.action==='start_preparing'}});};
 posClick({target:{closest(){return staleTarget('POS-STALE');}}});
 await new Promise(resolve=>setImmediate(resolve));
 assert.match(els.posServeQueue.innerHTML,/Mark ready/,'after a duplicate the card adopts the stage the server actually holds');
+subs.activeOrders({val:()=>staleOrder('queued')});
+assert.match(els.posServeQueue.innerHTML,/Mark ready/,'a repeated stale snapshot cannot drag the card back to the stage the server already passed');
 posClick({target:{closest(){return staleTarget('POS-STALE');}}});
 await new Promise(resolve=>setImmediate(resolve));
 assert.deepEqual(sent,['start_preparing','mark_ready'],'a stale card can never re-send the same step forever');
 assert.match(els.posServeQueue.innerHTML,/>Served</,'the confirmed answer moves the card up the flow');
+subs.activeOrders({val:()=>staleOrder('served')});
+assert.doesNotMatch(els.posServeQueue.innerHTML,/POS-STALE/,'a live stage that moved on elsewhere replaces the confirmed one');
 console.log('PASS: the built POS bundle loads, opens the POS tab and renders the serving queue from live orders.');

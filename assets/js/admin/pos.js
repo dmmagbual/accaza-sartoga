@@ -3702,7 +3702,11 @@ function sqFlush(){
     if(!call)return;sqState.sending[id]=1;
     // Every answer is adopted, including a duplicate: the server's stage becomes this device's
     // view, so the next tap starts from the truth instead of repeating a step that did nothing.
-    Promise.resolve(call).then(function(result){var payload=(result&&result.data)||result||{},confirmed=String(payload.state||'');if(!sqIsOnline(o)&&confirmed)sqRememberConfirmed(id,confirmed,String(live.service&&live.service.state||''));sqDropPending(id);}).catch(function(err){var code=String(err&&err.code||'').replace(/^functions\//,'');if(SQ_RETRY_CODES.indexOf(code)<0){sqDropPending(id);(window.accazaToast||function(){})('Could not mark '+sqLabel(o)+' served: '+((err&&err.message)||err),'err');}}).then(function(){delete sqState.sending[id];renderServeQueue();});
+    // The reference point is the live copy AS THE ANSWER ARRIVED, not the one captured before the
+    // request: the confirmed stage is kept only while the live copy still shows that same lagging
+    // value, and is dropped the moment the live copy moves on (caught up, served elsewhere, or
+    // returned to the queue by a manager), so the newer live value always wins.
+    Promise.resolve(call).then(function(result){var payload=(result&&result.data)||result||{},confirmed=String(payload.state||'');if(!sqIsOnline(o)&&confirmed){var current=onlineOrdersMap&&onlineOrdersMap[id]||live;sqRememberConfirmed(id,confirmed,String(current.service&&current.service.state||''));}sqDropPending(id);}).catch(function(err){var code=String(err&&err.code||'').replace(/^functions\//,'');if(SQ_RETRY_CODES.indexOf(code)<0){sqDropPending(id);(window.accazaToast||function(){})('Could not mark '+sqLabel(o)+' served: '+((err&&err.message)||err),'err');}}).then(function(){delete sqState.sending[id];renderServeQueue();});
   });
 }
 window.addEventListener('online',function(){setTimeout(sqFlush,1500);});

@@ -160,7 +160,7 @@ const orderServiceSource=fs.readFileSync(new URL('../functions/lib/order-service
 assert.match(posSource,/function sqRows\(\)\{[\s\S]{0,400}?sqViewRow\(onlineOrdersMap\[id\]\|\|\{\},id\)/,'the rail renders one shared view of each order');
 assert.match(posSource,/function sqFind\(id\)\{[^}]*sqViewRow\(onlineOrdersMap\[id\],id\)/,'a tap resolves the same view the card showed');
 assert.ok(!/var o=Object\.assign\(\{\},live,\{id:id\}\)/.test(posSource),'the send path keeps no second, un-overridden copy of the order');
-assert.match(posSource,/sqRememberConfirmed\(id,confirmed,String\(live\.service&&live\.service\.state\|\|''\)\)/,'every server answer is adopted as this device view');
+assert.match(posSource,/var current=onlineOrdersMap&&onlineOrdersMap\[id\]\|\|live;sqRememberConfirmed\(id,confirmed,String\(current\.service&&current\.service\.state\|\|''\)\)/,'every server answer is adopted, against the live copy as the answer arrived');
 assert.match(orderServiceSource,/traceAttempt\(options, order, action, requestId, detail, "no_change"/,'a tap that changes nothing is traced on the server');
 assert.match(orderServiceSource,/traceAttempt\(options, order, action, requestId, detail, "rejected"/,'a refused tap is traced on the server');
 assert.match(fs.readFileSync(new URL('../src/functions/30-orders.js',import.meta.url),'utf8'),/"serviceAttempt"\]/,'the attempt trace stays out of the live projection');
