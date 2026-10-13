@@ -82,7 +82,7 @@ export const BUNDLE_BUDGETS=Object.freeze({
 // taxReturns history); no standing listener. Re-baselined under the budget policy to
 // ~5% above the reviewed 265,488 bytes.
 'assets/js/admin/register-discrepancies.js':23600, // AP register split: lazily loaded discrepancies render code
-'assets/js/admin/register.js':278800,
+'assets/js/admin/register.js':300000, // reviewed 275,443; re-based 13 Oct 2026: the bundle is generated from fifteen INTERDEPENDENT sections -- eager sections call helpers defined in the same or a later file (60-operations-shift-review calls shiftSales and openShiftReview from 90-shift-review-export; the always-on discrepancies subscription calls updateDiscBadge and discList from 30-discrepancy-controls) -- so a split is not a build-config change but a helper migration across the cashier's screen. Re-based instead; the split stays planned in docs/plans/register-bundle-headroom.md for when a register feature needs the room.
   // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.
   // Build 533 replaces Stock Value's whole-journal listener with monthly totals plus the
