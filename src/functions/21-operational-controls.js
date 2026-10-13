@@ -88,7 +88,9 @@ exports.reviewDiscrepancy = onCall(
     const ref = db.ref(`/discrepancies/${id}`), snap = await ref.get();
     if (!snap.exists()) throw new HttpsError("not-found", "Discrepancy not found.");
     const row = snap.val() || {}; if (row.status === "reviewed") return {discrepancyId: id, duplicate: true};
-    await assertAccountingPeriodOpen(db, financeText(row.date, 10) || financeDateFromTimestamp(Number(row.closedAt || row.ts || row.createdAt || Date.now())), "resolving this Admin cash discrepancy");
+    /* Only a cash-difference review posts to Finance Books, so the open-period rule applies to
+       cash. An inventory flag is resolved against the stock adjustment that already posted. */
+    if (row.kind === "cash") await assertAccountingPeriodOpen(db, financeText(row.date, 10) || financeDateFromTimestamp(Number(row.closedAt || row.ts || row.createdAt || Date.now())), "resolving this Admin cash discrepancy");
     const now = Date.now(); let approval, reviewedBy;
     if(row.kind==="cash"&&Number(data.caseVersion)===2){
       const short=Number(row.variance)<0,totalValue=Financial.money(Math.abs(Number(row.variance)||0)),shiftId=financeKey(row.shiftId,"Shift ID"),raw=Array.isArray(data.allocations)?data.allocations:[],prior=row.resolutionAllocations||{},priorTotal=Financial.money(Object.values(prior).reduce((sum,x)=>sum+Number(x&&x.amount||0),0)),remaining=Financial.money(totalValue-priorTotal),revision=Math.max(0,Math.floor(Number(row.resolutionRevision)||0))+1;
@@ -195,6 +197,52 @@ exports.reviewDiscrepancy = onCall(
       }else{target=treatment==="shortage_expense"?"expense:cash_shortage":treatment==="staff_receivable"?`asset:receivable:shift_${shiftId}`:treatment==="owner_draw"?"equity:owner_draw":"revenue:unexplained_cash_overage";const label=`Resolve ${short?"cash shortage":"cash overage"} · ${note}`;if(legacyFinal&&short&&treatment==="shortage_expense")lines=[];else{const source=legacyFinal?(short?"expense:cash_shortage":"revenue:cash_overage"):pending;lines=short?[Financial.line(target,value,0,label),Financial.line(source,0,value,label)]:[Financial.line(source,value,0,label),Financial.line(target,0,value,label)];}}
       approval=await claimManagerApproval(db,data,"review_discrepancy",id,null,`review_discrepancy_${id}`);reviewedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole;const financialStatus=treatment==="supplier_payment_pending_allocation"?"awaiting_inventory_allocation":treatment==="customer_change_refund_payable"?"awaiting_customer_refund":"resolved",writes=Object.assign({},approval.usedWrites,{[`discrepancies/${id}/status`]:"reviewed",[`discrepancies/${id}/financialStatus`]:financialStatus,[`discrepancies/${id}/treatment`]:treatment,[`discrepancies/${id}/correctionMovementId`]:correctionMovementId||null,[`discrepancies/${id}/purchaseAdvanceId`]:advanceId||null,[`discrepancies/${id}/customerRefundPayableId`]:payableId||null,[`discrepancies/${id}/reviewedAt`]:now,[`discrepancies/${id}/reviewedBy`]:reviewedBy,[`discrepancies/${id}/reviewedByUid`]:approval.record.approvedBy,[`discrepancies/${id}/reviewApprovalId`]:approval.id,[`discrepancies/${id}/resolutionMovementId`]:movementId,[`discrepancies/${id}/note`]:note,[`shifts/${shiftId}/varianceStatus`]:financialStatus,[`shifts/${shiftId}/varianceResolution`]:{treatment,note,correctionMovementId:correctionMovementId||null,purchaseAdvanceId:advanceId||null,customerRefundPayableId:payableId||null,approvalId:approval.id,approvedBy:reviewedBy,resolutionMovementId:movementId,resolvedAt:now}});if(advanceId){const shift=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},payOuts=Array.isArray(shift.payOuts)?shift.payOuts:[];writes[`shifts/${shiftId}/payOuts/${payOuts.length}`]={id:advanceId,type:"purchase_advance",status:"pending_details",amount:value,remainingAmount:value,recipient,purpose,reference,reason:`Emergency supplier payment — ${purpose}`,by:reviewedBy,approvalId:approval.id,ts:now,source:"closed_shift_variance"};}if(payableId){writes[`payables/${payableId}`]={party:recipient,type:"customer_change_refund",amount:value,remainingAmount:value,paidAmount:0,date:financeDate(row.date||new Date(now).toISOString().slice(0,10)),due:"",ref:reference,status:"open",movementId,liabilityAccount:`liability:customer_change_refund:${payableId}`,reversalOffsetAccount:pending,sourceType:"discrepancy",sourceId:id,discrepancyId:id,shiftId,approvalId:approval.id,ts:now,createdBy:actor.uid,schemaVersion:2};}
       if(!lines.length){writes[`discrepancies/${id}/resolutionMovementId`]=null;writes[`shifts/${shiftId}/varianceResolution/resolutionMovementId`]=null;await db.ref().update(writes);return{discrepancyId:id,reviewedAt:now,treatment,movementId:null,duplicate:false,legacyAlreadyPosted:true};}const varianceShift=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},committed=await commitFinancial(db,movementId,Financial.movement("shift_cash_variance_resolution","discrepancy",id,lines,{occurredAt:shiftVarianceTime(varianceShift,row,now),actorName:reviewedBy,approvalId:approval.id,treatment,shiftId,controlReason:note,legacyFinal}),actor,writes);return{discrepancyId:id,reviewedAt:now,treatment,movementId,duplicate:committed.duplicate};
+    }
+    /* Inventory flags: the stock adjustment already chose the reason and posted the Finance offset,
+       so nothing is re-posted here. A legacy row (written by the browser before this workflow) is
+       matched back to its adjustment, the real adjuster and the movement that treated it. One
+       approval and one update can close a whole batch of them. */
+    if (row.kind === "inventory") {
+      const requested = [id].concat(Array.isArray(data.inventoryDiscrepancyIds) ? data.inventoryDiscrepancyIds : []);
+      const ids = [...new Set(requested.map((value) => financeKey(value, "Discrepancy ID")))].slice(0, 100);
+      const rows = [];
+      for (const key of ids) {
+        const stored = (await db.ref(`/discrepancies/${key}`).get()).val();
+        if (stored && stored.kind === "inventory" && stored.status !== "reviewed") rows.push({key, stored});
+      }
+      if (!rows.length) return {discrepancyId: id, resolved: 0, unmatched: [], alreadyResolved: true};
+      const resolutionNote = financeText(data.note, 500);
+      if (!resolutionNote) throw new HttpsError("invalid-argument", "Explain how the stock difference was verified.");
+      approval = await claimManagerApproval(db, data, "review_discrepancy", id, null, `review_discrepancy_inventory_${ids[0]}`);
+      reviewedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
+      const writes = Object.assign({}, approval.usedWrites), resolved = [], unmatched = [];
+      for (const entry of rows) {
+        const trace = await traceStockAdjustment(db, entry.stored);
+        if (!trace) { unmatched.push(entry.key); continue; }
+        Object.assign(writes, {
+          [`discrepancies/${entry.key}/status`]: "reviewed",
+          [`discrepancies/${entry.key}/financialStatus`]: "resolved_by_stock_adjustment",
+          [`discrepancies/${entry.key}/treatment`]: "stock_adjustment",
+          [`discrepancies/${entry.key}/offsetAccount`]: trace.offsetAccount,
+          [`discrepancies/${entry.key}/adjustmentId`]: trace.adjustmentId,
+          [`discrepancies/${entry.key}/movementId`]: trace.movementId,
+          [`discrepancies/${entry.key}/resolutionMovementId`]: `invmove_${trace.movementId}`,
+          [`discrepancies/${entry.key}/reason`]: entry.stored.reason || trace.reason,
+          [`discrepancies/${entry.key}/staff`]: trace.actorName,
+          [`discrepancies/${entry.key}/actorUid`]: trace.actorUid,
+          [`discrepancies/${entry.key}/actorName`]: trace.actorName,
+          [`discrepancies/${entry.key}/reviewedAt`]: now,
+          [`discrepancies/${entry.key}/reviewedBy`]: reviewedBy,
+          [`discrepancies/${entry.key}/reviewedByUid`]: approval.record.approvedBy,
+          [`discrepancies/${entry.key}/reviewApprovalId`]: approval.id,
+          [`discrepancies/${entry.key}/note`]: resolutionNote,
+          [`discrepancies/${entry.key}/linkedAt`]: now,
+        });
+        resolved.push({discrepancyId: entry.key, adjustmentId: trace.adjustmentId, movementId: trace.movementId, offsetAccount: trace.offsetAccount});
+      }
+      writes[`operationalAudit/${now}_${id}_inventory_review`] = operationalAuditRecord("review_inventory_discrepancy", "discrepancy", id, actor, {resolved: resolved.length, unmatched, approvalId: approval.id, accounting: "No journal is posted: each flag is resolved against the stock adjustment that already moved stock and posted the Finance offset."});
+      await db.ref().update(writes);
+      return {discrepancyId: id, reviewedAt: now, resolved: resolved.length, resolutions: resolved, unmatched, duplicate: false};
     }
     approval=await claimManagerApproval(db,data,"review_discrepancy",id,null,`review_discrepancy_${id}`);reviewedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole;
     let duplicate = false; const transactionState = {seen: false};
