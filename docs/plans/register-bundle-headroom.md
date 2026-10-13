@@ -78,10 +78,15 @@ companion load can hang on.
    - new entry `{source:'src/admin/register',target:'assets/js/admin/register-discrepancies.js',include:['30-discrepancy-controls.js']}`
 4. **Wire the loader** in `assets/js/admin/module-loader.js`:
    - `files`: `registerdiscrepancies:'register-discrepancies.js'`
-   - `routes.discrepancy`: add the module **after** `'register'` so it is fetched before the tab
-     renders. Confirm the route runner awaits every module before dispatching
-     `__accazaRegisterModule('register', …)`, and add the module to any other route whose render
-     calls into the moved functions.
+   - `routes.discrepancy`: add the module **after** `'register'`. **Confirmed safe 13 Oct 2026** by
+     reading `assets/js/admin/module-loader.js:51-61`: `posSwitchTab` reduces the route list into a
+     sequential `load(name)` chain, and only after *every* module resolves does it call each
+     registered handler (`needed.forEach(name => handlers[name](tab,button))`). So a companion module
+     listed in the route is always loaded before the register handler can call
+     `renderDiscrepancies()`, and the existing `requestSerial` guard already protects against rapid tab
+     switching mid-load. Add the module to any other route whose render calls into the moved functions
+     (today only `discrepancy` renders that list — `00-bootstrap-payment-controls.js` guards it with
+     `if(isTab('discrepancy')) renderDiscrepancies()`).
 5. **Budgets and guards.**
    - `tests/bundle-budgets.mjs`: add a ceiling for `assets/js/admin/register-discrepancies.js`.
    - Repoint any static guard that asserts a moved marker against the built `register.js`
