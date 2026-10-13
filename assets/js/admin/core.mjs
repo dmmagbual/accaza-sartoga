@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=674";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=675";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -15,6 +15,8 @@ import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
 import{sortArchivedOrders,summarizeArchivedOrders}from"./archive-order-sort.mjs";
 import{createOrderArchivePanel}from"./order-archive-panel.mjs";
+import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=675";
+const paymentAccountLinks=createPaymentAccountLinks(()=>overviewCashAccounts||{});
 
 const {getPaymentProof:getPaymentProofCall,getCurrentCashBalances:getCurrentCashBalancesCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,manageFixedAsset:manageFixedAssetCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,manageAccountingPeriod:manageAccountingPeriodCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,reopenDiscrepancy:reopenDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,setUndepositedOpeningBalance:setUndepositedOpeningBalanceCall,repairPettyVoucherFinancial:repairPettyVoucherFinancialCall,retireRevolvingFund:retireRevolvingFundCall,repairClosedShiftTurnover:repairClosedShiftTurnoverCall,repairShiftDeclaredTips:repairShiftDeclaredTipsCall,repairReversedPayoutDeposit:repairReversedPayoutDepositCall,reconcileUndepositedCustody:reconcileUndepositedCustodyCall,runFinancialClose:runFinancialCloseCall,archiveActivityLog:archiveActivityLogCall}=callables;
 window.__accazaAuth=auth;
@@ -279,6 +281,7 @@ subscriptionHub.subscribe('optionGroups',snap=>{
 
 subscriptionHub.subscribe('cfAccounts',snap=>{
   overviewCashAccounts=snap.val()||{};
+  paymentAccountLinks.render();
   if(adminLoggedIn||staffLoggedIn){var ct=document.getElementById('tab-dashboard');if(ct&&ct.style.display!=='none')renderDashboard();}
 });
 
@@ -430,8 +433,10 @@ subscriptionHub.subscribe('reviews',snap=>{
   if(adminLoggedIn||staffLoggedIn)renderAdminReviews();
 });
 subscriptionHub.subscribe('availability',snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);renderMenuSection();renderOrderSection();if(adminLoggedIn)buildAvail();});
+// The link picker lives in payment-account-links.mjs to keep this bundle inside its byte budget.
 subscriptionHub.subscribe('payment',snap=>{
   const p=snap.val();if(!p)return;
+  paymentAccountLinks.render(p);
   if(p.gcashNum)document.getElementById('gcashNum').textContent=p.gcashNum;
   if(p.gcashName)document.getElementById('gcashName').textContent=p.gcashName;
   if(p.bdoNum)document.getElementById('bankNum').textContent=p.bdoNum;
@@ -989,6 +994,9 @@ window.savePayment=async function(){
     if(note)note.style.display=getChk('chk'+k)?'none':'block';
   });
   const data={gcashNum:document.getElementById('editGcashNum').value,gcashName:document.getElementById('editGcashName').value,bdoNum:document.getElementById('editBdoNum').value,bdoName:document.getElementById('editBdoName')?document.getElementById('editBdoName').value:'',ubNum:document.getElementById('editUbNum').value,ubName:document.getElementById('editUbName')?document.getElementById('editUbName').value:'',mayaNum:document.getElementById('editMayaNum').value,mayaName:document.getElementById('editMayaName').value,bank3Label:document.getElementById('editBank3Label').value,bank3Num:document.getElementById('editBank3Num').value,bank3Name:document.getElementById('editBank3Name').value,bank4Label:document.getElementById('editBank4Label').value,bank4Num:document.getElementById('editBank4Num').value,bank4Name:document.getElementById('editBank4Name').value,gcashEnabled:getChk('chkGcash'),bdoEnabled:getChk('chkBdo'),ubEnabled:getChk('chkUb'),mayaEnabled:getChk('chkMaya'),bank3Enabled:getChk('chkBank3'),bank4Enabled:getChk('chkBank4')};
+  // The receiving-account links are read from the link module: it returns the stored value for a
+  // select that has not been hydrated yet, so saving the whole /payment object cannot wipe a link.
+  Object.assign(data,paymentAccountLinks.values());
   await set(paymentRef,data);document.getElementById('saveConfirm').style.display='block';setTimeout(function(){document.getElementById('saveConfirm').style.display='none';},3000);
 };
 

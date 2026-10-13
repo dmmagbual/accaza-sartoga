@@ -214,7 +214,7 @@ onValue(ref(db,'.info/connected'),function(snap){
 },function(){customerLiveConnected=false;renderPublicOrderStatus();});
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
-let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp';
+let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp',paymentRow='',paymentSettings={};
 function storedIdList(key,limit){try{var value=JSON.parse(localStorage.getItem(key)||'[]'),trimmed=recentOwnedIds(Array.isArray(value)?value:[],limit);if(!Array.isArray(value)||value.length!==trimmed.length)localStorage.setItem(key,JSON.stringify(trimmed));return trimmed;}catch(e){try{localStorage.removeItem(key);}catch(_e){}return[];}}
 let myOrderIds=storedIdList('accaza_my_orders',CUSTOMER_LIVE_ORDER_LIMIT);
 let myReservationIds=storedIdList('accaza_my_reservations',CUSTOMER_LIVE_RESERVATION_LIMIT);
@@ -507,8 +507,40 @@ function checkMyReadyOrders(){
 }
 (function(){var un=function(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}document.removeEventListener('touchstart',un);document.removeEventListener('click',un);};document.addEventListener('touchstart',un,{passive:true});document.addEventListener('click',un);})();
 onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);scheduleCatalogRender();});
+/* The customer chooses which bank the transfer was sent to, and the order records that account so
+   finance posts the money where it actually landed instead of to whichever account happens to
+   claim Bank Transfer. A row is offered only when the shop linked it to a receiving account: a
+   bank the shop cannot route is never shown as payable. Until any row is linked the block keeps
+   its previous behaviour and the order carries no choice, so nothing changes mid-cutover. */
+var bankRows=[{key:'bdo',el:'bdoRow',label:'BDO'},{key:'ub',el:'ubRow',label:'UnionBank'},{key:'bank3',el:'bank3Row',label:'Other bank'},{key:'bank4',el:'bank4Row',label:'Other bank'}];
+window.setPaymentRow=function(key){
+  paymentRow=key||'';
+  var wrap=document.getElementById('bankChoice');
+  if(!wrap||wrap.style.display==='none'){return;}
+  bankRows.forEach(function(r){var el=document.getElementById(r.el);if(el)el.style.display=r.key===paymentRow?'':'none';});
+  var qrBdo=document.getElementById('qrBdo');
+  if(qrBdo)qrBdo.style.display=paymentRow==='bdo'?'':'none';
+};
+function renderBankChoice(p){
+  paymentSettings=p||{};
+  var wrap=document.getElementById('bankChoice'),select=document.getElementById('bankChoiceSelect');
+  if(!wrap||!select)return;
+  var offered=bankRows.filter(function(r){return p[r.key+'Enabled']!==false&&String(p[r.key+'AccountId']||'')&&document.getElementById(r.el);});
+  if(!offered.length){wrap.style.display='none';select.textContent='';paymentRow='';return;}
+  select.textContent='';
+  offered.forEach(function(r){
+    var option=document.createElement('option');option.value=r.key;
+    option.textContent=r.key==='bank3'?(p.bank3Label||'Other bank'):r.key==='bank4'?(p.bank4Label||'Other bank'):r.label;
+    select.appendChild(option);
+  });
+  var keep=offered.some(function(r){return r.key===paymentRow;})?paymentRow:offered[0].key;
+  select.value=keep;wrap.style.display='block';
+  select.onchange=function(){if(window.setPaymentRow)window.setPaymentRow(select.value);};
+  window.setPaymentRow(keep);
+}
 onValue(paymentRef,snap=>{
   const p=snap.val();if(!p)return;
+  renderBankChoice(p);
   if(p.gcashNum)document.getElementById('gcashNum').textContent=p.gcashNum;
   if(p.gcashName)document.getElementById('gcashName').textContent=p.gcashName;
   if(p.bdoNum)document.getElementById('bankNum').textContent=p.bdoNum;
@@ -871,6 +903,7 @@ window.setPayment=function(p){paymentType=p;
   document.getElementById('gcashInfo').style.display=p==='gcash'?'block':'none';
   document.getElementById('mayaInfo').style.display=p==='maya'?'block':'none';
   document.getElementById('bankInfo').style.display=p==='bank'?'block':'none';
+  if(p==='bank'){var sel=document.getElementById('bankChoiceSelect');if(sel&&sel.value&&!paymentRow&&window.setPaymentRow)window.setPaymentRow(sel.value);}
 };
 window.setContact=function(type){contactMethod=type;['Whatsapp','Viber','Sms','Call','Email'].forEach(function(t){const el=document.getElementById('btn'+t);if(el)el.classList.toggle('active',t.toLowerCase()===type);});const ph={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',sms:'Enter your phone number for SMS',call:'Enter your phone number',email:'Enter your email address'};document.getElementById('custContact').placeholder=ph[type]||'Enter your contact';};
 var paymentProofData='',paymentProofBusy=false;
@@ -949,7 +982,13 @@ window.placeOrder=async function(){
   const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
   try{
     await ensureCustomerAuth(true);
-    var orderPayload={name:name,phone:phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod:contactMethod,notes:document.getElementById('custNotes').value.trim(),proof:proofSrc,lineItems:lineItemsArr,expectedTotal:total};
+    // The receiving account the customer chose is sent as a stable row key. The server resolves and
+    // validates it against the payment settings, so the order posts to the bank the customer
+    // actually paid into. A row is only sent when the shop linked it; otherwise the order carries
+    // no choice and the server keeps its previous resolution.
+    var chosenRow=paymentType==='bank'?(paymentRow||''):paymentType==='maya'?(paymentSettings.mayaAccountId?'maya':''):(paymentSettings.gcashAccountId?'gcash':'');
+    if(paymentType==='bank'){var choiceBox=document.getElementById('bankChoice');if(choiceBox&&choiceBox.style.display!=='none'&&!chosenRow){alert('Please choose the bank you transferred to.');return;}}
+    var orderPayload={name:name,phone:phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',paymentRow:chosenRow,contact:document.getElementById('custContact').value.trim(),contactMethod:contactMethod,notes:document.getElementById('custNotes').value.trim(),proof:proofSrc,lineItems:lineItemsArr,expectedTotal:total};
     var placed;
     try{placed=await createOnlineOrderCall(orderPayload);}catch(firstError){
       if(String(firstError&&firstError.code).indexOf('unauthenticated')<0)throw firstError;

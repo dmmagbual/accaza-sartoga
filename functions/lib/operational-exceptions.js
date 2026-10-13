@@ -51,7 +51,7 @@ function clearingBalancesFromMonthlyNet(monthlyNet) {
    stores no account at all, so the ledger resolves it through accountForMethod - the account whose
    feedMethods claims that method. The two agree only by configuration, never by construction. These
    checks make a divergence visible instead of letting online and POS money drift into two accounts. */
-function paymentRoutingIssues(payMethods, cfAccounts, now) {
+function paymentRoutingIssues(payMethods, cfAccounts, now, paymentSettings) {
   const out = [], methods = Array.isArray(payMethods) ? payMethods : [], accounts = cfAccounts || {};
   const lower = (v) => String(v == null ? "" : v).trim().toLowerCase();
   methods.forEach((method) => {
@@ -75,14 +75,14 @@ function paymentRoutingIssues(payMethods, cfAccounts, now) {
     if (claimants.length > 1) {
       out.push(item("payment_routing", "critical", `routing_multi_${lower(name)}`,
         `${claimants.length} accounts claim payment method ${name}`,
-        `${claimants.map(label).join(", ")} all list ${name} in their feed methods. An online ${name} sale carries no receiving account, so the ledger posts it to whichever of these resolves last - not necessarily the one a cashier picks at the till. Leave ${name} on exactly one account.`,
+        `${claimants.map(label).join(", ")} all list ${name} in their feed methods. A new online ${name} order takes the account assigned to the method, but any ${name} order stored without a receiving account still resolves to whichever of these reads last - not necessarily the one a cashier picks at the till. Leave ${name} on exactly one account.`,
         now, "possettings"));
       return;
     }
     if (!claimants.length) {
       out.push(item("payment_routing", "warning", `routing_none_${lower(name)}`,
         `No receiving account claims payment method ${name}`,
-        `An online ${name} sale carries no receiving account, and no account lists ${name} in its feed methods, so it cannot be mapped to one. Add ${name} to the real receiving account's feed methods.`,
+        `No account lists ${name} in its feed methods. A new online ${name} order uses the account assigned to the method in POS Settings; an older ${name} order stored without a receiving account cannot be mapped at all. Assign the real receiving account to the method, and list ${name} there for the orders already taken.`,
         now, "possettings"));
       return;
     }
@@ -90,7 +90,55 @@ function paymentRoutingIssues(payMethods, cfAccounts, now) {
     if (configured.length && configured.indexOf(claimants[0]) < 0) {
       out.push(item("payment_routing", "critical", `routing_split_${lower(name)}`,
         `${name} posts to different accounts at the till and online`,
-        `A cashier can only pick ${configured.map(label).join(", ")}, but an online ${name} sale resolves to ${label(claimants[0])}. Past and current ${name} money is landing in two different accounts. Align the allowed receiving account with the account whose feed methods claim ${name}.`,
+        `A cashier can only pick ${configured.map(label).join(", ")}, but ${label(claimants[0])} still lists ${name} in its feed methods, so every ${name} order stored without a receiving account resolves there. Past and current ${name} money is landing in two different accounts. Assign ${name} to the one correct receiving account in POS Settings and clear ${name} from ${claimants.map(label).join(", ")}.`,
+        now, "possettings"));
+    }
+  });
+  /* Customer-facing payment rows. The checkout offers the bank or wallet the customer picks, and
+     the order posts to the Finance account linked to that row in the payment settings. A row the
+     customer can see without a link cannot be routed by the customer's own choice, and a link that
+     points at a missing or deactivated account would refuse the customer's payment. A link the till
+     does not offer is allowed, but the two then report different accounts, so it is reported too. */
+  const settings = paymentSettings || {};
+  // No payment settings at all means the customer-facing rows are not known here (or the caller
+  // does not read them): report nothing rather than invent unlinked rows.
+  if (!Object.keys(settings).length) return out;
+  const label = (id) => String((accounts[id] || {}).name || id);
+  const rows = [
+    {key: "bdo", method: "Bank Transfer", display: "BDO"},
+    {key: "ub", method: "Bank Transfer", display: "UnionBank"},
+    {key: "bank3", method: "Bank Transfer", display: String(settings.bank3Label || "").trim() || "The third bank account"},
+    {key: "bank4", method: "Bank Transfer", display: String(settings.bank4Label || "").trim() || "The fourth bank account"},
+    {key: "gcash", method: "GCash", display: "GCash"},
+    {key: "maya", method: "PayMaya", display: "PayMaya"},
+  ];
+  rows.forEach(({key, method: methodName, display: rowLabel}) => {
+    if (settings[`${key}Enabled`] === false) return;
+    // Only a row the customer can actually see: the fixed rows show unless switched off, while the
+    // two spare banks and PayMaya need an account number before the customer sees them.
+    const visible = key === "bdo" || key === "ub" || key === "gcash" || String(settings[`${key}Num`] || "").trim();
+    if (!visible) return;
+    const id = String(settings[`${key}AccountId`] || "").trim();
+    if (!id) {
+      out.push(item("payment_routing", "warning", `routing_unlinked_${key}`,
+        `${rowLabel} is visible to customers but not linked to a receiving account`,
+        `Customers can see ${rowLabel} at checkout, but no receiving account is linked to it, so that payment cannot be routed by the customer's own choice. Link ${rowLabel} to its Finance account in POS Settings.`,
+        now, "possettings"));
+      return;
+    }
+    if (!accounts[id] || accounts[id].active === false) {
+      out.push(item("payment_routing", "critical", `routing_link_missing_${key}`,
+        `${rowLabel} is linked to a receiving account that is gone`,
+        `Customers are offered ${rowLabel}, but its linked Finance account no longer exists or is deactivated, so a payment to ${rowLabel} would be refused. Link the row to the real receiving account in POS Settings.`,
+        now, "possettings"));
+      return;
+    }
+    const method = methods.find((m) => m && m.cash !== true && lower(m.name) === lower(methodName));
+    const assigned = method && Array.isArray(method.accountIds) ? method.accountIds.indexOf(id) >= 0 : false;
+    if (!assigned) {
+      out.push(item("payment_routing", "warning", `routing_link_unassigned_${key}`,
+        `${rowLabel} receives online payments an account the till does not offer`,
+        `Customers can choose ${rowLabel} and their payment posts to ${label(id)}, but ${label(id)} is not one of the receiving accounts assigned to ${methodName} at the till. That is allowed, but the till and the online checkout then report different accounts. Assign ${label(id)} to ${methodName} if the shop should offer it at the till too.`,
         now, "possettings"));
     }
   });
@@ -125,7 +173,7 @@ function buildOperationalExceptions(input, now = Date.now()) {
     const bal = round2(clearingBalances[code] || 0);
     if (Math.abs(bal) > clearingThreshold) exceptions.push(item("clearing_residual", "warning", `clearing_${code}`, `${name} (${code}) has not cleared to zero`, `Books General Ledger shows a ${bal > 0 ? "debit" : "credit"} residual of PHP ${Math.abs(bal).toFixed(2)} in ${code} ${name}. This clearing/suspense account must settle to zero \u2014 review and clear the pending posting in Finance Books.`, now, "cashflow"));
   });
-  paymentRoutingIssues(input.payMethods, input.cfAccounts, now).forEach((x) => exceptions.push(x));
+  paymentRoutingIssues(input.payMethods, input.cfAccounts, now, input.paymentSettings).forEach((x) => exceptions.push(x));
   // Shift crew safeguards: a POS sale the server refused is money in the drawer with no
   // sale behind it until management recovers or dismisses it; a handed-over shift has no
   // final Z report until management reconciles it.
