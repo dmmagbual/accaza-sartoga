@@ -47,6 +47,7 @@ window.setPayment=function(p){paymentType=p;
   document.getElementById('gcashInfo').style.display=p==='gcash'?'block':'none';
   document.getElementById('mayaInfo').style.display=p==='maya'?'block':'none';
   document.getElementById('bankInfo').style.display=p==='bank'?'block':'none';
+  if(p==='bank'){var sel=document.getElementById('bankChoiceSelect');if(sel&&sel.value&&!paymentRow&&window.setPaymentRow)window.setPaymentRow(sel.value);}
 };
 window.setContact=function(type){contactMethod=type;['Whatsapp','Viber','Sms','Call','Email'].forEach(function(t){const el=document.getElementById('btn'+t);if(el)el.classList.toggle('active',t.toLowerCase()===type);});const ph={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',sms:'Enter your phone number for SMS',call:'Enter your phone number',email:'Enter your email address'};document.getElementById('custContact').placeholder=ph[type]||'Enter your contact';};
 var paymentProofData='',paymentProofBusy=false;

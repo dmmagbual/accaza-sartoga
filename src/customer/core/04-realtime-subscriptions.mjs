@@ -236,8 +236,40 @@ function checkMyReadyOrders(){
 }
 (function(){var un=function(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}document.removeEventListener('touchstart',un);document.removeEventListener('click',un);};document.addEventListener('touchstart',un,{passive:true});document.addEventListener('click',un);})();
 onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);scheduleCatalogRender();});
+/* The customer chooses which bank the transfer was sent to, and the order records that account so
+   finance posts the money where it actually landed instead of to whichever account happens to
+   claim Bank Transfer. A row is offered only when the shop linked it to a receiving account: a
+   bank the shop cannot route is never shown as payable. Until any row is linked the block keeps
+   its previous behaviour and the order carries no choice, so nothing changes mid-cutover. */
+var bankRows=[{key:'bdo',el:'bdoRow',label:'BDO'},{key:'ub',el:'ubRow',label:'UnionBank'},{key:'bank3',el:'bank3Row',label:'Other bank'},{key:'bank4',el:'bank4Row',label:'Other bank'}];
+window.setPaymentRow=function(key){
+  paymentRow=key||'';
+  var wrap=document.getElementById('bankChoice');
+  if(!wrap||wrap.style.display==='none'){return;}
+  bankRows.forEach(function(r){var el=document.getElementById(r.el);if(el)el.style.display=r.key===paymentRow?'':'none';});
+  var qrBdo=document.getElementById('qrBdo');
+  if(qrBdo)qrBdo.style.display=paymentRow==='bdo'?'':'none';
+};
+function renderBankChoice(p){
+  paymentSettings=p||{};
+  var wrap=document.getElementById('bankChoice'),select=document.getElementById('bankChoiceSelect');
+  if(!wrap||!select)return;
+  var offered=bankRows.filter(function(r){return p[r.key+'Enabled']!==false&&String(p[r.key+'AccountId']||'')&&document.getElementById(r.el);});
+  if(!offered.length){wrap.style.display='none';select.textContent='';paymentRow='';return;}
+  select.textContent='';
+  offered.forEach(function(r){
+    var option=document.createElement('option');option.value=r.key;
+    option.textContent=r.key==='bank3'?(p.bank3Label||'Other bank'):r.key==='bank4'?(p.bank4Label||'Other bank'):r.label;
+    select.appendChild(option);
+  });
+  var keep=offered.some(function(r){return r.key===paymentRow;})?paymentRow:offered[0].key;
+  select.value=keep;wrap.style.display='block';
+  select.onchange=function(){if(window.setPaymentRow)window.setPaymentRow(select.value);};
+  window.setPaymentRow(keep);
+}
 onValue(paymentRef,snap=>{
   const p=snap.val();if(!p)return;
+  renderBankChoice(p);
   if(p.gcashNum)document.getElementById('gcashNum').textContent=p.gcashNum;
   if(p.gcashName)document.getElementById('gcashName').textContent=p.gcashName;
   if(p.bdoNum)document.getElementById('bankNum').textContent=p.bdoNum;

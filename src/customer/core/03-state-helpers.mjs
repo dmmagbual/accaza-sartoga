@@ -49,7 +49,7 @@ onValue(ref(db,'.info/connected'),function(snap){
 },function(){customerLiveConnected=false;renderPublicOrderStatus();});
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
-let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp';
+let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp',paymentRow='',paymentSettings={};
 function storedIdList(key,limit){try{var value=JSON.parse(localStorage.getItem(key)||'[]'),trimmed=recentOwnedIds(Array.isArray(value)?value:[],limit);if(!Array.isArray(value)||value.length!==trimmed.length)localStorage.setItem(key,JSON.stringify(trimmed));return trimmed;}catch(e){try{localStorage.removeItem(key);}catch(_e){}return[];}}
 let myOrderIds=storedIdList('accaza_my_orders',CUSTOMER_LIVE_ORDER_LIMIT);
 let myReservationIds=storedIdList('accaza_my_reservations',CUSTOMER_LIVE_RESERVATION_LIMIT);

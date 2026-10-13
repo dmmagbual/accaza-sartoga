@@ -36,9 +36,58 @@ function accountForMethod(method, accounts) {
   return match;
 }
 function accountForPayment(payment,accounts){
+  /* A stamped account is the account the money was actually sent to. If that account no longer
+     exists the payment is left unmapped - and reported by unmappedOrderPayments - instead of
+     silently falling back to whichever account claims the method by feed methods, which would
+     attribute money already in one bank to a different one. */
   payment=payment||{};const selected=safe(payment.receivingAccountId);
-  if(selected&&accounts&&accounts[selected])return selected;
+  if(selected)return accounts&&accounts[selected]?selected:"";
   return accountForMethod(payment.paymentMethod||payment.method,accounts);
+}
+
+/* Payment routing for an order nobody tenders by hand.
+
+   An online order has no cashier to choose a receiving account, so the customer chooses the bank or
+   wallet at checkout. /payment carries one linked Finance account per customer-facing row (bdo, ub,
+   bank3, bank4, gcash, maya): the choice is a stable row key resolved here - never a name match,
+   never a client-supplied account id - and the row must belong to the payment method the order was
+   placed with. The account must exist and still be active, so a crafted request cannot post money
+   to an account the shop does not hold, and a row that was switched off after the page loaded is
+   refused rather than accepted from a stale browser. The till's own account list is deliberately
+   not required: an account the shop links for online customers is the shop's decision, and refusing
+   the customer's payment over a till setting would cost a sale. The routing guard reports that
+   difference instead. */
+const CUSTOMER_PAYMENT_ROWS = ["bdo", "ub", "bank3", "bank4", "gcash", "maya"];
+const METHOD_FOR_CUSTOMER_ROW = {bdo: "Bank Transfer", ub: "Bank Transfer", bank3: "Bank Transfer", bank4: "Bank Transfer", gcash: "GCash", maya: "PayMaya"};
+function customerPaymentRow(key) {const wanted = safe(key).toLowerCase(); return CUSTOMER_PAYMENT_ROWS.includes(wanted) ? wanted : "";}
+function receivingAccountForCustomerChoice(method, rowKey, paymentSettings, accounts) {
+  const row = customerPaymentRow(rowKey), gone = "That payment option is no longer available. Choose another method, or contact us and we will help.";
+  if (!row) return {error: "Choose the account you sent the payment to."};
+  const settings = paymentSettings || {}, map = accounts || {}, wanted = safe(method).toLowerCase(), id = safe(settings[`${row}AccountId`]);
+  if (wanted && wanted !== safe(METHOD_FOR_CUSTOMER_ROW[row]).toLowerCase()) return {error: gone};
+  if (settings[`${row}Enabled`] === false) return {error: gone};
+  if (!id || !map[id] || map[id].active === false) return {error: gone};
+  return {id, name: safe(map[id].name) || id, method: safe(method)};
+}
+
+/* An older cached customer bundle sends no row at all. Its order resolves from the customer-facing
+   links, not from the accounts' feed methods: the rows linked to that method and offered at the
+   till. Exactly one link is a decision; none or several cannot be decided here, so nothing is
+   stamped and the guard reports it instead of the ledger guessing a bank. */
+function receivingAccountForMethodFallback(method, paymentSettings, payMethods, accounts) {
+  const wanted = safe(method).toLowerCase(), settings = paymentSettings || {}, map = accounts || {};
+  if (!wanted) return null;
+  const methodRow = (Array.isArray(payMethods) ? payMethods : []).find((m) => m && m.cash !== true && safe(m.name).toLowerCase() === wanted);
+  if (!methodRow || methodRow.active === false) return null;
+  const assigned = Array.isArray(methodRow.accountIds) ? methodRow.accountIds : [], candidates = [];
+  CUSTOMER_PAYMENT_ROWS.filter((row) => safe(METHOD_FOR_CUSTOMER_ROW[row]).toLowerCase() === wanted && settings[`${row}Enabled`] !== false).forEach((row) => {
+    const id = safe(settings[`${row}AccountId`]);
+    if (!id || !map[id] || map[id].active === false) return;
+    if (assigned.length && assigned.indexOf(id) < 0) return;
+    if (candidates.indexOf(id) < 0) candidates.push(id);
+  });
+  if (candidates.length !== 1) return null;
+  return {id: candidates[0], name: safe(map[candidates[0]].name) || candidates[0]};
 }
 
 function unmappedOrderPayments(order, accounts) {
@@ -236,8 +285,19 @@ function reversalPosting(order, amount, kind, accounts, settlementPayments, tax)
   }
   if (platform) lines.push(line(`asset:platform_receivable:${channel}`, 0, value, "Reduce platform receivable"));
   else {
-    let settlements = Array.isArray(settlementPayments) ? settlementPayments.map((row) => ({method: safe(row.method), amount: money(row.amount)})).filter((row) => row.method && row.amount > 0) : [];
-    if (!settlements.length) {const payments = paymentRows(order), cash = payments.find((row) => row.method.toLowerCase() === "cash"), chosen = cash || payments[0] || {method: "Cash"}; settlements = [{method: chosen.method,paymentMethod:chosen.paymentMethod,receivingAccountId:chosen.receivingAccountId,receivingAccountName:chosen.receivingAccountName, amount: value}];}
+    let settlements = Array.isArray(settlementPayments) ? settlementPayments.map((row) => ({method: safe(row.method), paymentMethod: safe(row.paymentMethod), receivingAccountId: safe(row.receivingAccountId), receivingAccountName: safe(row.receivingAccountName), amount: money(row.amount)})).filter((row) => row.method && row.amount > 0) : [];
+    /* A refund or void must credit the account the money came from. A tender that names only a
+       method inherits the account the order itself was paid into; without that, the reversal
+       resolves by feed methods and can leave a different bank than the one that received it. */
+    const originalPayments = paymentRows(order);
+    const withOriginalAccount = (row) => {
+      if (safe(row.receivingAccountId)) return row;
+      const wanted = safe(row.paymentMethod || row.method).toLowerCase();
+      const source = originalPayments.find((p) => safe(p.paymentMethod || p.method).toLowerCase() === wanted) || originalPayments.find((p) => p.method.toLowerCase() === safe(row.method).toLowerCase());
+      return source && safe(source.receivingAccountId) ? Object.assign({}, row, {receivingAccountId: source.receivingAccountId, receivingAccountName: source.receivingAccountName}) : row;
+    };
+    settlements = settlements.map(withOriginalAccount);
+    if (!settlements.length) {const payments = originalPayments, cash = payments.find((row) => row.method.toLowerCase() === "cash"), chosen = cash || payments[0] || {method: "Cash"}; settlements = [{method: chosen.method,paymentMethod:chosen.paymentMethod,receivingAccountId:chosen.receivingAccountId,receivingAccountName:chosen.receivingAccountName, amount: value}];}
     if (Math.abs(settlements.reduce((sum, row) => money(sum + row.amount), 0) - value) > 0.009) throw new Error("Refund/void tender allocations must equal the reversal amount.");
     settlements.forEach((chosen) => {if (chosen.method.toLowerCase() === "cash") lines.push(line("asset:register_cash", 0, chosen.amount, "Refund/void settlement")); else { const accountId = accountForPayment(chosen, accounts || {}); lines.push(line(accountId ? `asset:cash_account:${accountId}` : `asset:unmapped_payment:${chosen.method.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, 0, chosen.amount, "Refund/void settlement")); if (accountId) cashEntries.push({id: "", accountId, dir: "out", amount: chosen.amount, category: kind === "void" ? "Void reversal" : "Refund", method: chosen.method}); else warnings.push(`No cash-flow account mapping for ${chosen.method}.`); }});
   }
@@ -386,4 +446,4 @@ function payableSettledAmount(row) {
 }
 function payableHasSettlement(row) { return !!row && (row.status === "paid" || payableSettledAmount(row) > 0.009); }
 
-module.exports = {payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};
+module.exports = {payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment,receivingAccountForMethodFallback,receivingAccountForCustomerChoice,customerPaymentRow,CUSTOMER_PAYMENT_ROWS,METHOD_FOR_CUSTOMER_ROW,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};

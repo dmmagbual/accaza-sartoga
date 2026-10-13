@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 674,
+    "admin": 675,
     "books": 153,
-    "customer": 99,
-    "serviceWorkerCache": 669
+    "customer": 100,
+    "serviceWorkerCache": 670
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -182,6 +182,7 @@
     "assets/css/admin-backoffice.css",
     "assets/js/admin/core.mjs",
     "assets/js/admin/order-archive-panel.mjs",
+    "assets/js/admin/payment-account-links.mjs",
     "assets/js/admin/staff-access.js",
     "assets/js/admin/accaza-ai.js",
     "assets/js/admin/manager-approval.mjs",

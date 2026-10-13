@@ -437,15 +437,32 @@ exports.createOnlineOrder = onCall(
     for (let i = 1; i < 8 && (await db.ref("/orders/" + orderId).get()).exists(); i++) orderId = "OO-" + shortRefCode(now + i);
     const nowDate = new Date(now);
     const itemText = priced.lines.map((line) => `${line.name}${line.size ? ` (${line.size})` : ""}${line.optLabels.length ? ` [${line.optLabels.join(", ")}]` : ""} x${line.qty}`).join(", ");
+    // The customer chooses which bank or wallet they are paying into, and that choice is the
+    // account the money must post to. /payment links each customer-facing row (bdo, ub, bank3,
+    // bank4, gcash, maya) to a Finance account; the row key is resolved and validated here - it must
+    // belong to the payment method, be still switched on, and point at a live account - then stamped
+    // on the payment. Posting, proofs, reports and reversals all use the stored account instead of
+    // resolving by feed-method configuration that can point at a different bank. A client that sends
+    // no row (an older cached bundle) resolves from the linked rows for that method; with no single
+    // linked account nothing is stamped and the guard reports the drift.
+    const [posSettings, paymentSettingsSnap, cashAccounts] = await Promise.all([readPosSettings(db, ["payMethods"]), db.ref("/payment").get(), db.ref("/cfAccounts").get()]);
+    const accountsMap = cashAccounts.val() || {};
+    const paymentSettings = paymentSettingsSnap.val() || {};
+    const paymentRow = textField(input.paymentRow, "Payment account", 20);
+    const chosen = paymentRow
+      ? Financial.receivingAccountForCustomerChoice(payment, paymentRow, paymentSettings, accountsMap)
+      : (Financial.receivingAccountForMethodFallback(payment, paymentSettings, posSettings.payMethods, accountsMap) || {});
+    if (chosen.error) throw new HttpsError("failed-precondition", chosen.error);
+    const receiving = chosen.id ? chosen : null;
     const order = {
-      id: orderId, ownerUid: uid, name, phone, type: orderType, address, payment, contact, contactMethod,
+      id: orderId, ownerUid: uid, name, phone, type: orderType, address, payment, paymentAccountName: receiving ? receiving.name : "", contact, contactMethod,
       items: itemText, subtotal: money(priced.total), total: finalTotal, notes, status: "Pending", receivedByCustomer: false,
       tax: tax ? {mode: tax.mode, rate: tax.rate, inclusive: tax.inclusive !== false, tin: String(taxSettings.tin || ""), branchCode: String(taxSettings.branchCode || ""), ptu: String(taxSettings.ptu || "")} : null,
       time: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit"}).format(nowDate),
       date: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", year: "numeric", month: "long", day: "numeric"}).format(nowDate),
       timestamp: now, lineItems: priced.lines.map(({cat, ...line}) => line), packages: priced.packages,
       extraCost: priced.extraCost, source: "online", pricingVersion: "server-v1", pricedAt: now,
-      channel: "online", paymentStatus: "pending", payments: [{method: payment, amount: finalTotal}],
+      channel: "online", paymentStatus: "pending", payments: [Object.assign({method: payment, amount: finalTotal}, receiving ? {receivingAccountId: receiving.id, receivingAccountName: receiving.name} : {})],
     };
     const proofPath = `payment-proofs/${uid}/${orderId}.${proof.ext}`;
     const proofFile = getStorage().bucket(PROOF_BUCKET).file(proofPath);

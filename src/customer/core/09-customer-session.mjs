@@ -48,7 +48,13 @@ window.placeOrder=async function(){
   const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
   try{
     await ensureCustomerAuth(true);
-    var orderPayload={name:name,phone:phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod:contactMethod,notes:document.getElementById('custNotes').value.trim(),proof:proofSrc,lineItems:lineItemsArr,expectedTotal:total};
+    // The receiving account the customer chose is sent as a stable row key. The server resolves and
+    // validates it against the payment settings, so the order posts to the bank the customer
+    // actually paid into. A row is only sent when the shop linked it; otherwise the order carries
+    // no choice and the server keeps its previous resolution.
+    var chosenRow=paymentType==='bank'?(paymentRow||''):paymentType==='maya'?(paymentSettings.mayaAccountId?'maya':''):(paymentSettings.gcashAccountId?'gcash':'');
+    if(paymentType==='bank'){var choiceBox=document.getElementById('bankChoice');if(choiceBox&&choiceBox.style.display!=='none'&&!chosenRow){alert('Please choose the bank you transferred to.');return;}}
+    var orderPayload={name:name,phone:phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',paymentRow:chosenRow,contact:document.getElementById('custContact').value.trim(),contactMethod:contactMethod,notes:document.getElementById('custNotes').value.trim(),proof:proofSrc,lineItems:lineItemsArr,expectedTotal:total};
     var placed;
     try{placed=await createOnlineOrderCall(orderPayload);}catch(firstError){
       if(String(firstError&&firstError.code).indexOf('unauthenticated')<0)throw firstError;

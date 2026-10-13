@@ -1158,14 +1158,14 @@ exports.getOperationalExceptions = onCall(
 
 async function scanOperationalExceptions(db, now) {
     const days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
-    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, uncostedSnap, closeFollowUpSnap, aiHealthTodaySnap, aiHealthYesterdaySnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),db.ref("/uncostedSales").orderByChild("status").equalTo("open").limitToFirst(200).get(),db.ref("/shiftCloseFollowUps").orderByChild("state").equalTo("open").limitToFirst(50).get(),db.ref(`/accazaAiProviderHealth/${days[0]}`).get(),db.ref(`/accazaAiProviderHealth/${days[1]}`).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, paymentSettingsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, uncostedSnap, closeFollowUpSnap, aiHealthTodaySnap, aiHealthYesterdaySnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref("/payment").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),db.ref("/uncostedSales").orderByChild("status").equalTo("open").limitToFirst(200).get(),db.ref("/shiftCloseFollowUps").orderByChild("state").equalTo("open").limitToFirst(50).get(),db.ref(`/accazaAiProviderHealth/${days[0]}`).get(),db.ref(`/accazaAiProviderHealth/${days[1]}`).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
     let booksMonthlyNet = booksMonthlyNetSnap.val() || {};
     if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
     const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
     const deadLetters = deadLetterSnap.val() || {};
     await verifyOpenDeadLetters(db, deadLetters, now);
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
+    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
 }
 
 
@@ -6070,15 +6070,32 @@ exports.createOnlineOrder = onCall(
     for (let i = 1; i < 8 && (await db.ref("/orders/" + orderId).get()).exists(); i++) orderId = "OO-" + shortRefCode(now + i);
     const nowDate = new Date(now);
     const itemText = priced.lines.map((line) => `${line.name}${line.size ? ` (${line.size})` : ""}${line.optLabels.length ? ` [${line.optLabels.join(", ")}]` : ""} x${line.qty}`).join(", ");
+    // The customer chooses which bank or wallet they are paying into, and that choice is the
+    // account the money must post to. /payment links each customer-facing row (bdo, ub, bank3,
+    // bank4, gcash, maya) to a Finance account; the row key is resolved and validated here - it must
+    // belong to the payment method, be still switched on, and point at a live account - then stamped
+    // on the payment. Posting, proofs, reports and reversals all use the stored account instead of
+    // resolving by feed-method configuration that can point at a different bank. A client that sends
+    // no row (an older cached bundle) resolves from the linked rows for that method; with no single
+    // linked account nothing is stamped and the guard reports the drift.
+    const [posSettings, paymentSettingsSnap, cashAccounts] = await Promise.all([readPosSettings(db, ["payMethods"]), db.ref("/payment").get(), db.ref("/cfAccounts").get()]);
+    const accountsMap = cashAccounts.val() || {};
+    const paymentSettings = paymentSettingsSnap.val() || {};
+    const paymentRow = textField(input.paymentRow, "Payment account", 20);
+    const chosen = paymentRow
+      ? Financial.receivingAccountForCustomerChoice(payment, paymentRow, paymentSettings, accountsMap)
+      : (Financial.receivingAccountForMethodFallback(payment, paymentSettings, posSettings.payMethods, accountsMap) || {});
+    if (chosen.error) throw new HttpsError("failed-precondition", chosen.error);
+    const receiving = chosen.id ? chosen : null;
     const order = {
-      id: orderId, ownerUid: uid, name, phone, type: orderType, address, payment, contact, contactMethod,
+      id: orderId, ownerUid: uid, name, phone, type: orderType, address, payment, paymentAccountName: receiving ? receiving.name : "", contact, contactMethod,
       items: itemText, subtotal: money(priced.total), total: finalTotal, notes, status: "Pending", receivedByCustomer: false,
       tax: tax ? {mode: tax.mode, rate: tax.rate, inclusive: tax.inclusive !== false, tin: String(taxSettings.tin || ""), branchCode: String(taxSettings.branchCode || ""), ptu: String(taxSettings.ptu || "")} : null,
       time: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit"}).format(nowDate),
       date: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", year: "numeric", month: "long", day: "numeric"}).format(nowDate),
       timestamp: now, lineItems: priced.lines.map(({cat, ...line}) => line), packages: priced.packages,
       extraCost: priced.extraCost, source: "online", pricingVersion: "server-v1", pricedAt: now,
-      channel: "online", paymentStatus: "pending", payments: [{method: payment, amount: finalTotal}],
+      channel: "online", paymentStatus: "pending", payments: [Object.assign({method: payment, amount: finalTotal}, receiving ? {receivingAccountId: receiving.id, receivingAccountName: receiving.name} : {})],
     };
     const proofPath = `payment-proofs/${uid}/${orderId}.${proof.ext}`;
     const proofFile = getStorage().bucket(PROOF_BUCKET).file(proofPath);
