@@ -157,11 +157,17 @@ exports.managePortalAccount = onCall(
       if (current.role === "superadmin" && role !== "superadmin" && await activeSuperAdminCount(db, uid) < 1) throw new HttpsError("failed-precondition", "Accaza must keep at least one active Super Admin.");
       if (uid === actor.uid && role !== "superadmin") throw new HttpsError("failed-precondition", "You cannot remove your own Super Admin access. Another Super Admin must change it.");
       const title = financeText(data.title || (role === "superadmin" ? "Systems Administrator" : ""), 120), email = current.email;
+      /* AP 0.7: an access change must say what access changed. The audit already recorded the role
+         transition; the fine-grained grants are what a Super Admin can quietly add or remove, so the
+         keys themselves are recorded as a delta. One extra keyed read of a small node, on an
+         admin-only path that runs when an account is edited. */
+      const permsBefore = (await db.ref(`/adminPerms/${uid}`).get()).val() || {}, permsAfter = portalAccountPermissions(data.permissions), permKeys = Object.keys(permsAfter).filter((key) => key !== "name");
+      const permissionsGranted = permKeys.filter((key) => permsAfter[key] === true && permsBefore[key] !== true), permissionsRevoked = Object.keys(permsBefore).filter((key) => key !== "name" && permsBefore[key] === true && permsAfter[key] !== true);
       await getAdminAuth().updateUser(uid, {displayName: name});
       await db.ref().update({
         [`admins/${uid}`]: Object.assign({}, currentRaw && typeof currentRaw === "object" ? currentRaw : {}, {role, name, title, email, active: true, disabled: null, previousRole: null, updatedAt: now, updatedBy: actor.uid, schemaVersion: 2}),
-        [`adminPerms/${uid}`]: Object.assign({name}, portalAccountPermissions(data.permissions)),
-        [`operationalAudit/${now}_portal_account_update_${uid}`]: operationalAuditRecord("portal_account_updated", "portalAccount", uid, actor, {name, title, previousRole: current.role, role}),
+        [`adminPerms/${uid}`]: Object.assign({name}, permsAfter),
+        [`operationalAudit/${now}_portal_account_update_${uid}`]: operationalAuditRecord("portal_account_updated", "portalAccount", uid, actor, {name, title, previousRole: current.role, role, permissionsGranted, permissionsRevoked}),
       });
       return {uid, updated: true};
     }
@@ -209,15 +215,17 @@ exports.managePortalAccount = onCall(
     if (action === "normalize_legacy") {
       const shift = (await db.ref("/posActiveShift").get()).val();
       if (shift && shift.status !== "closed") throw new HttpsError("failed-precondition", "Close the active POS shift before normalizing legacy account roles.");
-      const admins = (await db.ref("/admins").get()).val() || {}, writes = {}; let changed = 0;
+      const admins = (await db.ref("/admins").get()).val() || {}, writes = {}; let changed = 0; const promoted = [];
       for (const [uid, raw] of Object.entries(admins)) {
         const legacy = raw === true || String(raw || "").toLowerCase() === "owner" || (raw && typeof raw === "object" && String(raw.role || "").toLowerCase() === "owner");
         if (!legacy) continue;
         let user = null; try { user = await getAdminAuth().getUser(uid); } catch (_error) {}
         const old = raw && typeof raw === "object" ? raw : {};
-        writes[`admins/${uid}`] = Object.assign({}, old, {role: "superadmin", name: financeText(old.name || user && user.displayName || user && user.email, 120), title: financeText(old.title || "Systems Administrator", 120), email: financeText(old.email || user && user.email, 320).toLowerCase(), active: true, updatedAt: now, updatedBy: actor.uid, schemaVersion: 2}); changed++;
+        writes[`admins/${uid}`] = Object.assign({}, old, {role: "superadmin", name: financeText(old.name || user && user.displayName || user && user.email, 120), title: financeText(old.title || "Systems Administrator", 120), email: financeText(old.email || user && user.email, 320).toLowerCase(), active: true, updatedAt: now, updatedBy: actor.uid, schemaVersion: 2}); changed++; promoted.push(uid);
       }
-      if (changed) { writes[`operationalAudit/${now}_portal_account_normalize`] = operationalAuditRecord("portal_account_roles_normalized", "portalAccount", "legacy_owner", actor, {changed, replacementRole: "superadmin"}); await db.ref().update(writes); }
+      /* AP 0.7: a promotion to Super Admin is the largest access change there is, so the audit names
+         every account it touched rather than only how many. */
+      if (changed) { writes[`operationalAudit/${now}_portal_account_normalize`] = operationalAuditRecord("portal_account_roles_normalized", "portalAccount", "legacy_owner", actor, {changed, replacementRole: "superadmin", promoted}); await db.ref().update(writes); }
       return {changed};
     }
       throw new HttpsError("invalid-argument", "Account action is invalid.");
