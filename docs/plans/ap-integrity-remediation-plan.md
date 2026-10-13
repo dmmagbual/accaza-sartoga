@@ -51,15 +51,18 @@ the first action of each step is to re-verify that scope against current source.
 - [x] **0.2 — sweep freeze** — built, PR #749 open. Guard `tests/supplier-legacy-sweep-guard-check.mjs`.
 - [x] **0.6 — reverse Undeposited-funded payments** (AP-14) — built and merged (#751; blocker fix #752; behavioural guard #753). Implementation record in §5.
 - [ ] **0.7 — explicit permission table + audit** (light; owner-operated, no second-person approval).
-- [ ] **0.8 — purchase verification + orphan detector** (AP-04) — *detection already exists; the repair route is what remains.*
-      Verified 12 Oct 2026 in `functions/lib/ap-integrity.js` `purchaseFindings()`: a purchase on
-      `account`/`pending` with **no bill linked**, a **missing** bill, or a **reversed** bill is already
-      reported as `purchasesWithoutBill`, and `valueGaps` already compares the purchase total against
-      posted stock + expense/fixed-asset lines + input VAT and flags missing movement links. The
-      baseline guard (`tests/ap-integrity-baseline-check.mjs`) pins those reasons. What is **not** built
-      is the repair: opening the missing liability for a named purchase, Super-Admin only, audited and
-      idempotent. That touches money and is privileged, so it is built as its own step with the same
-      care 0.6 needed — the review there caught a real blocker in exactly this kind of code.
+- [x] **0.8 — purchase verification + orphan detector** (AP-04) — **already built; verified 12 Oct 2026.**
+      Detection: `functions/lib/ap-integrity.js` `purchaseFindings()` reports `purchasesWithoutBill` for a
+      purchase on `account`/`pending` with no bill linked, a missing bill, or a **reversed** bill, and
+      `valueGaps` compares the purchase total against posted stock + expense/fixed-asset lines + input
+      VAT and flags missing movement links; `tests/ap-integrity-baseline-check.mjs` pins those reasons.
+      Repair: the Purchases screen has **Repair missing payable** (`data-purchase-repair`, which asks for
+      the due date and an explicit "I confirmed this purchase has no payable in the Payables list" tick)
+      and **Link existing payable** (`data-purchase-link`, which requires the supplier and amount to
+      match, refuses when more than one candidate exists, and a required reason). Both call the server
+      action `reconcilePurchasePayable({recovery:true})`, which first checks for an existing linked or
+      matching payable and either links it (`linked_existing`) or creates and links one — so the repair
+      is server-verified, refuses ambiguity, and never double-opens a liability.
 
 - [ ] **0.9 — `purchaseInvoices` create-only rules** (AP-05, client-writable) plus the one-time
       **display-only mirror refresh** that copies each bill's payment status onto its purchase and
