@@ -35,6 +35,30 @@ function isServiceChannelOrder(order) {return !!order && order.source === "pos" 
 function fullyRefunded(order) {const refund = money(order && order.refundAmount);return refund > 0 && refund >= money(order.total) - 0.009;}
 function serviceState(order) {return String((order && order.service && order.service.state) || "");}
 
+const BELIEVED_STAGES = new Set(["queued", "preparing", "ready", "served", "not_collected"]);
+// The stage the device believed it was acting on. Kept only as a bounded label for the attempt
+// trace below, so a stale card can be told apart from a genuine staff action.
+function believedStage(value) {const stage = String(value == null ? "" : value).trim().toLowerCase();return BELIEVED_STAGES.has(stage) ? stage : "";}
+
+// A tap that changes nothing is the one order-flow failure a cashier cannot see: a repeated step
+// is a harmless duplicate ("success"), so a stale card can sit in the same stage forever with no
+// error, no toast and no audit row anywhere (13 Oct 2026: POS-6RBDQR stalled in Now preparing for
+// 43 minutes and was handed over at shift close). Every no-change or refused attempt is recorded
+// on the order it belongs to: one small overwritten record, no extra reads, stripped from the
+// live projection. Best-effort only — it never changes or blocks the serving answer.
+async function traceAttempt(options, order, action, requestId, detail, outcome, reason, now) {
+  if (!order || !order.id) return;
+  try {
+    await options.db.ref(`/orders/${order.id}/serviceAttempt`).set({
+      orderId: order.id, at: now, action, requestId, outcome,
+      believedStage: believedStage(detail && detail.believedStage),
+      serverState: serviceState(order), reason: cleanText(reason, 200),
+      shiftId: String(order.shiftId || ""), actorUid: String((options.actor && options.actor.uid) || ""),
+      actorRole: String((options.actor && options.actor.role) || ""), schemaVersion: 1,
+    });
+  } catch (_error) { /* the serving answer stands on its own; never fail the action for a trace */ }
+}
+
 // The service record the server stamps on a newly accepted POS sale. Anything the device
 // sent under "service" is ignored.
 function initialService(order, now) {
@@ -148,8 +172,18 @@ async function readLiveOrder(options, orderId) {
 
 async function applyAction(options, order, action, requestId, detail, now) {
   const {db, actor, activeOrderProjection, shouldProjectOrder} = options;
-  const result = transition(options, order, action, requestId, actor, now, detail);
-  if (result.duplicate) return {orderId: order.id, action, state: serviceState(order), duplicate: true};
+  let result;
+  try {
+    result = transition(options, order, action, requestId, actor, now, detail);
+  } catch (error) {
+    // A refused tap is otherwise invisible: it leaves no history entry and no audit row.
+    await traceAttempt(options, order, action, requestId, detail, "rejected", error && error.message || error, now);
+    throw error;
+  }
+  if (result.duplicate) {
+    await traceAttempt(options, order, action, requestId, detail, "no_change", "The server had already applied this step; nothing moved.", now);
+    return {orderId: order.id, action, state: serviceState(order), duplicate: true};
+  }
   const updated = Object.assign({}, order, result.extra, {service: result.service});
   const writes = {[`orders/${order.id}/service`]: result.service};
   Object.keys(result.extra).forEach((key) => {writes[`orders/${order.id}/${key}`] = result.extra[key];});
@@ -212,7 +246,7 @@ async function manageOrderServiceCommand(options) {
   const orderId = cleanKey(options, data.orderId, "Order ID");
   const requestId = cleanKey(options, data.requestId, "Request ID", /^[A-Za-z0-9_-]{8,120}$/);
   const order = await readLiveOrder(options, orderId);
-  return applyAction(options, order, action, requestId, {reason: data.reason, note: data.note}, now);
+  return applyAction(options, order, action, requestId, {reason: data.reason, note: data.note, believedStage: data.believedStage}, now);
 }
 
 module.exports = {SERVICE_VERSION, MANAGER_ROLES, initialService, needsService, keepsOrderLive, isOnlineOrder, isServiceChannelOrder, fullyRefunded, transition, manageOrderServiceCommand};

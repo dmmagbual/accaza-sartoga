@@ -27,9 +27,24 @@ function sqQueuedAt(o){return Number(o&&o.service&&o.service.queuedAt)||Number(o
 function sqUnsyncedRows(){var out=[],now=Date.now();((_offState&&_offState.rows)||[]).forEach(function(r){var o=r&&r.order;if(!o||!o.id||o.voided||o.source!=='pos')return;
   // A just-synced sale may reach this device's live feed a moment later; keep it visible meanwhile.
   if(r.status==='synced'&&now-Number(r.syncedAt||0)>120000)return;out.push(Object.assign({},o,{unsynced:r.status!=='synced',service:{state:'queued',queuedAt:Number(o.timestamp)||now}}));});return out;}
+// ONE source of truth for the card a cashier sees and the action its button sends. The server's
+// last confirmed stage for an order outranks a live copy that has not caught up yet, and it is
+// dropped the moment the live copy agrees or moves on for any other reason (a manager returning
+// the order to the queue, another device serving it). Reading the label from one state and the
+// action from another is how an order stalls silently: the stale card re-sends the step it has
+// already taken, the server treats that as a harmless duplicate and answers "success", and the
+// order never leaves the stage (13 Oct 2026: POS-6RBDQR sat in Now preparing for 43 minutes and
+// had to be handed over at shift close; only a fresh view could advance it).
+function sqConfirmedStage(source,id){
+  var c=sqState.confirmed[id];if(!c)return '';
+  var raw=String(source&&source.service&&source.service.state||'');
+  if(raw===c.state||raw!==c.raw){delete sqState.confirmed[id];return '';}
+  return c.state;
+}
+function sqViewRow(source,id){var stage=sqConfirmedStage(source,id),o=Object.assign({},source||{},{id:id});if(stage)o.service=Object.assign({},(source&&source.service)||{},{state:stage});return o;}
 function sqRows(){
   var rows=[],seen={},pend=sqPending();
-  Object.keys(onlineOrdersMap||{}).forEach(function(id){var source=onlineOrdersMap[id]||{},confirmed=sqState.confirmed[id],liveState=String(source.service&&source.service.state||'');if(confirmed&&liveState===confirmed){delete sqState.confirmed[id];confirmed='';}var o=Object.assign({},source,{id:id});if(confirmed)o.service=Object.assign({},source.service||{},{state:confirmed});seen[id]=1;delete sqState.recent[id];if(sqNeedsService(o))rows.push(o);});
+  Object.keys(onlineOrdersMap||{}).forEach(function(id){var o=sqViewRow(onlineOrdersMap[id]||{},id);seen[id]=1;delete sqState.recent[id];if(sqNeedsService(o))rows.push(o);});
   sqUnsyncedRows().forEach(function(o){if(!seen[o.id]){seen[o.id]=1;rows.push(o);}});
   Object.keys(sqState.recent).forEach(function(id){var o=sqState.recent[id];if(!o||Date.now()-sqQueuedAt(o)>120000){delete sqState.recent[id];return;}if(!seen[id])rows.push(o);});
   return rows.filter(function(o){return !pend[o.id];}).sort(function(a,b){return sqQueuedAt(a)-sqQueuedAt(b);});
@@ -45,7 +60,7 @@ function sqCardHtml(o,now){var age=now-sqQueuedAt(o),ch=sqChannel(o),next=sqStag
   return '<li class="sq-card age-'+sqAgeClass(age)+'" data-sq-id="'+esc(o.id)+'"><div class="sq-card-head"><span class="sq-ch" title="'+esc(ch[1])+'">'+esc(ch[0])+'</span><b class="sq-name">'+esc(sqLabel(o))+'</b><span class="sq-age">'+sqAgeText(age)+'</span></div>'
     +'<div class="sq-ref">'+esc(o.platformRef||o.id)+' · '+esc(ch[1])+(o.unsynced?' · <span class="sq-unsynced">not synced yet</span>':'')+'</div><ul class="sq-items">'+sqItemsHtml(o)+'</ul>'
     +'<div class="sq-actions"><button type="button" class="pz-btn sq-stage-btn stage-'+esc(sqStage(o))+'" data-sq-stage="'+esc(o.id)+'"'+(o.unsynced?' disabled title="Wait for this sale to sync"':'')+'>'+esc(next.label)+'</button>'+(!o.unsynced&&sqStage(o)==='ready'?'<button type="button" class="sq-link" data-sq-nc="'+esc(o.id)+'">Not collected</button>':'')+'</div></li>';}
-function sqFind(id){if(!id)return null;if(onlineOrdersMap&&onlineOrdersMap[id])return Object.assign({},onlineOrdersMap[id],{id:id});return sqUnsyncedRows().filter(function(o){return o.id===id;})[0]||sqState.recent[id]||null;}
+function sqFind(id){if(!id)return null;if(onlineOrdersMap&&onlineOrdersMap[id])return sqViewRow(onlineOrdersMap[id],id);return sqUnsyncedRows().filter(function(o){return o.id===id;})[0]||sqState.recent[id]||null;}
 function renderServeQueue(){
   sqLoadPrefs();var host=document.getElementById('posServeQueue');if(document.body)document.body.classList.toggle('pos-bar-view',!!sqState.bar&&!!host);updateActiveOrderCount();if(!host)return;
   var rows=sqRows(),now=Date.now(),waiting=Object.keys(sqPending()).length,folded=sqState.folded&&!sqState.bar,oldest=rows.length?now-sqQueuedAt(rows[0]):0;
@@ -60,17 +75,25 @@ function renderServeQueue(){
 function sqOnOrdersChanged(){renderServeQueue();sqFlush();}
 function sqAdvance(o){if(!o||!o.id||sqPending()[o.id]||o.unsynced)return;var next=sqStageAction(o);sqPending()[o.id]={requestId:sqReqId(next.action),at:Date.now(),online:sqIsOnline(o),action:next.action,name:String(o.name||'').slice(0,60)};sqSavePending();renderServeQueue();sqFlush();}
 function sqDropPending(id){delete sqPending()[id];sqSavePending();}
-function sqRememberConfirmed(id,state){sqState.confirmed[id]=state;var ids=Object.keys(sqState.confirmed);while(ids.length>200)delete sqState.confirmed[ids.shift()];}
+function sqRememberConfirmed(id,state,rawState){sqState.confirmed[id]={state:String(state||''),raw:String(rawState||'')};var ids=Object.keys(sqState.confirmed);while(ids.length>200)delete sqState.confirmed[ids.shift()];}
 function sqFlush(){
   var p=sqPending(),ids=Object.keys(p),a=A();if(!ids.length||window.__online===false||!a)return;
   ids.forEach(function(id){if(sqState.sending[id])return;var e=p[id],live=onlineOrdersMap&&onlineOrdersMap[id];
     // Not in the live feed: the sale is still syncing (wait), or it was closed elsewhere long ago.
     if(!live){if(!sqUnsyncedRows().some(function(o){return o.id===id;})&&Date.now()-Number(e.at||0)>10*60000)sqDropPending(id);return;}
-    var o=Object.assign({},live,{id:id});if(!sqNeedsService(o)){sqDropPending(id);return;} // already served, voided or refunded
+    // Send from the same view the card showed, and tell the server which stage this device
+    // believed it was sending from, so a tap that changes nothing is recorded instead of silent.
+    var o=sqViewRow(live,id);if(!sqNeedsService(o)){sqDropPending(id);return;} // already served, voided or refunded
     var onlineStatus={start_preparing:'Preparing',mark_ready:'Ready',serve:'Completed'}[e.action];
-    var call=sqIsOnline(o)?(a.updateOrderStatus&&a.updateOrderStatus({orderId:id,status:onlineStatus,expectedStatus:o.status||'',requestId:e.requestId})):(a.callables&&a.callables.manageOrderService&&a.callables.manageOrderService({action:e.action,orderId:id,requestId:e.requestId}));
+    var call=sqIsOnline(o)?(a.updateOrderStatus&&a.updateOrderStatus({orderId:id,status:onlineStatus,expectedStatus:o.status||'',requestId:e.requestId})):(a.callables&&a.callables.manageOrderService&&a.callables.manageOrderService({action:e.action,orderId:id,requestId:e.requestId,believedStage:sqStage(o)}));
     if(!call)return;sqState.sending[id]=1;
-    Promise.resolve(call).then(function(result){var payload=(result&&result.data)||result||{},confirmed=String(payload.state||'');if(!sqIsOnline(o)&&confirmed)sqRememberConfirmed(id,confirmed);sqDropPending(id);}).catch(function(err){var code=String(err&&err.code||'').replace(/^functions\//,'');if(SQ_RETRY_CODES.indexOf(code)<0){sqDropPending(id);(window.accazaToast||function(){})('Could not mark '+sqLabel(o)+' served: '+((err&&err.message)||err),'err');}}).then(function(){delete sqState.sending[id];renderServeQueue();});
+    // Every answer is adopted, including a duplicate: the server's stage becomes this device's
+    // view, so the next tap starts from the truth instead of repeating a step that did nothing.
+    // The reference point is the live copy AS THE ANSWER ARRIVED, not the one captured before the
+    // request: the confirmed stage is kept only while the live copy still shows that same lagging
+    // value, and is dropped the moment the live copy moves on (caught up, served elsewhere, or
+    // returned to the queue by a manager), so the newer live value always wins.
+    Promise.resolve(call).then(function(result){var payload=(result&&result.data)||result||{},confirmed=String(payload.state||'');if(!sqIsOnline(o)&&confirmed){var current=onlineOrdersMap&&onlineOrdersMap[id]||live;sqRememberConfirmed(id,confirmed,String(current.service&&current.service.state||''));}sqDropPending(id);}).catch(function(err){var code=String(err&&err.code||'').replace(/^functions\//,'');if(SQ_RETRY_CODES.indexOf(code)<0){sqDropPending(id);(window.accazaToast||function(){})('Could not mark '+sqLabel(o)+' served: '+((err&&err.message)||err),'err');}}).then(function(){delete sqState.sending[id];renderServeQueue();});
   });
 }
 window.addEventListener('online',function(){setTimeout(sqFlush,1500);});
