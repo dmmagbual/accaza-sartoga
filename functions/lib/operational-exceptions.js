@@ -133,8 +133,12 @@ function paymentRoutingIssues(payMethods, cfAccounts, now, paymentSettings) {
         now, "possettings"));
       return;
     }
-    const method = methods.find((m) => m && m.cash !== true && lower(m.name) === lower(methodName));
-    const assigned = method && Array.isArray(method.accountIds) ? method.accountIds.indexOf(id) >= 0 : false;
+    // Mirror how the till resolves a method's accounts (paymentAccountIds): a renamed method keeps
+    // its old name as an alias, an explicit account list wins, and a method with no list falls back
+    // to the accounts whose feed methods claim the method name or one of those aliases.
+    const method = methods.find((m) => m && m.cash !== true && (lower(m.name) === lower(methodName) || (Array.isArray(m.aliases) && m.aliases.some((alias) => lower(alias) === lower(methodName)))));
+    const claims = (account) => [methodName].concat(method && Array.isArray(method.aliases) ? method.aliases : []).some((name) => Array.isArray(account.feedMethods) && account.feedMethods.some((feed) => lower(feed) === lower(name)));
+    const assigned = method ? (Array.isArray(method.accountIds) ? method.accountIds.indexOf(id) >= 0 : claims(accounts[id])) : false;
     if (!assigned) {
       out.push(item("payment_routing", "warning", `routing_link_unassigned_${key}`,
         `${rowLabel} receives online payments an account the till does not offer`,
