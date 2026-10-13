@@ -146,7 +146,13 @@ if(!/deploy_batch\(\)\s*\{[\s\S]*?sleep "\$batch_pause"/.test(deployWorkflow))fa
 for(const name of ['updatePublicCatalogVersionOnCategories','updatePublicCatalogVersionOnMenuItems','updatePublicCatalogVersionOnOptionGroups','updatePublicCatalogVersionOnPackages'])if(!new RegExp(`exports\\.${name}\\s*=\\s*onValueWritten\\(\\{[^}]*maxInstances`).test(functionsSource))fail(`${name} must cap maxInstances so a catalog edit cannot demand a burst of instances against the shared region quota`);
 for(const marker of ['exports.backupDatabaseDaily = onSchedule(','exports.runDatabaseBackupNow = onCall(']){
   const backupDeclaration=section(functionsSource,marker,');');
-  if(!backupDeclaration.includes('memory: "512MiB"'))fail(`database backup memory safeguard missing: ${marker}`);
+  /* AP 13 Oct 2026: the backup assembles the whole snapshot in memory, and the database outgrew 512 MiB --
+     the container was killed with 517 MiB and 555 MiB used, so the manual backup returned "internal" and
+     the callable could not be run at all. Both backup declarations now run with 1 GiB. The safeguard this
+     asserts is a FLOOR, not the old literal, so memory may be raised again without weakening the check. */
+  const backupMemory=(backupDeclaration.match(/memory:\s*"(\d+)(MiB|GiB)"/)||[]);
+  const backupMiB=backupMemory.length?Number(backupMemory[1])*(backupMemory[2]==='GiB'?1024:1):0;
+  if(!(backupMiB>=512))fail(`database backup memory safeguard missing: ${marker}`);
 }
 if(!deployWorkflow.includes('concurrency:')||!deployWorkflow.includes('environment: production'))fail('production Firebase deployment safeguards are incomplete');
 if(/actions\/(?:checkout|setup-node|setup-java)@v4/.test(deployWorkflow))fail('Firebase deployment workflow still uses deprecated Node 20-based actions');
