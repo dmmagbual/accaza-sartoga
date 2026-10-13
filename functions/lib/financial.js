@@ -26,12 +26,17 @@ function paymentRows(order) {
   const rows = Array.isArray(order && order.payments) && order.payments.length ? order.payments : [{method: order && order.payment, amount: order && order.total}];
   return rows.map((row) => ({method: safe(row.method || "Unknown"), paymentMethod:safe(row.paymentMethod||row.method||"Unknown"),receivingAccountId:safe(row.receivingAccountId),receivingAccountName:safe(row.receivingAccountName), amount: money(row.amount)})).filter((row) => row.amount > 0);
 }
+/* Labels are not identity. GCash, G-Cash, Gcash and "G-Cash " are one wallet, so a method name and a
+   feed claim are compared with their case, spacing and punctuation removed. The account - and the
+   ledger account it is linked to - is what decides where the money lands, never the spelling. */
+function methodKey(value) {return safe(value).toLowerCase().replace(/[^a-z0-9]/g, "");}
 function accountForMethod(method, accounts) {
-  const wanted = safe(method).toLowerCase(); let match = "";
+  const wanted = methodKey(method); let match = "";
+  if (!wanted) return "";
   Object.keys(accounts || {}).forEach((id) => {
     const methods = Array.isArray(accounts[id] && accounts[id].feedMethods) ? accounts[id].feedMethods : [];
     const accountName=safe(accounts[id]&&accounts[id].name).toLowerCase();
-    if (methods.some((name) => safe(name).toLowerCase() === wanted)||(accountName&&wanted.endsWith(` · ${accountName}`))) match = id;
+    if (methods.some((name) => methodKey(name) === wanted)||(accountName&&wanted.endsWith(` · ${accountName}`))) match = id;
   });
   return match;
 }
@@ -60,31 +65,59 @@ function accountForPayment(payment,accounts){
 const CUSTOMER_PAYMENT_ROWS = ["bdo", "ub", "bank3", "bank4", "gcash", "maya"];
 const METHOD_FOR_CUSTOMER_ROW = {bdo: "Bank Transfer", ub: "Bank Transfer", bank3: "Bank Transfer", bank4: "Bank Transfer", gcash: "GCash", maya: "PayMaya"};
 function customerPaymentRow(key) {const wanted = safe(key).toLowerCase(); return CUSTOMER_PAYMENT_ROWS.includes(wanted) ? wanted : "";}
+
+/* An account number is the straight identity of a receiving account: GCash, G-Cash and G-cash are
+   the same wallet, and only the digits say which account the money reached. Numbers are compared by
+   their digits, so spacing, dashes and how a name was typed can never decide where money posts. */
+function accountNumber(value) {return String(value == null ? "" : value).replace(/\D/g, "");}
+function accountForNumber(rowNumber, accounts) {
+  const wanted = accountNumber(rowNumber);
+  if (!wanted) return "";
+  let match = "";
+  Object.keys(accounts || {}).forEach((id) => {if (accountNumber((accounts[id] || {}).number) === wanted) match = id;});
+  return match;
+}
+/* The Finance account a customer-facing payment row pays into: the account linked to the row, or the
+   account whose recorded number is the number shown on the row. A link that points at a missing or
+   deactivated account is reported as {missing:id} so the caller can tell "nothing is linked" apart
+   from "the linked account is gone". */
+function receivingAccountForRow(key, paymentSettings, accounts) {
+  const row = customerPaymentRow(key), settings = paymentSettings || {}, map = accounts || {};
+  if (!row) return null;
+  const linked = safe(settings[`${row}AccountId`]);
+  if (linked) {
+    if (map[linked] && map[linked].active !== false) return {id: linked, name: safe(map[linked].name) || linked};
+    return {missing: linked};
+  }
+  const byNumber = accountForNumber(settings[`${row}Num`], map);
+  return byNumber && map[byNumber].active !== false ? {id: byNumber, name: safe(map[byNumber].name) || byNumber} : null;
+}
 function receivingAccountForCustomerChoice(method, rowKey, paymentSettings, accounts) {
   const row = customerPaymentRow(rowKey), gone = "That payment option is no longer available. Choose another method, or contact us and we will help.";
   if (!row) return {error: "Choose the account you sent the payment to."};
-  const settings = paymentSettings || {}, map = accounts || {}, wanted = safe(method).toLowerCase(), id = safe(settings[`${row}AccountId`]);
-  if (wanted && wanted !== safe(METHOD_FOR_CUSTOMER_ROW[row]).toLowerCase()) return {error: gone};
+  const settings = paymentSettings || {}, wanted = methodKey(method);
+  if (wanted && wanted !== methodKey(METHOD_FOR_CUSTOMER_ROW[row])) return {error: gone};
   if (settings[`${row}Enabled`] === false) return {error: gone};
-  if (!id || !map[id] || map[id].active === false) return {error: gone};
-  return {id, name: safe(map[id].name) || id, method: safe(method)};
+  const account = receivingAccountForRow(row, settings, accounts);
+  if (!account || account.missing) return {error: gone};
+  return {id: account.id, name: account.name, method: safe(method)};
 }
 
 /* An older cached customer bundle sends no row at all. Its order resolves from the customer-facing
-   links, not from the accounts' feed methods: the rows linked to that method and offered at the
-   till. Exactly one link is a decision; none or several cannot be decided here, so nothing is
+   rows for that method - linked, or identified by the number printed on them - that the till also
+   offers. Exactly one account is a decision; none or several cannot be decided here, so nothing is
    stamped and the guard reports it instead of the ledger guessing a bank. */
 function receivingAccountForMethodFallback(method, paymentSettings, payMethods, accounts) {
-  const wanted = safe(method).toLowerCase(), settings = paymentSettings || {}, map = accounts || {};
+  const wanted = methodKey(method), settings = paymentSettings || {}, map = accounts || {};
   if (!wanted) return null;
-  const methodRow = (Array.isArray(payMethods) ? payMethods : []).find((m) => m && m.cash !== true && safe(m.name).toLowerCase() === wanted);
+  const methodRow = (Array.isArray(payMethods) ? payMethods : []).find((m) => m && m.cash !== true && methodKey(m.name) === wanted);
   if (!methodRow || methodRow.active === false) return null;
   const assigned = Array.isArray(methodRow.accountIds) ? methodRow.accountIds : [], candidates = [];
-  CUSTOMER_PAYMENT_ROWS.filter((row) => safe(METHOD_FOR_CUSTOMER_ROW[row]).toLowerCase() === wanted && settings[`${row}Enabled`] !== false).forEach((row) => {
-    const id = safe(settings[`${row}AccountId`]);
-    if (!id || !map[id] || map[id].active === false) return;
-    if (assigned.length && assigned.indexOf(id) < 0) return;
-    if (candidates.indexOf(id) < 0) candidates.push(id);
+  CUSTOMER_PAYMENT_ROWS.filter((row) => methodKey(METHOD_FOR_CUSTOMER_ROW[row]) === wanted && settings[`${row}Enabled`] !== false).forEach((row) => {
+    const account = receivingAccountForRow(row, settings, map);
+    if (!account || account.missing) return;
+    if (assigned.length && assigned.indexOf(account.id) < 0) return;
+    if (candidates.indexOf(account.id) < 0) candidates.push(account.id);
   });
   if (candidates.length !== 1) return null;
   return {id: candidates[0], name: safe(map[candidates[0]].name) || candidates[0]};
@@ -446,4 +479,4 @@ function payableSettledAmount(row) {
 }
 function payableHasSettlement(row) { return !!row && (row.status === "paid" || payableSettledAmount(row) > 0.009); }
 
-module.exports = {payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment,receivingAccountForMethodFallback,receivingAccountForCustomerChoice,customerPaymentRow,CUSTOMER_PAYMENT_ROWS,METHOD_FOR_CUSTOMER_ROW,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};
+module.exports = {payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, methodKey, line, totals, assertBalanced, accountForMethod,accountForPayment,receivingAccountForMethodFallback,receivingAccountForCustomerChoice,receivingAccountForRow,accountNumber,accountForNumber,customerPaymentRow,CUSTOMER_PAYMENT_ROWS,METHOD_FOR_CUSTOMER_ROW,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};

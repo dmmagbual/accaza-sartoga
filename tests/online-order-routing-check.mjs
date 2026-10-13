@@ -187,5 +187,33 @@ const feedOffered = paymentRoutingIssues([{name: 'Cash', cash: true}, {name: 'GC
 check(!rows(feedOffered).includes('routing_link_unassigned_gcash'),
   `A till method with no account list still offers the accounts that claim it, got ${JSON.stringify(rows(feedOffered))}`);
 
+/* ---------- the account number is the identity, never the spelling ---------- */
+check(Financial.accountNumber('0927 692 4831') === '09276924831' && Financial.accountNumber('0068-2050-9919') === '006820509919',
+  'Account numbers must compare by their digits, so spacing and dashes cannot change the account.');
+const numbered = {acc_mt5g62bkpwy5: {name: 'G-Cash', type: 'ewallet', active: true, number: '09276924831', feedMethods: ['GCash']}};
+const byNumber = Financial.receivingAccountForRow('gcash', {gcashNum: '0927 692 4831'}, numbered);
+check(byNumber && byNumber.id === 'acc_mt5g62bkpwy5',
+  `A row with no link must resolve from the number the customer pays, got ${JSON.stringify(byNumber)}`);
+check(Financial.receivingAccountForCustomerChoice('GCash', 'gcash', {gcashNum: '0927 692 4831'}, numbered).id === 'acc_mt5g62bkpwy5',
+  'A GCash payment must reach the account carrying that number with no link at all.');
+/* GCash, G-Cash, Gcash: one wallet, one receiving account, one ledger account - whatever anyone
+   calls the till method or the feed claim. */
+['GCash', 'G-Cash', 'GCash', 'g-cash', 'G CASH', 'E-Wallet'].forEach((label) => {
+  const accountsWithClaim = {acc_gcash: {name: 'G-Cash', type: 'ewallet', active: true, number: '09276924831', feedMethods: ['GCash', 'E-Wallet']}};
+  const resolved = Financial.accountForMethod(label, accountsWithClaim);
+  check(resolved === 'acc_gcash', `${label} must resolve to the same wallet account, got ${resolved || 'nothing'}`);
+});
+check(Financial.methodKey('G-Cash') === 'gcash' && Financial.methodKey('Gcash ') === 'gcash' && Financial.methodKey('GCash') === 'gcash',
+  'Method labels must compare without case, spacing or punctuation.');
+const tillNamedGcash = paymentRoutingIssues([{name: 'Cash', cash: true}, {name: 'Gcash', active: true, accountIds: ['acc_gcash']}], {acc_gcash: {name: 'G-Cash', type: 'ewallet', active: true, number: '0927 692 4831', feedMethods: ['GCash']}}, Date.now(), {gcashNum: '0927 692 4831', gcashAccountId: 'acc_gcash'});
+check(!rows(tillNamedGcash).some((id) => id.indexOf('gcash') >= 0),
+  `A till method spelled Gcash must raise nothing for a G-Cash account, got ${JSON.stringify(rows(tillNamedGcash))}`);
+const mismatch = paymentRoutingIssues([{name: 'Cash', cash: true}, {name: 'E-Wallet', aliases: ['GCash'], active: true, accountIds: ['acc_gcash']}], {acc_gcash: {name: 'G-Cash', type: 'ewallet', active: true, number: '09999999999', feedMethods: ['GCash']}}, Date.now(), {gcashNum: '0927 692 4831', gcashAccountId: 'acc_gcash'});
+check(mismatch.some((x) => x.id === 'routing_number_mismatch_gcash' && x.severity === 'critical'),
+  `A row whose number belongs to another account must be critical, got ${JSON.stringify(rows(mismatch))}`);
+const namedOnly = paymentRoutingIssues([{name: 'Cash', cash: true}, {name: 'E-Wallet', aliases: ['GCash', 'G-Cash'], active: true, accountIds: ['acc_gcash']}], {acc_gcash: {name: 'G-Cash', type: 'ewallet', active: true, feedMethods: ['GCash']}}, Date.now(), {gcashNum: '0927 692 4831', gcashAccountId: 'acc_gcash'});
+check(!rows(namedOnly).some((id) => id.startsWith('routing_link_')),
+  `Naming variants must raise nothing once the account answers for the row, got ${JSON.stringify(rows(namedOnly))}`);
+
 if (failures.length) { console.error('Online order routing check failed:\n- ' + failures.join('\n- ')); process.exit(1); }
 console.log('PASS: an online order posts to the bank the customer chose, refunds follow it back, and no account is ever guessed at.');
