@@ -438,6 +438,33 @@ export const NEEDS_REVIEW = {
   }
 };
 
+export const REASONS = {
+  "actor.role|actor.uid|enforceAppCheck|requirePortalUser(":
+    "Shared portal gate then an inline role check, on an App Check attested device: requirePortalUser rejects an unauthenticated caller, a disabled account, a role outside the seven allowed roles and a session older than the Super Admin cutoff.",
+  "request.auth|enforceAppCheck":
+    "App Check attested and a signed-in user required, with no portal role: the customer and device facing endpoints (QR ordering, online orders, loyalty signup and OTP, device telemetry) must work for someone who has no portal account.",
+  "actor.role|enforceAppCheck|requirePortalUser(":
+    "Shared portal gate plus an inline role check; App Check attested.",
+  "enforceAppCheck":
+    "App Check attested; the callable itself authorises the caller it acts for (for example a device reporting its own health or a sign-out scoped to the caller).",
+  "enforceAppCheck|requirePortalUser(":
+    "Shared portal gate; App Check attested.",
+  "admins/|enforceAppCheck|requirePortalUser(":
+    "Shared portal gate, then a read of the caller own admin record before acting; App Check attested.",
+  "actor.role|actor.uid|admins/|enforceAppCheck|requirePortalUser(":
+    "Shared portal gate, an inline role check and a read of the admin record; App Check attested.",
+  "actor.role|actor.uid|enforceAppCheck":
+    "Inline role check plus the caller identity, on an App Check attested device.",
+  "actor.uid|enforceAppCheck":
+    "Acts only for the caller own identity, on an App Check attested device.",
+  "request.auth|actor.role|actor.uid|enforceAppCheck|requirePortalUser(":
+    "Shared portal gate, an inline role check and the caller identity; App Check attested.",
+};
+
+/* Mechanism level by design: each reason explains what the detected mechanism enforces, not a claim that
+   the endpoint is appropriate. A new callable whose signals match no listed mechanism fails the guard, so
+   the reason has to be written deliberately. */
+
 export const BASELINE_DIGEST = '37a674b17f7ee355f5f632c4e5d14448330ba3a3d657681d189d5e6dc7d87e1e';
 
 const failures = [];
@@ -452,7 +479,11 @@ for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.js')).sort()) 
     const key = file.replace(/\.js$/, '') + ':' + entry.name;
     total += 1;
     if (helpers.some((helper) => body.includes(helper))) return;
-    if (Object.prototype.hasOwnProperty.call(NEEDS_REVIEW, key)) return;
+    if (Object.prototype.hasOwnProperty.call(NEEDS_REVIEW, key)) {
+      const signature = (NEEDS_REVIEW[key].signals || []).join('|');
+      if (!REASONS[signature]) failures.push(key + ' uses an access mechanism with no recorded reason: ' + (signature || '(none)'));
+      return;
+    }
     failures.push(key);
   });
 }
@@ -462,5 +493,6 @@ if (failures.length) {
   process.exit(1);
 }
 
-const review = Object.keys(NEEDS_REVIEW).filter((key) => NEEDS_REVIEW[key].review === true);
-console.log('PASS: all ' + total + ' callables declare access — ' + Object.keys(GATED).length + ' through a shared permission helper, ' + Object.keys(NEEDS_REVIEW).length + ' through another signal (' + review.length + ' still awaiting a recorded reason).');
+const unresolved = Object.keys(NEEDS_REVIEW).filter((key) => !REASONS[(NEEDS_REVIEW[key].signals || []).join('|')]);
+if (unresolved.length) { console.error('Permission gate check failed \u2014 these callables use an access mechanism with no recorded reason:\n- ' + unresolved.join('\n- ')); process.exit(1); }
+console.log('PASS: all ' + total + ' callables declare access — ' + Object.keys(GATED).length + ' through a shared permission helper, ' + Object.keys(NEEDS_REVIEW).length + ' through ' + Object.keys(REASONS).length + ' documented mechanisms, every one App Check attested with a recorded reason.');
