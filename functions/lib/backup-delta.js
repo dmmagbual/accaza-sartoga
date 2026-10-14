@@ -41,6 +41,8 @@ const TRACKED_PATHS = Object.freeze([
   "purchaseInvoices",
   "platformPayouts",
   "internalUsage",
+  "bakingProducts",
+  "batchCards",
   "inventoryAdjustments",
   "pettyCashVouchers",
   "pettyCashReplenishments",

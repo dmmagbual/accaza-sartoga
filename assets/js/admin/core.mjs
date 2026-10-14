@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=682";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=683";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -15,7 +15,7 @@ import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
 import{sortArchivedOrders,summarizeArchivedOrders}from"./archive-order-sort.mjs";
 import{createOrderArchivePanel}from"./order-archive-panel.mjs";
-import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=682";
+import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=683";
 const paymentAccountLinks=createPaymentAccountLinks(()=>overviewCashAccounts||{});
 
 const {getPaymentProof:getPaymentProofCall,getCurrentCashBalances:getCurrentCashBalancesCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,manageFixedAsset:manageFixedAssetCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,manageAccountingPeriod:manageAccountingPeriodCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,reopenDiscrepancy:reopenDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,setUndepositedOpeningBalance:setUndepositedOpeningBalanceCall,repairPettyVoucherFinancial:repairPettyVoucherFinancialCall,retireRevolvingFund:retireRevolvingFundCall,repairClosedShiftTurnover:repairClosedShiftTurnoverCall,repairShiftDeclaredTips:repairShiftDeclaredTipsCall,repairReversedPayoutDeposit:repairReversedPayoutDepositCall,reconcileUndepositedCustody:reconcileUndepositedCustodyCall,runFinancialClose:runFinancialCloseCall,archiveActivityLog:archiveActivityLogCall}=callables;
@@ -1033,14 +1033,14 @@ window.selectLoginRole=function(role){
 };
 
 // Staff-level module access. Keys must match PORTAL_PERMISSION_KEYS in src/functions/20b-portal-accounts.js.
-var DEFAULT_STAFF_PERMS={dashboard:false,liveoperations:false,orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,saleshistory:true,dailyreport:false,discrepancy:false,petty:true,undeposited:false,channelpricing:false,cashflow:false,stockvalue:false},roleLandingDone=false,currentStaffPerms=null,staffPermissionsReady=false;
+var DEFAULT_STAFF_PERMS={dashboard:false,liveoperations:false,orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,baking:false,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,saleshistory:true,dailyreport:false,discrepancy:false,petty:true,undeposited:false,channelpricing:false,cashflow:false,stockvalue:false},roleLandingDone=false,currentStaffPerms=null,staffPermissionsReady=false;
 // Tabs every staff account could see before they had their own key; an unsaved record keeps that.
 var LEGACY_STAFF_PERMS={saleshistory:['orders'],undeposited:['petty','cashflow']};
 // Admin roles always see the Dashboard; staff-level roles only with the Dashboard tick.
 var staffDashboardAllowed=false;
 function dashboardAllowed(){return adminLoggedIn||(staffLoggedIn&&staffDashboardAllowed);}
 function staffPermsFrom(stored){var perms=Object.assign({},DEFAULT_STAFF_PERMS,stored||{});if(stored)Object.keys(LEGACY_STAFF_PERMS).forEach(function(key){if(stored[key]===undefined)perms[key]=LEGACY_STAFF_PERMS[key].some(function(from){return stored[from]===true;});});return perms;}
-var _permTabMap={"'dashboard'":'dashboard',"'liveoperations'":'liveoperations',"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'availSection'":'availability',"'commentsSection'":'comments',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'saleshistory'":'saleshistory',"'undeposited'":'undeposited',"'ops'":'registerOps'};
+var _permTabMap={"'dashboard'":'dashboard',"'liveoperations'":'liveoperations',"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'availSection'":'availability',"'commentsSection'":'comments',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'baking'":'baking',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'saleshistory'":'saleshistory',"'undeposited'":'undeposited',"'ops'":'registerOps'};
 // Settings is locked for staff-level roles except Channel Pricing (ticked per account) and Change Password.
 var _permAlwaysHide=["'payment'","'staffaccounts'","'packages'","'operations'","'possettings'","'accountingperiods'","'dedupe'","'payouts'","'rewards'","'companyinfo'","'taxcompliance'","'payables'"];
 var ADMIN_ALWAYS_ROUTES={inbox:1,changepw:1},ADMIN_MANAGEMENT_ROUTES={payables:1};

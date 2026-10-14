@@ -890,7 +890,7 @@ function renderBackupStatus(lastAt){
 function exportDataBackup(){
   var btn=document.getElementById('bkDownload'); if(btn){btn.disabled=true;btn.textContent='Preparing\u2026';}
   var a=A();
-  var nodes=['books','financialMovements','orders','archivedOrders','inventory','inventoryBalances','inventoryMovements','recipes','optionRecipes','purchaseInvoices','payables','receivables','platformPayouts','cashCustody','booksChart','chartOfAccounts','fixedAssets','personalFundings','expenses','monthlyExpenses','expenseCategories','expenseItems','shifts','posStaff','posSettings','channelPrices','inventorySku','inventoryBatch','stockReceipts','internalUsage','packages','menuItems','categories','optionGroups','reservations','appCustomers','discrepancies','pettyCashVouchers'];
+  var nodes=['books','financialMovements','orders','archivedOrders','inventory','inventoryBalances','inventoryMovements','recipes','optionRecipes','purchaseInvoices','payables','receivables','platformPayouts','cashCustody','booksChart','chartOfAccounts','fixedAssets','personalFundings','expenses','monthlyExpenses','expenseCategories','expenseItems','shifts','posStaff','posSettings','channelPrices','inventorySku','inventoryBatch','stockReceipts','internalUsage','bakingProducts','batchCards','packages','menuItems','categories','optionGroups','reservations','appCustomers','discrepancies','pettyCashVouchers'];
   Promise.all(nodes.map(function(n){return a.get(a.ref(a.db,n)).then(function(s){return [n,s.val()];}).catch(function(){return [n,null];});})).then(function(pairs){
     var data={}, included=[];
     pairs.forEach(function(p){ if(p[1]!=null){ data[p[0]]=p[1]; included.push(p[0]); } });

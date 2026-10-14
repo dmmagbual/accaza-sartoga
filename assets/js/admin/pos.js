@@ -230,7 +230,7 @@ function init(){
   checkPosStorageHealth();
   flushOfflineQueue();
   a.subscribe('availability', function(s){ posAvailMap=s.val()||{}; if(isTab('pos')&&document.getElementById('posItems'))drawPosItems(); });
-  a.subscribe('inventory', function(s){ inventoryMap=s.val()||{}; if(isTab('inventory'))renderInventory(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateLowStockBadge(); updateCostBadge(); });
+  a.subscribe('inventory', function(s){ inventoryMap=s.val()||{}; window.inventoryMap=inventoryMap; if(isTab('inventory'))renderInventory(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateLowStockBadge(); updateCostBadge(); });
   a.subscribe('inventorySku', function(s){ inventorySkuMap=s.val()||{}; if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
   a.subscribe('inventoryMovements', function(s){ inventoryMovementsMap=s.val()||{}; if(isTab('inventory'))renderInventory(); });
   a.subscribe('purchaseInvoices', function(s){ purchaseInvoicesMap=s.val()||{}; if(isTab('purchases'))renderPurchases(); });
@@ -245,6 +245,8 @@ function init(){
   a.subscribe('optionRecipes', function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
   a.subscribe('internalUsage', function(s){ usageMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
   a.subscribe('usageTypes', function(s){ usageTypesMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
+  a.subscribe('bakingProducts', function(s){ window.__accazaBakingProducts=s.val()||{}; if(isTab('baking')&&window.__accazaRenderBaking)window.__accazaRenderBaking(); });
+  a.subscribe('batchCards', function(s){ window.__accazaBatchCards=s.val()||{}; if(isTab('baking')&&window.__accazaRenderBaking)window.__accazaRenderBaking(); });
   a.subscribe('channelPrices', function(s){ channelPricesMap=s.val()||{}; if(isTab('channelpricing')&&window.__accazaRenderChannelPricing)window.__accazaRenderChannelPricing(); });
   a.subscribe('activeOrders', function(s){ onlineOrdersMap=s.val()||{}; sqOnOrdersChanged(); if(isTab('pos')){updatePosOrderCounts();if(posView==='online')renderOnlineOrders();if(posView==='active')renderActiveOrders();} });
   a.subscribe('activeQrTickets', function(s){ qrTicketsMap=s.val()||{};notifyNewQrTickets();if(isTab('pos')){updatePosOrderCounts();if(posView==='qr')renderQrOrders();} });
@@ -253,7 +255,7 @@ function init(){
 }
 function isTab(name){var el=document.getElementById('tab-'+name);return el&&el.style.display!=='none';}
 
-window.__accazaRegisterModule('pos',function(name){ if(name==='pos'){buildPOS();} if(name==='inventory')renderInventory(); if(name==='purchases')renderPurchases(); if(name==='recipes'){recipeEditing=false;renderRecipes();} if(name==='usage')renderUsage(); if(name==='dedupe')renderDedupe(); });
+window.__accazaRegisterModule('pos',function(name){ if(name==='pos'){buildPOS();} if(name==='inventory')renderInventory(); if(name==='purchases')renderPurchases(); if(name==='recipes'){recipeEditing=false;renderRecipes();} if(name==='usage')renderUsage(); if(name==='baking'&&window.__accazaRenderBaking)window.__accazaRenderBaking(); if(name==='dedupe')renderDedupe(); });
 
 /* ══════════ INVENTORY ══════════ */
 /* Every place a recipe/option references an inventory id — for referential integrity. */

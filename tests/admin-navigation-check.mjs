@@ -19,7 +19,7 @@ const expected={
   orders:['orders','reservations','calendar','availSection'],
   reports:['saleshistory','analytics','dailyreport'],
   purchasing:['purchases','petty','payables'],
-  stock:['inventory','stockvalue','recipes','usage','packages'],
+  stock:['inventory','stockvalue','recipes','baking','usage','packages'],
   finance:['undeposited','payouts','discrepancy'],
   customers:['rewards','appcustomers','reviews','commentsSection'],
   settings:['companyinfo','taxcompliance','possettings','accountingperiods','channelpricing','dedupe','payment','staffaccounts','changepw']
@@ -31,7 +31,7 @@ for(const [group,tabs] of Object.entries(expected)){
 }
 
 const allTabs=Object.values(expected).flat();
-assert(allTabs.length===37&&new Set(allTabs).size===37,'Every Admin destination must appear exactly once');
+assert(allTabs.length===38&&new Set(allTabs).size===38,'Every Admin destination must appear exactly once');
 for(const tab of allTabs.filter((name)=>!['availSection','commentsSection','payables'].includes(name)))assert(html.includes(`id="tab-${tab}"`),`Admin panel is missing for ${tab}`);
 assert(core.includes("payables:'payables'")&&navigation.includes("switchTab('payables',this)"),'Supplier Bills & Payables must reuse the existing Finance Books route');
 assert(core.includes("\"'availSection'\":'availability'")&&core.includes("\"'commentsSection'\":'comments'"),'Moved Availability and Comments must retain staff permission checks');
