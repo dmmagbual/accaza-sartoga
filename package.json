@@ -125,7 +125,7 @@
     "test:ai-download-guard": "node tests/ai-record-download-guard-check.mjs",
     "test:ai-finance": "node tests/accaza-ai-finance-check.mjs",
     "test:firebase-load-guards": "node tests/firebase-load-guards-check.mjs",
-    "test:order-archive-panel": "node tests/order-archive-panel-check.mjs",
+    "test:order-archive-panel": "node tests/order-archive-panel-check.mjs && node tests/order-archive-sweep-check.mjs",
     "test:manila-dates": "node tests/manila-business-date-check.mjs",
     "test:shift-variance-date": "node tests/shift-variance-posting-date-check.mjs",
     "test:register-drawer": "node tests/register-drawer-check.mjs",
