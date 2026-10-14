@@ -32,7 +32,7 @@ function pl(a){return Object.keys(pr()).map(function(k){return Object.assign({id
 function sel(){var l=pl(true);if(!l.some(function(p){return p.id===S.pid;}))S.pid=(l[0]||{}).id||'';return S.pid;}
 function opt(cur,k){
   var r=Object.keys(im()).map(function(x){return Object.assign({id:x},im()[x]);}).filter(function(i){return (!isa(i)||i.id===cur)&&(k!=='pastry'||i.id===cur||String(i.inventoryAccount||'')==='1240');}).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''));});
-  return '<option value="">— item —</option>'+r.map(function(i){return '<option value="'+esc(i.id)+'"'+(i.id===cur?' selected':'')+'>'+esc(i.name||i.id)+' ('+esc(i.unit||'')+')'+(k==='pastry'?' · '+peso(i.cost):'')+(isa(i)?' · archived':'')+'</option>';}).join('');
+  return '<option value=""'+(cur?'':' selected')+'>— item —</option>'+r.map(function(i){return '<option value="'+esc(i.id)+'"'+(i.id===cur?' selected':'')+'>'+esc(i.name||i.id)+' ('+esc(i.unit||'')+')'+(k==='pastry'?' · '+peso(i.cost):'')+(isa(i)?' · archived':'')+'</option>';}).join('');
 }
 /* The unit picker on every ingredient line: the recipe unit he thinks in, as on the recipe costing
    screen. Choices stay dimension-compatible with the item's own stock unit, so an incompatible pair
@@ -54,9 +54,18 @@ function tot(b){return r3(((b||{}).lines||[]).reduce(function(s,l){var x=sq(l);r
 function blk(p,b){if(!(p&&p.id))return 'Add a baking product first.';if(!(p.mapping&&p.mapping.confirmedAt))return 'Confirm the mapping before posting a card.';if(!use(b).length)return 'Add at least one ingredient with a quantity.';if(!(Number((b||{}).pieces)>=1))return 'Enter the pieces produced (at least 1).';return '';}
 function T(cols,body){return '<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr>'+cols.map(function(c){return '<th'+(c[1]?' class="r"':'')+'>'+c[0]+'</th>';}).join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>';}
 function rw(l,pre){
-  var d=' data-'+pre,i=l.i,u=iU(l.itemId),cu=l.unit||u,C=CX(),x=sq(l),m=iC(l.itemId),s;
-  if(u&&C&&!C.compatible(cu,u))cu=u; s=d+'f="itemId"'+d+'i="'+i;
-  return '<tr><td><select class="pz-in"'+s+'>'+opt(l.itemId,'ing')+'</select></td><td><select class="pz-in"'+s.replace('itemId','unit')+'>'+uopts(cu,u)+'</select></td><td><input class="pz-in" type="number" step="any"'+(s.replace('itemId','qty'))+' value="'+esc(l.qty)+'" placeholder="0"/></td><td class="r">'+peso(m)+' · '+(x?peso(x*m):'—')+'</td><td><button class="pz-btn warn p"'+d+'del="'+i+'">✕</button></td></tr>';
+  /* Every attribute is closed. Building these names by string surgery once lost the closing quote,
+     which swallowed the first <option> and the quantity input into an attribute value: the ingredient
+     list appeared to "snap back" to its first item, the unit picker rendered empty, and there was no
+     quantity box at all. Keep this explicit. */
+  var i=l.i,u=iU(l.itemId),cu=l.unit||u,C=CX(),x=sq(l),m=iC(l.itemId);
+  if(u&&C&&C.compatible&&!C.compatible(cu,u))cu=u;
+  var f=' data-'+pre+'f="',k='" data-'+pre+'i="'+i+'"';
+  return '<tr><td><select class="pz-in"'+f+'itemId'+k+'>'+opt(l.itemId,'ing')+'</select></td>'
+   +'<td><select class="pz-in"'+f+'unit'+k+'>'+uopts(cu,u)+'</select></td>'
+   +'<td><input class="pz-in" type="number" step="any" style="width:90px;"'+f+'qty'+k+' value="'+esc(l.qty)+'" placeholder="0"/></td>'
+   +'<td class="r">'+peso(m)+' · '+(x?peso(x*m):'—')+'</td>'
+   +'<td><button class="pz-btn warn p" data-'+pre+'del="'+i+'">✕</button></td></tr>';
 }
 function sumLines(ls){return (ls||[]).reduce(function(s,l){var x=sq(l);return s+(x==null?0:x*iC(l.itemId));},0);}
 function TOTROW(ls){return '<tr style="font-weight:700;"><td colspan="3">Total cost</td><td class="r">'+peso(sumLines(ls))+'</td><td></td></tr>';}
