@@ -9,7 +9,7 @@ const analyticsSource=fs.readFileSync('src/admin/analytics/10-sales-model-histor
 for(const marker of ['renderCompactAnalyticsV5','Weekly sales','Peak hours','Sales by cashier','Sales by day of week','Number(result.schemaVersion)<2','refreshCompactAnalytics'])assert(analyticsSource.includes(marker),'compact Sales Analytics must retain '+marker);
 for(const marker of ['Top 12 drinks · YTD','function topDrinkGrid','slice(0,12)'])assert(analyticsSource.includes(marker),'Analytics must retain the approved summary-backed Top 12 drinks grid: '+marker);
 const repair=source.slice(source.indexOf('async function reconcileHistoricalSalesRollup'),source.indexOf('async function replicateHistoricalOrder'));
-const ctx={HistoricalArchive:H,Date,Number,Set,Object};vm.createContext(ctx);vm.runInContext(repair,ctx);
+const ctx={HistoricalArchive:H,FirestoreRetry:require('../functions/lib/firestore-retry.js'),Date,Number,Set,Object};vm.createContext(ctx);vm.runInContext(repair,ctx);
 const order={id:'sale1',status:'Completed',paymentStatus:'confirmed',timestamp:Date.parse('2026-09-10T12:00:00+08:00'),total:100,subtotal:100,payment:'Cash',channel:'instore',lineItems:[{itemKey:'latte',name:'Latte',categoryId:'coffee',qty:2,unitTotal:50}]};
 const contribution=H.reportingContribution(order);assert(contribution);
 assert.equal(contribution.schemaVersion,3);assert.equal(contribution.hour,12);assert.equal(contribution.items[0].categoryId,'coffee');
