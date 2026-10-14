@@ -63,8 +63,10 @@ async function getCachedOperationalExceptions(db, now = Date.now(), force = fals
   }
 }
 
+// 60s matches the scan lock: a forced scan may now spend up to
+// DeadLetterResolution.REPAIR_TIME_BUDGET_MS rebuilding dead-lettered replicas.
 exports.getOperationalExceptions = onCall(
-  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request);
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Operational exceptions are restricted to management accounts.");
@@ -86,6 +88,7 @@ async function scanOperationalExceptions(db, now) {
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
     const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
     const deadLetters = deadLetterSnap.val() || {};
+    await repairHistoricalReplicaDeadLetters(db, deadLetters, now);
     await verifyOpenDeadLetters(db, deadLetters, now);
     return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
 }
@@ -137,6 +140,30 @@ async function verifyOpenDeadLetters(db, deadLetters, now) {
   }));
 }
 
+// Historical replica dead letters repair themselves (Oct 2026); see
+// DeadLetterResolution.REPLICA_REPAIRS. Orders run one at a time so the repair can
+// never contend with itself on the shared monthly summary, within a per-scan order
+// and time budget. A failed repair leaves its cards open for the next scan.
+async function repairHistoricalReplicaDeadLetters(db, deadLetters, now) {
+  const queue = DeadLetterResolution.replicaRepairQueue(deadLetters, now, OperationalExceptions.DEAD_LETTER_WINDOW_MS).slice(0, DeadLetterResolution.MAX_REPAIR_PER_SCAN);
+  if (!queue.length) return;
+  const firestore = getFirestore(), started = Date.now();
+  for (const group of queue) {
+    if (Date.now() - started > DeadLetterResolution.REPAIR_TIME_BUDGET_MS) break;
+    try {
+      const result = await syncHistoricalReplicaFromSource(db, firestore, group.orderId);
+      if (!result.closable) continue;
+      const at = Date.now(), text = DeadLetterResolution.replicaRepairText(group.orderId, result);
+      const fields = DeadLetterResolution.resolutionFields({method: "verified", note: text, evidence: {recordId: group.orderId, state: result.state, evidenceVerified: result.verified === true, issues: result.issues || [], letters: group.ids.length, checkedAt: at}, now: at});
+      for (const id of group.ids) {
+        if (await closeDeadLetter(db, id, fields, {uid: "server", role: "server"}, {function: deadLetters[id].function, recordId: group.orderId, note: text})) deadLetters[id] = Object.assign({}, deadLetters[id], fields);
+      }
+    } catch (error) {
+      logger.warn("Historical replica repair skipped", {orderId: group.orderId, error: String(error && error.message || error)});
+    }
+  }
+}
+
 async function dropFromCachedOperationalScan(db, id) {
   await db.ref(OPERATIONAL_EXCEPTION_CACHE_PATH).transaction((current) => {
     if (!current || !current.result) return current;
@@ -157,7 +184,19 @@ exports.resolveBackgroundFailure = onCall(
     const row = (await db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}/${id}`).get()).val();
     if (!row) throw new HttpsError("not-found", "This background failure no longer exists.");
     if (row.status !== "open") {await dropFromCachedOperationalScan(db, id);return {deadLetterId: id, duplicate: true, resolution: row.resolution || null};}
-    const check = DeadLetterResolution.evaluate(row, await readDeadLetterProbe(db, row));
+    // A replica task is repaired before it may be closed, so a click can never hide
+    // sales missing from Sales History. A sale that is still live closes itself once it
+    // is archived. Only an order that exists nowhere may be closed on a manager's note.
+    const replica = DeadLetterResolution.replicaRepairFor(row);
+    let check;
+    if (replica) {
+      let result;
+      try { result = await syncHistoricalReplicaFromSource(db, getFirestore(), replica.id); } catch (error) {
+        throw new HttpsError("unavailable", `The sales-history copy of order ${replica.id} could not be rebuilt yet (${String(error && error.message || error).slice(0, 120)}). Try again in a minute; nothing needs to be re-entered.`);
+      }
+      if (result.state === "not_archived") throw new HttpsError("failed-precondition", `Order ${replica.id} is still a live order. Its sales-history copy is made when it is archived, and this card closes itself at the next health check after that.`);
+      check = {state: result.state, recordId: replica.id};
+    } else check = DeadLetterResolution.evaluate(row, await readDeadLetterProbe(db, row));
     if (check.state === "incomplete") throw new HttpsError("failed-precondition", check.text);
     const now = Date.now(), fields = DeadLetterResolution.resolutionFields({method: "manual", note: note.text, actor, evidence: {recordId: check.recordId || null, state: check.state, checkedAt: now}, now});
     const closed = await closeDeadLetter(db, id, fields, actor, {function: row.function, recordId: check.recordId || null, check: check.state, note: note.text});

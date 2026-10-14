@@ -413,20 +413,50 @@ async function replicateHistoricalOrder(db, firestore, orderId, order, now = Dat
   return {orderId, duplicate: result.duplicate, rollupChanged:result.rollupChanged, verified: next.evidence.verified, issues: next.evidence.issues};
 }
 
+// Removes an order's replica and its monthly-summary contribution together.
+async function removeHistoricalReplica(db, firestore, orderId, now = Date.now()) {
+  await FirestoreRetry.runTransaction(firestore, async (transaction) => {
+    const orderRef = firestore.collection(HistoricalArchive.COLLECTION).doc(orderId);
+    await transaction.get(orderRef);
+    await reconcileHistoricalSalesRollup(firestore, orderId, null, transaction);
+    transaction.delete(orderRef);
+  }, {onRetry: logHistoricalContention("replica-delete")});
+  await publishHistoricalChangeReliably(db, orderId, null, now);
+}
+
+// Controlled repair for a dead-lettered replica task: copy the current archived order
+// into the replica, exactly as the archive trigger does for a write. Idempotent: an
+// unchanged order is a no-op, a changed one is reconciled in one transaction with its
+// monthly-summary contribution. It never deletes: a sale that is still live is copied
+// when it is archived, and a source that cannot be found is left for a person, because
+// a delete racing the archive write could drop a real sale from history.
+async function syncHistoricalReplicaFromSource(db, firestore, orderId, now = Date.now()) {
+  const order = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
+  if (order) {
+    const result = await replicateHistoricalOrder(db, firestore, orderId, order, now, {publishUnchanged: true});
+    return {state: result.duplicate ? "current" : "rebuilt", closable: true, verified: result.verified === true, issues: Array.isArray(result.issues) ? result.issues.slice(0, 10) : []};
+  }
+  if ((await db.ref(`/orders/${orderId}/id`).get()).exists() || (await db.ref(`/orders/${orderId}/status`).get()).exists()) return {state: "not_archived", closable: false};
+  return {state: "source_missing", closable: false};
+}
+
+// The three replica writers share one monthly-summary document per month, so at most
+// two deliveries per writer run at once: two instances, one request each. Cloud Run
+// holds events for event-driven services until an instance is free, so a burst (for
+// example a shift close archiving many sales at once) is delayed by seconds instead
+// of colliding on that document until the daily failure budget dead-letters it. The
+// journal refresh returns at once for journals with no new sale, so its queue stays short.
+const HISTORICAL_REPLICA_MAX_INSTANCES = 2;
+const HISTORICAL_REPLICA_CONCURRENCY = 1;
+
 // Firestore is a historical replica only. RTDB remains the live POS and posting
 // authority, and this trigger never removes or modifies the source record.
 exports.replicateArchivedOrderToFirestore = onValueWritten(
-  {ref: "/archivedOrders/{orderId}", region: ORDER_REGION, retry: true},
+  {ref: "/archivedOrders/{orderId}", region: ORDER_REGION, retry: true, maxInstances: HISTORICAL_REPLICA_MAX_INSTANCES, concurrency: HISTORICAL_REPLICA_CONCURRENCY},
   async (event) => {
     const db = getDatabase(), firestore = getFirestore(), orderId = event.params.orderId, order = event.data.after.val(), now = Date.now();
     if (!order) {
-      await FirestoreRetry.runTransaction(firestore, async (transaction) => {
-        const orderRef = firestore.collection(HistoricalArchive.COLLECTION).doc(orderId);
-        await transaction.get(orderRef);
-        await reconcileHistoricalSalesRollup(firestore, orderId, null, transaction);
-        transaction.delete(orderRef);
-      }, {onRetry: logHistoricalContention("replica-delete")});
-      await publishHistoricalChangeReliably(db, orderId, null, now);
+      await removeHistoricalReplica(db, firestore, orderId, now);
       return;
     }
     const result = await replicateHistoricalOrder(db, firestore, orderId, order, now, {publishUnchanged: true});
@@ -539,7 +569,7 @@ exports.readHistoricalSalesRollup = onCall(
 // Books may be posted just after an order is archived. Refreshing from the
 // journal event closes that race without making Firestore an accounting writer.
 exports.refreshHistoricalOrderAfterJournal = onValueWritten(
-  {ref: "/books/journal/{journalId}", region: ORDER_REGION, retry: true},
+  {ref: "/books/journal/{journalId}", region: ORDER_REGION, retry: true, maxInstances: HISTORICAL_REPLICA_MAX_INSTANCES, concurrency: HISTORICAL_REPLICA_CONCURRENCY},
   async (event) => {
     const before = event.data.before.val() || {}, after = event.data.after.val() || {};
     const beforeSources = before.sources || {}, afterSources = after.sources || {};
@@ -560,7 +590,7 @@ exports.refreshHistoricalOrderAfterJournal = onValueWritten(
 // replica from the immutable plan. This closes the trigger race without using
 // current recipes or changing the archived RTDB source.
 exports.refreshHistoricalOrderAfterInventoryPlan = onValueWritten(
-  {ref: "/orderInventoryPlans/{orderId}", region: ORDER_REGION, retry: true},
+  {ref: "/orderInventoryPlans/{orderId}", region: ORDER_REGION, retry: true, maxInstances: HISTORICAL_REPLICA_MAX_INSTANCES, concurrency: HISTORICAL_REPLICA_CONCURRENCY},
   async (event) => {
     if (!event.data.after.exists()) return;
     const db = getDatabase(), orderId = event.params.orderId;
