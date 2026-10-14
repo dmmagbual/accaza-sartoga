@@ -42,9 +42,9 @@
      The POS writes method as "Bank Transfer \u00b7 BDO" when a receiving account resolves and plain
      "Bank Transfer" when it does not, so a label-keyed total splits one method across two rows.
      The bare method is already stored as paymentMethod; older records need the suffix trimmed. */
-  /* A method absorbed by a reclassification (GCash and PayMaya folded into E-Wallet) keeps its old
-     name on every posted order. Rather than rewrite posted records, each configured method may list
-     the legacy names it absorbs, and history reports under the current classification. */
+  /* A method an operator renamed keeps its old name on every posted order. Rather than rewrite posted
+     records, each configured method may list the legacy names it absorbs, and history reports under
+     the current classification. An alias never overrides the wallet that received the money. */
   function methodAliases(configuredMethods){
     var out={},methods=Array.isArray(configuredMethods)?configuredMethods:((global.__posSettings&&global.__posSettings.payMethods)||[]);
     methods.forEach(function(m){
@@ -54,6 +54,34 @@
     });
     return out;
   }
+  /* A wallet name written on a row: GCash, G-Cash, Gcash and "G-Cash " are one wallet, so a sale rung
+     as "E-Wallet \u00b7 G-Cash" and one rung as "GCash \u00b7 G-Cash" report as one channel. A rail with no
+     wallet named on it is not a wallet. */
+  function walletMethodName(value){
+    var key=text(value).toLowerCase().replace(/[^a-z0-9]+/g,'');
+    if(!key)return'';
+    if(key.indexOf('gcash')>-1)return'GCash';
+    if(key.indexOf('paymaya')>-1||key==='maya')return'PayMaya';
+    if(key==='ewallet'||key==='wallet')return'';
+    return key.indexOf('wallet')>-1?text(value):'';
+  }
+  /* E-Wallet is a means of payment, exactly like Bank Transfer: the channel a report shows is the
+     wallet that received the money, read from the payment row. */
+  function walletOnRow(payment){
+    if(!payment||typeof payment!=='object')return'';
+    var named=walletLabelName(payment.receivingAccountName);
+    if(named)return named;
+    var label=text(payment.method),cut=label.lastIndexOf(' \u00b7 ');
+    return cut>0?walletLabelName(label.slice(cut+3).trim()):'';
+  }
+  /* An account type is readable only when the accounts map is loaded; without it the wallet named on
+     the row is still evidence, and a named credential is never given up for a generic rail. */
+  function isWalletCredential(payment,accounts){
+    if(!payment||typeof payment!=='object')return false;
+    if(!accounts)return true;
+    var id=text(payment.receivingAccountId),account=id&&accounts[id];
+    return account?text(account.type).toLowerCase()==='ewallet':true;
+  }
   function canonicalPaymentName(value){
     var name=text(value),key=name.toLowerCase().replace(/[^a-z0-9]+/g,'');
     if(key==='cash')return'Cash';
@@ -62,15 +90,34 @@
     if(key.indexOf('gcash')>-1)return'GCash';
     if(key.indexOf('paymaya')>-1||key==='maya')return'PayMaya';
     if(key.indexOf('banktransfer')>-1||key==='bank')return'Bank Transfer';
-    if(key==='ewallet')return'E-Wallet';
+    if(key==='ewallet'||key==='wallet')return'E-Wallet';
     return name||'Other';
   }
-  function paymentKey(payment,configuredMethods){
+  /* The wallet named on a row, for any e-money account: known brands keep one spelling and a wallet
+     no allowlist knows still reports by its own name instead of vanishing into the generic rail. */
+  function walletLabelName(value){
+    var label=text(value);
+    if(!label)return'';
+    var canonical=canonicalPaymentName(label);
+    if(canonical==='Cash'||canonical==='GrabFood'||canonical==='FoodPanda'||canonical==='Bank Transfer'||canonical==='E-Wallet'||canonical==='Other')return'';
+    var cleaned=canonical==='GCash'||canonical==='PayMaya'?canonical:label.replace(/\s+/g,' ');
+    return cleaned.indexOf(' · ')>=0?cleaned.split(' · ')[0].trim():cleaned;
+  }
+  function paymentKey(payment,configuredMethods,accounts){
     if(!payment)return'Other';
     var raw=typeof payment==='string'?splitMethod(payment,''):(text(payment.paymentMethod)||splitMethod(payment.method,payment.receivingAccountName));
     if(!raw)return'Other';
-    var aliases=methodAliases(configuredMethods),canonical=canonicalPaymentName(raw);
-    return aliases[raw.toLowerCase()]||aliases[canonical.toLowerCase()]||canonical;
+    var aliases=methodAliases(configuredMethods),rail=canonicalPaymentName(raw);
+    /* A wallet is the channel, whichever wallet the customer used, and a resolved wallet key is never
+       folded back into the rail it sits under. */
+    if(rail==='E-Wallet'&&isWalletCredential(payment,accounts)){
+      var wallet=walletOnRow(payment)||walletMethodName(raw);
+      if(wallet)return wallet;
+    }
+    /* Cash keeps the literal name Finance identifies it by; a wallet named on the row outranks every
+       stored alias, because an alias only records that a name was absorbed. */
+    if(rail==='Cash'||walletMethodName(raw))return rail;
+    return aliases[raw.toLowerCase()]||aliases[rail.toLowerCase()]||rail;
   }
   /* The receiving account is the detail under a classification: which wallet, which bank.
      Online orders are created server-side without one, so the report resolves it exactly the way

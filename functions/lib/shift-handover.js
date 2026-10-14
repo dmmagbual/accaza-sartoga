@@ -54,6 +54,18 @@ function cashSnapshot(shift,counts,fixedFloat){
 // . # $ / [ ]. Cash and platform rows have no receiving account, so an empty key
 // would reject the whole reconciliation write; unassigned accounts are not split.
 function reportKey(value){return String(value==null?'':value).replace(/[.#$/\[\]\u0000-\u001f\u007f]/g,'_').trim().slice(0,120);}
+/* E-Wallet is a means of payment, exactly like Bank Transfer. This report totals by the wallet that
+   received the money so it matches the device's shift review and the Z-report: a sale tendered
+   through the E-Wallet rail but received in G-Cash is a GCash sale, not an "E-Wallet" sale. */
+function walletLabel(value){const key=String(value==null?'':value).toLowerCase().replace(/[^a-z0-9]+/g,'');return key.includes('gcash')?'GCash':(key.includes('paymaya')||key==='maya')?'PayMaya':'';}
+function walletMethodKey(payment){
+  const rail=String(payment&&(payment.paymentMethod||payment.method)||'').split(' \u00b7 ')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g,'');
+  if(rail!=='ewallet'&&rail!=='wallet')return'';
+  const row=payment||{},named=walletLabel(row.receivingAccountName);
+  if(named)return named;
+  const label=String(row.method||''),cut=label.lastIndexOf(' \u00b7 ');
+  return cut>0?walletLabel(label.slice(cut+3).trim()):'';
+}
 // BIR sequential invoice series (ranking.docx Gap 1): every sale — POS and online — takes
 // the next number from one /posInvoiceControl counter, and the cumulative grand total
 // accumulates forever (never resets, never reduced by refunds — refunds post separately in
@@ -83,7 +95,7 @@ function report(shift,orders,handover){
     z.byChannel[Object.hasOwn(z.byChannel,o.channel)?o.channel:'instore']+=gross-discount-refund;
     // Shift crew: who rang each sale (informational; the drawer stays the owner's).
     const seller=reportKey(o.soldByStaffId||o.soldByUid||shift.staffId||'owner')||'owner';z.bySeller[seller]||={name:String(o.soldBy||shift.staff||'').slice(0,120),role:String(o.soldByRole||'owner'),tx:0,net:0};z.bySeller[seller].tx++;z.bySeller[seller].net+=gross-discount-refund;
-    for(const p of rows){let method=reportKey(platform?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):String(p.paymentMethod||p.method||'Unknown').split(' · ')[0])||'Unknown';if(method.toLowerCase()==='cash')method='Cash';const value=cents(p.amount||0),account=reportKey(p.receivingAccountName||p.receivingAccountId||'');z.byMethod[method]=(z.byMethod[method]||0)+value;z.byMethodAccount[method]||={};if(account)z.byMethodAccount[method][account]=(z.byMethodAccount[method][account]||0)+value;if(!platform&&method==='Cash')z.cashSales+=value;}
+    for(const p of rows){let method=reportKey(platform?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):String(p.paymentMethod||p.method||'Unknown').split(' · ')[0])||'Unknown';const wallet=platform?'':walletMethodKey(p);if(wallet)method=wallet;if(method.toLowerCase()==='cash')method='Cash';const value=cents(p.amount||0),account=reportKey(p.receivingAccountName||p.receivingAccountId||'');z.byMethod[method]=(z.byMethod[method]||0)+value;z.byMethodAccount[method]||={};if(account)z.byMethodAccount[method][account]=(z.byMethodAccount[method][account]||0)+value;if(!platform&&method==='Cash')z.cashSales+=value;}
     z.cashRefunds+=cents(o.refundPayments?(o.refundPayments.Cash||o.refundPayments.cash||0):rows.some(p=>String(p.method).toLowerCase()==='cash')?o.refundAmount||0:0);
     if(o.paymentStatus==='pending'){z.pending+=cents(o.total||0);z.pendingCount++;}
     if(o.paymentStatus==='cashier_verified'){z.managerPending+=cents(o.total||0);z.managerPendingCount++;}

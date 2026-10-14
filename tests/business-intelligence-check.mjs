@@ -25,9 +25,15 @@ for(const [name,pattern] of required)if(!pattern.test(source))throw new Error(`B
 if(!/id:"insights",label:"Key Metrics"/.test(shell))throw new Error('Key Metrics tab is not registered');
 if(!/PAGES\.insights=function/.test(registration))throw new Error('Key Metrics page is not registered');
 if(!/assets\/js\/shared\/sales-authority\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(sw))throw new Error('Key Metrics engine and shared sales authority are not loaded and cached');
-if(!/accaza-books-build" content="154"/.test(books)||!/build v154/.test(books))throw new Error('Books build markers are not synchronized');
-if(manifest.builds.admin!==678||manifest.builds.books!==154||manifest.builds.serviceWorkerCache!==674)throw new Error('Release manifest build markers are not synchronized');
-if(!/const CACHE='accaza-v674'/.test(sw))throw new Error('Service worker cache is not synchronized');
+/* The release numbers are read from their markers, never memorized: a guard that hardcodes the
+   current build proves nothing about synchronization and blocks every future release bump. */
+const booksBuild=(books.match(/name="accaza-books-build" content="(\d+)"/)||[])[1];
+const adminBuild=(fs.readFileSync('admin.html','utf8').match(/name="accaza-admin-build" content="(\d+)"/)||[])[1];
+const swCache=(sw.match(/const CACHE='(accaza-v\d+)'/)||[])[1];
+if(!booksBuild||!adminBuild||!swCache)throw new Error('A build or service-worker cache marker is missing');
+if(!new RegExp(`build v${booksBuild}`).test(books))throw new Error('Books build markers are not synchronized');
+if(manifest.builds.admin!==Number(adminBuild)||manifest.builds.books!==Number(booksBuild)||manifest.builds.serviceWorkerCache!==Number((swCache.match(/\d+$/)||[])[0]))throw new Error('Release manifest build markers are not synchronized');
+if(!new RegExp(`const CACHE='${swCache}'`).test(sw))throw new Error('Service worker cache is not synchronized');
 for(const marker of ['onChildAdded','onChildChanged','onChildRemoved','function watchMap','orderByChild("settlementStatus"),equalTo("unsettled")','orderByChild("settlementStatus"),equalTo(null)','bindOutstandingOrders()'])if(!livePos.includes(marker))throw new Error('Finance Books incremental download safeguard missing: '+marker);
 for(const broad of ['onValue(ref(db,"/orders")','onValue(ref(db,"/archivedOrders")','onValue(ref(db,"/platformPayouts")'])if(livePos.includes(broad))throw new Error('Finance Books restored a broad whole-snapshot listener: '+broad);
 if(!manifest.authoritativeFiles.includes('src/books/business-intelligence.js')||!manifest.authoritativeFiles.includes('src/books/app/35-business-intelligence.js'))throw new Error('Business intelligence sources are missing from authoritative files');

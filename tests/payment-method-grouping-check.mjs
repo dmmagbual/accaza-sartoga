@@ -55,34 +55,48 @@ check(mix['Bank Transfer'] === 1425, `Bank Transfer must total 985 + 440 = 1425,
 check(mix['GCash'] === 1065, `GCash must total 460 + 605 = 1065, got ${mix['GCash']}`);
 check(mix['Cash'] === 5230, 'Cash must be unaffected.');
 
-/* ---------- reclassification: old method names fold into the current one ---------- */
+/* ---------- the rail is not a channel: the wallet that received the money is ---------- */
 const winAlias = {__posSettings:{payMethods:[{name:'Cash',cash:true},{name:'Bank Transfer'},{name:'E-Wallet',aliases:['GCash','PayMaya']}]}};
 new Function('window', read('assets/js/shared/sales-authority.js'))(winAlias);
 const aliasKey = winAlias.AccazaSales.paymentKey, account = winAlias.AccazaSales.paymentAccount;
 
-check(aliasKey({method:'GCash · G-Cash', receivingAccountName:'G-Cash'}) === 'E-Wallet',
-  'A posted GCash sale must report under the E-Wallet classification that absorbed it.');
-check(aliasKey({method:'PayMaya · PayMaya', receivingAccountName:'PayMaya'}) === 'E-Wallet',
-  'A posted PayMaya sale must report under E-Wallet too — the classification is the rail, not the wallet.');
-check(aliasKey({method:'E-Wallet · G-Cash', paymentMethod:'E-Wallet'}) === 'E-Wallet',
-  'A sale posted after the reclassification must not be double-mapped.');
-check(aliasKey({method:'Bank Transfer · BDO', paymentMethod:'Bank Transfer'}) === 'Bank Transfer',
-  'An unrelated method must be untouched by the alias map.');
-check(account({method:'GCash · G-Cash', receivingAccountName:'G-Cash'}) === 'G-Cash'
-   && account({method:'E-Wallet · PayMaya'}) === 'PayMaya'
+check(aliasKey({method:'E-Wallet \u00b7 G-Cash', paymentMethod:'E-Wallet'}) === 'GCash',
+  'An e-wallet sale must report the wallet that received the money, not the E-Wallet rail.');
+check(aliasKey({method:'E-Wallet \u00b7 PayMaya', paymentMethod:'E-Wallet'}) === 'PayMaya',
+  'The second wallet under the same rail must report as itself, or two wallets collapse into one row.');
+check(aliasKey({method:'GCash \u00b7 G-Cash', receivingAccountName:'G-Cash', paymentMethod:'GCash'}) === 'GCash',
+  'A sale posted under the wallet name must land in the same channel as one posted under the rail.');
+check(aliasKey('gcash') === 'GCash' && aliasKey('paymaya') === 'PayMaya',
+  'A resolved wallet key must not be folded into the rail by the method alias list.');
+check(aliasKey('ewallet') === 'E-Wallet',
+  'A summary key that names no wallet must still report the rail rather than guess a wallet.');
+check(aliasKey({method:'E-Wallet \u00b7 ShopeePay', paymentMethod:'E-Wallet', receivingAccountName:'ShopeePay'}) === 'ShopeePay',
+  'A wallet no allowlist knows must still report by its own name, or a third wallet disappears into the rail.');
+check(aliasKey({method:'E-Wallet', paymentMethod:'E-Wallet', receivingAccountName:'E-Wallet'}) === 'E-Wallet',
+  'A rail whose account merely repeats the rail name is not a wallet.');
+check(aliasKey({method:'Bank Transfer \u00b7 Maya', paymentMethod:'Bank Transfer', receivingAccountName:'Maya'}) === 'Bank Transfer',
+  'A bank account whose name looks like a wallet must stay on its bank method.');
+check(aliasKey({method:'Bank Transfer \u00b7 BDO', paymentMethod:'Bank Transfer'}) === 'Bank Transfer',
+  'A bank method must be untouched by the wallet rule.');
+check(aliasKey({method:'E-Wallet \u00b7 BDO', paymentMethod:'E-Wallet', receivingAccountId:'acc_bdo'}, null, {acc_bdo:{name:'BDO',type:'bank'}}) === 'E-Wallet',
+  'Only a wallet account may replace the rail: a bank account on an e-wallet rail stays the rail.');
+check(account({method:'GCash \u00b7 G-Cash', receivingAccountName:'G-Cash'}) === 'G-Cash'
+   && account({method:'E-Wallet \u00b7 PayMaya'}) === 'PayMaya'
    && account({method:'Cash'}) === '',
   'The receiving account must resolve from the stored name, or the label suffix for legacy rows.');
 
-/* Merging the methods must not lose which wallet took the money. */
+/* Merging the channels must not lose which wallet took the money. */
 const wallet = [
-  {method:'GCash · G-Cash', receivingAccountName:'G-Cash', amount:605},
-  {method:'PayMaya · PayMaya', receivingAccountName:'PayMaya', amount:460},
+  {method:'E-Wallet \u00b7 G-Cash', paymentMethod:'E-Wallet', receivingAccountName:'G-Cash', amount:605},
+  {method:'E-Wallet \u00b7 PayMaya', paymentMethod:'E-Wallet', receivingAccountName:'PayMaya', amount:460},
 ];
 const rolled = {}, byAccount = {};
 wallet.forEach((p) => { const k = aliasKey(p); rolled[k] = (rolled[k]||0) + p.amount; (byAccount[k] = byAccount[k] || {})[account(p)] = p.amount; });
-check(rolled['E-Wallet'] === 1065, 'E-Wallet must total both wallets.');
-check(byAccount['E-Wallet']['G-Cash'] === 605 && byAccount['E-Wallet']['PayMaya'] === 460,
-  'The receiving-account split must survive the merge — a single E-Wallet figure with no breakdown is a headline without its backup.');
+check(rolled['GCash'] === 605 && rolled['PayMaya'] === 460,
+  `Each wallet must keep its own row, got ${JSON.stringify(rolled)}`);
+check(rolled['E-Wallet'] === undefined, 'No sale may report under the rail once its wallet is known.');
+check(byAccount['GCash'] && byAccount['GCash']['G-Cash'] === 605 && byAccount['PayMaya'] && byAccount['PayMaya']['PayMaya'] === 460,
+  `The receiving-account split must survive the rail-to-wallet resolution, got ${JSON.stringify(byAccount)}`);
 
 /* ---------- online orders carry no receiving account; resolve it the way the ledger does ---------- */
 const accounts = {
