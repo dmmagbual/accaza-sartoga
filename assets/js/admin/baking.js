@@ -122,7 +122,10 @@ function rd(){
   if(!A()){el.innerHTML='<div class="pz-card">Refresh the portal to load the baking service.</div>';return;}
   if(!window.inventoryMap&&!S.busy&&!S.inv){el.innerHTML='<div class="s" style="padding:.6rem .8rem;">Loading stock items…</div>';ld();return;}
   if(!window.inventoryMap&&S.inv&&Date.now()-S.invAt>=3e5&&!S.busy)ld();
-  var pid=sel(),p=pr()[pid]||null,b=p?bt():null,ar=pl(false),d=S.open?S.draft:null,ok=!!(p&&p.mapping&&p.mapping.confirmedAt);
+  /* The stored product record does not carry its own key, but the gate and the post payload both need
+     it: without it the card form rendered, the preview priced the batch correctly, and Post batch sat
+     disabled forever with "Add a baking product first." Carry the id. */
+  var pid=sel(),raw=pid?(pr()[pid]||null):null,p=raw?Object.assign({id:pid},raw):null,b=p?bt():null,ar=pl(false),d=S.open?S.draft:null,ok=!!(p&&p.mapping&&p.mapping.confirmedAt);
   el.innerHTML=CSS+'<div class="pz-h">🥐 The Art of Baking</div>'
    +'<div class="v" style="margin-bottom:.7rem;">'+pl(true).map(function(x){return '<button class="pz-btn '+(x.id===pid?'ok':'sec')+'" data-bkpid="'+esc(x.id)+'" style="padding:.35rem .8rem;">'+esc(x.emoji||'')+' '+esc(x.name||x.id)+'</button>';}).join(' ')
    +' <button class="pz-btn sec b" data-bknew>＋ Add product</button> <button class="pz-btn '+(S.open?'ok':'sec')+' b" data-bkcfg>⚙️ Configure product</button></div>'
