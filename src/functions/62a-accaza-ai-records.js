@@ -167,9 +167,13 @@ const ACCAZA_AI_RECORD_TOOLS = {
     },
   },
 };
+// A tool either asks for a Manila date range (the default) or declares its own arguments: `params`
+// are required arguments, `optional` are optional ones and mean the tool needs no date range.
 function accazaAiToolSchema(name){
-  const tool=ACCAZA_AI_RECORD_TOOLS[name],properties=tool.params||Object.assign({date_from:{type:"string",description:"First Manila date, YYYY-MM-DD."},date_to:{type:"string",description:"Last Manila date, YYYY-MM-DD (same as date_from for one day)."}},tool.extra||{});
-  return{name,description:tool.description,parameters:{type:"object",properties,required:tool.params?Object.keys(tool.params):["date_from"]}};
+  const tool=ACCAZA_AI_RECORD_TOOLS[name];
+  if(tool.params||tool.optional)return{name,description:tool.description,parameters:{type:"object",properties:Object.assign({},tool.params||{},tool.optional||{}),required:tool.params?Object.keys(tool.params):[]}};
+  const properties=Object.assign({date_from:{type:"string",description:"First Manila date, YYYY-MM-DD."},date_to:{type:"string",description:"Last Manila date, YYYY-MM-DD (same as date_from for one day)."}},tool.extra||{});
+  return{name,description:tool.description,parameters:{type:"object",properties,required:["date_from"]}};
 }
 function accazaAiGeminiTools(){return[{functionDeclarations:Object.keys(ACCAZA_AI_RECORD_TOOLS).map(accazaAiToolSchema)}];}
 function accazaAiOpenAiTools(){return Object.keys(ACCAZA_AI_RECORD_TOOLS).map(name=>({type:"function",function:accazaAiToolSchema(name)}));}
@@ -187,7 +191,7 @@ async function accazaAiRunRecordTool(ctx,name,args){
   const tool=ACCAZA_AI_RECORD_TOOLS[name],safeArgs=args&&typeof args==="object"?args:{},key=`${name}:${JSON.stringify(safeArgs)}`;
   if(!tool)return{error:`Unknown tool ${String(name).slice(0,40)}.`};
   if(ctx.cache[key])return ctx.cache[key];
-  let range=null;if(!tool.params){range=accazaAiDateRange(safeArgs,tool.days);if(range.error)return{error:range.error};}
+  let range=null;if(!tool.params&&!tool.optional){range=accazaAiDateRange(safeArgs,tool.days);if(range.error)return{error:range.error};}
   const dayBytes=await accazaAiRtdbDayBytes(ctx);
   // Check and reserve with no await in between, so tool calls the model issues in parallel cannot
   // all pass the same check: each one holds its maximum row count until it finishes.
@@ -203,14 +207,14 @@ async function accazaAiRunRecordTool(ctx,name,args){
   ctx.cache[key]=result;return result;
 }
 function accazaAiToolSources(ctx){return ctx.calls.map(call=>`${call.tool} ${call.args.month||[call.args.date_from,call.args.date_to].filter(Boolean).filter((value,index,list)=>list.indexOf(value)===index).join(" to ")}${call.failed?" (failed)":` (${call.records} records)`}`);}
-const ACCAZA_AI_AGENT_GUIDE = "You can read Accaza's live records with the provided tools. Work like an analyst: first decide which records would answer the question, call the tools (several at once if useful, and again to dig deeper), compare what they show, and only then write the reply. Every factual statement must come from the FACT PACK or a tool result: quote the exact times, shift IDs, staff names, counts and PHP amounts the records show. If the records do not show something, say so plainly instead of guessing, and label any inference as an inference. All dates and times are Manila time. For a question about what happened (an incident, a problem, a shift or a day), first check that day's shifts, sales, sync issues and audit log, then reply in this order: a one- or two-sentence direct answer; a \"Timeline\" label followed by a list of times and what the records show; a \"Cause\" paragraph that separates what the records prove from what is inferred; and a \"Still open\" list if anything remains unresolved. Do not add generic recommendations to an incident answer unless the user asks what to do. This overrides the instruction to use only the FACT PACK.";
+const ACCAZA_AI_AGENT_GUIDE = "You can read Accaza's live records with the provided tools. Work like an analyst: first decide which records would answer the question, call the tools (several at once if useful, and again to dig deeper), compare what they show, and only then write the reply. Every factual statement must come from the FACT PACK or a tool result: quote the exact times, shift IDs, staff names, counts and PHP amounts the records show. If the records do not show something, say so plainly instead of guessing, and label any inference as an inference. All dates and times are Manila time. For a question about what happened (an incident, a problem, a shift or a day), first check that day's shifts, sales, sync issues and audit log, then reply in this order: a one- or two-sentence direct answer; a \"Timeline\" label followed by a list of times and what the records show; a \"Cause\" paragraph that separates what the records prove from what is inferred; a \"Still open\" list if anything remains unresolved; then the two proactive sections (\"Recommended next steps\" and \"Watch-outs\") required of every Accaza analysis answer, tied to the records you read rather than to generic advice. This overrides the instruction to use only the FACT PACK.";
 function accazaAiAgentQuestion(question,facts,now){return`QUESTION: ${question}\n\nTODAY (Manila): ${financeDateFromTimestamp(now)}\n\nFACT PACK:\n${JSON.stringify(facts)}`;}
 async function askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now){
   const key=GEMINI_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Accaza AI is not configured. Set the GEMINI_API_KEY Firebase secret first.");
   const deadline=Date.now()+timeoutMs,contents=[...accazaAiHistory(history).map(row=>({role:row.role,parts:[{text:row.text}]})),{role:"user",parts:[{text:accazaAiAgentQuestion(question,facts,now)}]}];
   for(let round=0;round<=ACCAZA_AI_AGENT_MAX_ROUNDS;round+=1){
     const final=round===ACCAZA_AI_AGENT_MAX_ROUNDS,remaining=deadline-Date.now();if(remaining<3000)throw accazaAiProviderFailure("Gemini ran out of time while checking records.");
-    const {response,body}=await accazaAiFetchJson("Gemini",`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:`${ACCAZA_AI_ANALYSIS_INSTRUCTION} ${ACCAZA_AI_AGENT_GUIDE} ${ACCAZA_AI_STRATEGY_GUIDE}`}]},contents,tools:accazaAiGeminiTools(),toolConfig:{functionCallingConfig:{mode:final?"NONE":"AUTO"}},generationConfig:{temperature:0.15,maxOutputTokens:1400}})},remaining);
+    const {response,body}=await accazaAiFetchJson("Gemini",`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:`${ACCAZA_AI_ANALYSIS_SYSTEM_WITH_TOOLS} ${ACCAZA_AI_AGENT_GUIDE} ${ACCAZA_AI_STRATEGY_GUIDE}`}]},contents,tools:accazaAiGeminiTools(),toolConfig:{functionCallingConfig:{mode:final?"NONE":"AUTO"}},generationConfig:{temperature:0.15,maxOutputTokens:1400}})},remaining);
     if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Gemini could not answer right now."));
     const content=body&&body.candidates&&body.candidates[0]&&body.candidates[0].content,parts=content&&Array.isArray(content.parts)?content.parts:[],calls=parts.filter(part=>part&&part.functionCall);
     if(!calls.length||final)return accazaAiProseAnswer(parts.map(part=>part&&part.text||"").join("\n"));
@@ -223,7 +227,7 @@ async function askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now){
 }
 async function askOpenAiCompatibleAccazaAgent(label,url,key,model,question,facts,history,timeoutMs,ctx,now,options){
   const opts=options||{};
-  const deadline=Date.now()+timeoutMs,messages=[{role:"system",content:`${ACCAZA_AI_ANALYSIS_INSTRUCTION} ${ACCAZA_AI_AGENT_GUIDE} ${ACCAZA_AI_STRATEGY_GUIDE}`},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:accazaAiAgentQuestion(question,facts,now)}];
+  const deadline=Date.now()+timeoutMs,messages=[{role:"system",content:`${ACCAZA_AI_ANALYSIS_SYSTEM_WITH_TOOLS} ${ACCAZA_AI_AGENT_GUIDE} ${ACCAZA_AI_STRATEGY_GUIDE}`},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:accazaAiAgentQuestion(question,facts,now)}];
   for(let round=0;round<=ACCAZA_AI_AGENT_MAX_ROUNDS;round+=1){
     const final=round===ACCAZA_AI_AGENT_MAX_ROUNDS,remaining=deadline-Date.now();if(remaining<3000)throw accazaAiProviderFailure(`${label} ran out of time while checking records.`);
     const {response,body}=await accazaAiFetchJson(label,url,{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify(Object.assign({model,messages,temperature:0.15,max_tokens:opts.maxTokens||1400,stream:false,tools:accazaAiOpenAiTools(),tool_choice:final?"none":round===0&&opts.forceFirstTool?"required":"auto"},opts.body||{}))},remaining);
