@@ -1,4 +1,4 @@
-/* Homemade pastry batch card (admin 684, 14 Oct 2026).
+/* Homemade pastry batch card (admin 685, 14 Oct 2026).
 
    Proves the two things Danilo asked for before the build:
      1. the card can never proceed on a wrong stock item, and
@@ -111,7 +111,50 @@ assert.ok(inventory.includes('A batch card movement must carry a unit cost great
   assert.match(noStockUnit.message, /no stock unit/, 'the refusal says what to fix');
 }
 
-/* ── 4. Delayed posting: a short ingredient is accepted and flagged, never blocked ─────────── */
+/* ── 4. The rendered ingredient row is well-formed ─────────────────────────────────────────────
+   A build once lost a closing attribute quote here: the first <option> and the quantity input were
+   swallowed into an attribute value, so the ingredient picker appeared to snap back to its first
+   item, the recipe-unit picker rendered empty and there was no quantity box. Rendering the real row
+   is the only check that catches it. */
+{
+  const screen = fs.readFileSync('assets/js/admin/baking.js', 'utf8');
+  const start = screen.indexOf('function pr(){');
+  const end = screen.indexOf('function sumLines', start);
+  assert.ok(start >= 0 && end > start, 'the row helpers must exist');
+  const items = {
+    ing_cup: { name: '12oz Coffee Cup', unit: 'pc', cost: 3.5, stock: 200, inventoryAccount: '1230', costAccount: '5040' },
+    ing_flour: { name: 'Flour', unit: 'kg', cost: 80, stock: 12, inventoryAccount: '1240', costAccount: '5030' },
+  };
+  const rowContext = vm.createContext({
+    window: { __accazaBakingProducts: {}, inventoryMap: items },
+    S: { inv: null, pid: '' },
+    A: () => null,
+    esc: (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
+    peso: (v) => 'PHP' + (Number(v) || 0).toFixed(2),
+    r3: (v) => Math.round((Number(v) || 0) * 1000) / 1000,
+    CX: () => costing,
+    UM: { volume: ['ml', 'l', 'tsp', 'tbsp', 'cup', 'fl oz'], weight: ['mg', 'g', 'kg', 'lb', 'oz wt'], count: ['pc', 'pcs', 'ea', 'each', 'dozen'] },
+  });
+  vm.runInContext(screen.slice(start, end), rowContext);
+  const blank = rowContext.rw({ itemId: '', qty: '', unit: '', i: 0 }, 'bp');
+  const chosen = rowContext.rw({ itemId: 'ing_flour', qty: 0.5, unit: 'g', i: 1 }, 'bp');
+  for (const [label, html] of [['blank row', blank], ['flour row', chosen]]) {
+    assert.equal((html.match(/data-bpi="\d+"/g) || []).length, 3, `${label}: every line attribute must be closed`);
+    assert.ok(!html.includes('data-bpi="0 value'), `${label}: an attribute must never swallow the next one`);
+    assert.ok(html.includes('>— item —</option>'), `${label}: the ingredient placeholder must survive`);
+    assert.ok(/<input[^>]*data-bpf="qty"[^>]*\/>/.test(html), `${label}: the quantity box must render`);
+    assert.ok(/<select[^>]*data-bpf="unit"[^>]*>/.test(html), `${label}: the recipe-unit picker must render`);
+  }
+  assert.ok(/<option value="" selected>/.test(blank), 'a new line must show the placeholder, never a random item');
+  assert.ok(/data-bpf="itemId" data-bpi="0"/.test(blank), 'the ingredient picker must carry its row index');
+  assert.ok(/value="0.5"/.test(chosen), 'the typed quantity must survive the render');
+  assert.ok(/<option value="g" selected>g<\/option>/.test(chosen), 'the typed recipe unit must stay selected');
+  assert.ok(/<option value="kg"/.test(chosen), 'the item stock unit must be offered');
+  assert.ok(!/<option value="pc"/.test(chosen), 'a count unit must never be offered for a weight item');
+  assert.ok(/PHP0\.04/.test(chosen), 'the line cost must use the converted quantity (0.5 g of a PHP80/kg item)');
+}
+
+/* ── 5. Delayed posting: a short ingredient is accepted and flagged, never blocked ─────────── */
 for (const marker of [
   'wentNegative: balanceAfter < 0',
   'provisional: lines.some((line) => line.wentNegative)',
@@ -187,12 +230,12 @@ assert.ok(posBytes <= 650000 - 50000, `pos.js (${posBytes}) must stay under its 
 assert.ok(posBytes < 541000, `pos.js (${posBytes}) must carry only the baking wiring, not the screen itself`);
 
 /* ── 10. Release bookkeeping ──────────────────────────────────────────────────────────────── */
-assert.ok(manifest.builds.admin === 684, 'the admin build must be bumped to 684');
-assert.ok(manifest.builds.serviceWorkerCache === 680, 'the service-worker cache must be bumped to 680');
-assert.ok(adminHtml.includes('name="accaza-admin-build" content="684"'), 'admin.html must carry the new build');
-assert.ok(adminHtml.includes('build&nbsp;v684'), 'the visible admin build label must match');
-assert.ok(adminHtml.includes('module-loader.js?v=684'), 'the cache-busted runtime scripts must match the build');
-assert.ok(sw.includes("const CACHE='accaza-v680'"), 'the service worker cache name must match the manifest');
+assert.ok(manifest.builds.admin === 685, 'the admin build must be bumped to 684');
+assert.ok(manifest.builds.serviceWorkerCache === 681, 'the service-worker cache must be bumped to 680');
+assert.ok(adminHtml.includes('name="accaza-admin-build" content="685"'), 'admin.html must carry the new build');
+assert.ok(adminHtml.includes('build&nbsp;v685'), 'the visible admin build label must match');
+assert.ok(adminHtml.includes('module-loader.js?v=685'), 'the cache-busted runtime scripts must match the build');
+assert.ok(sw.includes("const CACHE='accaza-v681'"), 'the service worker cache name must match the manifest');
 assert.ok(sw.includes("/assets/js/admin/baking.js"), 'the Baking module must be precached for the offline POS shell');
 assert.ok(manifest.authoritativeFiles.includes('assets/js/admin/baking.js'), 'baking.js must be an authoritative file');
 assert.ok(manifest.authoritativeFiles.includes('src/functions/50a-baking.js'), '50a-baking.js must be an authoritative file');
