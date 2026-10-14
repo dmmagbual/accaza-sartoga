@@ -8,6 +8,7 @@
 - POS integrity and continuity are mandatory at all times. For any task that can affect the till, including shared auth, pricing, inventory/financial posting, startup, networking, bundles or service-worker updates, apply `accaza-pos-live-safety` before changes. Protect active shifts and durable queues; unresolved POS regressions block the affected release.
 - Use a specific Superpowers process skill only when its task trigger applies; do not invoke `using-superpowers` as a generic startup step. A required but missing AP skill or approved document blocks its dependent step; do not claim invocation or invent a replacement. Continue independent safe checks.
 - Skill activation does not authorize publication, deployment, financial mutations or messages. Push/publish only when Danilo requests it, and merge only with explicit authorization; preserve approvals already given for the exact task.
+- Operations and System Health work loads `accaza-operations-incident`: read the production source of truth (dead letters, failure budget, deployed function state) before describing an alert, never report a count from a screenshot, lead every handoff with live-or-not-live, the single decision needed and each command's blast radius, and label push, merge and deploy lines explicitly before any command block.
 
 Before substantive application code or configuration changes:
 
