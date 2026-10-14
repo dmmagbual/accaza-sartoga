@@ -8,6 +8,13 @@
 // is split or its ceiling re-reviewed before it blocks. Ceilings are never raised automatically.
 // A hard reserve is protected capacity inside a ceiling. Normal growth fails at the usable
 // limit (ceiling minus reserve), so the reserve cannot be silently consumed by feature work.
+// Owner decision (15 Oct 2026): a ceiling is a gauge, not a gate. Going past it prints a warning,
+// annotates the GitHub check and shows on System Health > Release capacity, but never stops a
+// release - with one exception. The POS keeps its protected emergency reserve as a hard stop, so
+// an urgent till fix can always ship even after the POS bundle has grown. File size only affects
+// how fast a screen opens; it never changes data, money or stock.
+export const HARD_LIMIT_FILES=Object.freeze(['assets/js/admin/pos.js']);
+export const isHardLimited=file=>HARD_LIMIT_FILES.includes(file);
 export const BUDGET_WARN_ROOM=0.025;
 // Any tracked runtime script at or above this size must have a ceiling below.
 export const BUDGET_COVERAGE_MIN_BYTES=10000;

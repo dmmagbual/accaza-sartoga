@@ -129,6 +129,10 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // guard protected nothing. Its replacement is the function that actually issues a new shift's
 // reference at shift open. Same guard, same assertion strength; guard count stays 577 and
 // executable checks stay at 33.
-if(guardDigest!=='bda3f362241932b77ea83df6e62ed08b8e171028300d49d5a612e027f87bc94e')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (owner release policy, 15 Oct): the Phase 6 customer-runtime and Phase 4C admin-core
+// guards now fail only when the module is missing; their size check became a console warning,
+// because byte ceilings are a gauge and only the POS emergency reserve may block a release (see
+// tests/bundle-budgets.mjs). Reviewed guard count unchanged at 577; executable checks unchanged.
+if(guardDigest!=='a96ff2975f914fb66ea737ab485954f12c7fdb0aeedd698d972e9a5bed40c7a0')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

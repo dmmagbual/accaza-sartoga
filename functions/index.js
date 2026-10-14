@@ -10503,15 +10503,18 @@ exports.markBackupDirtyDragonQuestLedger = backupDirtyTrigger("dragonQuestLedger
 exports.markBackupDirtyDragonQuestOrderIndex = backupDirtyTrigger("dragonQuestOrderIndex");
 exports.markBackupDirtyArchivedQrTickets = backupDirtyTrigger("archivedQrTickets");
 
+// 2 GiB (15 Oct 2026): the whole-database snapshot outgrew 512 MiB and crashed nightly on
+// 6-12 Oct unnoticed. ~25 s once a night, so the larger size costs cents a month and gives
+// years of growth room; the "Daily backup failed" owner alert texts if it is ever outgrown.
 exports.backupDatabaseDaily = onSchedule(
-  {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "1GiB"},
+  {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "2GiB"},
   async () => {await createVerifiedDatabaseBackup();return null;},
 );
 
 // A manager may recover a missed schedule without console access. This uses
 // the exact scheduled path and returns metadata only, never backup contents.
 exports.runDatabaseBackupNow = onCall(
-  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 300, memory: "1GiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 300, memory: "2GiB"},
   async (request) => {const db=getDatabase(),actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Database backup is restricted to management accounts.");return createVerifiedDatabaseBackup();},
 );
 

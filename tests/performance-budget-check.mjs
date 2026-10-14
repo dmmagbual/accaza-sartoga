@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {budgetState,usableBudget,BUNDLE_BUDGETS as budgets,BUNDLE_HARD_RESERVES as hardReserves} from './bundle-budgets.mjs';
+import {budgetState,usableBudget,isHardLimited,HARD_LIMIT_FILES,BUNDLE_BUDGETS as budgets,BUNDLE_HARD_RESERVES as hardReserves} from './bundle-budgets.mjs';
 
 const root=process.cwd();
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
@@ -11,9 +11,11 @@ if(budgetState(976,1000)!=='warn'||budgetState(974,1000)!=='ok'||budgetState(100
 if(usableBudget(1000,50)!==950||budgetState(950,1000,50)!=='warn'||budgetState(951,1000,50)!=='fail')fail('Hard-reserve policy is miscalibrated');
 for(const [file,reserve] of Object.entries(hardReserves))if(!Object.hasOwn(budgets,file)||!Number.isInteger(reserve)||reserve<=0||reserve>=budgets[file])fail(`${file} has an invalid hard-reserve configuration`);
 const posFile='assets/js/admin/pos.js',posReserve=hardReserves[posFile];
+if(HARD_LIMIT_FILES.length!==1||!isHardLimited(posFile))fail('Only the POS emergency reserve may block a release (owner decision 15 Oct 2026)');
 if(posReserve!==50000||budgets[posFile]!==650000)fail('POS lifeline must retain its reviewed 50 KB hard reserve inside the 650 KB envelope');
 for(const [file,maximum] of Object.entries(budgets)){
   const bytes=size(file),reserve=hardReserves[file]||0,usable=usableBudget(maximum,reserve),state=budgetState(bytes,maximum,reserve);
+  if(state==='fail'&&!isHardLimited(file)){warn(file,`${file} is past its review ceiling: ${bytes} > ${usable} bytes (${(100*bytes/usable).toFixed(1)}% used). This is a gauge, not a gate: the release continues. Split or trim it before more features land in that screen.`);continue;}
   if(state==='fail')fail(`${file} exceeds its usable byte budget: ${bytes} > ${usable}. ${reserve?`${reserve} protected bytes remain reserved for emergency POS recovery and cannot be consumed by ordinary feature growth. `:''}Split code out of the bundle, or explicitly review both the growth and reserve before changing the policy.`);
   if(state==='warn')warn(file,`${file} has ${usable-bytes} usable bytes left before its ${usable}-byte release limit (${(100*bytes/usable).toFixed(1)}% used).${reserve?` Its ${reserve}-byte emergency reserve remains protected.`:''} Split code out or re-review the ceiling before the next feature.`);
 }

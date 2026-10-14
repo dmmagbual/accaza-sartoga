@@ -256,12 +256,13 @@ assert.ok(posBytes <= 650000 - 50000, `pos.js (${posBytes}) must stay under its 
 assert.ok(posBytes < 541000, `pos.js (${posBytes}) must carry only the baking wiring, not the screen itself`);
 
 /* ── 10. Release bookkeeping ──────────────────────────────────────────────────────────────── */
-assert.ok(manifest.builds.admin === 688, 'the admin build must be bumped to 684');
-assert.ok(manifest.builds.serviceWorkerCache === 684, 'the service-worker cache must be bumped to 680');
-assert.ok(adminHtml.includes('name="accaza-admin-build" content="688"'), 'admin.html must carry the new build');
-assert.ok(adminHtml.includes('build&nbsp;v688'), 'the visible admin build label must match');
-assert.ok(adminHtml.includes('module-loader.js?v=688'), 'the cache-busted runtime scripts must match the build');
-assert.ok(sw.includes("const CACHE='accaza-v684'"), 'the service worker cache name must match the manifest');
+// Read from the manifest (15 Oct 2026) so every later release does not have to edit this test.
+const adminBuild = manifest.builds.admin, cacheBuild = manifest.builds.serviceWorkerCache;
+assert.ok(adminBuild >= 683 && cacheBuild >= 679, 'the Baking release (admin 683, cache 679) or later must be recorded');
+assert.ok(adminHtml.includes(`name="accaza-admin-build" content="${adminBuild}"`), 'admin.html must carry the manifest build');
+assert.ok(adminHtml.includes(`build&nbsp;v${adminBuild}`), 'the visible admin build label must match');
+assert.ok(adminHtml.includes(`module-loader.js?v=${adminBuild}`), 'the cache-busted runtime scripts must match the build');
+assert.ok(sw.includes(`const CACHE='accaza-v${cacheBuild}'`), 'the service worker cache name must match the manifest');
 assert.ok(sw.includes("/assets/js/admin/baking.js"), 'the Baking module must be precached for the offline POS shell');
 assert.ok(manifest.authoritativeFiles.includes('assets/js/admin/baking.js'), 'baking.js must be an authoritative file');
 assert.ok(manifest.authoritativeFiles.includes('src/functions/50a-baking.js'), '50a-baking.js must be an authoritative file');

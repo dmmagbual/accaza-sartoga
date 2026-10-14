@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {BUDGET_WARN_ROOM,BUNDLE_BUDGETS,BUNDLE_HARD_RESERVES,usableBudget} from '../tests/bundle-budgets.mjs';
+import {BUDGET_WARN_ROOM,BUNDLE_BUDGETS,BUNDLE_HARD_RESERVES,budgetState,isHardLimited,usableBudget} from '../tests/bundle-budgets.mjs';
 
 const root=process.cwd();
 const bundles=[
@@ -32,6 +32,14 @@ const posReserve=BUNDLE_HARD_RESERVES[posFile]||0;
 const posLimit=usableBudget(posEnvelope,posReserve);
 const posWarning=Math.round(posLimit*(1-BUDGET_WARN_ROOM));
 const posBytes=fs.statSync(path.join(root,posFile)).size;
-const posCapacity=`(function(global){\n  'use strict';\n  global.AccazaPosCapacity=Object.freeze({bytes:${posBytes},warning:${posWarning},limit:${posLimit},reserve:${posReserve},envelope:${posEnvelope}});\n})(window);\n`;
+// Release capacity (15 Oct 2026): every other guarded file, as a gauge. Only files near or past their
+// review ceiling are listed; the rest are counted. Deterministic (no timestamps) so rebuilds match.
+const releaseRows=Object.entries(BUNDLE_BUDGETS).filter(([file])=>!isHardLimited(file)&&fs.existsSync(path.join(root,file))).map(([file,ceiling])=>{
+  const bytes=fs.statSync(path.join(root,file)).size,state=budgetState(bytes,ceiling);
+  return {file,bytes,ceiling,pct:Math.round(1000*bytes/ceiling)/10,state:state==='fail'?'over':state};
+});
+const releaseWatch=releaseRows.filter(row=>row.state!=='ok').sort((a,b)=>b.pct-a.pct||(a.file<b.file?-1:1)).map(({file,bytes,ceiling,pct,state})=>({file,bytes,ceiling,pct,state}));
+const releaseCapacity=JSON.stringify({total:releaseRows.length,healthy:releaseRows.length-releaseWatch.length,warnRoom:BUDGET_WARN_ROOM,files:releaseWatch});
+const posCapacity=`(function(global){\n  'use strict';\n  global.AccazaPosCapacity=Object.freeze({bytes:${posBytes},warning:${posWarning},limit:${posLimit},reserve:${posReserve},envelope:${posEnvelope}});\n  global.AccazaReleaseCapacity=Object.freeze(${releaseCapacity});\n})(window);\n`;
 fs.writeFileSync(path.join(root,'assets/js/admin/pos-capacity.js'),posCapacity);
-console.log(`Built assets/js/admin/pos-capacity.js from ${posFile} (${posBytes} bytes).`);
+console.log(`Built assets/js/admin/pos-capacity.js from ${posFile} (${posBytes} bytes); release capacity lists ${releaseWatch.length} of ${releaseRows.length} files.`);
