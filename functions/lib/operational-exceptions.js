@@ -1,6 +1,7 @@
 "use strict";
 
 const {MAX_FAILED_EVENTS_PER_DAY} = require("./retry-guard");
+const {replicaRepairFor} = require("./dead-letter-resolution");
 const OrderService = require("./order-service");
 const Financial = require("./financial");
 
@@ -216,7 +217,7 @@ function buildOperationalExceptions(input, now = Date.now()) {
     if (row.status !== "open" || !at || now - at > DEAD_LETTER_WINDOW_MS) return;
     const params = Object.keys(row.params || {}).map((key) => `${key} ${row.params[key]}`).join(", ");
     exceptions.push(item("background_failure", "critical", row.id, row.functionStopped ? `Background task ${String(row.function || "unknown").slice(0, 80)} stopped for today after repeated failures` : `Background task ${String(row.function || "unknown").slice(0, 80)} stopped retrying`,
-      `${params ? params + ": " : ""}${String(row.error || "Unknown error").slice(0, 200)}. ${row.functionStopped ? `More than ${MAX_FAILED_EVENTS_PER_DAY} events of this task failed today (${Number(row.failedEventsToday) || "many"}), so further failures are not retried until tomorrow. Fix the cause first;` : `The system stopped retrying after ${Number(row.attempts) > 1 ? `${Number(row.attempts) - 1} retries` : "its retry limit"} to protect the database;`} confirm the linked record and complete it through its controlled repair workflow.`,
+      `${params ? params + ": " : ""}${String(row.error || "Unknown error").slice(0, 200)}. ${replicaRepairFor(row) ? `${row.functionStopped ? `More than ${MAX_FAILED_EVENTS_PER_DAY} events of this task failed today (${Number(row.failedEventsToday) || "many"}), so it stopped retrying them.` : "The system stopped retrying to protect the database."} This task only writes the sales-history copy used by Sales History and Overview; sales, cash, stock and Finance Books are not affected. Each health check rebuilds the copy from the saved order and closes this card itself. Do not re-enter the sale.` : `${row.functionStopped ? `More than ${MAX_FAILED_EVENTS_PER_DAY} events of this task failed today (${Number(row.failedEventsToday) || "many"}), so further failures are not retried until tomorrow. Fix the cause first;` : `The system stopped retrying after ${Number(row.attempts) > 1 ? `${Number(row.attempts) - 1} retries` : "its retry limit"} to protect the database;`} confirm the linked record and complete it through its controlled repair workflow.`}`,
       at, "operations"));
   });
   // Accaza AI provider health (Sep 2026): a question nothing could answer is critical; an

@@ -40,6 +40,49 @@ const PROBES = {
   },
 };
 
+// Historical replica triggers (Oct 2026). They write only the derived Firestore
+// sales-history copy and its monthly summary; RTDB stays the authority for sales,
+// cash, stock and Finance Books. Their controlled repair is to run the same
+// idempotent replication again from the current saved order, so the health scan
+// repairs them itself. Before this, 21 orders dead-lettered on 15 Oct 2026 (Firestore
+// contention) had no probe: the cards could only be closed by a note, which closed
+// the alert but left those sales missing from Sales History and the monthly summary.
+// The journal refresh trigger is keyed by journal, not order, and stays manual.
+const REPLICA_REPAIRS = {
+  replicateArchivedOrderToFirestore: {param: "orderId"},
+  refreshHistoricalOrderAfterInventoryPlan: {param: "orderId"},
+};
+// Bounded per scan by orders and time, so a backlog never turns one health check
+// into its own contention burst or a callable timeout. The rest wait for the next scan.
+const MAX_REPAIR_PER_SCAN = 25;
+const REPAIR_TIME_BUDGET_MS = 12000;
+
+function replicaRepairFor(row) {
+  const repair = row && REPLICA_REPAIRS[String(row.function || "")];
+  if (!repair) return null;
+  const id = String((row.params || {})[repair.param] || "");
+  return ORDER_ID.test(id) ? {id} : null;
+}
+
+// Open, in-window replica dead letters grouped by order (one repair closes every
+// letter of that order), oldest order first.
+function replicaRepairQueue(deadLetters, now, windowMs) {
+  const byOrder = new Map();
+  Object.keys(deadLetters || {}).forEach((id) => {
+    const row = deadLetters[id] || {}, at = Number(row.abandonedAt || 0), target = replicaRepairFor(row);
+    if (row.status !== "open" || !at || now - at > windowMs || !target) return;
+    const group = byOrder.get(target.id) || {orderId: target.id, ids: [], firstAt: at};
+    group.ids.push(id);
+    group.firstAt = Math.min(group.firstAt, at);
+    byOrder.set(target.id, group);
+  });
+  return [...byOrder.values()].sort((a, b) => a.firstAt - b.firstAt || (a.orderId < b.orderId ? -1 : 1));
+}
+
+function replicaRepairText(id, result) {
+  return `Order ${id}: sales-history copy and monthly summary ${result && result.state === "current" ? "confirmed current" : "rebuilt"} from the saved order.`;
+}
+
 function probeFor(row) {
   const probe = row && PROBES[String(row.function || "")];
   if (!probe) return null;
@@ -92,4 +135,4 @@ function withoutException(result, id) {
   return Object.assign({}, result, {exceptions, counts: {critical: exceptions.filter((x) => x.severity === "critical").length, warning: exceptions.filter((x) => x.severity === "warning").length, total: exceptions.length}});
 }
 
-module.exports = {NOTE_MIN, NOTE_MAX, MAX_VERIFY_PER_SCAN, PROBES, probeFor, evaluate, cleanNote, resolutionFields, closeIfOpen, withoutException};
+module.exports = {NOTE_MIN, NOTE_MAX, MAX_VERIFY_PER_SCAN, MAX_REPAIR_PER_SCAN, REPAIR_TIME_BUDGET_MS, PROBES, REPLICA_REPAIRS, probeFor, replicaRepairFor, replicaRepairQueue, replicaRepairText, evaluate, cleanNote, resolutionFields, closeIfOpen, withoutException};
