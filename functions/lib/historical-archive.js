@@ -73,8 +73,38 @@ function reportingCashier(order) {
   return {key:name.toLowerCase(), name};
 }
 
-function reportingPaymentKey(value) {
-  const raw = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+/* The wallet that received the money, for any e-money account. Known brands keep one spelling
+   (GCash, PayMaya) and a wallet no allowlist knows keeps its own name, so an e-wallet sale never
+   reports as the generic rail and two wallets never share a bucket. */
+function reportingWallet(value) {
+  const label = String(value == null ? "" : value).trim();
+  if (!label) return "";
+  const glued = label.split(" \u00b7 ")[0].trim();
+  const key = glued.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (!key) return "";
+  if (key.includes("gcash")) return "gcash";
+  if (key.includes("paymaya") || key === "maya") return "paymaya";
+  if (key === "ewallet" || key === "wallet") return "";
+  if (key.includes("wallet")) return key;
+  const rail = reportingPaymentBase(glued);
+  if (["cash", "grabfood", "foodpanda", "bank_transfer", "e_wallet", "unspecified"].includes(rail)) return "";
+  return key;
+}
+function reportingWalletOn(row) {
+  row = row || {};
+  const named = reportingWallet(row.receivingAccountName);
+  if (named) return named;
+  const label = String(row.method || "").trim(), cut = label.lastIndexOf(" \u00b7 ");
+  return cut > 0 ? reportingWallet(label.slice(cut + 3).trim()) : "";
+}
+function reportingPaymentKey(value, receivingAccount) {
+  const rail = reportingPaymentBase(value), wallet = reportingWallet(receivingAccount);
+  if (rail === "e_wallet" && wallet) return wallet;
+  return rail;
+}
+function reportingPaymentBase(value) {
+  /* The rail, never the " \u00b7 account" suffix: "Bank Transfer \u00b7 BDO" is still Bank Transfer. */
+  const raw = String(value == null ? "" : value).trim().replace(/\s\u00b7\s[^\u00b7]*$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
   if (raw === "cash") return "cash";
   if (raw.includes("grabfood")) return "grabfood";
   if (raw.includes("foodpanda")) return "foodpanda";
@@ -93,7 +123,7 @@ function reportingPaymentEntries(order, netCents, grossCents) {
   return rows.map((row, index) => {
     const net = index === rows.length - 1 ? netCents - assigned : Math.round(netCents * weights[index] / total);
     assigned += net;
-    return {key: reportingPaymentKey(row && row.method), netCents: Math.max(0, net)};
+    return {key: reportingPaymentKey(row && row.method, reportingWalletOn(row)), netCents: Math.max(0, net)};
   });
 }
 

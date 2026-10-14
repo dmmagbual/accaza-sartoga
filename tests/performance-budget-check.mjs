@@ -31,6 +31,11 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==678||manifest.builds.customer!==100||manifest.builds.books!==154||manifest.builds.serviceWorkerCache!==674)fail('Current build/cache versions are not synchronized');
+/* Read the release numbers from their markers rather than memorizing them, so this guard keeps
+   proving synchronization across a build bump instead of pinning one release. */
+const adminBuild=Number((read('admin.html').match(/name="accaza-admin-build" content="(\d+)"/)||[])[1]);
+const swCache=Number((read('sw.js').match(/const CACHE='accaza-v(\d+)'/)||[])[1]);
+const booksBuild=Number((read('books.html').match(/name="accaza-books-build" content="(\d+)"/)||[])[1]);
+if(manifest.builds.admin!==adminBuild||manifest.builds.customer!==100||manifest.builds.books!==booksBuild||manifest.builds.serviceWorkerCache!==swCache)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

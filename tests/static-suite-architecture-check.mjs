@@ -118,6 +118,11 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // now pins the deferred Finance Books bundle to its new cache key (controlled-transactions.js?v=154)
 // after Books was rebuilt to record an account number on each cash account. Same guard, same meaning;
 // guard count stays at 577 and executable checks stay at 33.
-if(guardDigest!=='380855607763838d4d06ac500e22457c8c30fc0a68f2131fba1af1919bce8654')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (payment channel classification): the same reviewed guard in
+// tests/static/30-server-release.mjs now pins the deferred Finance Books bundle to
+// controlled-transactions.js?v=155, because Books was bumped to 155 so Finance Books stops serving a
+// pre-fix copy of the shared sales authority from its old ?v=154 browser cache. Guard count stays at
+// 577 and executable checks stay at 33.
+if(guardDigest!=='e60f03678b4fa33c77394ad7da8cea84372db94583a1447192b0be198c94ff2a')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

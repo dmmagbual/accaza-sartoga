@@ -25,7 +25,7 @@ const HISTORICAL_PERIOD_MAX_MS = 93 * 86400000;
 const HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3;
 // V8 rebuilds cashier attribution from the sale-time seller. Older summaries
 // used the shift owner, which could assign crew sales to Maria/OWNER.
-const HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 8;
+const HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 9;
 
 function expectedReportingMonths(from, to) {
   const start = String(from || "").match(/^(\d{4})-(\d{2})$/), end = String(to || "").match(/^(\d{4})-(\d{2})$/);
