@@ -7,6 +7,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {createRequire} from 'node:module';
+const require = createRequire(import.meta.url);
+// The real operational rule, not a stub: an order waiting to be served or a
+// "not collected" outcome awaiting a manager must stay live.
+const OrderService = require('../functions/lib/order-service.js');
 
 const archiveSource = fs.readFileSync('src/functions/21-operational-controls.js', 'utf8');
 const maintenanceSource = fs.readFileSync('src/functions/60-maintenance.js', 'utf8');
@@ -35,7 +40,7 @@ function fakeDb(store, writes) {
 }
 const ctx = {
   financeKey: (value) => { if (!/^[A-Za-z0-9_-]+$/.test(String(value || ''))) throw new Error('Shift ID is invalid.'); return String(value); },
-  OrderService: {keepsOrderLive: (order) => order.servingQueue === true},
+  OrderService,
   archivedOrderRecord: (order, now, reason) => Object.assign({}, order, {status: 'Archived', prevStatus: order.status, archivedAt: now, archiveReason: reason}),
   operationalAuditRecord: (action, sourceType, sourceId, actor, details = {}) => Object.assign({action, sourceType, sourceId, actorUid: actor.uid, ts: 1}, details),
   HttpsError: class extends Error { constructor(code, message) { super(message); this.code = code; } },
@@ -59,10 +64,13 @@ const openShift = {SH: {'SH-1': {status: 'open'}}};
   assert.equal(check.reason, 'shift_open');
   assert.equal(writes.length, 0);
 }
-// 2. The serving queue is respected.
+// 2. The serving queue and a not-collected order awaiting a manager are respected,
+//    using the real order-service rule.
 {
-  const db = fakeDb({orders: {A: Object.assign({}, completed, {servingQueue: true})}, shifts: closedShift.SH}, []);
-  assert.equal((await ctx.orderArchiveCheck(db, 'A', {strict: true})).reason, 'serving_queue');
+  const serving = fakeDb({orders: {A: Object.assign({}, completed, {source: 'pos', channel: 'instore', service: {state: 'ready'}})}, shifts: closedShift.SH}, []);
+  assert.equal((await ctx.orderArchiveCheck(serving, 'A', {strict: true})).reason, 'serving_queue', 'an order still being served stays live');
+  const notCollected = fakeDb({orders: {A: Object.assign({}, completed, {source: 'pos', channel: 'instore', service: {state: 'not_collected'}})}, shifts: closedShift.SH}, []);
+  assert.equal((await ctx.orderArchiveCheck(notCollected, 'A', {strict: true})).reason, 'serving_queue', 'a not-collected order awaiting a manager stays live');
 }
 // 3. Strict mode reuses the live-projection rule, so an electronic payment a
 //    manager must still validate, or an unsettled platform order, stays in the
