@@ -46,3 +46,9 @@ Promptness beats ceremony. "Complete and tested, not live yet, say push it" beat
 - A repeated-failure incident is closed only when the cause is fixed, the fix is live, the daily budget for that function is no longer tripping, and every dead letter is closed either by verification or by a note naming what was checked.
 - Name the affected records, grouped by cause, with a count - never as an unsorted pile and never as "a few".
 - State the residual limits: budget already spent for the day, missing probe, replicas still stale, orders still to confirm.
+
+## 5. Release operations
+
+- Never run a manual `firebase deploy --only functions` while the merge deploy workflow is running. One full deploy is 196 Cloud Run services, and two overlapping full deploys exhaust the regional CPU quota (`Quota exceeded for total allowable CPU per project per region`), which fails the container health check of whichever revisions are mid-rollout.
+- A failed deploy step does not remove the previous revision. Before treating a red deploy as a code fault, verify per function: `gcloud functions describe <function> --region=asia-southeast1 --project=accaza-sartoga --format="value(state,updateTime,eventTrigger.retryPolicy)"`, and compare the update times across all functions to see whether the deployed set is current.
+- A deployment is complete only when every function carries the new update time, the rules steps ran, and `gh run view <id>` is green. Report which functions failed to update and whether they are still serving valid code, not just that the run failed.
