@@ -53,59 +53,29 @@ node tools/verify-backup.mjs restore-drill-backup.json
 
 It prints INTACT (SHA-256 matches the sealed envelope), BALANCED (every financialMovement and Books journal balances), the clearing/suspense standing at backup time, and a final **PASS** / **FAIL** (exit 0 / 1). A FAIL names the exact node/row (e.g. `financialMovements/<id>: debits and credits differ by N cent(s)`) — stop and investigate before trusting that backup. This step alone (download + verify) is a valid quick "is my latest backup good?" check; Steps 3–4 add the full restore-fidelity drill.
 
-## 5. Step 3 — Stand up an ISOLATED target
+## 5. Step 3 — Start an ISOLATED target (local emulator)
 
-Pick one. Never point at production.
+Never point at production. The drill tool below refuses anything but a local emulator.
 
-**Option A — Local Emulator (recommended: zero cost, zero risk, no cloud project).**
-```bash
-firebase emulators:start --only database --project demo-accaza-restore
-# leave this running in its own terminal; note the DB emulator host it prints (default 127.0.0.1:9000)
+On Windows with Java 17+, start the Realtime Database emulator **directly with Java** and give it a temp folder without spaces. A user folder with a space (`C:\Users\Danilo Magbual`) makes Java's internal pipe fail, and `firebase emulators:start` then exits with code 1 and an empty log:
+
+```powershell
+New-Item -ItemType Directory -Force -Path C:\AccazaJavaTmp | Out-Null
+java -Djdk.net.unixdomain.tmpdir=C:\AccazaJavaTmp -Djava.io.tmpdir=C:\AccazaJavaTmp -jar "$env:USERPROFILE\.cache\firebase\emulators\firebase-database-emulator-v4.11.2.jar" --port 9123
+# leave it running; it prints "Listening at localhost:9123"
 ```
 
-**Option B — Dedicated staging project** (create once, e.g. `accaza-restore-staging`, empty RTDB). Use only if you need a cloud target. Never `accaza-sartoga`.
+(Option B, a cloud target, is the UAT project `accazacoffeepos-uat`. Never `accaza-sartoga`.)
 
-## 6. Step 4 — Restore into the target and verify fidelity
+## 6. Step 4 — Restore into the target and verify fidelity (one command)
 
-Save this as `restore-drill.mjs`, then run it. It restores `envelope.data`, reads it back, re-fingerprints, and spot-checks headline balances.
-
-```js
-// restore-drill.mjs  —  run against the EMULATOR or a STAGING project only.
-import fs from 'node:fs';
-import admin from 'firebase-admin';
-import R from './functions/lib/recovery-validation.js' assert { type: 'commonjs' };
-
-// EMULATOR target (Option A):
-process.env.FIREBASE_DATABASE_EMULATOR_HOST = '127.0.0.1:9000';
-admin.initializeApp({ databaseURL: 'https://demo-accaza-restore-default-rtdb.firebaseio.com' });
-// STAGING target (Option B) instead: remove the EMULATOR line above and initializeApp with the staging databaseURL + credential.
-
-const env = JSON.parse(fs.readFileSync('restore-drill-backup.json', 'utf8'));
-const pre = R.validateEnvelope(env, {});
-if (!pre.ok) { console.error('Envelope invalid, aborting:', pre.issues); process.exit(1); }
-
-const db = admin.database();
-await db.ref('/').set(env.data);                       // RESTORE
-const restored = (await db.ref('/').get()).val();       // READ BACK
-const restoredSha = R.fingerprint(restored);
-
-console.log('restored SHA-256 :', restoredSha);
-console.log('envelope SHA-256 :', env.integrity.dataSha256);
-console.log('FIDELITY MATCH   :', restoredSha === env.integrity.dataSha256);
-
-// Spot-check a few headline numbers survived (adjust node paths to your chart)
-const fm = restored.financialMovements || {};
-let dr=0, cr=0; Object.values(fm).forEach(m => (Array.isArray(m.lines)?m.lines:[]).forEach(l => { dr+=Math.round((+l.debit||0)*100); cr+=Math.round((+l.credit||0)*100); }));
-console.log('financialMovements total debits==credits:', dr===cr, `(dr ${dr/100}, cr ${cr/100})`);
-console.log('excluded-by-design nodes absent:', env.excluded.every(n => restored[n]===undefined));
-await admin.app().delete();
+```powershell
+node tools/restore-drill.cjs "<path to downloaded backup.json>" 9123
 ```
 
-```bash
-node restore-drill.mjs
-```
+It restores every node, reads the whole database back, re-fingerprints it and re-checks double entry, then prints **PASS** or **FAIL** (exit 0 / 2). It forces the emulator host, loads no credentials and refuses a non-empty target, so it cannot write to production.
 
-**Pass criteria:** `FIDELITY MATCH: true`, debits==credits `true`, and excluded nodes absent `true`. That is your proof the ledger restores exactly.
+**Pass criteria:** `FIDELITY MATCH: true`, `movements balanced: true`, `excluded absent: true`. Stop the emulator afterwards (Ctrl+C); its data disappears with it.
 
 ## 7. Step 5 — Record evidence & close the manifest item
 
@@ -146,5 +116,14 @@ Recommended: **A** as the standing control, **C** starting this week until A is 
 | `gsutil ls` empty | Backup job never ran or bucket path changed. Check the `backupDatabaseDaily` function logs and `/systemHealth/backups/latest`. |
 | `VALID: false` with `differ by N cent(s)` | A Finance/Books row in the backup is unbalanced — a real data-integrity issue in prod at backup time. Investigate that source id before trusting the snapshot. |
 | `matches envelope: false` | The file was truncated/corrupted in transit — re-download. |
+| Emulator exits with code 1 and an empty log (Windows) | Java cannot open its internal pipe under a user folder with a space. Start it with Java directly and `-Djdk.net.unixdomain.tmpdir=C:\AccazaJavaTmp` (Step 3). |
 | `FIDELITY MATCH: false` | The restore target altered data (wrong target, partial write, or a non-empty target). Wipe target and re-run. |
 | Excluded nodes present after restore | You restored an old `backup-v1` or a hand-edited file — expected only for the six transient nodes. |
+
+---
+
+## 11. Drill log
+
+| Date | Backup | Quick check | Full restore | By |
+|---|---|---|---|---|
+| 15 Oct 2026 | `db-backups/accaza-2026-10-14-19-00-04.json` (full, 29.3 MB, 134 nodes), SHA-256 `1049d29c5bc5a5c2a69f5401c7c429b01a1f89d51b9820565f9b039c04a5879c` | PASS: intact, balanced; clearing/suspense 1190, 1290, 1900, 2090, 5090 all 0.00 | PASS: 134/134 nodes in 5.1 s, fidelity match, 2,441 movements balanced (debits = credits 9,220,890.75), excluded nodes absent. Counts: archivedOrders 1,224, orders 28, shifts 170, inventoryMovements 12,426, payables 31 | Claude for Danilo, local emulator, while the POS was live (no production access beyond downloading the backup file) |
