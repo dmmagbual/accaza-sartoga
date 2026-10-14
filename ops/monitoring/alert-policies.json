@@ -1,0 +1,50 @@
+{
+  "_comment": "Owner alerts for Accaza production (accaza-sartoga). Applied by tools/apply-monitoring-alerts.ps1, which attaches every notification channel whose display name starts with 'Danilo'. Phone numbers never live in this public repository. Log-match alerts read Cloud Logging only: no Firebase reads, downloads or function calls. tests/monitoring-alerts-check.mjs fails if a log message these filters depend on is renamed or removed.",
+  "policies": [
+    {
+      "displayName": "Accaza CRITICAL - Background task stopped",
+      "severity": "CRITICAL",
+      "filter": "severity>=ERROR AND jsonPayload.deadLetter:* AND jsonPayload.message:\"Retry budget exhausted\"",
+      "labelExtractors": {"function": "EXTRACT(jsonPayload.function)", "order": "EXTRACT(jsonPayload.params.orderId)"},
+      "rateLimit": "1800s",
+      "subject": "Accaza: background task stopped (${log.extracted_label.function})",
+      "doc": "A server task kept failing and stopped retrying to protect the database. The till keeps selling.\n\n**Do now:** open Admin > System Health and press **Run health check now**. Sales-history tasks repair themselves on that check; posting tasks show what to complete.\n\n**Do not** re-enter any sale."
+    },
+    {
+      "displayName": "Accaza CRITICAL - Daily backup failed",
+      "severity": "CRITICAL",
+      "filter": "resource.type=\"cloud_run_revision\" AND (resource.labels.service_name=\"backupdatabasedaily\" OR resource.labels.service_name=\"rundatabasebackupnow\") AND severity>=ERROR",
+      "labelExtractors": {"service": "EXTRACT(resource.labels.service_name)"},
+      "rateLimit": "3600s",
+      "subject": "Accaza: database backup failed",
+      "doc": "Tonight's database backup did not finish (6-12 Oct 2026 it ran out of memory seven nights in a row unnoticed).\n\n**Do now:** in Admin run a manual backup (Run database backup now). If it fails again, the backup function needs a fix before the next night. Live data is unaffected."
+    },
+    {
+      "displayName": "Accaza CRITICAL - Server function out of memory",
+      "severity": "CRITICAL",
+      "filter": "resource.type=\"cloud_run_revision\" AND severity>=ERROR AND textPayload:\"Memory limit of\" AND -resource.labels.service_name=\"backupdatabasedaily\" AND -resource.labels.service_name=\"rundatabasebackupnow\"",
+      "labelExtractors": {"service": "EXTRACT(resource.labels.service_name)"},
+      "rateLimit": "3600s",
+      "subject": "Accaza: ${log.extracted_label.service} ran out of memory",
+      "doc": "A server function crashed because its data outgrew its memory. Its work was not completed and will usually be retried.\n\n**Do now:** open System Health and run a health check; ask Claude/Codex to raise that function's memory."
+    },
+    {
+      "displayName": "Accaza CRITICAL - Finance safety guard tripped",
+      "severity": "CRITICAL",
+      "filter": "severity>=ERROR AND (jsonPayload.message:\"Unsafe atomic update blocked\" OR (jsonPayload.message:\"Financial operation failed\" AND jsonPayload.expected=false))",
+      "labelExtractors": {"operation": "EXTRACT(jsonPayload.operation)", "context": "EXTRACT(jsonPayload.context)"},
+      "rateLimit": "1800s",
+      "subject": "Accaza: finance safety guard tripped",
+      "doc": "A Finance Books write was refused because it could not be made safely, or a posting crashed unexpectedly. Nothing half-posted: the guard blocks the whole write.\n\n**Do now:** note what staff were doing at that time, then open Finance Books > Controls audit."
+    },
+    {
+      "displayName": "Accaza CRITICAL - POS sale not saved",
+      "severity": "CRITICAL",
+      "filter": "severity>=ERROR AND jsonPayload.message:\"POS sale not saved\"",
+      "labelExtractors": {"alert": "EXTRACT(jsonPayload.alert)"},
+      "rateLimit": "1800s",
+      "subject": "Accaza: POS sale not saved",
+      "doc": "The server refused a till sale (permanent error, 3 failed tries or 5 minutes). The till still holds it in its queue.\n\n**Do now:** Admin > Register Ops > Sales needing recovery. Recover or dismiss it. Do not ring it up again."
+    }
+  ]
+}
