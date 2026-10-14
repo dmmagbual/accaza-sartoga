@@ -1,4 +1,4 @@
-/* Homemade pastry batch card (admin 686, 14 Oct 2026).
+/* Homemade pastry batch card (admin 687, 14 Oct 2026).
 
    Proves the two things Danilo asked for before the build:
      1. the card can never proceed on a wrong stock item, and
@@ -152,6 +152,17 @@ assert.ok(inventory.includes('A batch card movement must carry a unit cost great
   assert.ok(/<option value="kg"/.test(chosen), 'the item stock unit must be offered');
   assert.ok(!/<option value="pc"/.test(chosen), 'a count unit must never be offered for a weight item');
   assert.ok(/PHP0\.04/.test(chosen), 'the line cost must use the converted quantity (0.5 g of a PHP80/kg item)');
+  /* The post gate. The stored product record does not carry its own key, so the render must attach
+     it: without that the form appeared, the preview priced the batch, and Post batch stayed disabled
+     with "Add a baking product first." */
+  const product = { name: 'Choco Chip Cookie', pastryItemId: 'ing_cup', mapping: { confirmedAt: 1 } };
+  const card = { lines: [{ itemId: 'ing_flour', qty: 1 }], pieces: 17 };
+  assert.equal(rowContext.blk(Object.assign({ id: 'bp1' }, product), card), '', 'a product carrying its id must pass the post gate');
+  assert.match(rowContext.blk(product, card), /Add a baking product first/, 'the raw product record has no id, so the gate must refuse it');
+  assert.match(rowContext.blk(Object.assign({ id: 'bp1' }, product, { mapping: null }), card), /Confirm the mapping/, 'an unconfirmed mapping must block');
+  assert.match(rowContext.blk(Object.assign({ id: 'bp1' }, product), { lines: [], pieces: 17 }), /at least one ingredient/, 'a card with no used line must block');
+  assert.match(rowContext.blk(Object.assign({ id: 'bp1' }, product), { lines: card.lines, pieces: 0 }), /pieces/, 'a card with no pieces must block');
+  assert.ok(/Object\.assign\(\{id:pid\},raw\)/.test(screen), 'the render must attach the product id before gating or posting');
 }
 
 /* ── 5. Delayed posting: a short ingredient is accepted and flagged, never blocked ─────────── */
@@ -244,12 +255,12 @@ assert.ok(posBytes <= 650000 - 50000, `pos.js (${posBytes}) must stay under its 
 assert.ok(posBytes < 541000, `pos.js (${posBytes}) must carry only the baking wiring, not the screen itself`);
 
 /* ── 10. Release bookkeeping ──────────────────────────────────────────────────────────────── */
-assert.ok(manifest.builds.admin === 686, 'the admin build must be bumped to 684');
-assert.ok(manifest.builds.serviceWorkerCache === 682, 'the service-worker cache must be bumped to 680');
-assert.ok(adminHtml.includes('name="accaza-admin-build" content="686"'), 'admin.html must carry the new build');
-assert.ok(adminHtml.includes('build&nbsp;v686'), 'the visible admin build label must match');
-assert.ok(adminHtml.includes('module-loader.js?v=686'), 'the cache-busted runtime scripts must match the build');
-assert.ok(sw.includes("const CACHE='accaza-v682'"), 'the service worker cache name must match the manifest');
+assert.ok(manifest.builds.admin === 687, 'the admin build must be bumped to 684');
+assert.ok(manifest.builds.serviceWorkerCache === 683, 'the service-worker cache must be bumped to 680');
+assert.ok(adminHtml.includes('name="accaza-admin-build" content="687"'), 'admin.html must carry the new build');
+assert.ok(adminHtml.includes('build&nbsp;v687'), 'the visible admin build label must match');
+assert.ok(adminHtml.includes('module-loader.js?v=687'), 'the cache-busted runtime scripts must match the build');
+assert.ok(sw.includes("const CACHE='accaza-v683'"), 'the service worker cache name must match the manifest');
 assert.ok(sw.includes("/assets/js/admin/baking.js"), 'the Baking module must be precached for the offline POS shell');
 assert.ok(manifest.authoritativeFiles.includes('assets/js/admin/baking.js'), 'baking.js must be an authoritative file');
 assert.ok(manifest.authoritativeFiles.includes('src/functions/50a-baking.js'), '50a-baking.js must be an authoritative file');
