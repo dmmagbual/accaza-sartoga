@@ -56,16 +56,18 @@ function T(cols,body){return '<div style="overflow-x:auto;"><table class="pz-tbl
 function rw(l,pre){
   var d=' data-'+pre,i=l.i,u=iU(l.itemId),cu=l.unit||u,C=CX(),x=sq(l),m=iC(l.itemId),s;
   if(u&&C&&!C.compatible(cu,u))cu=u; s=d+'f="itemId"'+d+'i="'+i;
-  return '<tr><td><select class="pz-in"'+s+'>'+opt(l.itemId,'ing')+'</select></td><td><input class="pz-in" type="number" step="any"'+(s=s.replace('itemId','qty'))+' value="'+esc(l.qty)+'" placeholder="0"/></td><td><select class="pz-in"'+s.replace('qty','unit')+'>'+uopts(cu,u)+'</select></td><td class="r">'+peso(m)+' · '+(x?peso(x*m):'—')+'</td><td><button class="pz-btn warn p"'+d+'del="'+i+'">✕</button></td></tr>';
+  return '<tr><td><select class="pz-in"'+s+'>'+opt(l.itemId,'ing')+'</select></td><td><select class="pz-in"'+s.replace('itemId','unit')+'>'+uopts(cu,u)+'</select></td><td><input class="pz-in" type="number" step="any"'+(s.replace('itemId','qty'))+' value="'+esc(l.qty)+'" placeholder="0"/></td><td class="r">'+peso(m)+' · '+(x?peso(x*m):'—')+'</td><td><button class="pz-btn warn p"'+d+'del="'+i+'">✕</button></td></tr>';
 }
-function R(ls,pre){return (ls||[]).map(function(l,i){return rw({itemId:l.itemId,qty:l.qty,unit:l.unit,i:i},pre);}).join('');}
+function sumLines(ls){return (ls||[]).reduce(function(s,l){var x=sq(l);return s+(x==null?0:x*iC(l.itemId));},0);}
+function TOTROW(ls){return '<tr style="font-weight:700;"><td colspan="3">Total cost</td><td class="r">'+peso(sumLines(ls))+'</td><td></td></tr>';}
+function R(ls,pre){return (ls||[]).map(function(l,i){return rw({itemId:l.itemId,qty:l.qty,unit:l.unit,i:i},pre);}).join('')+TOTROW(ls);}
 function pv(p,b){
   var r=((b||{}).lines||[]).map(function(l){if(!l.itemId)return '';var q=Number(l.qty)||0,x=sq(l),m=iC(l.itemId),n=q<=0,u=n?'':l.unit||iU(l.itemId),v=(n||!x)?'—':peso(x*m);
-   return '<tr'+(n?' style="color:var(--tl);opacity:.6;"':'')+'><td>'+esc(iN(l.itemId))+'</td><td class="r">'+(n?'0':esc(r3(q)))+'</td><td>'+esc(u)+'</td><td class="r">'+peso(m)+' · '+v+'</td><td class="s e">'+(n?'not used':(x==null?iNC(l):''))+'</td></tr>';}).join('');
+   return '<tr'+(n?' style="color:var(--tl);opacity:.6;"':'')+'><td>'+esc(iN(l.itemId))+'</td><td>'+esc(u)+'</td><td class="r">'+(n?'0':esc(r3(q)))+'</td><td class="r">'+peso(m)+' · '+v+'</td><td class="s e">'+(n?'not used':(x==null?iNC(l):''))+'</td></tr>';}).join('');
   var t=tot(b),n=Number((b||{}).pieces)||0,a=acc(p);
   var g=((b||{}).lines||[]).filter(function(l){var x=sq(l);return x!=null&&iS(l.itemId)<x;}).map(function(l){return '<div class="s w">⚠ '+esc(iN(l.itemId))+' will go to '+esc(r3(iS(l.itemId)-sq(l)))+' '+esc(iU(l.itemId))+'</div>';}).join('');
-  return T([['Ingredient'],['Qty',1],['Unit'],['Cost',1],['']],r)+g
-   +'<div class="m t"><b>Total batch cost '+peso(t)+'</b> · '+esc(n)+' piece(s) · cost per piece '+peso(n>0?r3(t/n):0)+'</div>'
+  return T([['Ingredient'],['Recipe unit'],['Quantity',1],['Cost',1],['']],r)+g
+   +'<div class="m t"><b>Total cost '+peso(t)+'</b> · '+esc(n)+' piece(s) · cost per piece '+peso(n>0?r3(t/n):0)+'</div>'
    +'<div class="s">Debit '+esc(a[0])+' '+esc(iN((p||{}).pastryItemId))+' · Credit '+esc(a[0])+' ingredients</div>';
 }
 function pn(d,ar){
@@ -77,7 +79,7 @@ function pn(d,ar){
    +'<div class="v"><div><span class="pz-lbl">Emoji</span><input class="pz-in" data-bpemoji value="'+esc(d.emoji)+'" style="width:70px;"/></div>'
    +'<div style="flex:1;min-width:170px;"><span class="pz-lbl">Name</span><input class="pz-in" data-bpname value="'+esc(d.name)+'" placeholder="e.g. Choco Chip Cookie"/></div>'
    +'<div style="flex:1;min-width:220px;"><span class="pz-lbl">Pastry stock item (1240)</span><select class="pz-in" data-bppastry>'+opt(d.pastryItemId,'pastry')+'</select></div></div>'
-   +'<div class="t"><span class="pz-lbl">Template — usual ingredients for one bake</span>'+T([['Ingredient'],['Qty'],['Unit'],['Cost'],['']],R(d.template,'bp'))
+   +'<div class="t"><span class="pz-lbl">Template — usual ingredients for one bake</span>'+T([['Ingredient'],['Recipe unit'],['Quantity'],['Cost'],['']],R(d.template,'bp'))
    +'<button class="pz-btn sec p" data-bpadd>＋ Add line</button></div>'
    +'<div id="bkMapMsg" class="m '+(m&&m.confirmedAt?'':'s')+'"'+(m&&m.confirmedAt?' style="color:#155724;"':'')+'>'+(m&&m.confirmedAt?('✓ Mapping confirmed · '+esc(m.confirmedBy||'')+' · '+esc(st(m.confirmedAt))):'Mapping not confirmed — no card can be posted until it is.')+'</div>'
    +'<div class="v t"><button class="pz-btn ok" data-bpsave>💾 Save product</button><button class="pz-btn sec" data-bpcheck>Check mapping</button>'+(d.isNew?'':'<button class="pz-btn warn" data-bparch>Archive</button>')+'</div>'+h+'</div>';
@@ -89,7 +91,7 @@ function fm(p,b){
    +'<div><span class="pz-lbl">Baked by</span><input class="pz-in" data-bkby value="'+esc(b.bakedBy)+'" style="width:140px;"/></div>'
    +'<div style="flex:1;min-width:150px;"><span class="pz-lbl">Note (optional)</span><input class="pz-in" data-bknote value="'+esc(b.note)+'"/></div>'
    +'<div><span class="pz-lbl">Actual pieces</span><input class="pz-in" type="number" step="1" min="1" data-bkpieces value="'+esc(b.pieces)+'" style="width:80px;"/></div></div>'
-   +'<div class="t"><span class="pz-lbl">Ingredients used — editable; leave a line at 0 to skip it</span>'+T([['Ingredient'],['Qty'],['Unit'],['Cost'],['']],R(b.lines,'bk'))
+   +'<div class="t"><span class="pz-lbl">Ingredients used — editable; leave a line at 0 to skip it</span>'+T([['Ingredient'],['Recipe unit'],['Quantity'],['Cost'],['']],R(b.lines,'bk'))
    +'<button class="pz-btn sec p" data-bkaddline>＋ Add line</button></div>'
    +'<div class="t"><span class="pz-lbl">Preview — what this card will post</span><div id="bkPreview">'+pv(p,b)+'</div></div>'
    +'<div id="bkWhy" class="m">'+(no?'<span class="e">'+esc(no)+'</span>':'')+'</div>'
