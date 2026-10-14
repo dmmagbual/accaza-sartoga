@@ -46,7 +46,12 @@ exports.syncOfflinePosSale = onCall(
       result = await OfflineSync.syncOfflinePosSaleCommand({db, actor, data, textField, money, listFromFirebase, activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
     } catch (error) {
       // Capture the rejected sale and alert management; the device keeps it queued too.
-      try { await OfflineSync.recordSyncAlert(db, actor, data, error, Date.now(), (title, body) => notifyStaff(db, title, body, "/admin.html#tab-ops", "management")); } catch (alertError) { logger.error("POS sync alert could not be recorded", {error: String(alertError && alertError.message || alertError)}); }
+      try { await OfflineSync.recordSyncAlert(db, actor, data, error, Date.now(), (title, body) => {
+        // Logged once per rejected sale (the same moment management is notified) so the
+        // "Accaza CRITICAL - POS sale not saved" Cloud Monitoring alert can text the owner.
+        logger.error("POS sale not saved", {alert: String(body || "").slice(0, 180)});
+        return notifyStaff(db, title, body, "/admin.html#tab-ops", "management");
+      }); } catch (alertError) { logger.error("POS sync alert could not be recorded", {error: String(alertError && alertError.message || alertError)}); }
       throw error;
     }
     try { await OfflineSync.resolveSyncAlert(db, result.transactionId, Date.now()); } catch (_resolveError) { /* the sale is saved; a stale alert clears on the next scan */ }
