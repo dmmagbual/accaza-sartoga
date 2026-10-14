@@ -1417,6 +1417,9 @@ function posPinValid(pin, row) {
   const value = String(pin || "").trim();
   return /^[0-9]{4,6}$/.test(value) && row && row.pinSalt && row.pinHash && crypto.timingSafeEqual(Buffer.from(posPinHash(value, row.pinSalt), "hex"), Buffer.from(row.pinHash, "hex"));
 }
+// The bundle loads this section before the one that owns durableShiftReference, but every
+// function declaration is hoisted to module scope, so the format stays defined in one place.
+function shiftReferenceFor(shift) { return durableShiftReference(shift, shift && shift.id); }
 
 // Owns the identity bridge between Firebase Authentication and the POS staff master.
 // A staff member may never choose another profile or send a client-selected owner ID.
@@ -1453,6 +1456,9 @@ exports.openLinkedPosShift = onCall(
     const counts = data.openCount && typeof data.openCount === "object" ? data.openCount : {}, openingFloat = Number(data.openingFloat);
     if (!Number.isFinite(openingFloat) || openingFloat < 0 || openingFloat > 1000000) throw new HttpsError("invalid-argument", "Opening cash count is invalid.");
     const settings=(/* download-ok: bounded one POS settings document is required to enforce the configured register float */await db.ref("/posSettings").get()).val()||{},fixed=settings.fixedFloat==null?null:Number(settings.fixedFloat),now = Date.now(), id = `SH-${now.toString().slice(-6)}-${crypto.randomBytes(3).toString("hex")}`, rec = {id,staff:posStaffText(staff.name,"Staff name",120),staffId,accountUid:actor.uid,openingFloat:Math.round(openingFloat*100)/100,openCount:counts,drawer:counts,openAt:now,status:"open",floatMode:fixed==null?"opening-count":"fixed",configuredFloat:fixed,openedByUid:actor.uid,schemaVersion:2};
+    // Issue the durable reference when the shift opens, so a new shift is never stamped with
+    // the historical -LEGACY- form that the on-demand backfill would otherwise assign it.
+    rec.shiftReference = shiftReferenceFor(rec);
     let approval=null;if(fixed!=null&&Math.abs(openingFloat-fixed)>.009){approval=await claimManagerApproval(db,data,"fixed_float_exception","pending",Math.abs(openingFloat-fixed),`open_${id}`);rec.floatException={required:fixed,actual:rec.openingFloat,variance:Math.round((openingFloat-fixed)*100)/100,reason:posStaffText(data.reason,"Fixed-float exception reason",300),approvalId:approval.id,approvedBy:approval.record.approvedName||approval.record.approvedRole,approvedByUid:approval.record.approvedBy,approvedRole:approval.record.approvedRole,at:now};}
     const claim = await db.ref("/posActiveShift").transaction(current => { if (current && current.status !== "closed") return; return rec; }, undefined, false);
     if (!claim.committed) throw new HttpsError("failed-precondition", "Another shift is already open. It remains assigned to its original staff member.");
@@ -6743,7 +6749,17 @@ exports.onShiftPayOutsFinancial = onValueWritten({ref: "/shifts/{shiftId}/payOut
   await getDatabase().ref(`/supplierAdvanceShifts/${event.params.shiftId}`).set(has ? true : null);
 });
 exports.onShiftOpenFinancial = onValueWritten({ref: "/shifts/{shiftId}", region: ORDER_REGION, retry: true}, async (event) => { /* Undeposited Collection pool model: the opening float stays in the drawer between shifts — no financial entry, no custody draw. */ return; });
-function durableShiftReference(shift,id) { const existing=financeText(shift&&shift.shiftReference,80); if(existing)return existing; const day=financeDateFromTimestamp(Number(shift&&shift.openAt)||Date.now()).replace(/-/g,""); return `SHIFT-${day}-LEGACY-${financeKey(id,"Shift ID").slice(-8).toUpperCase()}`; }
+function shiftReferencePerson(value) { const text = financeText(value, 120).replace(/[^A-Za-z0-9 ]/g, " ").trim(); if (!text) return ""; const words = text.split(/\s+/).filter(Boolean), initials = words.length > 1 ? words.map((word) => word.slice(0, 1)).join("") : words[0]; return initials.toUpperCase().slice(0, 4); }
+function shiftReferenceToken(id) { const token = financeKey(id, "Shift ID").replace(/[^A-Za-z0-9]/g, "").toUpperCase(); return token.slice(-4).padStart(4, "0"); }
+// Shift references are permanent: they anchor cashCustody, the Z-report snapshot and every
+// Finance Books movement label back to one shift, and ensureShiftReferenceRecord refuses to
+// relink one. New shifts are issued `SH-<initials>-<token>` when the shift opens, so the
+// -LEGACY- form now marks only shifts that predate this format and must keep their reference.
+function durableShiftReference(shift,id) {
+  const existing = financeText(shift && shift.shiftReference, 80);
+  if (existing) return existing;
+  return `SH-${shiftReferencePerson(shift && shift.staff) || "REG"}-${shiftReferenceToken(id)}`;
+}
 async function ensureShiftReferenceRecord(db,id,shift) { const shiftReference=durableShiftReference(shift,id),refKey=financeKey(shiftReference,"Shift reference"),indexRef=db.ref(`/shiftReferenceIndex/${refKey}`),claim=await indexRef.transaction((current)=>{if(current&&current.shiftId!==id)return;return current||{shiftId:id,shiftReference,openedAt:Number(shift.openAt||0),closedAt:Number(shift.closeAt||0)||null};},undefined,false);if(!claim.committed)throw new HttpsError("already-exists",`Shift reference ${shiftReference} is already linked to another shift.`);const custody=(await db.ref(`/cashCustody/${id}`).get()).val()||null,writes={[`shifts/${id}/shiftReference`]:shiftReference,[`shifts/${id}/zReport/shiftReference`]:shiftReference};if(custody)Object.assign(writes,{[`cashCustody/${id}/shiftReference`]:shiftReference,[`cashCustody/${id}/reference`]:shiftReference});await db.ref().update(writes);return shiftReference; }
 exports.ensureShiftReference = onCall({region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"}, async (request) => {const db=getDatabase(),actor=await requirePortalPermission(db,request,["registerOps"]),id=financeKey((request.data||{}).shiftId,"Shift ID"),shift=(await db.ref(`/shifts/${id}`).get()).val();if(!shift)throw new HttpsError("not-found","Shift not found.");const shiftReference=await ensureShiftReferenceRecord(db,id,shift);return{shiftId:id,shiftReference,updatedBy:actor.uid};});
 // Tips the cashier declared in the POS (change kept as a tip) are counted in the Z report's
