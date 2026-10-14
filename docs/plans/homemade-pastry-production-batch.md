@@ -55,7 +55,7 @@ No new accounts are required.
 |---|---|
 | Tab group | **Inventory** (`admin.html`, `data-grp="stock"`) |
 | Position | **immediately after 🧪 Recipes**, before 🍽️ Internal Usage |
-| Tab label | **🥐 Baking** |
+| Tab label | **🥐 The Art of Baking** (tab key stays `baking`) |
 | Record name | **Batch Card**; the list reads "Batch cards" |
 | Batch ID | `BAKE-2026-10-20-01` |
 | Actions | New batch card · Post batch · Reverse batch · Print |

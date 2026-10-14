@@ -1,4 +1,4 @@
-/* Homemade pastry batch card (admin 685, 14 Oct 2026).
+/* Homemade pastry batch card (admin 686, 14 Oct 2026).
 
    Proves the two things Danilo asked for before the build:
      1. the card can never proceed on a wrong stock item, and
@@ -184,13 +184,27 @@ for (const marker of ['post_baking_batch_card', 'reverse_baking_batch_card', 'co
   assert.ok(baking.includes(marker), `audit action missing: ${marker}`);
 assert.ok(baking.includes('if (card.reversed === true) return { batchId, duplicate: true };'), 'a reversed card must not reverse twice');
 
+/* ── 5b. The client actually wraps the three callables ─────────────────────────────────────────
+   assets/js/admin/firebase-client.mjs builds `callables` from an explicit name list. A callable that
+   is missing there renders the screen normally and then fails every action with "Refresh the page to
+   load the baking service" — which is exactly what happened in production. */
+{
+  const firebaseClient = read('assets/js/admin/firebase-client.mjs');
+  for (const name of ['checkBakingMapping', 'postBatchCard', 'reverseBatchCard']) {
+    assert.ok(new RegExp(`['"]${name}['"]`).test(firebaseClient), `the client must register the ${name} callable`);
+    assert.ok(new RegExp(`exports\\.${name}\\s*=\\s*onCall\\(`).test(baking), `the server must export ${name}`);
+  }
+  assert.ok(/callableNames\.unshift\('postBatchCard','reverseBatchCard','checkBakingMapping'\)/.test(firebaseClient),
+    'the baking callables must be registered together, with the reason recorded');
+}
+
 /* ── 6. Who may post: a dedicated baking permission, never the shared inventory gate ───────── */
 assert.ok(/const BAKING_MANAGER_ROLES = \["owner", "superadmin", "admin", "manager"\]/.test(baking), 'baking manager roles missing');
 assert.ok(baking.includes('`/adminPerms/${actor.uid}/baking`'), 'the baking permission key must be checked server-side');
 assert.ok(portalAccounts.includes('"usage", "baking", "registerOps"'), 'baking must be a portal permission key');
 assert.ok(core.includes('recipes:true,usage:true,baking:false'), 'the Admin permission defaults must carry the baking key');
 assert.ok(core.includes('"\'baking\'":\'baking\''), 'the Admin tab-to-permission map must carry baking');
-assert.ok(staffAccess.includes("{label:'Baking',key:'baking'}"), 'Staff access must offer a Baking tick');
+assert.ok(staffAccess.includes("{label:'The Art of Baking',key:'baking'}"), 'Staff access must offer The Art of Baking tick');
 assert.ok(rules.includes("child('baking').val() === true"), 'the database rules must honour the baking permission');
 
 /* ── 7. Rules: cards are server-written, products are authorised config ───────────────────── */
@@ -230,12 +244,12 @@ assert.ok(posBytes <= 650000 - 50000, `pos.js (${posBytes}) must stay under its 
 assert.ok(posBytes < 541000, `pos.js (${posBytes}) must carry only the baking wiring, not the screen itself`);
 
 /* ── 10. Release bookkeeping ──────────────────────────────────────────────────────────────── */
-assert.ok(manifest.builds.admin === 685, 'the admin build must be bumped to 684');
-assert.ok(manifest.builds.serviceWorkerCache === 681, 'the service-worker cache must be bumped to 680');
-assert.ok(adminHtml.includes('name="accaza-admin-build" content="685"'), 'admin.html must carry the new build');
-assert.ok(adminHtml.includes('build&nbsp;v685'), 'the visible admin build label must match');
-assert.ok(adminHtml.includes('module-loader.js?v=685'), 'the cache-busted runtime scripts must match the build');
-assert.ok(sw.includes("const CACHE='accaza-v681'"), 'the service worker cache name must match the manifest');
+assert.ok(manifest.builds.admin === 686, 'the admin build must be bumped to 684');
+assert.ok(manifest.builds.serviceWorkerCache === 682, 'the service-worker cache must be bumped to 680');
+assert.ok(adminHtml.includes('name="accaza-admin-build" content="686"'), 'admin.html must carry the new build');
+assert.ok(adminHtml.includes('build&nbsp;v686'), 'the visible admin build label must match');
+assert.ok(adminHtml.includes('module-loader.js?v=686'), 'the cache-busted runtime scripts must match the build');
+assert.ok(sw.includes("const CACHE='accaza-v682'"), 'the service worker cache name must match the manifest');
 assert.ok(sw.includes("/assets/js/admin/baking.js"), 'the Baking module must be precached for the offline POS shell');
 assert.ok(manifest.authoritativeFiles.includes('assets/js/admin/baking.js'), 'baking.js must be an authoritative file');
 assert.ok(manifest.authoritativeFiles.includes('src/functions/50a-baking.js'), '50a-baking.js must be an authoritative file');

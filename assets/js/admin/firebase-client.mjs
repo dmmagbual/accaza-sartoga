@@ -19,6 +19,9 @@ callableNames.unshift('manageAccazaAiKnowledge');
 callableNames.unshift('getDragonQuest','enrollDragonQuest','manageDragonQuest','manageLoyaltyEarningRule','manageLoyaltyRewardCatalog','manageLoyaltyMemberStatus','getLoyaltyReports','searchLoyaltyMembers','manageLoyaltyMemberAnonymize');
 callableNames.unshift('manageAccazaAiIssue');
 callableNames.unshift('managePosStaffIdentity','openLinkedPosShift');
+// Homemade pastry batch cards (admin 686). Without these three names the screen renders but every
+// action fails with "Refresh the page to load the baking service", because callables wraps this list.
+callableNames.unshift('postBatchCard','reverseBatchCard','checkBakingMapping');
 // 30 Sep 2026: Rewards stamp types are admin-configurable (label/colour/daily limit).
 callableNames.unshift('manageLoyaltyCurrency');
 callableNames.unshift('managePosShiftCrew','managePosSaleRecovery');
