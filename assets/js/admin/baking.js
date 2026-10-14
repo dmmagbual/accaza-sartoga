@@ -52,6 +52,11 @@ function iNC(s){return '⚠ '+(s.unit||iU(s.itemId))+' cannot be converted to '+
 function use(b){var o=[];((b||{}).lines||[]).forEach(function(l){var q=Number(l.qty)||0;if(l.itemId&&q>0)o.push({itemId:l.itemId,qty:q,unit:l.unit||iU(l.itemId)});});return o;}
 function tot(b){return r3(((b||{}).lines||[]).reduce(function(s,l){var x=sq(l);return s+(x==null?0:x*iC(l.itemId));},0));}
 function blk(p,b){if(!(p&&p.id))return 'Add a baking product first.';if(!(p.mapping&&p.mapping.confirmedAt))return 'Confirm the mapping before posting a card.';if(!use(b).length)return 'Add at least one ingredient with a quantity.';if(!(Number((b||{}).pieces)>=1))return 'Enter the pieces produced (at least 1).';return '';}
+/* The stored product does not carry its own key — the key IS the map key. The gate and the post
+   payload both need it, and every caller must get it the same way: passing the raw record made the
+   gate fail on its first check, so the card form appeared, the preview priced the batch, and Post
+   batch stayed disabled (or alerted "Add a baking product first"). One helper, used everywhere. */
+function cp(){var id=S.pid||'';return (id&&pr()[id])?Object.assign({id:id},pr()[id]):null;}
 function T(cols,body){return '<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr>'+cols.map(function(c){return '<th'+(c[1]?' class="r"':'')+'>'+c[0]+'</th>';}).join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>';}
 function rw(l,pre){
   /* Every attribute is closed. Building these names by string surgery once lost the closing quote,
@@ -122,10 +127,7 @@ function rd(){
   if(!A()){el.innerHTML='<div class="pz-card">Refresh the portal to load the baking service.</div>';return;}
   if(!window.inventoryMap&&!S.busy&&!S.inv){el.innerHTML='<div class="s" style="padding:.6rem .8rem;">Loading stock items…</div>';ld();return;}
   if(!window.inventoryMap&&S.inv&&Date.now()-S.invAt>=3e5&&!S.busy)ld();
-  /* The stored product record does not carry its own key, but the gate and the post payload both need
-     it: without it the card form rendered, the preview priced the batch correctly, and Post batch sat
-     disabled forever with "Add a baking product first." Carry the id. */
-  var pid=sel(),raw=pid?(pr()[pid]||null):null,p=raw?Object.assign({id:pid},raw):null,b=p?bt():null,ar=pl(false),d=S.open?S.draft:null,ok=!!(p&&p.mapping&&p.mapping.confirmedAt);
+  var pid=sel(),p=cp(),b=p?bt():null,ar=pl(false),d=S.open?S.draft:null,ok=!!(p&&p.mapping&&p.mapping.confirmedAt);
   el.innerHTML=CSS+'<div class="pz-h">🥐 The Art of Baking</div>'
    +'<div class="v" style="margin-bottom:.7rem;">'+pl(true).map(function(x){return '<button class="pz-btn '+(x.id===pid?'ok':'sec')+'" data-bkpid="'+esc(x.id)+'" style="padding:.35rem .8rem;">'+esc(x.emoji||'')+' '+esc(x.name||x.id)+'</button>';}).join(' ')
    +' <button class="pz-btn sec b" data-bknew>＋ Add product</button> <button class="pz-btn '+(S.open?'ok':'sec')+' b" data-bkcfg>⚙️ Configure product</button></div>'
@@ -143,7 +145,7 @@ function cap(o,fs,pre,key){
   el.querySelectorAll('[data-'+pre+'f]').forEach(function(f){var i=+f.getAttribute('data-'+pre+'i'),k=f.getAttribute('data-'+pre+'f');a[i]=a[i]||{itemId:'',qty:'',unit:''};a[i][k]=f.value;});
 }
 function lv(){
-  var p=pr()[S.pid]||null,b=S.batch||bt(),x=document.getElementById('bkPreview');
+  var p=cp(),b=S.batch||bt(),x=document.getElementById('bkPreview');
   if(x)x.innerHTML=pv(p,b);
   var no=blk(p,b),y=document.getElementById('bkWhy');
   if(y)y.innerHTML=no?'<span class="e">'+esc(no)+'</span>':'';
@@ -190,7 +192,12 @@ function arn(){
   put(id,{active:false},'Product archived. It stays under Archived and its batch cards are untouched.');
 }
 function po(){
-  var p=pr()[S.pid]||null,b=S.batch||bt(),no=blk(p,b);
+  var p=cp(),b=S.batch||bt();
+  /* Read what is on screen at the moment of the click. Posting relied on the input handlers having
+     already captured the fields, so a value that arrived without an input event (autofill, paste,
+     a restored draft) gated against stale state and refused a card that looked complete. */
+  cap(b,BF,'bk','lines');
+  var no=blk(p,b);
   if(no){alert(no);return;}
   var btn=document.getElementById('bkPost'); if(btn){btn.disabled=true;btn.textContent='Posting…';}
   cl('postBatchCard',{productId:p.id,lines:use(b).map(function(l){return {itemId:l.itemId,qty:l.qty,unit:l.unit};}),pieces:Number(b.pieces),bakedBy:String(b.bakedBy||'').trim()||me(),note:String(b.note||'').trim()})
