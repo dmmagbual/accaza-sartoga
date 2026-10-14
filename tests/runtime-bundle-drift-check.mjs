@@ -83,6 +83,10 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('backupDatabaseDa
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('recordPlatformCatchup')+1,0,'manageUncostedSales');
 // 29 Sep 2026: serving queue — served / not collected / close-of-shift review.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageUncostedSales')+1,0,'manageOrderService');
+// Homemade pastry batch cards (admin 683): three new callables in src/functions/50a-baking.js, which
+// sorts after 50-inventory.js and before the 51-* sections. All three are portal-gated and
+// server-authoritative for inventory value; production movements are server-only.
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('onOrderInventoryReversal')+1,0,'checkBakingMapping','postBatchCard','reverseBatchCard');
 // 28 Sep 2026: manager repair for Z-declared tips that pre-date the automatic close posting.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('repairClosedShiftTurnover')+1,0,'repairShiftDeclaredTips');
 expectedFunctionExports.push('askAccazaAI');

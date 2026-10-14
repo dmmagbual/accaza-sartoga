@@ -374,6 +374,37 @@ export const NEEDS_REVIEW = {
     ],
     "review": true
   },
+  // Homemade pastry batch cards (admin 683). Each callable requires a portal user, then
+  // requireBakingAccess: owner/superadmin/admin/manager by role, otherwise an explicit
+  // /adminPerms/{uid}/baking grant. The production movements they post are server-only, so this
+  // is the only door and the browser never supplies a quantity, a cost or an account.
+  "50a-baking:checkBakingMapping": {
+    "signals": [
+      "actor.role",
+      "actor.uid",
+      "enforceAppCheck",
+      "requirePortalUser("
+    ],
+    "review": true
+  },
+  "50a-baking:postBatchCard": {
+    "signals": [
+      "actor.role",
+      "actor.uid",
+      "enforceAppCheck",
+      "requirePortalUser("
+    ],
+    "review": true
+  },
+  "50a-baking:reverseBatchCard": {
+    "signals": [
+      "actor.role",
+      "actor.uid",
+      "enforceAppCheck",
+      "requirePortalUser("
+    ],
+    "review": true
+  },
   "60-maintenance:runDatabaseBackupNow": {
     "signals": [
       "actor.role",

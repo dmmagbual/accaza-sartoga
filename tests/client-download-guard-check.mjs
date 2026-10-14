@@ -31,7 +31,12 @@ const SMALL = new Set(['.info/connected', 'settings', 'config', 'payment', 'calB
   // Information tab and stamped onto receipts and tax returns; fixed shape, never grows.
   'companyInfo',
   // One record (the owner's emergency sign-out cutoff), overwritten in place, never grows.
-  'sessionControl']);
+  'sessionControl',
+  // Homemade pastry batch cards: the Baking products are staff-typed configuration (a name, an emoji,
+  // the pastry stock item and the usual ingredient lines) — a handful of records, fixed shape, and it
+  // never grows with trading history. The posted cards are the growing node and are bounded separately
+  // in realtime-hub HISTORY_BOUNDS (batchCards, newest 250).
+  'bakingProducts']);
 // Whole-node reads that are accepted, with the reason. Anything new must be added here on purpose.
 const ACCEPTED = {
   'payables': 'Finance Books supplier ledger and reversal flows need every bill; about 12 KB (follow-up: open bills only)',

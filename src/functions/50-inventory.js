@@ -2,6 +2,7 @@ const INVENTORY_MOVEMENT_TYPES = new Set([
   "opening_balance", "purchase", "sale_usage", "staff_use", "rnd_testing",
   "waste", "adjustment", "manual_edit", "usage_reversal",
   "void_reversal", "refund_reversal", "purchase_reversal", "purchase_quantity_correction", "revaluation",
+  "production", "production_reversal",
 ]);
 function qty6(value) {
   return Math.round((Number(value) || 0) * 1000000) / 1000000;
@@ -118,7 +119,7 @@ async function repairInventoryProjections(db, itemId, accounting, item) {
   ]);
   return projection;
 }
-const INVENTORY_BOOK_POSTING_TYPES = new Set(["waste", "staff_use", "rnd_testing", "adjustment", "manual_edit", "usage_reversal", "revaluation"]);
+const INVENTORY_BOOK_POSTING_TYPES = new Set(["waste", "staff_use", "rnd_testing", "adjustment", "manual_edit", "usage_reversal", "revaluation", "production", "production_reversal"]);
 function inventoryBookAccountCode(item) {
   const code = String(item && item.inventoryAccount || "");
   return /^12[0-8]0$/.test(code) ? code : "1290";
@@ -135,7 +136,15 @@ function internalUsageAccount(type,movement){
   return requested;
 }
 function inventoryAdjustmentOffset(type,movement){
-  const COST_OF_SALES_ACCOUNTS=["5000","5030","5040"];
+  const COST_OF_SALES_ACCOUNTS=["5000","5030","5040"],INVENTORY_OFFSET_CODES=["1200","1210","1220","1230","1240","1270","1280"];
+  /* A batch card moves value between stock items: the produced pastry's own inventory account on the
+     debit side, each consumed ingredient's account on the credit side. The offset is therefore always a
+     12xx control account, never a P&L account, so a bake can never move profit. */
+  if(type==="production"||type==="production_reversal"){
+    const want=String(movement&&movement.offsetAccount||"").trim();
+    if(!INVENTORY_OFFSET_CODES.includes(want))throw new HttpsError("failed-precondition","A batch card may only offset an inventory control account (12xx).");
+    return want;
+  }
   if(type==="revaluation"){
     /* A revaluation restates the cost of stock still on hand. It is a costing correction, not wastage,
        so 5900 is not offered. Owner's Capital is allowed only where the quantity path allows it too:
@@ -204,6 +213,9 @@ async function applyInventoryMovement(db, raw, actor) {
   const requestedCost = qty6(raw.unitCost);
   const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal" || type === "purchase_quantity_correction" || type === "revaluation";
   if (type === "purchase" && qty > 0 && !(requestedCost > 0)) throw new HttpsError("invalid-argument", "A received purchase must have a unit cost greater than zero.");
+  /* A batch card states what the bake it produced is worth, so its movements carry their own unit
+     cost the way a purchase does: without it the pastry leg would move the item's old cost. */
+  if ((type === "production" || type === "production_reversal") && qty !== 0 && !(requestedCost > 0)) throw new HttpsError("invalid-argument", "A batch card movement must carry a unit cost greater than zero.");
   if (type === "revaluation") {
     if (qty !== 0) throw new HttpsError("invalid-argument", "A revaluation changes the unit cost only. Use a stock adjustment to move quantity.");
     if (!(requestedCost >= 0)) throw new HttpsError("invalid-argument", "Enter the corrected unit cost.");
@@ -225,7 +237,7 @@ async function applyInventoryMovement(db, raw, actor) {
     if(originalInventory.sourceType!=="internal-usage"||!originalFinancial||!["inventory_staff_use","inventory_rnd_testing","inventory_waste"].includes(String(originalFinancial.type||"")))throw new HttpsError("failed-precondition","Only a posted internal-usage movement can be reversed through Internal Usage.");
     postingContext={originalFinancial};
   }
-  if (["purchase", "waste", "staff_use", "rnd_testing", "adjustment", "manual_edit"].includes(type)) {
+  if (["purchase", "waste", "staff_use", "rnd_testing", "adjustment", "manual_edit", "production", "production_reversal"].includes(type)) {
     const invAcct = String(item.inventoryAccount || ""), costAcct = String(item.costAccount || item.cogsAccount || "");
     const invOk = ["1200", "1210", "1220", "1230", "1240", "1270", "1280"].includes(invAcct);
     const costOk = ["5000", "5010", "5020", "5030", "5040", "6070", "6075"].includes(costAcct);
@@ -281,10 +293,10 @@ async function applyInventoryMovement(db, raw, actor) {
     const movement = {
       id: movementId, itemId,
       itemName: String(item.name || itemId).slice(0, 160), unit: String(item.unit || "").slice(0, 40),
-      type, qty, unitCost: (type === "revaluation" || ["purchase", "purchase_reversal"].includes(type)) ? requestedCost : costBefore,
+      type, qty, unitCost: (type === "revaluation" || ["purchase", "purchase_reversal", "production", "production_reversal"].includes(type)) ? requestedCost : costBefore,
       /* A revaluation moves no quantity, so qty * cost is zero and nothing would reach the ledger.
          Its value is the restatement of the stock still on hand: qty on hand * (new cost - old cost). */
-      totalCost: type === "purchase_quantity_correction" ? 0 : type === "revaluation" ? money(before * (requestedCost - costBefore)) : money(qty * (["purchase", "purchase_reversal"].includes(type) ? requestedCost : costBefore)),
+      totalCost: type === "purchase_quantity_correction" ? 0 : type === "revaluation" ? money(before * (requestedCost - costBefore)) : money(qty * (["purchase", "purchase_reversal", "production", "production_reversal"].includes(type) ? requestedCost : costBefore)),
       balanceBefore: before, balanceAfter: after, costBefore, costAfter,
       sourceType: String(raw.sourceType || type).slice(0, 80),
       sourceId: String(raw.sourceId || "").slice(0, 160),
@@ -294,7 +306,7 @@ async function applyInventoryMovement(db, raw, actor) {
       /* A stock adjustment is performed by the signed-in Admin, so the ledger names that person and
          not the cashier who happens to own the open POS shift. Sales and usage keep the on-duty
          staff name their caller supplies. */
-      actorName: String((["adjustment", "waste", "manual_edit", "revaluation"].includes(type) && actor && actor.name) ? actor.name : (raw.actorName || actor && actor.role || "server")).slice(0, 120),
+      actorName: String((["adjustment", "waste", "manual_edit", "revaluation", "production", "production_reversal"].includes(type) && actor && actor.name) ? actor.name : (raw.actorName || actor && actor.role || "server")).slice(0, 120),
       occurredAt: Number(raw.occurredAt || now), createdAt: now,
       reversalOf: String(raw.reversalOf || "").slice(0, 160), usageKind:String(raw.usageKind||"").slice(0,80),usageAccount:String(raw.usageAccount||"").slice(0,4),offsetAccount:String(raw.offsetAccount||"").slice(0,4),adjustmentNature:String(raw.adjustmentNature||"").slice(0,80),importPurpose:String(raw.importPurpose||"").slice(0,20),classificationConfirmed:raw.classificationConfirmed===true, version, schemaVersion: 3,
     };
@@ -405,7 +417,7 @@ exports.postInventoryMovements = onCall(
     const db = getDatabase();
     const movements = listFromFirebase(request.data && request.data.movements);
     if (!movements.length || movements.length > 100) throw new HttpsError("invalid-argument", "Submit 1 to 100 inventory movements.");
-    const serverOnly = new Set(["opening_balance", "sale_usage", "void_reversal", "refund_reversal", "purchase_reversal", "purchase_quantity_correction"]);
+    const serverOnly = new Set(["opening_balance", "sale_usage", "void_reversal", "refund_reversal", "purchase_reversal", "purchase_quantity_correction", "production", "production_reversal"]);
     if (movements.some((movement) => serverOnly.has(String(movement && movement.type || "")))) {
       throw new HttpsError("permission-denied", "That inventory movement type can only be posted by the server.");
     }

@@ -2,7 +2,7 @@ const PORTAL_ACCOUNT_ROLES = new Set(["superadmin", "admin", "manager", "staff",
 // Staff-level module access, one key per Admin nav tab a staff account can be granted.
 // Settings is locked for staff-level roles except Channel Pricing (grantable) and Change
 // Password (always available), so the other Settings keys (dedupe, possettings) are not grantable.
-const PORTAL_PERMISSION_KEYS = ["dashboard", "liveoperations", "orders", "reservations", "pos", "inventory", "purchases", "recipes", "usage", "registerOps", "reviews", "appcustomers", "availability", "comments", "analytics", "saleshistory", "dailyreport", "discrepancy", "petty", "undeposited", "channelpricing", "cashflow", "stockvalue"];
+const PORTAL_PERMISSION_KEYS = ["dashboard", "liveoperations", "orders", "reservations", "pos", "inventory", "purchases", "recipes", "usage", "baking", "registerOps", "reviews", "appcustomers", "availability", "comments", "analytics", "saleshistory", "dailyreport", "discrepancy", "petty", "undeposited", "channelpricing", "cashflow", "stockvalue"];
 // Tabs that were visible to every staff account before they had their own key. A stored
 // record without the key keeps its old behaviour until a Super Admin saves the account.
 const PORTAL_PERMISSION_LEGACY = {saleshistory: ["orders"], undeposited: ["petty", "cashflow"]};
