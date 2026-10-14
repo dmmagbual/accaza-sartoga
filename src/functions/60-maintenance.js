@@ -125,6 +125,52 @@ exports.autoCompleteReadyOnlineOrders = onSchedule(
   },
 );
 
+// Admin history counts archived orders only, while Finance Books posts at sale
+// time, so a live order that is never archived quietly widens the Admin/Finance
+// gap (Sep-Oct 2026: 88 orders, PHP 38,135.13). This sweep archives only orders a
+// manager could already archive by hand, and never one whose shift is still open,
+// that is still in the serving queue, that is unpaid, or that was completed
+// moments ago - so an open shift and the till are never touched. Bounded,
+// idempotent and audited; the whole run is skipped when
+// /systemHealth/orderArchiveSweep/enabled is false, without a deploy.
+const ORDER_ARCHIVE_SWEEP_SCAN_LIMIT = 300;
+const ORDER_ARCHIVE_SWEEP_ARCHIVE_LIMIT = 150;
+
+exports.sweepOrderArchive = onSchedule(
+  {schedule: "every 3 hours", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "256MiB"},
+  async () => {
+    const db = getDatabase(), stateRef = db.ref("/systemHealth/orderArchiveSweep"), state = (await stateRef.get()).val() || {};
+    if (state.enabled === false) return null;
+    const keys = (await shallowDatabaseKeys(db, "orders")).sort(), cursor = String(state.cursor || "");
+    const from = cursor ? keys.findIndex((key) => key > cursor) : 0;
+    const candidates = keys.slice(from === -1 ? 0 : from).slice(0, ORDER_ARCHIVE_SWEEP_SCAN_LIMIT);
+    const summary = {live: keys.length, scanned: candidates.length, archived: 0, skipped: {}};
+    let lastKey = "";
+    for (const orderId of candidates) {
+      // The cursor records the last order this run actually decided, so a run
+      // stopped by the archive cap resumes at the next one instead of skipping it.
+      if (summary.archived >= ORDER_ARCHIVE_SWEEP_ARCHIVE_LIMIT) break;
+      lastKey = orderId;
+      try {
+        const check = await orderArchiveCheck(db, orderId, {strict: true});
+        if (!check.ok) { summary.skipped[check.reason] = (summary.skipped[check.reason] || 0) + 1; continue; }
+        await archiveOrderNow(db, check.order, {uid: "system", role: "system"}, "auto-sweep");
+        summary.archived++;
+      } catch (error) {
+        summary.skipped.error = (summary.skipped.error || 0) + 1;
+        logger.warn("Order archive sweep skipped an order", {orderId, error: String(error && error.message || error)});
+      }
+    }
+    const now = Date.now(), more = !!lastKey && lastKey < keys[keys.length - 1];
+    summary.cursor = more ? lastKey : "";
+    await stateRef.update({cursor: summary.cursor, lastRunAt: now, lastSummary: summary, schemaVersion: 1});
+    await db.ref(`/operationalAudit/${now}_order_archive_sweep`).set(operationalAuditRecord("sweep_order_archive", "orderArchive", summary.cursor || "complete", {uid: "system", role: "system"}, summary));
+    logger.info("sweepOrderArchive complete", summary);
+    return null;
+  },
+);
+
+
 // Release 8B: automated recovery point. Snapshots the durable business data to
 // Cloud Storage once a day and keeps 30 days. Transient/reconstructable nodes
 // (active-order projections, locks, rate windows, status-command claims, offline

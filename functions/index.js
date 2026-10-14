@@ -2034,6 +2034,54 @@ function operationalAuditRecord(action, sourceType, sourceId, actor, details = {
   }, details);
 }
 
+// One eligibility decision and one archive write, shared by the manager action
+// and the scheduled order-archive sweep, so the two can never disagree about
+// what may leave /orders. `strict` adds the guards only the automatic sweep
+// needs: an order the till may still be settling (unpaid, or completed moments
+// ago) is left for a human.
+const ORDER_ARCHIVE_SWEEP_GRACE_MS = 30 * 60 * 1000;
+const ORDER_ARCHIVE_FINAL_STATUSES = ["Completed", "Received", "Rejected"];
+const ORDER_ARCHIVE_REFUSAL = {
+  not_found: "Order not found.",
+  shift_open: "Orders cannot be archived while their shift is open.",
+  not_final: "Only completed, received, rejected, or voided orders can be archived.",
+  serving_queue: "This order is still in the serving queue. Mark it served or not collected first.",
+};
+
+async function orderArchiveCheck(db, orderId, options = {}) {
+  const [orderSnap, archivedSnap] = await Promise.all([
+    db.ref(`/orders/${orderId}`).get(), db.ref(`/archivedOrders/${orderId}`).get(),
+  ]);
+  if (!orderSnap.exists()) return {ok: false, reason: archivedSnap.exists() ? "already_archived" : "not_found"};
+  const order = Object.assign({id: orderId}, orderSnap.val() || {});
+  if (order.shiftId) {
+    let shiftId = "";
+    try { shiftId = financeKey(order.shiftId, "Shift ID"); } catch (error) { return {ok: false, reason: "shift_invalid", error}; }
+    const shift = (await db.ref(`/shifts/${shiftId}`).get()).val() || null;
+    if (shift && shift.status !== "closed") return {ok: false, reason: "shift_open"};
+  }
+  if (!ORDER_ARCHIVE_FINAL_STATUSES.includes(String(order.status || "")) && order.voided !== true) return {ok: false, reason: "not_final"};
+  if (OrderService.keepsOrderLive(order)) return {ok: false, reason: "serving_queue"};
+  if (options.strict) {
+    const payment = String(order.paymentStatus || "");
+    if (payment === "pending" || payment === "unpaid") return {ok: false, reason: "payment_unsettled"};
+    const settledAt = Number(order.completedAt || order.receivedAt || order.timestamp || 0);
+    if (settledAt && Date.now() - settledAt < ORDER_ARCHIVE_SWEEP_GRACE_MS) return {ok: false, reason: "too_recent"};
+  }
+  return {ok: true, order};
+}
+
+async function archiveOrderNow(db, order, actor, source) {
+  const now = Date.now(), orderId = order.id;
+  await db.ref().update({
+    [`archivedOrders/${orderId}`]: archivedOrderRecord(order, now, source),
+    [`orders/${orderId}`]: null,
+    [`activeOrders/${orderId}`]: null,
+    [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("archive_order", "order", orderId, actor, {previousStatus: order.status || ""}),
+  });
+  return {orderId, archivedAt: now};
+}
+
 exports.manageOrderArchive = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
@@ -2047,30 +2095,13 @@ exports.manageOrderArchive = onCall(
       if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) {
         throw new HttpsError("permission-denied", "Only managers may archive orders.");
       }
-      const [orderSnap, archivedSnap] = await Promise.all([
-        db.ref(`/orders/${orderId}`).get(), db.ref(`/archivedOrders/${orderId}`).get(),
-      ]);
-      if (!orderSnap.exists()) {
-        if (archivedSnap.exists()) return {orderId, duplicate: true};
-        throw new HttpsError("not-found", "Order not found.");
+      const check = await orderArchiveCheck(db, orderId);
+      if (!check.ok) {
+        if (check.reason === "already_archived") return {orderId, duplicate: true};
+        if (check.error) throw check.error;
+        throw new HttpsError(check.reason === "not_found" ? "not-found" : "failed-precondition", ORDER_ARCHIVE_REFUSAL[check.reason] || "This order cannot be archived.");
       }
-      const order = Object.assign({id: orderId}, orderSnap.val() || {});
-      if (order.shiftId) {
-        const shift = (await db.ref(`/shifts/${financeKey(order.shiftId, "Shift ID")}`).get()).val() || null;
-        if (shift && shift.status !== "closed") throw new HttpsError("failed-precondition", "Orders cannot be archived while their shift is open.");
-      }
-      if (!["Completed", "Received", "Rejected"].includes(String(order.status || "")) && order.voided !== true) {
-        throw new HttpsError("failed-precondition", "Only completed, received, rejected, or voided orders can be archived.");
-      }
-      if (OrderService.keepsOrderLive(order)) throw new HttpsError("failed-precondition", "This order is still in the serving queue. Mark it served or not collected first.");
-      const archived = archivedOrderRecord(order, now, "manual-server");
-      await db.ref().update({
-        [`archivedOrders/${orderId}`]: archived,
-        [`orders/${orderId}`]: null,
-        [`activeOrders/${orderId}`]: null,
-        [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("archive_order", "order", orderId, actor, {previousStatus: order.status || ""}),
-      });
-      return {orderId, archivedAt: now};
+      return archiveOrderNow(db, check.order, actor, "manual-server");
     }
     if (action === "delete") {
       const snap = await db.ref(`/archivedOrders/${orderId}`).get();
@@ -10214,6 +10245,52 @@ exports.autoCompleteReadyOnlineOrders = onSchedule(
     return null;
   },
 );
+
+// Admin history counts archived orders only, while Finance Books posts at sale
+// time, so a live order that is never archived quietly widens the Admin/Finance
+// gap (Sep-Oct 2026: 88 orders, PHP 38,135.13). This sweep archives only orders a
+// manager could already archive by hand, and never one whose shift is still open,
+// that is still in the serving queue, that is unpaid, or that was completed
+// moments ago - so an open shift and the till are never touched. Bounded,
+// idempotent and audited; the whole run is skipped when
+// /systemHealth/orderArchiveSweep/enabled is false, without a deploy.
+const ORDER_ARCHIVE_SWEEP_SCAN_LIMIT = 300;
+const ORDER_ARCHIVE_SWEEP_ARCHIVE_LIMIT = 150;
+
+exports.sweepOrderArchive = onSchedule(
+  {schedule: "every 3 hours", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "256MiB"},
+  async () => {
+    const db = getDatabase(), stateRef = db.ref("/systemHealth/orderArchiveSweep"), state = (await stateRef.get()).val() || {};
+    if (state.enabled === false) return null;
+    const keys = (await shallowDatabaseKeys(db, "orders")).sort(), cursor = String(state.cursor || "");
+    const from = cursor ? keys.findIndex((key) => key > cursor) : 0;
+    const candidates = keys.slice(from === -1 ? 0 : from).slice(0, ORDER_ARCHIVE_SWEEP_SCAN_LIMIT);
+    const summary = {live: keys.length, scanned: candidates.length, archived: 0, skipped: {}};
+    let lastKey = "";
+    for (const orderId of candidates) {
+      // The cursor records the last order this run actually decided, so a run
+      // stopped by the archive cap resumes at the next one instead of skipping it.
+      if (summary.archived >= ORDER_ARCHIVE_SWEEP_ARCHIVE_LIMIT) break;
+      lastKey = orderId;
+      try {
+        const check = await orderArchiveCheck(db, orderId, {strict: true});
+        if (!check.ok) { summary.skipped[check.reason] = (summary.skipped[check.reason] || 0) + 1; continue; }
+        await archiveOrderNow(db, check.order, {uid: "system", role: "system"}, "auto-sweep");
+        summary.archived++;
+      } catch (error) {
+        summary.skipped.error = (summary.skipped.error || 0) + 1;
+        logger.warn("Order archive sweep skipped an order", {orderId, error: String(error && error.message || error)});
+      }
+    }
+    const now = Date.now(), more = !!lastKey && lastKey < keys[keys.length - 1];
+    summary.cursor = more ? lastKey : "";
+    await stateRef.update({cursor: summary.cursor, lastRunAt: now, lastSummary: summary, schemaVersion: 1});
+    await db.ref(`/operationalAudit/${now}_order_archive_sweep`).set(operationalAuditRecord("sweep_order_archive", "orderArchive", summary.cursor || "complete", {uid: "system", role: "system"}, summary));
+    logger.info("sweepOrderArchive complete", summary);
+    return null;
+  },
+);
+
 
 // Release 8B: automated recovery point. Snapshots the durable business data to
 // Cloud Storage once a day and keeps 30 days. Transient/reconstructable nodes
