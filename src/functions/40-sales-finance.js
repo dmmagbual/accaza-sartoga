@@ -486,7 +486,17 @@ exports.onShiftPayOutsFinancial = onValueWritten({ref: "/shifts/{shiftId}/payOut
   await getDatabase().ref(`/supplierAdvanceShifts/${event.params.shiftId}`).set(has ? true : null);
 });
 exports.onShiftOpenFinancial = onValueWritten({ref: "/shifts/{shiftId}", region: ORDER_REGION, retry: true}, async (event) => { /* Undeposited Collection pool model: the opening float stays in the drawer between shifts — no financial entry, no custody draw. */ return; });
-function durableShiftReference(shift,id) { const existing=financeText(shift&&shift.shiftReference,80); if(existing)return existing; const day=financeDateFromTimestamp(Number(shift&&shift.openAt)||Date.now()).replace(/-/g,""); return `SHIFT-${day}-LEGACY-${financeKey(id,"Shift ID").slice(-8).toUpperCase()}`; }
+function shiftReferencePerson(value) { const text = financeText(value, 120).replace(/[^A-Za-z0-9 ]/g, " ").trim(); if (!text) return ""; const words = text.split(/\s+/).filter(Boolean), initials = words.length > 1 ? words.map((word) => word.slice(0, 1)).join("") : words[0]; return initials.toUpperCase().slice(0, 4); }
+function shiftReferenceToken(id) { const token = financeKey(id, "Shift ID").replace(/[^A-Za-z0-9]/g, "").toUpperCase(); return token.slice(-4).padStart(4, "0"); }
+// Shift references are permanent: they anchor cashCustody, the Z-report snapshot and every
+// Finance Books movement label back to one shift, and ensureShiftReferenceRecord refuses to
+// relink one. New shifts are issued `SH-<initials>-<token>` when the shift opens, so the
+// -LEGACY- form now marks only shifts that predate this format and must keep their reference.
+function durableShiftReference(shift,id) {
+  const existing = financeText(shift && shift.shiftReference, 80);
+  if (existing) return existing;
+  return `SH-${shiftReferencePerson(shift && shift.staff) || "REG"}-${shiftReferenceToken(id)}`;
+}
 async function ensureShiftReferenceRecord(db,id,shift) { const shiftReference=durableShiftReference(shift,id),refKey=financeKey(shiftReference,"Shift reference"),indexRef=db.ref(`/shiftReferenceIndex/${refKey}`),claim=await indexRef.transaction((current)=>{if(current&&current.shiftId!==id)return;return current||{shiftId:id,shiftReference,openedAt:Number(shift.openAt||0),closedAt:Number(shift.closeAt||0)||null};},undefined,false);if(!claim.committed)throw new HttpsError("already-exists",`Shift reference ${shiftReference} is already linked to another shift.`);const custody=(await db.ref(`/cashCustody/${id}`).get()).val()||null,writes={[`shifts/${id}/shiftReference`]:shiftReference,[`shifts/${id}/zReport/shiftReference`]:shiftReference};if(custody)Object.assign(writes,{[`cashCustody/${id}/shiftReference`]:shiftReference,[`cashCustody/${id}/reference`]:shiftReference});await db.ref().update(writes);return shiftReference; }
 exports.ensureShiftReference = onCall({region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"}, async (request) => {const db=getDatabase(),actor=await requirePortalPermission(db,request,["registerOps"]),id=financeKey((request.data||{}).shiftId,"Shift ID"),shift=(await db.ref(`/shifts/${id}`).get()).val();if(!shift)throw new HttpsError("not-found","Shift not found.");const shiftReference=await ensureShiftReferenceRecord(db,id,shift);return{shiftId:id,shiftReference,updatedBy:actor.uid};});
 // Tips the cashier declared in the POS (change kept as a tip) are counted in the Z report's
