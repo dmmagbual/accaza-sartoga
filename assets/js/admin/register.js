@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},booksChartMap={},cashAccountsMap={},financialMovementsMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=null,logCollapsed=true,cardShiftId=null,shiftReferenceRequests={};
+var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},booksChartMap={},cashAccountsMap={},financialMovementsMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=null,logCollapsed=true,cardShiftId=null,shiftReferenceRequests={},shiftReferenceFailures={};
 var pettyVouchers={},pettyRepl={},pettySettings={},supplierMap={};
 function A(){return window.__accaza;}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
@@ -692,10 +692,52 @@ function renderOps(){
   root.querySelectorAll('[data-recall]').forEach(function(b){b.onclick=function(){var h=heldMap[b.getAttribute('data-recall')];if(h&&window.__pos){window.__pos.loadCart(h.cart);var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-recall')));}};});
   root.querySelectorAll('[data-hdisc]').forEach(function(b){b.onclick=function(){if(confirm('Discard this held order?')){var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-hdisc')));}};});
 }
+// A shift's database key (`SH-<6 digits>-<6 hex>`) is an internal key. Never show it
+// as the shift reference: the random half of that key is the only collision guard on
+// `shifts/<id>`, so it must stay intact, and staff should quote a reference a manager
+// can recognise. Always present the server-issued `shiftReference`; when a shift has
+// none yet, ask the server to issue a durable one and label the gap in plain words.
+function shiftReferenceLabel(shift,quiet){
+  if(!shift)return '—';
+  var known=String(shift.shiftReference||'').trim();
+  if(known)return known;
+  var id=shift.id;
+  if(!id)return 'Reference unavailable';
+  // A caller that stores this string must never persist the pending text. Prefer the
+  // last durable reference already on the shift; that always exists once the shift has
+  // been closed, because the server issues one on close.
+  if(quiet)return String(shift.zReport&&shift.zReport.shiftReference||'')||'Issuing reference…';
+  // Never issue references from the shift picker: it lists up to 80 closed shifts, so
+  // triggering per option would fire one Cloud Function call per missing reference.
+  // The card header issues the reference for the one shift actually on screen.
+  if(shiftReferenceFailures[id])return 'Reference pending';
+  if(!shiftReferenceRequests[id])shiftIssueReference(id);
+  return 'Issuing reference…';
+}
+function shiftIssueReference(id){
+  if(!id||shiftReferenceRequests[id]||shiftReferenceFailures[id])return;
+  var api=A();
+  if(!api||!api.ensureShiftReference)return;
+  shiftReferenceRequests[id]=true;
+  api.ensureShiftReference({shiftId:id}).then(function(r){
+    var result=(r&&r.data)||r||{};
+    var issued=String(result.shiftReference||'').trim();
+    if(!issued)throw new Error('no reference issued');
+    if(shiftsMap[id])shiftsMap[id].shiftReference=issued;
+    if(activeShift&&activeShift.id===id)activeShift.shiftReference=issued;
+  }).catch(function(){
+    // Latch the failure so a live re-render cannot retry a failing shift without bound.
+    shiftReferenceFailures[id]=true;
+  }).finally(function(){delete shiftReferenceRequests[id];if(isTab('ops'))renderOps();});
+}
+function shiftCardHeaderHtml(shift,isOpen,S){
+  if(shift&&shift.id&&!String(shift.shiftReference||'').trim())shiftIssueReference(shift.id);
+  return '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem;"><div><b>Shift reference: '+esc(shiftReferenceLabel(shift,true))+'</b><div class="az-note">'+esc(shift.staff||'')+' · '+new Date(S.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(S.closeAt?('–'+new Date(S.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</div></div><span style="font-weight:700;color:'+(S.open?'#2a9d5c':'var(--tl)')+';">'+(S.open?'🟢 Open':'Closed')+'</span></div>';
+}
 function shiftOptions(){
   var opts='';
-  if(activeShift)opts+='<option value="'+esc(activeShift.id)+'">🟢 '+esc(shiftReference(activeShift.shiftReference,activeShift.id))+' · '+esc(activeShift.staff||'')+' · '+new Date(activeShift.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</option>';
-  Object.keys(shiftsMap).map(function(k){return Object.assign({id:k},shiftsMap[k]);}).filter(function(s){return s.status==='closed';}).sort(function(a,b){return (b.openAt||0)-(a.openAt||0);}).slice(0,80).forEach(function(s){opts+='<option value="'+esc(s.id)+'">'+esc(shiftReference(s.shiftReference,s.id))+' · '+esc(s.staff||'')+' · '+new Date(s.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(s.closeAt?('–'+new Date(s.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</option>';});
+  if(activeShift)opts+='<option value="'+esc(activeShift.id)+'">🟢 '+esc(shiftReferenceLabel(activeShift))+' · '+esc(activeShift.staff||'')+' · '+new Date(activeShift.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</option>';
+  Object.keys(shiftsMap).map(function(k){return Object.assign({id:k},shiftsMap[k]);}).filter(function(s){return s.status==='closed';}).sort(function(a,b){return (b.openAt||0)-(a.openAt||0);}).slice(0,80).forEach(function(s){opts+='<option value="'+esc(s.id)+'">'+esc(shiftReferenceLabel(s))+' · '+esc(s.staff||'')+' · '+new Date(s.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(s.closeAt?('–'+new Date(s.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</option>';});
   return opts;
 }
 function shiftCardHtml(){
@@ -734,12 +776,12 @@ function renderShiftCard(){
   var id=cardShiftId, isOpen=!!(activeShift&&activeShift.id===id);
   var shift=isOpen?activeShift:(shiftsMap[id]?Object.assign({id:id},shiftsMap[id]):null);
   if(!shift){body.innerHTML='<p class="az-note">Shift not found.</p>';return;}
-  if(!isOpen&&!shift.shiftReference&&!shiftReferenceRequests[id]){var api=A();if(api&&api.ensureShiftReference){shiftReferenceRequests[id]=true;api.ensureShiftReference({shiftId:id}).then(function(r){var result=(r&&r.data)||r||{};if(shiftsMap[id])shiftsMap[id].shiftReference=result.shiftReference||'';}).catch(function(){}).finally(function(){delete shiftReferenceRequests[id];if(isTab('ops'))renderOps();});}}
   var S=shiftSummaryObj(shift,isOpen);
   var expectedHandover=Math.max(0,Math.round((S.expectedCash-S.retainedFloat)*100)/100),actualHandover=S.countedCash!=null?Math.max(0,Math.round((S.countedCash-S.retainedFloat)*100)/100):null;
   var chRows=S.byChannel?([['instore','In-store'],['online','Online Orders'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(S.byChannel&&S.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join('')):'<tr><td colspan="2" class="az-note">Channel split not stored for this shift.</td></tr>';
   var mRows=zMethodRows(S,'class="r"')||'<tr><td colspan="2" class="az-note">—</td></tr>';
-  var hdr='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem;"><div><b>Shift reference: '+esc(shiftReference(shift.shiftReference,shift.id))+'</b><div class="az-note">'+esc(shift.staff||'')+' · '+new Date(S.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(S.closeAt?('–'+new Date(S.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</div></div><span style="font-weight:700;color:'+(S.open?'#2a9d5c':'var(--tl)')+';">'+(S.open?'🟢 Open':'Closed')+'</span></div>';
+  var hdr=shiftCardHeaderHtml(shift,isOpen,S);
+  hdr='<div data-shift-reference-card="'+esc(shift.id||'')+'">'+hdr+'</div>';
   var kpis='<div class="az-kpis" style="margin:0 0 0.7rem;">'+kpi('Transactions',S.tx)+kpi('Net sales',peso(S.net))+kpi('Cash sales',peso(S.cashSales))+kpi('Expected cash to hand over',peso(expectedHandover))+'</div>';
   var recon='<div class="az-sec">Cash</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'
     +'<tr><td>Opening cash float</td><td class="r">'+peso(S.openingFloat)+'</td></tr>'
@@ -1502,7 +1544,7 @@ async function finalizeClose(shift,counted,counts){
   var saleList;try{saleList=await loadShiftTransactions(shift.id);}catch(_e){saleList=shiftSales(shift);}
   var z=computeZ(shift,saleList),closedAt=Date.now();z.countedCash=counted;z.variance=Math.round((counted-z.expectedCash)*100)/100;z.closeCount=counts;z.expectedDrawer=shift.drawer||null;z.cashToSettle=Math.max(0,Math.round((counted-z.retainedFloat)*100)/100);
   z.actualFloatRetained=Math.max(0,Math.min(counted,z.retainedFloat));z.floatShortfall=Math.max(0,Math.round((z.retainedFloat-z.actualFloatRetained)*100)/100);
-  var shiftRef=shiftReference(shift.shiftReference,shift.id),snapshot={schemaVersion:4,shiftReference:shiftRef,capturedAt:closedAt,calculation:'float + cash sales + tips - cash refunds + pay-ins - pay-outs',floatMode:shift.floatMode||(fixedFloatCfg!=null?'fixed':'opening-count'),configuredFloat:shift.configuredFloat!=null?Number(shift.configuredFloat):(fixedFloatCfg!=null?fixedFloatCfg:null),openingFloat:Number(shift.openingFloat)||0,retainedFloat:z.retainedFloat,actualFloatRetained:z.actualFloatRetained,floatShortfall:z.floatShortfall,tolerance:Number(toleranceCfg.cashPeso)||0,reconcileTotalOnly:reconcileTotalOnlyR(),tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,cashRefunds:z.cashRefunds,net:z.net,cashSales:z.cashSales,tips:z.tips,bySeller:z.bySeller||{},payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,varianceStatus:Math.abs(z.variance)>=.005?'pending_manager_reconciliation':'reconciled',cashToSettle:z.cashToSettle,byMethod:z.byMethod,byChannel:z.byChannel,voidCount:z.voidCount,voidAmt:z.voidAmt,pending:z.pending,pendingCount:z.pendingCount,openCount:shift.openCount||{},closeCount:counts||{},expectedDrawer:shift.drawer||{},payInEntries:(shift.payIns||[]),payOutEntries:(shift.payOuts||[]),floatException:shift.floatException||null,sales:saleList.map(function(o){return{id:o.id||'',date:o.date||'',time:o.time||'',occurredAt:(window.AccazaSales&&window.AccazaSales.stamp?window.AccazaSales.stamp(o):0),timestamp:Number(o.timestamp)||0,total:Number(o.total)||0,correctedOrderTotal:o.correctedOrderTotal!=null?Number(o.correctedOrderTotal):null,correctedOrderId:o.correctedOrderId||'',completedOrderCorrectionId:o.completedOrderCorrectionId||'',channel:o.channel||'instore',payment:o.payment||'',payments:o.payments||null,refundAmount:Number(o.refundAmount)||0,refundPayments:o.refundPayments||null,refundHistory:o.refundHistory||null,preCompletionCashRefund:o.preCompletionCashRefund||null};})};
+  var shiftRef=shiftReferenceLabel(shift,true),snapshot={schemaVersion:4,shiftReference:shiftRef,capturedAt:closedAt,calculation:'float + cash sales + tips - cash refunds + pay-ins - pay-outs',floatMode:shift.floatMode||(fixedFloatCfg!=null?'fixed':'opening-count'),configuredFloat:shift.configuredFloat!=null?Number(shift.configuredFloat):(fixedFloatCfg!=null?fixedFloatCfg:null),openingFloat:Number(shift.openingFloat)||0,retainedFloat:z.retainedFloat,actualFloatRetained:z.actualFloatRetained,floatShortfall:z.floatShortfall,tolerance:Number(toleranceCfg.cashPeso)||0,reconcileTotalOnly:reconcileTotalOnlyR(),tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,cashRefunds:z.cashRefunds,net:z.net,cashSales:z.cashSales,tips:z.tips,bySeller:z.bySeller||{},payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,varianceStatus:Math.abs(z.variance)>=.005?'pending_manager_reconciliation':'reconciled',cashToSettle:z.cashToSettle,byMethod:z.byMethod,byChannel:z.byChannel,voidCount:z.voidCount,voidAmt:z.voidAmt,pending:z.pending,pendingCount:z.pendingCount,openCount:shift.openCount||{},closeCount:counts||{},expectedDrawer:shift.drawer||{},payInEntries:(shift.payIns||[]),payOutEntries:(shift.payOuts||[]),floatException:shift.floatException||null,sales:saleList.map(function(o){return{id:o.id||'',date:o.date||'',time:o.time||'',occurredAt:(window.AccazaSales&&window.AccazaSales.stamp?window.AccazaSales.stamp(o):0),timestamp:Number(o.timestamp)||0,total:Number(o.total)||0,correctedOrderTotal:o.correctedOrderTotal!=null?Number(o.correctedOrderTotal):null,correctedOrderId:o.correctedOrderId||'',completedOrderCorrectionId:o.completedOrderCorrectionId||'',channel:o.channel||'instore',payment:o.payment||'',payments:o.payments||null,refundAmount:Number(o.refundAmount)||0,refundPayments:o.refundPayments||null,refundHistory:o.refundHistory||null,preCompletionCashRefund:o.preCompletionCashRefund||null};})};
   var closed={status:'closed',shiftReference:shiftRef,closeAt:closedAt,openingFloat:shift.openingFloat,openCount:shift.openCount||null,closeCount:counts,drawerExpected:shift.drawer||null,tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,cashRefunds:z.cashRefunds,tips:z.tips,net:z.net,byMethod:z.byMethod,voidCount:z.voidCount,voidAmt:z.voidAmt,payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,varianceStatus:snapshot.varianceStatus,byChannel:z.byChannel,retainedFloat:z.retainedFloat,actualFloatRetained:z.actualFloatRetained,floatShortfall:z.floatShortfall,cashToSettle:z.cashToSettle,pending:z.pending,pendingCount:z.pendingCount,floatMode:snapshot.floatMode,configuredFloat:snapshot.configuredFloat,zReport:snapshot};
   if(pendingServiceReview){closed.serviceReview=pendingServiceReview;snapshot.serviceReview=pendingServiceReview;}
   var a=A(),writes={};writes['shifts/'+shift.id]=Object.assign({},shift,closed);writes.posActiveShift=null;
@@ -1546,9 +1588,9 @@ function showZ(shift,z,existingWindow){
   var saleList=(z.saleList||Object.keys(ordersMap).map(function(k){return ordersMap[k];}).filter(function(o){return o&&o.shiftId===shift.id&&(o.status==='Completed'||o.status==='Received');})).slice().sort(function(a,b){return(saleStamp(a)||Number.MAX_SAFE_INTEGER)-(saleStamp(b)||Number.MAX_SAFE_INTEGER);});
   var salesTotal=saleList.reduce(function(s,o){return s+(Number(o.total)||0)-(Number(o.refundAmount)||0);},0),countedDenomTotal=DENOMS.reduce(function(s,d){return s+(Number((z.closeCount||{})[d.k])||0)*d.v;},0),expectedDenomTotal=DENOMS.reduce(function(s,d){return s+(Number((z.expectedDrawer||{})[d.k])||0)*d.v;},0);
   var saleRows=saleList.map(function(o){var tag=(o.unsynced?' [not yet confirmed]':'')+(o.voided?' [VOID]':(Number(o.refundAmount)>0?' [R '+peso(o.refundAmount)+']':o.preCompletionCashRefund?' [Cash refund '+peso(o.preCompletionCashRefund.amount)+']':''));var ch=(o.channel&&o.channel!=='instore')?(' '+esc(o.channel==='grabfood'?'GF':'FP')):'';return '<tr><td>'+esc(o.id)+'<div style="font-size:9px;">'+esc(saleDateTime(o))+ch+'</div></td><td style="text-align:right;">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('');
-  w.document.write('<html><head><title>Z-Report '+esc(shiftReference(shift.shiftReference,shift.id))+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
+  w.document.write('<html><head><title>Z-Report '+esc(shiftReferenceLabel(shift))+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><h3>'+(z.status==='provisional'?'PROVISIONAL ':'')+'SHIFT Z-REPORT</h3><hr>'
-    +'<div>Shift reference: '+esc(shiftReference(shift.shiftReference,shift.id))+'</div><div>Cashier: '+esc(shift.staff)+'</div><div>Open: '+new Date(shift.openAt).toLocaleString('en-PH')+'</div><div>Close: '+new Date(z.reportClosedAt||shift.closeAt||Date.now()).toLocaleString('en-PH')+'</div>'
+    +'<div>Shift reference: '+esc(shiftReferenceLabel(shift,true))+'</div><div>Cashier: '+esc(shift.staff)+'</div><div>Open: '+new Date(shift.openAt).toLocaleString('en-PH')+'</div><div>Close: '+new Date(z.reportClosedAt||shift.closeAt||Date.now()).toLocaleString('en-PH')+'</div>'
     +(z.invoiceRange?'<div>Invoice series: '+esc(z.invoiceRange.first)+' to '+esc(z.invoiceRange.last)+' ('+z.invoiceRange.count+' invoice'+(Number(z.invoiceRange.count)===1?'':'s')+')</div>':'')
     +'<div>Float policy: '+esc(shift.floatMode==='fixed'?'Fixed':'Opening count')+(shift.configuredFloat!=null?' '+peso(shift.configuredFloat):'')+'</div><hr>'
     +(z.status==='provisional'?'<div style="border:2px solid #000;padding:5px;margin:5px 0;"><b>PROVISIONAL Z REPORT</b><div>'+(z.openItems&&z.openItems.notReceived?'Built on this till: the server has not received this close yet. Submit it again when the connection returns.':'The server has not confirmed every sale yet. The final Z report is issued automatically, at the latest when the next shift ends.')+'</div>'+zOpenItemsHtml(z.openItems)+'</div><hr>':'')
