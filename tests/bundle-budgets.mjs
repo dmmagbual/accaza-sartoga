@@ -143,8 +143,9 @@ export const BUNDLE_BUDGETS=Object.freeze({
   'assets/js/admin/admin-orders.mjs':15100, // reviewed 14,295
   'assets/js/admin/uncosted-sales.js':13600, // reviewed 12,896
   // Oct 2026 (admin 683): the Baking screen moved out of the POS bundle entirely, so the POS
-  // ceiling and its 50 KB reserve are untouched. Reviewed at 23,180 bytes.
-  'assets/js/admin/baking.js':24500,
+  // ceiling and its 50 KB reserve are untouched. Reviewed at 26,105 bytes after each ingredient
+  // line gained an editable recipe unit (Ingredient · Recipe unit · Quantity · Cost · Total cost).
+  'assets/js/admin/baking.js':27400,
   'assets/js/admin/channel-pricing.js':13400, // reviewed 12,727
   'assets/js/shared/serve-style-plan.js':13200, // reviewed 12,543
   'assets/js/admin/daily-report-output.mjs':11600, // reviewed 11,033

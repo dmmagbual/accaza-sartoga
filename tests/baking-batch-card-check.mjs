@@ -1,4 +1,4 @@
-/* Homemade pastry batch card (admin 683, 14 Oct 2026).
+/* Homemade pastry batch card (admin 684, 14 Oct 2026).
 
    Proves the two things Danilo asked for before the build:
      1. the card can never proceed on a wrong stock item, and
@@ -7,6 +7,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { createRequire } from 'node:module';
+/* The server converts each line's recipe unit to the item's stock unit with the shared costing
+   engine, so the test uses the same engine the bundle requires. */
+const costing = createRequire(import.meta.url)('../functions/lib/costing.js');
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 const inventory = read('src/functions/50-inventory.js');
@@ -57,11 +61,11 @@ assert.ok(inventory.includes('A batch card movement must carry a unit cost great
 /* ── 3. Mapping enforcement operates on real item records ─────────────────────────────────── */
 {
   const start = baking.indexOf('const BAKING_MANAGER_ROLES');
-  const end = baking.indexOf('async function bakingUnitCost', start);
+  const end = baking.indexOf('async function bakingReadProduct', start);
   assert.ok(start >= 0 && end > start, 'mapping validators must exist');
-  const context = vm.createContext({ qty6: (v) => Math.round((Number(v) || 0) * 1e6) / 1e6 });
+  const context = vm.createContext({ qty6: (v) => Math.round((Number(v) || 0) * 1e6) / 1e6, Costing: costing });
   vm.runInContext(baking.slice(start, end), context);
-  const { bakingPastryProblem, bakingLineProblem, bakingMappingFingerprint } = context;
+  const { bakingPastryProblem, bakingLineProblem, bakingMappingFingerprint, bakingStockQty } = context;
   const pastry = { id: 'ing_cookie', name: 'Choco Chip Cookie', unit: 'pc', inventoryAccount: '1240', costAccount: '5030', active: true };
   const flour = { name: 'Flour', unit: 'kg', inventoryAccount: '1240', costAccount: '5030', recipeItem: true, active: true };
 
@@ -85,6 +89,26 @@ assert.ok(inventory.includes('A batch card movement must carry a unit cost great
     're-mapping the pastry item must invalidate the confirmation');
   assert.notEqual(bakingMappingFingerprint(pastry, 'ing_cookie'), bakingMappingFingerprint(pastry, 'ing_other'),
     'confirming a different pastry item must be a different confirmation');
+
+  /* The baker types the unit they think in; the ledger holds the item's own stock unit. */
+  const kg = { name: 'Flour', unit: 'kg', inventoryAccount: '1240', costAccount: '5030', recipeItem: true, active: true };
+  const grams = bakingStockQty({ typedQty: 500, typedUnit: 'g' }, kg, 'ing_flour');
+  assert.equal(grams.ok, true, 'a compatible recipe unit converts');
+  assert.equal(grams.qty, 0.5, '500 g of a kilogram-stocked item is 0.5 kg');
+  assert.equal(grams.from, 'g');
+  assert.equal(grams.to, 'kg');
+  const sameUnit = bakingStockQty({ typedQty: 2.5, typedUnit: 'kg' }, kg, 'ing_flour');
+  assert.equal(sameUnit.ok, true, 'the stock unit itself is accepted');
+  assert.equal(sameUnit.qty, 2.5, 'a quantity already in the stock unit is unchanged');
+  const defaulted = bakingStockQty({ typedQty: 3, typedUnit: '' }, { name: 'Eggs', unit: 'pc', inventoryAccount: '1240', costAccount: '5030', recipeUnit: true, active: true }, 'ing_eggs');
+  assert.equal(defaulted.ok, true, 'a line with no unit falls back to the stock unit');
+  assert.equal(defaulted.qty, 3, 'pieces stay pieces');
+  const mismatched = bakingStockQty({ typedQty: 2, typedUnit: 'pc' }, kg, 'ing_flour');
+  assert.equal(mismatched.ok, false, 'a count cannot be converted to a weight');
+  assert.match(mismatched.message, /cannot be converted to kg/, 'the refusal names both units');
+  const noStockUnit = bakingStockQty({ typedQty: 1, typedUnit: 'g' }, { name: 'Mystery', unit: '', inventoryAccount: '1240', costAccount: '5030' }, 'ing_mystery');
+  assert.equal(noStockUnit.ok, false, 'an item with no stock unit refuses the card');
+  assert.match(noStockUnit.message, /no stock unit/, 'the refusal says what to fix');
 }
 
 /* ── 4. Delayed posting: a short ingredient is accepted and flagged, never blocked ─────────── */
@@ -100,6 +124,10 @@ assert.ok(baking.includes('if (!itemId || !qty) continue;'), 'a zero-quantity li
 /* ── 5. Server authority: the browser never supplies a cost, a total or an account ─────────── */
 for (const marker of [
   "unitCost: await bakingUnitCost(db, line.itemId, item)",
+  "unit: bakingText(line && line.unit, 20)",
+  "stockQty: line.stockQty",
+  "const stock = bakingStockQty(line, line.item, line.itemId)",
+  "qty: qty6(line.stockQty != null ? line.stockQty : line.qty)",
   '`/inventoryAccounting/${itemId}`',
   'const lines = resolved.map((line, index) => {',
   'const value = money(Math.abs(qty6(posted.totalCost)))',
@@ -159,12 +187,12 @@ assert.ok(posBytes <= 650000 - 50000, `pos.js (${posBytes}) must stay under its 
 assert.ok(posBytes < 541000, `pos.js (${posBytes}) must carry only the baking wiring, not the screen itself`);
 
 /* ── 10. Release bookkeeping ──────────────────────────────────────────────────────────────── */
-assert.ok(manifest.builds.admin === 683, 'the admin build must be bumped to 683');
-assert.ok(manifest.builds.serviceWorkerCache === 679, 'the service-worker cache must be bumped to 679');
-assert.ok(adminHtml.includes('name="accaza-admin-build" content="683"'), 'admin.html must carry the new build');
-assert.ok(adminHtml.includes('build&nbsp;v683'), 'the visible admin build label must match');
-assert.ok(adminHtml.includes('module-loader.js?v=683'), 'the cache-busted runtime scripts must match the build');
-assert.ok(sw.includes("const CACHE='accaza-v679'"), 'the service worker cache name must match the manifest');
+assert.ok(manifest.builds.admin === 684, 'the admin build must be bumped to 684');
+assert.ok(manifest.builds.serviceWorkerCache === 680, 'the service-worker cache must be bumped to 680');
+assert.ok(adminHtml.includes('name="accaza-admin-build" content="684"'), 'admin.html must carry the new build');
+assert.ok(adminHtml.includes('build&nbsp;v684'), 'the visible admin build label must match');
+assert.ok(adminHtml.includes('module-loader.js?v=684'), 'the cache-busted runtime scripts must match the build');
+assert.ok(sw.includes("const CACHE='accaza-v680'"), 'the service worker cache name must match the manifest');
 assert.ok(sw.includes("/assets/js/admin/baking.js"), 'the Baking module must be precached for the offline POS shell');
 assert.ok(manifest.authoritativeFiles.includes('assets/js/admin/baking.js'), 'baking.js must be an authoritative file');
 assert.ok(manifest.authoritativeFiles.includes('src/functions/50a-baking.js'), '50a-baking.js must be an authoritative file');
