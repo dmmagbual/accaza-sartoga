@@ -76,6 +76,19 @@ async function bakingUnitCost(db, itemId, item) {
   const fromLedger = qty6(accounting.unitCost);
   return fromLedger > 0 ? fromLedger : qty6(item && item.cost);
 }
+/* The baker types the unit they think in — grams, millilitres, pieces — the way the recipe screen
+   does; the inventory ledger holds each item in its own stock unit. Convert one to the other with the
+   shared costing engine, and refuse a pair that cannot be converted instead of guessing. */
+function bakingStockQty(line, item, itemId) {
+  const name = String(item && item.name || itemId);
+  const typedQty = qty6(line && (line.typedQty != null ? line.typedQty : line.qty));
+  const to = String(item && item.unit || "").trim();
+  if (!to) return { ok: false, message: `${name} has no stock unit. Set one under Stock Items.` };
+  const from = String(line && line.typedUnit || "").trim() || to;
+  const converted = Costing.convert(typedQty, from, to);
+  if (!converted.ok) return { ok: false, message: `${name}: ${from} cannot be converted to ${to}. Pick a unit of the same kind — weight, volume or count.` };
+  return { ok: true, qty: qty6(converted.qty), from, to };
+}
 async function bakingReadProduct(db, productId) {
   const product = (await db.ref(`/bakingProducts/${productId}`).get()).val();
   if (!product) throw new HttpsError("not-found", "That baking product was not found.");
@@ -93,9 +106,9 @@ async function bakingValidateProduct(db, productId, product) {
   if (pastryProblem) problems.push(pastryProblem);
   const lines = await Promise.all(template.map(async (line) => {
     const itemId = String(line && line.itemId || "");
-    if (!/^[A-Za-z0-9_-]{1,160}$/.test(itemId)) return { itemId, item: null, unitCost: 0 };
+    if (!/^[A-Za-z0-9_-]{1,160}$/.test(itemId)) return { itemId, item: null, typedUnit: "", unitCost: 0 };
     const item = (await db.ref(`/inventory/${itemId}`).get()).val();
-    return { itemId, item, unitCost: await bakingUnitCost(db, itemId, item) };
+    return { itemId, item, typedUnit: bakingText(line && line.unit, 20), unitCost: await bakingUnitCost(db, itemId, item) };
   }));
   const seen = {};
   lines.forEach((line) => {
@@ -104,6 +117,8 @@ async function bakingValidateProduct(db, productId, product) {
     seen[line.itemId] = true;
     const problem = bakingLineProblem(line.item, line.itemId, pastryItemId, line.unitCost);
     if (problem) problems.push(problem);
+    /* Catch an unusable unit at confirmation time rather than when a baker is over a tray. */
+    if (line.item) { const stock = bakingStockQty(line, line.item, line.itemId); if (!stock.ok) problems.push(stock.message); }
   });
   return { pastryItemId, pastryItem, lines, problems };
 }
@@ -168,21 +183,27 @@ exports.postBatchCard = onCall(
       if (seen[itemId]) throw new HttpsError("invalid-argument", "The same ingredient is listed twice on this card.");
       seen[itemId] = true;
       if (qty < 0) throw new HttpsError("invalid-argument", "An ingredient quantity cannot be negative.");
-      used.push({ itemId, qty });
+      used.push({ itemId, qty, unit: bakingText(line && line.unit, 20) });
     }
     if (!used.length) throw new HttpsError("invalid-argument", "Every ingredient line is zero. Enter at least one quantity used.");
 
     const resolved = await Promise.all(used.map(async (line) => {
       const item = (await db.ref(`/inventory/${line.itemId}`).get()).val();
-      return { itemId: line.itemId, qty: line.qty, item, unitCost: await bakingUnitCost(db, line.itemId, item) };
+      return { itemId: line.itemId, item, typedQty: line.qty, typedUnit: line.unit, unitCost: await bakingUnitCost(db, line.itemId, item) };
     }));
     resolved.forEach((line) => {
       const problem = bakingLineProblem(line.item, line.itemId, pastryItemId, line.unitCost);
       if (problem) throw new HttpsError("failed-precondition", problem);
+      /* The baker types the unit they think in; the ledger holds the item's own stock unit. */
+      const stock = bakingStockQty(line, line.item, line.itemId);
+      if (!stock.ok) throw new HttpsError("failed-precondition", stock.message);
+      line.stockQty = stock.qty;
+      line.stockUnit = stock.to;
+      line.enteredUnit = stock.from;
     });
     /* Guard before anything is posted, so a card can never half-post. Stock may be short — that is
        allowed and flagged — but a missing cost is refused because it would make the batch wrong. */
-    const plannedTotal = money(resolved.reduce((sum, line) => sum + money(line.qty * line.unitCost), 0));
+    const plannedTotal = money(resolved.reduce((sum, line) => sum + money(line.stockQty * line.unitCost), 0));
     if (!(plannedTotal > 0)) throw new HttpsError("failed-precondition", "The batch value is zero. Check that every ingredient has a real cost.");
 
     const bakedBy = bakingText(data.bakedBy, 120) || bakingText(actor.name || actor.role || "staff", 120);
@@ -209,14 +230,14 @@ exports.postBatchCard = onCall(
         movementId: `mv_${batchId}_${line.itemId}`.slice(0, 160),
         itemId: line.itemId,
         type: "production",
-        qty: -line.qty,
+        qty: -line.stockQty,
         unitCost: line.unitCost,
         sourceType: "batch-card",
         sourceId: batchId,
         sourceLine: line.itemId,
         offsetAccount: pastryAccounts.inventory,
         adjustmentNature: "batch-card-production",
-        note: `${batchId} · ${line.qty} ${String(line.item.unit || "")} used by ${String(product.name || productId)}`.slice(0, 500),
+        note: `${batchId} · ${line.typedQty} ${line.enteredUnit || line.stockUnit} used by ${String(product.name || productId)}`.slice(0, 500),
         actorName: bakedBy,
         occurredAt,
       }, actor);
@@ -230,8 +251,12 @@ exports.postBatchCard = onCall(
       return {
         itemId: line.itemId,
         itemName: String(line.item.name || line.itemId).slice(0, 160),
-        unit: String(line.item.unit || "").slice(0, 40),
-        qty: line.qty,
+        /* What the baker typed, and what the ledger actually moved. Both are kept so the printed
+           card, the reversal and any later correction are exact. */
+        unit: (line.enteredUnit || line.stockUnit || "").slice(0, 40),
+        qty: line.typedQty,
+        stockUnit: String(line.stockUnit || "").slice(0, 40),
+        stockQty: line.stockQty,
         unitCost: qty6(posted.unitCost) || line.unitCost,
         value,
         inventoryAccount: bakingItemAccount(line.item).inventory,
@@ -324,7 +349,8 @@ exports.reverseBatchCard = onCall(
       movementId: `mv_${batchId}_rev_${line.itemId}`.slice(0, 160),
       itemId: line.itemId,
       type: "production_reversal",
-      qty: qty6(line.qty),
+      /* Cards posted before the unit drop-down have no stockQty; fall back to the stored quantity. */
+      qty: qty6(line.stockQty != null ? line.stockQty : line.qty),
       unitCost: qty6(line.unitCost),
       sourceType: "batch-card",
       sourceId: batchId,
