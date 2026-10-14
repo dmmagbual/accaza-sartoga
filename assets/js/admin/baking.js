@@ -1,4 +1,4 @@
-/* 🥐 Baking — one batch card per finished bake: ingredients out of stock, finished pieces into it.
+/* 🥐 The Art of Baking — one batch card per finished bake: ingredients out of stock, finished pieces into it.
    Ingredients and cookies both sit in inventory 1240, so a card moves value between stock items and
    never changes profit. Posting and reversal happen only in the server callables. */
 (function(){
@@ -123,13 +123,12 @@ function rd(){
   if(!window.inventoryMap&&!S.busy&&!S.inv){el.innerHTML='<div class="s" style="padding:.6rem .8rem;">Loading stock items…</div>';ld();return;}
   if(!window.inventoryMap&&S.inv&&Date.now()-S.invAt>=3e5&&!S.busy)ld();
   var pid=sel(),p=pr()[pid]||null,b=p?bt():null,ar=pl(false),d=S.open?S.draft:null,ok=!!(p&&p.mapping&&p.mapping.confirmedAt);
-  el.innerHTML=CSS+'<div class="pz-h">🥐 Baking</div>'
-   +'<p class="pz-sub">Record one finished bake: what it used and how many pieces came out. Write the card after baking — this is not a work-in-progress ledger. Ingredients and cookies both sit in inventory 1240, so a card moves value between stock items and never changes profit.</p>'
+  el.innerHTML=CSS+'<div class="pz-h">🥐 The Art of Baking</div>'
    +'<div class="v" style="margin-bottom:.7rem;">'+pl(true).map(function(x){return '<button class="pz-btn '+(x.id===pid?'ok':'sec')+'" data-bkpid="'+esc(x.id)+'" style="padding:.35rem .8rem;">'+esc(x.emoji||'')+' '+esc(x.name||x.id)+'</button>';}).join(' ')
    +' <button class="pz-btn sec b" data-bknew>＋ Add product</button> <button class="pz-btn '+(S.open?'ok':'sec')+' b" data-bkcfg>⚙️ Configure product</button></div>'
    +(S.open?pn(d,ar):'')
    +(!p?'<div class="pz-card" style="margin-bottom:1rem;"><p class="pz-sub">Add a baking product to start posting batch cards. Each product is one thing you bake.</p></div>'
-    :!ok?'<div class="pz-card" style="margin-bottom:1rem;"><p class="pz-sub">The mapping for '+esc(p.name||p.id)+' is not confirmed, so no card can be posted. Open the configuration and press <b>Check mapping</b>.</p></div>'
+    :!ok?'<div class="pz-card" style="margin-bottom:1rem;"><div class="f">Mapping not confirmed — no batch card can be posted yet</div><p class="pz-sub">A card for '+esc(p.name||p.id)+' only appears once its mapping is confirmed. Press <b>Check mapping</b>: it verifies the pastry stock item sits in inventory 1240 with cost account 5030, and that every ingredient has an account, a cost and a unit that converts to that item\'s stock unit.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button class="pz-btn ok" data-bpcheck>✔ Check mapping</button><button class="pz-btn sec" data-bkcfg>⚙️ Open configuration</button></div></div>'
     :fm(p,b))
    +'<div class="pz-card"><div class="f">Batch cards · '+esc(p?(p.name||p.id):'—')+'</div>'+T([['Date'],['Batch'],['Pieces',1],['Total cost',1],['Per piece',1],['Posted by'],['']],cr(p?p.id:''))+'</div>';
   wr(el);
