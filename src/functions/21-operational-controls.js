@@ -7,6 +7,59 @@ function operationalAuditRecord(action, sourceType, sourceId, actor, details = {
   }, details);
 }
 
+// One eligibility decision and one archive write, shared by the manager action
+// and the scheduled order-archive sweep, so the two can never disagree about
+// what may leave /orders. `strict` adds the guards only the automatic sweep
+// needs: an order the till may still be settling (unpaid, or completed moments
+// ago) is left for a human.
+const ORDER_ARCHIVE_SWEEP_GRACE_MS = 30 * 60 * 1000;
+const ORDER_ARCHIVE_FINAL_STATUSES = ["Completed", "Received", "Rejected"];
+const ORDER_ARCHIVE_REFUSAL = {
+  not_found: "Order not found.",
+  shift_open: "Orders cannot be archived while their shift is open.",
+  not_final: "Only completed, received, rejected, or voided orders can be archived.",
+  serving_queue: "This order is still in the serving queue. Mark it served or not collected first.",
+};
+
+async function orderArchiveCheck(db, orderId, options = {}) {
+  const [orderSnap, archivedSnap] = await Promise.all([
+    db.ref(`/orders/${orderId}`).get(), db.ref(`/archivedOrders/${orderId}`).get(),
+  ]);
+  if (!orderSnap.exists()) return {ok: false, reason: archivedSnap.exists() ? "already_archived" : "not_found"};
+  const order = Object.assign({id: orderId}, orderSnap.val() || {});
+  if (order.shiftId) {
+    let shiftId = "";
+    try { shiftId = financeKey(order.shiftId, "Shift ID"); } catch (error) { return {ok: false, reason: "shift_invalid", error}; }
+    const shift = (await db.ref(`/shifts/${shiftId}`).get()).val() || null;
+    if (shift && shift.status !== "closed") return {ok: false, reason: "shift_open"};
+  }
+  if (!ORDER_ARCHIVE_FINAL_STATUSES.includes(String(order.status || "")) && order.voided !== true) return {ok: false, reason: "not_final"};
+  if (OrderService.keepsOrderLive(order)) return {ok: false, reason: "serving_queue"};
+  if (options.strict) {
+    // Reuse the live-projection rule instead of a second guess: an order the
+    // register or the manager validation queue still shows - an electronic
+    // payment awaiting a manager (cashier_verified), an unsettled platform order,
+    // a requested inventory reversal - must not leave the live list even when its
+    // shift is closed. Its own shift is already proven closed above, so the
+    // active-shift clause of that rule cannot apply here.
+    if (shouldProjectOrder(order, null)) return {ok: false, reason: "still_live"};
+    const settledAt = Number(order.completedAt || order.receivedAt || order.timestamp || 0);
+    if (!settledAt || Date.now() - settledAt < ORDER_ARCHIVE_SWEEP_GRACE_MS) return {ok: false, reason: "too_recent"};
+  }
+  return {ok: true, order};
+}
+
+async function archiveOrderNow(db, order, actor, source) {
+  const now = Date.now(), orderId = order.id;
+  await db.ref().update({
+    [`archivedOrders/${orderId}`]: archivedOrderRecord(order, now, source),
+    [`orders/${orderId}`]: null,
+    [`activeOrders/${orderId}`]: null,
+    [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("archive_order", "order", orderId, actor, {previousStatus: order.status || ""}),
+  });
+  return {orderId, archivedAt: now};
+}
+
 exports.manageOrderArchive = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
@@ -20,30 +73,13 @@ exports.manageOrderArchive = onCall(
       if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) {
         throw new HttpsError("permission-denied", "Only managers may archive orders.");
       }
-      const [orderSnap, archivedSnap] = await Promise.all([
-        db.ref(`/orders/${orderId}`).get(), db.ref(`/archivedOrders/${orderId}`).get(),
-      ]);
-      if (!orderSnap.exists()) {
-        if (archivedSnap.exists()) return {orderId, duplicate: true};
-        throw new HttpsError("not-found", "Order not found.");
+      const check = await orderArchiveCheck(db, orderId);
+      if (!check.ok) {
+        if (check.reason === "already_archived") return {orderId, duplicate: true};
+        if (check.error) throw check.error;
+        throw new HttpsError(check.reason === "not_found" ? "not-found" : "failed-precondition", ORDER_ARCHIVE_REFUSAL[check.reason] || "This order cannot be archived.");
       }
-      const order = Object.assign({id: orderId}, orderSnap.val() || {});
-      if (order.shiftId) {
-        const shift = (await db.ref(`/shifts/${financeKey(order.shiftId, "Shift ID")}`).get()).val() || null;
-        if (shift && shift.status !== "closed") throw new HttpsError("failed-precondition", "Orders cannot be archived while their shift is open.");
-      }
-      if (!["Completed", "Received", "Rejected"].includes(String(order.status || "")) && order.voided !== true) {
-        throw new HttpsError("failed-precondition", "Only completed, received, rejected, or voided orders can be archived.");
-      }
-      if (OrderService.keepsOrderLive(order)) throw new HttpsError("failed-precondition", "This order is still in the serving queue. Mark it served or not collected first.");
-      const archived = archivedOrderRecord(order, now, "manual-server");
-      await db.ref().update({
-        [`archivedOrders/${orderId}`]: archived,
-        [`orders/${orderId}`]: null,
-        [`activeOrders/${orderId}`]: null,
-        [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("archive_order", "order", orderId, actor, {previousStatus: order.status || ""}),
-      });
-      return {orderId, archivedAt: now};
+      return archiveOrderNow(db, check.order, actor, "manual-server");
     }
     if (action === "delete") {
       const snap = await db.ref(`/archivedOrders/${orderId}`).get();

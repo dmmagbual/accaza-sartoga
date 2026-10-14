@@ -46,6 +46,7 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('notifyOnContactM
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('apIntegrityBaseline')+1,0,'backfillPurchaseDocumentNumbers');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageAccountingPeriod'),0,'manageSupplier');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageOrderArchive'),0,'managePosStaffIdentity','openLinkedPosShift');
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('autoCompleteReadyOnlineOrders')+1,0,'sweepOrderArchive');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('openLinkedPosShift')+1,0,'managePortalAccount');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getOperationalExceptions')+1,0,'getProductionCertification');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getProductionCertification')+1,0,'getProductionValidation');
