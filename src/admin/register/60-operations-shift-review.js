@@ -58,10 +58,52 @@ function renderOps(){
   root.querySelectorAll('[data-recall]').forEach(function(b){b.onclick=function(){var h=heldMap[b.getAttribute('data-recall')];if(h&&window.__pos){window.__pos.loadCart(h.cart);var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-recall')));}};});
   root.querySelectorAll('[data-hdisc]').forEach(function(b){b.onclick=function(){if(confirm('Discard this held order?')){var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-hdisc')));}};});
 }
+// A shift's database key (`SH-<6 digits>-<6 hex>`) is an internal key. Never show it
+// as the shift reference: the random half of that key is the only collision guard on
+// `shifts/<id>`, so it must stay intact, and staff should quote a reference a manager
+// can recognise. Always present the server-issued `shiftReference`; when a shift has
+// none yet, ask the server to issue a durable one and label the gap in plain words.
+function shiftReferenceLabel(shift,quiet){
+  if(!shift)return '—';
+  var known=String(shift.shiftReference||'').trim();
+  if(known)return known;
+  var id=shift.id;
+  if(!id)return 'Reference unavailable';
+  // A caller that stores this string must never persist the pending text. Prefer the
+  // last durable reference already on the shift; that always exists once the shift has
+  // been closed, because the server issues one on close.
+  if(quiet)return String(shift.zReport&&shift.zReport.shiftReference||'')||'Issuing reference…';
+  // Never issue references from the shift picker: it lists up to 80 closed shifts, so
+  // triggering per option would fire one Cloud Function call per missing reference.
+  // The card header issues the reference for the one shift actually on screen.
+  if(shiftReferenceFailures[id])return 'Reference pending';
+  if(!shiftReferenceRequests[id])shiftIssueReference(id);
+  return 'Issuing reference…';
+}
+function shiftIssueReference(id){
+  if(!id||shiftReferenceRequests[id]||shiftReferenceFailures[id])return;
+  var api=A();
+  if(!api||!api.ensureShiftReference)return;
+  shiftReferenceRequests[id]=true;
+  api.ensureShiftReference({shiftId:id}).then(function(r){
+    var result=(r&&r.data)||r||{};
+    var issued=String(result.shiftReference||'').trim();
+    if(!issued)throw new Error('no reference issued');
+    if(shiftsMap[id])shiftsMap[id].shiftReference=issued;
+    if(activeShift&&activeShift.id===id)activeShift.shiftReference=issued;
+  }).catch(function(){
+    // Latch the failure so a live re-render cannot retry a failing shift without bound.
+    shiftReferenceFailures[id]=true;
+  }).finally(function(){delete shiftReferenceRequests[id];if(isTab('ops'))renderOps();});
+}
+function shiftCardHeaderHtml(shift,isOpen,S){
+  if(shift&&shift.id&&!String(shift.shiftReference||'').trim())shiftIssueReference(shift.id);
+  return '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem;"><div><b>Shift reference: '+esc(shiftReferenceLabel(shift,true))+'</b><div class="az-note">'+esc(shift.staff||'')+' · '+new Date(S.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(S.closeAt?('–'+new Date(S.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</div></div><span style="font-weight:700;color:'+(S.open?'#2a9d5c':'var(--tl)')+';">'+(S.open?'🟢 Open':'Closed')+'</span></div>';
+}
 function shiftOptions(){
   var opts='';
-  if(activeShift)opts+='<option value="'+esc(activeShift.id)+'">🟢 '+esc(shiftReference(activeShift.shiftReference,activeShift.id))+' · '+esc(activeShift.staff||'')+' · '+new Date(activeShift.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</option>';
-  Object.keys(shiftsMap).map(function(k){return Object.assign({id:k},shiftsMap[k]);}).filter(function(s){return s.status==='closed';}).sort(function(a,b){return (b.openAt||0)-(a.openAt||0);}).slice(0,80).forEach(function(s){opts+='<option value="'+esc(s.id)+'">'+esc(shiftReference(s.shiftReference,s.id))+' · '+esc(s.staff||'')+' · '+new Date(s.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(s.closeAt?('–'+new Date(s.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</option>';});
+  if(activeShift)opts+='<option value="'+esc(activeShift.id)+'">🟢 '+esc(shiftReferenceLabel(activeShift))+' · '+esc(activeShift.staff||'')+' · '+new Date(activeShift.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</option>';
+  Object.keys(shiftsMap).map(function(k){return Object.assign({id:k},shiftsMap[k]);}).filter(function(s){return s.status==='closed';}).sort(function(a,b){return (b.openAt||0)-(a.openAt||0);}).slice(0,80).forEach(function(s){opts+='<option value="'+esc(s.id)+'">'+esc(shiftReferenceLabel(s))+' · '+esc(s.staff||'')+' · '+new Date(s.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(s.closeAt?('–'+new Date(s.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</option>';});
   return opts;
 }
 function shiftCardHtml(){
@@ -100,12 +142,12 @@ function renderShiftCard(){
   var id=cardShiftId, isOpen=!!(activeShift&&activeShift.id===id);
   var shift=isOpen?activeShift:(shiftsMap[id]?Object.assign({id:id},shiftsMap[id]):null);
   if(!shift){body.innerHTML='<p class="az-note">Shift not found.</p>';return;}
-  if(!isOpen&&!shift.shiftReference&&!shiftReferenceRequests[id]){var api=A();if(api&&api.ensureShiftReference){shiftReferenceRequests[id]=true;api.ensureShiftReference({shiftId:id}).then(function(r){var result=(r&&r.data)||r||{};if(shiftsMap[id])shiftsMap[id].shiftReference=result.shiftReference||'';}).catch(function(){}).finally(function(){delete shiftReferenceRequests[id];if(isTab('ops'))renderOps();});}}
   var S=shiftSummaryObj(shift,isOpen);
   var expectedHandover=Math.max(0,Math.round((S.expectedCash-S.retainedFloat)*100)/100),actualHandover=S.countedCash!=null?Math.max(0,Math.round((S.countedCash-S.retainedFloat)*100)/100):null;
   var chRows=S.byChannel?([['instore','In-store'],['online','Online Orders'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(S.byChannel&&S.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join('')):'<tr><td colspan="2" class="az-note">Channel split not stored for this shift.</td></tr>';
   var mRows=zMethodRows(S,'class="r"')||'<tr><td colspan="2" class="az-note">—</td></tr>';
-  var hdr='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem;"><div><b>Shift reference: '+esc(shiftReference(shift.shiftReference,shift.id))+'</b><div class="az-note">'+esc(shift.staff||'')+' · '+new Date(S.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(S.closeAt?('–'+new Date(S.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</div></div><span style="font-weight:700;color:'+(S.open?'#2a9d5c':'var(--tl)')+';">'+(S.open?'🟢 Open':'Closed')+'</span></div>';
+  var hdr=shiftCardHeaderHtml(shift,isOpen,S);
+  hdr='<div data-shift-reference-card="'+esc(shift.id||'')+'">'+hdr+'</div>';
   var kpis='<div class="az-kpis" style="margin:0 0 0.7rem;">'+kpi('Transactions',S.tx)+kpi('Net sales',peso(S.net))+kpi('Cash sales',peso(S.cashSales))+kpi('Expected cash to hand over',peso(expectedHandover))+'</div>';
   var recon='<div class="az-sec">Cash</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'
     +'<tr><td>Opening cash float</td><td class="r">'+peso(S.openingFloat)+'</td></tr>'

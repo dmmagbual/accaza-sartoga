@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},booksChartMap={},cashAccountsMap={},financialMovementsMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=null,logCollapsed=true,cardShiftId=null,shiftReferenceRequests={};
+var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},booksChartMap={},cashAccountsMap={},financialMovementsMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=null,logCollapsed=true,cardShiftId=null,shiftReferenceRequests={},shiftReferenceFailures={};
 var pettyVouchers={},pettyRepl={},pettySettings={},supplierMap={};
 function A(){return window.__accaza;}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
