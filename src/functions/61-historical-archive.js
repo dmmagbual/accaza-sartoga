@@ -324,14 +324,7 @@ async function reconcileHistoricalSalesRollup(firestore, orderId, order, transac
   const previous = state.contribution || null, next = HistoricalArchive.reportingContribution(order);
   const months = [...new Set([previous && previous.month, next && next.month].filter(Boolean))], snapshots = {};
   for (const month of months) snapshots[month] = await transaction.get(firestore.collection(HistoricalArchive.MONTH_COLLECTION).doc(month));
-  const unchanged = (previous && previous.checksum || "") === (next && next.checksum || "");
-  const legacyContribution = previous && Number(previous.schemaVersion || 0) < 3;
-  const legacyMonth = months.some((month) => !snapshots[month].exists || Number((snapshots[month].data() || {}).schemaVersion || 0) < 3);
-  const legacyAnalytics = months.some((month) => Number((snapshots[month].data() || {}).analyticsSchemaVersion || 0) < 2);
-  // A matching checksum is only a no-op after both the contribution state and
-  // every touched month are on the complete reporting schema. This lets a
-  // resumable backfill repair old V1 data without changing source evidence.
-  if (unchanged && !legacyContribution && !legacyMonth && !legacyAnalytics) return false;
+  if (!historicalRollupWriteRequired(previous, next, months, snapshots)) return false;
   for (const month of months) {
     let value = snapshots[month].exists ? snapshots[month].data() || {} : {};
     if (previous && previous.month === month) value = HistoricalArchive.applyReportingContribution(value, previous, -1);
@@ -343,8 +336,48 @@ async function reconcileHistoricalSalesRollup(firestore, orderId, order, transac
   return true;
 }
 
+// Pure rollup decision, shared by the transactional writer and the read-only
+// planner below so the two can never disagree about when a month write is due.
+function historicalRollupWriteRequired(previous, next, months, snapshots) {
+  const unchanged = (previous && previous.checksum || "") === (next && next.checksum || "");
+  // A matching checksum is only a no-op after both the contribution state and
+  // every touched month are on the complete reporting schema. This lets a
+  // resumable backfill repair old V1 data without changing source evidence.
+  const legacyContribution = previous && Number(previous.schemaVersion || 0) < 3;
+  const legacyMonth = months.some((month) => !snapshots[month].exists || Number((snapshots[month].data() || {}).schemaVersion || 0) < 3);
+  const legacyAnalytics = months.some((month) => Number((snapshots[month].data() || {}).analyticsSchemaVersion || 0) < 2);
+  return !(unchanged && !legacyContribution && !legacyMonth && !legacyAnalytics);
+}
+
+// Read-only twin of that decision. The monthly summary documents are shared by
+// every order in the same month, so a transaction that locks them on every
+// delivery makes concurrent order writes abort each other (Firestore ABORTED).
+// Deciding out here lets the common no-op delivery - journal and inventory
+// refreshes re-run this for unchanged orders all day - open a transaction on
+// its own order document only.
+async function historicalRollupWriteNeeded(firestore, orderId, order) {
+  const next = HistoricalArchive.reportingContribution(order);
+  const stateSnap = await firestore.collection(HistoricalArchive.CONTRIBUTION_COLLECTION).doc(orderId).get();
+  const state = stateSnap.exists ? stateSnap.data() || {} : {}, previous = state.contribution || null;
+  const months = [...new Set([previous && previous.month, next && next.month].filter(Boolean))], snapshots = {};
+  await Promise.all(months.map(async (month) => { snapshots[month] = await firestore.collection(HistoricalArchive.MONTH_COLLECTION).doc(month).get(); }));
+  return historicalRollupWriteRequired(previous, next, months, snapshots);
+}
+
+// Absorbed contention must stay visible. A replay that is never logged is a
+// silent slow path, and the dead-letter that used to surface this fault would
+// otherwise simply stop appearing.
+function logHistoricalContention(scope) {
+  return (info) => logger.warn("Historical archive replayed a transient Firestore failure", Object.assign({scope}, info));
+}
+
 async function reconcileHistoricalSalesOrder(firestore, orderId, order) {
-  return firestore.runTransaction(async (transaction) => reconcileHistoricalSalesRollup(firestore, orderId, order, transaction), {maxAttempts:1});
+  // The rollup backfill writes many orders into the same monthly summary, where
+  // contention is normal; a bounded replay replaces a first-attempt ABORTED. Its
+  // budget is short because one callable writes a whole page of orders and must
+  // still save its progress cursor.
+  return FirestoreRetry.runTransaction(firestore, async (transaction) => reconcileHistoricalSalesRollup(firestore, orderId, order, transaction),
+    FirestoreRetry.batchOptions({onRetry: logHistoricalContention("sales-rollup-backfill")}));
 }
 
 async function replicateHistoricalOrder(db, firestore, orderId, order, now = Date.now(), options = {}) {
@@ -352,13 +385,25 @@ async function replicateHistoricalOrder(db, firestore, orderId, order, now = Dat
   const input = await historicalArchiveInputs(db, orderId, order);
   const next = HistoricalArchive.buildDocument(orderId, input, now);
   const ref = firestore.collection(HistoricalArchive.COLLECTION).doc(orderId);
-  const result = await firestore.runTransaction(async (transaction) => {
+  // Decide the monthly-summary repair before opening the transaction. These
+  // summary documents are shared by every order in the month, so locking them on
+  // every delivery let concurrent order writes abort each other (Firestore
+  // ABORTED) until the daily failure budget dead-lettered this task. Transient
+  // contention is replayed here instead of reaching that budget.
+  const rollupRequired = await FirestoreRetry.retryTransient(() => historicalRollupWriteNeeded(firestore, orderId, next.order),
+    {onRetry: logHistoricalContention("replica-precheck")});
+  const result = await FirestoreRetry.runTransaction(firestore, async (transaction) => {
     const currentSnap = await transaction.get(ref), current = currentSnap.exists ? currentSnap.data() : null;
-    const rollupChanged = await reconcileHistoricalSalesRollup(firestore, orderId, next.order, transaction);
-    if (HistoricalArchive.unchanged(current, next)) return {duplicate: true, rollupChanged};
+    const duplicate = HistoricalArchive.unchanged(current, next);
+    // A replica that actually changed always reconciles its contribution in the
+    // same transaction, so the replica and the monthly summary cannot disagree.
+    // An unchanged delivery touches the shared summary only when the stored
+    // contribution is stale or still on a legacy schema.
+    const rollupChanged = duplicate && !rollupRequired ? false : await reconcileHistoricalSalesRollup(firestore, orderId, next.order, transaction);
+    if (duplicate) return {duplicate: true, rollupChanged};
     transaction.set(ref, next);
     return {duplicate: false, rollupChanged};
-  });
+  }, {onRetry: logHistoricalContention("replica-transaction")});
   // Only a changed replica is announced. Journal/inventory refreshes and bulk
   // backfills re-run this for unchanged orders all day; announcing those woke
   // every open report and overflowed the 32-entry marker, forcing full reloads.
@@ -375,12 +420,12 @@ exports.replicateArchivedOrderToFirestore = onValueWritten(
   async (event) => {
     const db = getDatabase(), firestore = getFirestore(), orderId = event.params.orderId, order = event.data.after.val(), now = Date.now();
     if (!order) {
-      await firestore.runTransaction(async (transaction) => {
+      await FirestoreRetry.runTransaction(firestore, async (transaction) => {
         const orderRef = firestore.collection(HistoricalArchive.COLLECTION).doc(orderId);
         await transaction.get(orderRef);
         await reconcileHistoricalSalesRollup(firestore, orderId, null, transaction);
         transaction.delete(orderRef);
-      });
+      }, {onRetry: logHistoricalContention("replica-delete")});
       await publishHistoricalChangeReliably(db, orderId, null, now);
       return;
     }
