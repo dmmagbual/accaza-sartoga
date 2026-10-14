@@ -1,4 +1,4 @@
-/* Homemade pastry batch card (admin 687, 14 Oct 2026).
+/* Homemade pastry batch card (admin 688, 14 Oct 2026).
 
    Proves the two things Danilo asked for before the build:
      1. the card can never proceed on a wrong stock item, and
@@ -162,7 +162,8 @@ assert.ok(inventory.includes('A batch card movement must carry a unit cost great
   assert.match(rowContext.blk(Object.assign({ id: 'bp1' }, product, { mapping: null }), card), /Confirm the mapping/, 'an unconfirmed mapping must block');
   assert.match(rowContext.blk(Object.assign({ id: 'bp1' }, product), { lines: [], pieces: 17 }), /at least one ingredient/, 'a card with no used line must block');
   assert.match(rowContext.blk(Object.assign({ id: 'bp1' }, product), { lines: card.lines, pieces: 0 }), /pieces/, 'a card with no pieces must block');
-  assert.ok(/Object\.assign\(\{id:pid\},raw\)/.test(screen), 'the render must attach the product id before gating or posting');
+  assert.ok(/function cp\(\)/.test(screen) && /Object\.assign\(\{id:id\},pr\(\)\[id\]\)/.test(screen), 'one helper must attach the product id');
+  assert.ok(!/blk\(pr\(\)\[/.test(screen), 'no caller may hand the raw product record to the post gate');
 }
 
 /* ── 5. Delayed posting: a short ingredient is accepted and flagged, never blocked ─────────── */
@@ -255,17 +256,89 @@ assert.ok(posBytes <= 650000 - 50000, `pos.js (${posBytes}) must stay under its 
 assert.ok(posBytes < 541000, `pos.js (${posBytes}) must carry only the baking wiring, not the screen itself`);
 
 /* ── 10. Release bookkeeping ──────────────────────────────────────────────────────────────── */
-assert.ok(manifest.builds.admin === 687, 'the admin build must be bumped to 684');
-assert.ok(manifest.builds.serviceWorkerCache === 683, 'the service-worker cache must be bumped to 680');
-assert.ok(adminHtml.includes('name="accaza-admin-build" content="687"'), 'admin.html must carry the new build');
-assert.ok(adminHtml.includes('build&nbsp;v687'), 'the visible admin build label must match');
-assert.ok(adminHtml.includes('module-loader.js?v=687'), 'the cache-busted runtime scripts must match the build');
-assert.ok(sw.includes("const CACHE='accaza-v683'"), 'the service worker cache name must match the manifest');
+assert.ok(manifest.builds.admin === 688, 'the admin build must be bumped to 684');
+assert.ok(manifest.builds.serviceWorkerCache === 684, 'the service-worker cache must be bumped to 680');
+assert.ok(adminHtml.includes('name="accaza-admin-build" content="688"'), 'admin.html must carry the new build');
+assert.ok(adminHtml.includes('build&nbsp;v688'), 'the visible admin build label must match');
+assert.ok(adminHtml.includes('module-loader.js?v=688'), 'the cache-busted runtime scripts must match the build');
+assert.ok(sw.includes("const CACHE='accaza-v684'"), 'the service worker cache name must match the manifest');
 assert.ok(sw.includes("/assets/js/admin/baking.js"), 'the Baking module must be precached for the offline POS shell');
 assert.ok(manifest.authoritativeFiles.includes('assets/js/admin/baking.js'), 'baking.js must be an authoritative file');
 assert.ok(manifest.authoritativeFiles.includes('src/functions/50a-baking.js'), '50a-baking.js must be an authoritative file');
 for (const marker of ['"bakingProducts"', '"batchCards"'])
   assert.ok(backupDelta.includes(marker), `backup tracking missing ${marker}`);
 assert.ok(registerSettings.includes("'bakingProducts','batchCards'"), 'the admin data export must include the baking nodes');
+
+/* ── 11. End to end: render the screen, press Post batch, inspect the payload ────────────────────
+   Every earlier check confirmed that code existed. This one RUNS the whole screen against a fake DOM
+   and a stubbed app, so it proves the chain that Danilo actually walks: render → wire → capture →
+   gate → payload → callable. It is the check that would have caught "Add a baking product first."
+   staring at a form that had already recognised the product. */
+{
+  const screen = fs.readFileSync('assets/js/admin/baking.js', 'utf8');
+  const nodes = {};
+  const node = (value, attrs) => ({ value: value == null ? '' : value, attrs: attrs || {}, tagName: (attrs && attrs.tag) || 'INPUT', onclick: null, oninput: null, onchange: null, getAttribute(k) { return this.attrs[k] == null ? '' : this.attrs[k]; } });
+  const root = {
+    innerHTML: '',
+    querySelector(sel) { return (nodes[sel] || [])[0] || null; },
+    querySelectorAll(sel) { return nodes[sel] || []; },
+  };
+  nodes['[data-bkpost]'] = [node('', { tag: 'BUTTON' })];
+  nodes['[data-bkpieces]'] = [node('17')];
+  nodes['[data-bkdate]'] = [node('2026-10-14')];
+  nodes['[data-bkby]'] = [node('Maria')];
+  nodes['[data-bknote]'] = [node('')];
+  nodes['[data-bkf]'] = [
+    node('ing_flour', { 'data-bkfi': '0', 'data-bkf': 'itemId', tag: 'SELECT' }),
+    node('g', { 'data-bkfi': '0', 'data-bkf': 'unit', tag: 'SELECT' }),
+    node('5', { 'data-bkfi': '0', 'data-bkf': 'qty' }),
+  ];
+  const posted = [];
+  const alerts = [];
+  const app = {
+    ref: () => ({}), db: {}, update: () => Promise.resolve(), set: () => Promise.resolve(),
+    callables: {
+      postBatchCard: (payload) => { posted.push(payload); return Promise.resolve({ card: { id: 'BAKE-TEST-1', pieces: 17, totalCost: 149.76, unitCost: 8.81, lines: [] } }); },
+      reverseBatchCard: () => Promise.resolve({}),
+      checkBakingMapping: () => Promise.resolve({ ok: true, fingerprint: 'v1|...', confirmedAt: 1, confirmedBy: 'Tester' }),
+    },
+  };
+  const win = {
+    __accaza: app,
+    __posShift: { staff: 'Maria' },
+    AccazaDate: { key: () => '2026-10-14' },
+    AccazaCosting: costing,
+    AccazaFormDialog: { run: () => {} },
+    inventoryMap: {
+      ing_cookie: { name: 'Choco Chip Cookie', unit: 'pc', cost: 30, stock: 0, inventoryAccount: '1240', costAccount: '5030' },
+      ing_flour: { name: 'Flour', unit: 'kg', cost: 80, stock: 12, inventoryAccount: '1240', costAccount: '5030' },
+    },
+    __accazaBakingProducts: {
+      bp1: { name: 'Choco Chip Cookie', emoji: '🥐', order: 1, active: true, pastryItemId: 'ing_cookie', mapping: { confirmedAt: 1, confirmedBy: 'Tester', fingerprint: 'x' }, template: [{ itemId: 'ing_flour', qty: 5, unit: 'g' }] },
+    },
+    __accazaBatchCards: {},
+  };
+  win.window = win;
+  const screenContext = vm.createContext({
+    window: win, document: { getElementById: (id) => (id === 'bakingRoot' ? root : null), querySelector: () => null },
+    console, alert: (m) => alerts.push(String(m)), confirm: () => false, setTimeout, Date, Math, JSON, Object, Array, String, Number, Promise, Intl, RegExp, Error,
+  });
+  vm.runInContext(`(function(){${screen.slice(screen.indexOf('(function(){') + 12, screen.lastIndexOf('})();'))}})();`, screenContext);
+  assert.equal(typeof win.__accazaRenderBaking, 'function', 'the screen must expose its render hook');
+  win.__accazaRenderBaking();
+  assert.ok(root.innerHTML.includes('New batch card'), 'the card form must render once the mapping is confirmed');
+  assert.ok(!/Add a baking product first/.test(root.innerHTML), 'the form must never claim the product is missing');
+  assert.ok(/Enter the pieces produced/.test(root.innerHTML), 'before pieces are typed the gate must ask for the pieces, not for a product');
+  const post = nodes['[data-bkpost]'][0];
+  assert.equal(typeof post.onclick, 'function', 'Post batch must be wired');
+  post.onclick();
+  assert.equal(alerts.filter((m) => /Add a baking product first/.test(m)).length, 0, 'Post batch must never claim the product is missing when one is selected');
+  assert.equal(posted.length, 1, 'Post batch must reach the callable');
+  assert.equal(posted[0].productId, 'bp1', 'the payload must carry the product id');
+  assert.equal(posted[0].pieces, 17, 'the payload must carry the typed pieces');
+  assert.equal(JSON.stringify(posted[0].lines), JSON.stringify([{ itemId: 'ing_flour', qty: 5, unit: 'g' }]), 'the payload must carry the used lines with their typed unit');
+  assert.equal(posted[0].bakedBy, 'Maria', 'the payload must carry who baked');
+}
+
 
 console.log('PASS: baking batch cards enforce item mapping, allow delayed posting, stay server-authoritative and fit the bundle budget.');
