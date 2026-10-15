@@ -1,6 +1,7 @@
 // Guards docs/DATA_FLOW_MAP.md, the reference used when diagnosing how a screen,
 // a database record and a Cloud Function connect. Fails when:
-//   - the committed map no longer matches the Functions source (run `npm run map:data-flow`)
+//   - the committed map no longer matches the Functions source (run `npm run build:runtime`,
+//     which rebuilds the map after bundling, or `npm run map:data-flow` on its own)
 //   - a curated money-path link is broken (renamed function, changed trigger path,
 //     a step that no longer writes the node the next step watches)
 //   - the scanner stops seeing exports or the write patterns the money paths depend on.
@@ -18,7 +19,7 @@ assert.ok(flows.flows.length >= 7, 'money-path flows were removed');
 
 // 2. The committed map is current.
 const committed = fs.readFileSync(path.join(root, MAP_FILE), 'utf8').replace(/\r\n/g, '\n');
-assert.equal(committed, markdown, `${MAP_FILE} is stale. Run: npm run map:data-flow`);
+assert.equal(committed, markdown, `${MAP_FILE} is stale. Run: npm run build:runtime (or npm run map:data-flow)`);
 
 // 3. The scanner sees every Cloud Function export (same count as the deployed bundle).
 const bundle = fs.readFileSync(path.join(root, 'functions/index.js'), 'utf8');

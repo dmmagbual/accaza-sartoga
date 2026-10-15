@@ -11,7 +11,8 @@
 // It then renders docs/DATA_FLOW_MAP.md, including the curated money paths in
 // tools/data-flow-money-paths.json, which are validated against the scan.
 //
-// Usage:  node tools/data-flow-map.mjs           (rewrite docs/DATA_FLOW_MAP.md)
+// Usage:  node tools/data-flow-map.mjs           (rewrite docs/DATA_FLOW_MAP.md; also runs as
+//                                                 the last step of `npm run build:runtime`)
 //         node tools/data-flow-map.mjs --check   (exit 1 if the map is stale)
 //
 // Static analysis is a starting point for diagnosis, not proof. Helper calls are
@@ -353,7 +354,7 @@ export function render(model, flows) {
   const loc = (e) => e.file;
   const L = [];
   L.push('# Accaza data-flow map', '');
-  L.push('> **Generated file — do not edit by hand.** Run `npm run map:data-flow` after changing `src/functions/`, `functions/lib/` or `tools/data-flow-money-paths.json`. `npm test` fails while this file is stale or a money-path link is broken.', '');
+  L.push('> **Generated file — do not edit by hand.** `npm run build:runtime` rebuilds it automatically after bundling; run `npm run map:data-flow` on its own after editing only `functions/lib/` or `tools/data-flow-money-paths.json`. `npm test` fails while this file is stale or a money-path link is broken.', '');
   L.push('Use this map to find *where to look*, then confirm in the source it points to. It comes from static analysis: helpers are followed by name, so calls made through variables or paths built at runtime can be missed (absence from this map is not proof that nothing writes a node), and a shared helper can make a function look like it touches more nodes than one run really does.', '');
   L.push('Screens and server code connect through the Realtime Database rather than through imports: a screen writes a record or calls a callable, and a Cloud Function that watches that record reacts. Sources are the `src/functions/` sections that `npm run build:runtime` joins into `functions/index.js`; search the file for `exports.<name>` to find a function.', '');
   L.push(`Inventory: ${triggers.length} database triggers, ${callables.length} callables, ${schedules.length} scheduled jobs, ${markers.length} backup markers. Generated from \`${SOURCE_DIR}/\` and \`${LIB_DIR}/\`.`, '');
@@ -424,7 +425,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   const target = path.join(ROOT, MAP_FILE);
   if (process.argv.includes('--check')) {
     const current = fs.existsSync(target) ? fs.readFileSync(target, 'utf8').replace(/\r\n/g, '\n') : '';
-    if (current !== markdown) { console.error(`${MAP_FILE} is stale. Run: npm run map:data-flow`); process.exit(1); }
+    if (current !== markdown) { console.error(`${MAP_FILE} is stale. Run: npm run build:runtime (or npm run map:data-flow)`); process.exit(1); }
     console.log(`${MAP_FILE} is current.`);
   } else {
     fs.mkdirSync(path.dirname(target), {recursive: true});

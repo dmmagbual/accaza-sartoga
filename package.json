@@ -5,7 +5,7 @@
   "scripts": {
     "map:data-flow": "node tools/data-flow-map.mjs",
     "test:data-flow-map": "node tests/data-flow-map-check.mjs",
-    "build:runtime": "node tools/build-runtime-bundles.mjs",
+    "build:runtime": "node tools/build-runtime-bundles.mjs && node tools/data-flow-map.mjs",
     "build:html": "node tools/build-html-pages.mjs",
     "build:artifacts": "npm run build:runtime && npm run build:html",
     "test:bundle-drift": "node tests/runtime-bundle-drift-check.mjs",
