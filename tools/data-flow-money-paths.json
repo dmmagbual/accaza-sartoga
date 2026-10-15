@@ -1,0 +1,107 @@
+{
+  "about": "Curated money paths for docs/DATA_FLOW_MAP.md. Each step names an exported Cloud Function. `watches` must equal the database path that function's trigger watches, and some earlier step (or `startsFrom`) must write that node. `writes` lists database nodes the step must still write. `npm test` checks all of this against the source scan, so a renamed path or function breaks the build instead of silently breaking the books. Edit this file, then run `npm run map:data-flow`.",
+  "flows": [
+    {
+      "id": "pos-sale",
+      "title": "Till sale (POS Charge & Complete)",
+      "summary": "Every till sale, online or replayed after being offline, reaches the server once through `syncOfflinePosSale`. Everything after that is a reaction to the saved order record.",
+      "steps": [
+        {"fn": "syncOfflinePosSale", "writes": ["orders", "offlinePosSync", "shifts"], "note": "Accepts the sale exactly once (client transaction id) and saves the authoritative order."},
+        {"fn": "onOrderFinancialPosting", "watches": "/orders/{orderId}", "writes": ["financialMovements"], "note": "Posts revenue, tax and each tender as a balanced, immutable movement."},
+        {"fn": "onOrderFinalize", "watches": "/orders/{orderId}", "writes": ["orderInventoryPlans", "inventoryMovements", "inventoryBalances", "orders", "uncostedSales"], "note": "Deducts stock from the recipe plan and stamps `cogsSnapshot` on the order; lines with no usable recipe go to uncostedSales."},
+        {"fn": "mirrorPosMovementToBooks", "watches": "/financialMovements/{movementId}", "writes": ["books"], "note": "Projects each movement into the Finance Books journal; unmapped accounts go to books/reviewQueue."},
+        {"fn": "mirrorPosCogsToBooks", "watches": "/orders/{orderId}/cogsSnapshot", "writes": ["books"], "note": "Projects the order's COGS into the Finance Books journal."},
+        {"fn": "updateBooksMonthlyNet", "watches": "/books/journal/{entryId}", "writes": ["books"], "note": "Keeps the daily and monthly net totals the Books reports read."},
+        {"fn": "updateCashBalanceSummary", "watches": "/financialMovements/{movementId}", "writes": ["cashBalanceSummaryPending", "cashFlowDaily"], "note": "Keeps the cash balance and cash-flow summaries current."},
+        {"fn": "onOrderLoyaltyEarning", "watches": "/orders/{orderId}", "writes": ["loyaltyLedger", "loyaltyBalances"], "note": "Credits Rewards points or stamps when a member is attached."}
+      ],
+      "showsIn": "Admin Sales History and Daily Report (orders); inventory balances; Finance Books journal, P&L and Balance Sheet (books/journal and monthly net); Rewards member balance.",
+      "ifBroken": "follow the order id downstream: the /orders record (status, inventoryDeducted, cogsSnapshot), its /financialMovements, the /books/journal entry, then /books/reviewQueue for unmapped accounts. The first record that is missing points at the step that failed."
+    },
+    {
+      "id": "online-order",
+      "title": "Online and QR order (customer app)",
+      "summary": "The customer app creates the order; staff or the scheduler move it to completed. Posting then follows the same chain as a till sale.",
+      "steps": [
+        {"fn": "createOnlineOrder", "writes": ["orders", "customerOrders", "activeOrders"], "note": "Server prices the order and saves it; the customer index is keyed by Firebase UID."},
+        {"fn": "acceptOnlineOrder", "writes": ["orders"], "note": "Staff accept the order."},
+        {"fn": "updateOrderStatus", "writes": ["orders", "orderStatusCommands"], "note": "Staff status changes, with transition history and idempotency."},
+        {"fn": "confirmOrderReceived", "writes": ["orders"], "note": "Customer confirms receipt."},
+        {"fn": "autoCompleteReadyOnlineOrders", "writes": ["orders"], "note": "Scheduled every 15 minutes: completes ready orders nobody closed."},
+        {"fn": "onOrderFinancialPosting", "watches": "/orders/{orderId}", "writes": ["financialMovements"], "note": "Posts the sale to the account the customer chose to pay into."},
+        {"fn": "onOrderFinalize", "watches": "/orders/{orderId}", "writes": ["inventoryMovements", "orders"], "note": "Deducts stock and stamps COGS."},
+        {"fn": "mirrorPosMovementToBooks", "watches": "/financialMovements/{movementId}", "writes": ["books"]},
+        {"fn": "mirrorPosCogsToBooks", "watches": "/orders/{orderId}/cogsSnapshot", "writes": ["books"]}
+      ],
+      "showsIn": "Customer order tracking (customerOrders); live order cards (activeOrders); then the same reports as a till sale.",
+      "ifBroken": "check the order's status first; nothing posts until it is completed. Then follow the till-sale checks."
+    },
+    {
+      "id": "refund-void",
+      "title": "Refund, void and order correction",
+      "summary": "A manager adjustment changes the order record; the posting and inventory triggers react with linked reversals rather than editing the original sale.",
+      "steps": [
+        {"fn": "processOrderAdjustment", "writes": ["orders", "orderCorrections", "financialMovements"], "note": "Records the refund, void or correction; requests a stock return when restocking."},
+        {"fn": "onOrderFinancialPosting", "watches": "/orders/{orderId}", "writes": ["financialMovements"], "note": "Posts a reversal for the refunded or voided amount, linked to the original sale."},
+        {"fn": "onOrderInventoryReversal", "watches": "/orders/{orderId}/inventoryReversalRequested", "writes": ["inventoryMovements", "inventoryBalances", "financialMovements", "orders"], "note": "Returns the stock the sale used and offsets its COGS; waits for finalization if the sale is still being costed."},
+        {"fn": "mirrorPosMovementToBooks", "watches": "/financialMovements/{movementId}", "writes": ["books"]},
+        {"fn": "updateBooksMonthlyNet", "watches": "/books/journal/{entryId}", "writes": ["books"]}
+      ],
+      "showsIn": "Sales History refund/void columns; inventory balances; Finance Books journal and P&L.",
+      "ifBroken": "check the order's refundAmount, voided and inventoryReversed fields, then the reversal movements linked to the order id, then the journal."
+    },
+    {
+      "id": "shift-close",
+      "title": "Shift close and cash custody",
+      "summary": "The Register screen writes the closed shift directly. Server triggers post the shift's cash into custody and record the close receipt.",
+      "startsFrom": ["shifts/{shiftId}/status (Register screen, Close Shift)", "shifts/{shiftId}/payIns (Register screen, Pay-in)"],
+      "steps": [
+        {"fn": "onShiftCloseFinancial", "watches": "/shifts/{shiftId}/status", "writes": ["financialMovements", "cashCustody", "shifts"], "note": "Moves the counted cash into the Undeposited Collection custody pool and posts the shift's movements."},
+        {"fn": "onShiftCloseAssurance", "watches": "/shifts/{shiftId}/status", "writes": ["shiftCloseReceipts", "ownerDailySummaries"], "note": "Writes the tamper-evident close receipt and owner daily summary, flagging outstanding inventory or finance postings."},
+        {"fn": "onShiftPayInsFinancial", "watches": "/shifts/{shiftId}/payIns", "writes": ["financialMovements"], "note": "Posts register pay-ins."},
+        {"fn": "mirrorPosMovementToBooks", "watches": "/financialMovements/{movementId}", "writes": ["books"]},
+        {"fn": "updateCashBalanceSummary", "watches": "/financialMovements/{movementId}", "writes": ["cashBalanceSummaryPending"]}
+      ],
+      "showsIn": "Z report and Daily Report; Undeposited Collection; Finance Books cash accounts.",
+      "ifBroken": "compare the shift's zReport with /shiftCloseReceipts for that shift (status posting_follow_up lists what is outstanding), then the shift's movements and /cashCustody."
+    },
+    {
+      "id": "purchase-payable",
+      "title": "Purchase, supplier bill and payment",
+      "summary": "Finance Books and the Admin Purchases screen post through one financial command; corrections go through a separate, controlled callable.",
+      "steps": [
+        {"fn": "postFinancialCommand", "writes": ["purchaseInvoices", "payables", "payablePayments", "financialMovements"], "note": "Actions include purchase_paid, purchase_owner_funded, create_payable, pay_payable and reverse_payable_payment."},
+        {"fn": "managePurchaseCorrection", "writes": ["purchaseInvoices", "payables", "financialMovements", "inventoryBalances"], "note": "Amend or reverse a posted purchase with linked reversals."},
+        {"fn": "mirrorPosMovementToBooks", "watches": "/financialMovements/{movementId}", "writes": ["books"], "note": "Builds a single journal entry per purchase, using the purchase invoice for line detail."},
+        {"fn": "updateBooksMonthlyNet", "watches": "/books/journal/{entryId}", "writes": ["books"]}
+      ],
+      "showsIn": "Admin Purchases; Finance Books Payables and journal.",
+      "ifBroken": "start from the purchase invoice (PUR number), then its payable and payments, then the movements that cite it, then the journal entry."
+    },
+    {
+      "id": "petty-cash",
+      "title": "Cash payment voucher (petty cash)",
+      "summary": "A voucher is saved through a callable; a trigger on the voucher record posts it and allocates the cash from custody.",
+      "steps": [
+        {"fn": "managePettyVoucher", "writes": ["pettyCashVouchers"], "note": "Creates, corrects or reverses a cash payment voucher."},
+        {"fn": "onPettyVoucherFinancial", "watches": "/pettyCashVouchers/{voucherId}", "writes": ["financialMovements", "cashCustody"], "note": "Posts the voucher and allocates the cash from the custody pool."},
+        {"fn": "mirrorPosMovementToBooks", "watches": "/financialMovements/{movementId}", "writes": ["books"]},
+        {"fn": "updateCashBalanceSummary", "watches": "/financialMovements/{movementId}", "writes": ["cashBalanceSummaryPending"]}
+      ],
+      "showsIn": "Cash Payments; Undeposited Collection; Finance Books expense and cash accounts.",
+      "ifBroken": "check the voucher's cashCustodyStatus and cashCustodyShortfall fields, then its movement, then the journal."
+    },
+    {
+      "id": "platform-payout",
+      "title": "GrabFood and FoodPanda payout",
+      "summary": "Platform sales post gross revenue and leave the expected net as a receivable until a payout is settled against matched orders.",
+      "steps": [
+        {"fn": "settlePlatformPayout", "writes": ["platformPayouts", "financialMovements"], "note": "Settles a payout against matched orders only."},
+        {"fn": "reversePlatformPayout", "writes": ["platformPayouts", "financialMovements"], "note": "Reverses a settled payout with linked movements."},
+        {"fn": "mirrorPosMovementToBooks", "watches": "/financialMovements/{movementId}", "writes": ["books"]}
+      ],
+      "showsIn": "Platform payouts screen; Finance Books 1100 Accounts Receivable - Platforms and bank accounts.",
+      "ifBroken": "check the payout's matched orders and amounts, then its movements, then the journal."
+    }
+  ]
+}
