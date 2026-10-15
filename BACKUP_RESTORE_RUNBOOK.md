@@ -85,28 +85,29 @@ It restores every node, reads the whole database back, re-fingerprints it and re
 
 ---
 
-## 8. Off-project copy (do this once, then it runs itself)
+## 8. Off-project copy (LIVE since 15 Oct 2026)
 
-Backups currently live only inside the `accaza-sartoga` project — single blast radius. Add at least one copy outside it.
+Every backup is copied every night to a separate Google Cloud project, so losing, locking or compromising `accaza-sartoga` does not take the backups with it.
 
-**Option A — scheduled cross-project mirror (robust).** In a *separate* GCP project/account, create a bucket (e.g. `gs://accaza-ledger-offsite/`) and a daily Cloud Scheduler → transfer/`gsutil rsync` that pulls new `db-backups/*.json` from prod:
-```bash
-gsutil -m rsync -r "gs://accaza-sartoga.firebasestorage.app/db-backups" "gs://accaza-ledger-offsite/db-backups"
-```
-Grant the offsite project's service account read-only on the prod bucket. Keep the offsite bucket's retention longer than 30 days so you outlast prod's auto-delete.
+| Item | Setting |
+|---|---|
+| Project | `accaza-backup-vault` (own project, same billing account `01D784-AE2D40-BE3911`; "My First Project" was unlinked from billing to free the slot) |
+| Bucket | `gs://accaza-backup-vault-db/db-backups/`, region `asia-east1` (production is `asia-southeast1`), class NEARLINE, public access prevented |
+| Protection | 30-day retention policy (objects cannot be deleted or replaced for 30 days, not locked, so the owner can still change it), 7-day soft delete, lifecycle delete after 365 days (production keeps 30) |
+| Copy | Storage Transfer job `transferJobs/9637376379524151450`, daily 20:30 UTC = 04:30 Manila (after the 03:00 backup). Pull model: the vault reads production; production holds no access to the vault. Never deletes from source or vault |
+| Access | The vault's transfer agent `project-467521083783@storage-transfer-service.iam.gserviceaccount.com` has read-only `objectViewer` + `legacyBucketReader` on the production bucket. It cannot be narrowed to `db-backups/` because that bucket uses fine-grained ACLs (enabling uniform access could break Firebase Storage download links); the job itself copies only `db-backups/` |
+| Alert | "Accaza CRITICAL - Off-site backup copy failed": any ERROR log in the vault project emails danilomagbual@gmail.com (the vault runs nothing else) |
+| First run | 15 Oct 2026: 25/25 files, 411,984,553 bytes, every MD5 identical to production |
+| Cost | ~11 GB/year in NEARLINE, cents per month; no Firebase reads |
 
-**Option B — automated in-function second write (later).** Extend `backupDatabaseDaily` to also `save()` the same envelope to an offsite bucket in another project. Cleanest long-term, but it edits `functions/` — schedule it when the Codex functions work is quiet to avoid collisions.
+Restore from the vault: download from `gs://accaza-backup-vault-db/db-backups/` instead of production, then Steps 2-4 unchanged.
 
-**Option C — manual floor (zero infra, do today).** Once a week, run the Step 1 `gsutil cp` and keep the file somewhere off Google entirely (your machine + one more location). Better than nothing while A is set up.
-
-Recommended: **A** as the standing control, **C** starting this week until A is live.
-
----
+Remaining hardening option: the vault sits under the same Google account as production. A separate Google account owning the vault (with its own 2-step verification) would also survive a compromised owner account.
 
 ## 9. Cadence & monitoring
 
 - **Daily (automatic):** the backup runs at 03:00 Manila and writes `/systemHealth/backups/latest`. Glance at it weekly — if `takenAt` is stale (>36h old) or `validation` != `"passed"`, the backup job needs attention.
-- **Quarterly:** run this full drill (Steps 1–7) and record evidence.
+- **Quarterly:** run this full drill (Steps 1–7) and record evidence. Also confirm the vault holds last night's file: `gcloud storage ls gs://accaza-backup-vault-db/db-backups/ | Select-Object -Last 2`.
 - **Before any schema/migration change:** run Steps 1–2 (download + validate) as a known-good recovery point.
 
 ## 10. Troubleshooting
