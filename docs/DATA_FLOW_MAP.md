@@ -1,6 +1,6 @@
 # Accaza data-flow map
 
-> **Generated file — do not edit by hand.** Run `npm run map:data-flow` after changing `src/functions/`, `functions/lib/` or `tools/data-flow-money-paths.json`. `npm test` fails while this file is stale or a money-path link is broken.
+> **Generated file — do not edit by hand.** `npm run build:runtime` rebuilds it automatically after bundling; run `npm run map:data-flow` on its own after editing only `functions/lib/` or `tools/data-flow-money-paths.json`. `npm test` fails while this file is stale or a money-path link is broken.
 
 Use this map to find *where to look*, then confirm in the source it points to. It comes from static analysis: helpers are followed by name, so calls made through variables or paths built at runtime can be missed (absence from this map is not proof that nothing writes a node), and a shared helper can make a function look like it touches more nodes than one run really does.
 
