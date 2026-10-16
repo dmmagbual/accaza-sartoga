@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 693,
+    "admin": 694,
     "books": 156,
     "customer": 101,
-    "serviceWorkerCache": 689
+    "serviceWorkerCache": 690
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -101,6 +101,7 @@
     "assets/js/admin/live-operations.js",
     "assets/js/admin/uncosted-sales.js",
     "assets/js/admin/baking.js",
+    "assets/js/admin/baking-print.js",
     "database.rules.json",
     "firestore.rules",
     "firestore.indexes.json",
@@ -189,6 +190,7 @@
     "assets/js/admin/payment-account-links.mjs",
     "assets/js/admin/staff-access.js",
     "assets/js/admin/accaza-ai.js",
+    "assets/js/admin/accaza-ai-manager.js",
     "assets/js/admin/manager-approval.mjs",
     "assets/js/admin/form-dialog.js",
     "assets/js/admin/identity-autofill.js",
@@ -262,6 +264,7 @@
     "tests/production-validation-check.mjs",
     "tests/alert-escalation-check.mjs",
     "tests/operations-health-cards-check.mjs",
+    "tests/admin-split-modules-check.mjs",
     "tests/staff-module-access-check.mjs",
     "tests/staff-screen-data-access-check.mjs",
     "tests/portal-presence-check.mjs",
