@@ -20,6 +20,7 @@ const crypto = require("node:crypto");
 const {AsyncLocalStorage} = require("node:async_hooks");
 const Costing = require("./lib/costing");
 const Financial = require("./lib/financial");
+const OrderFinancialTrigger = require("./lib/order-financial-trigger");
 const OfflineSync = require("./lib/offline-sync");
 const PaymentVerification = require("./lib/payment-verification");
 const OrderCorrection = require("./lib/order-correction");

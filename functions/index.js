@@ -34,6 +34,7 @@ const crypto = require("node:crypto");
 const {AsyncLocalStorage} = require("node:async_hooks");
 const Costing = require("./lib/costing");
 const Financial = require("./lib/financial");
+const OrderFinancialTrigger = require("./lib/order-financial-trigger");
 const OfflineSync = require("./lib/offline-sync");
 const PaymentVerification = require("./lib/payment-verification");
 const OrderCorrection = require("./lib/order-correction");
@@ -6785,6 +6786,10 @@ exports.onOrderFinancialPosting = onValueWritten(
     const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
     if (!afterRaw) return;
     const order = Object.assign({id: event.params.orderId}, afterRaw);
+    // Most writes here are kitchen, service or inventory metadata. Do not download
+    // Finance settings or create an idempotent command unless the write can change
+    // a sale, refund, pre-completion refund or void posting.
+    if (!OrderFinancialTrigger.requiresFinancialPosting(before, order)) return;
     const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const taxSettings = (await db.ref("/taxSettings").get()).val() || {}; const actor = {uid: "server", role: "server"};
     await postOrderFinancial(db, order, accounts, actor, taxSettings);
     await postPreCompletionCashRefund(db, order, actor);
