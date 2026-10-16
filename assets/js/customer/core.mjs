@@ -1082,10 +1082,11 @@ function renderCustomerOrders(){
 }
 
 // ── RESERVATIONS ──
-const resStatusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your reservation request has been received and is awaiting confirmation from our staff.'},Accepted:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your reservation is confirmed! Our staff will reach out with the final details. See you soon! ☕'},Confirmed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your reservation is confirmed! Our staff will reach out with the final details. See you soon! ☕'},Declined:{icon:'🔴',color:'#721c24',bg:'#f8d7da',msg:'Unfortunately we could not accommodate this reservation. Please contact us at 0927 692 4831 to discuss options.'},Completed:{icon:'✅',color:'#155724',bg:'#d4edda',msg:'Thank you for visiting Accaza Coffee House! We hope to see you again. ☕🐻'}};
+const resStatusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your reservation request has been received and is awaiting confirmation from our staff.'},Accepted:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your reservation is confirmed! Our staff will reach out with the final details. See you soon! ☕'},Confirmed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your reservation is confirmed! Our staff will reach out with the final details. See you soon! ☕'},Declined:{icon:'🔴',color:'#721c24',bg:'#f8d7da',msg:'Unfortunately we could not accommodate this reservation. Please contact us at 0927 692 4831 to discuss options.'}};
+function visibleReservations(ids,map,uid){return uid?ids.map(id=>map[id]).filter(r=>r&&r.ownerUid===uid&&!['Completed','Archived'].includes(r.status)).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)):[];}
 function renderMyReservations(){
   var el=document.getElementById('myReservationsList');if(!el)return;
-  var mine=myReservationIds.map(function(id){return myResMap[id];}).filter(function(r){return r&&r.status!=='Archived';}).sort(function(a,b){return(b.timestamp||0)-(a.timestamp||0);});
+  var mine=visibleReservations(myReservationIds,myResMap,customerUid||(auth.currentUser&&auth.currentUser.uid));
   if(!mine.length){el.innerHTML='';return;}
   el.innerHTML='<h3 style="font-family:\'Playfair Display\',serif;color:var(--cr);font-size:1.15rem;margin-bottom:0.85rem;text-align:center;">Your Reservation'+(mine.length>1?'s':'')+'</h3>'+mine.map(function(r){
     var st=(r.status==='Confirmed')?'Accepted':(r.status||'Pending');var s=resStatusConfig[st]||resStatusConfig.Pending;var guests=Math.max(1,Math.min(50,parseInt(r.guests)||1));
@@ -1159,10 +1160,10 @@ window.resetResSelection=function(){selectedTime=null;document.getElementById('r
 window.updateBookingType=function(){
   const guests=parseInt(document.getElementById('resGuests').value)||1,infoEl=document.getElementById('bookingTypeInfo');
   let type,color,bg,icon,msg,reqAdvance=false;
-  if(guests<=2){type='Individual / Couple';icon='💑';color='#155724';bg='#d4edda';msg='Same-day booking accepted. Our staff will contact you to confirm.';}
-  else if(guests<=5){type='Small Group';icon='👨‍👩‍👧';color='#664d03';bg='#fff3cd';msg='Same-day booking. Deposit details will be discussed upon staff confirmation.';}
-  else if(guests<=20){type='Medium Group';icon='👥';color='#0c5460';bg='#d1ecf1';msg='At least 7 days advance booking required.';reqAdvance=true;}
-  else{type='Large Group';icon='🎉';color='#721c24';bg='#fde8e8';msg='At least 7 days advance booking required. Admin callback required.';reqAdvance=true;}
+  if(guests<=2){type='Small Event';icon='🎉';color='#155724';bg='#d4edda';msg='Same-day event request accepted. Our staff will contact you to confirm.';}
+  else if(guests<=5){type='Small Gathering';icon='👨‍👩‍👧';color='#664d03';bg='#fff3cd';msg='Same-day gathering request. Deposit details will be discussed upon staff confirmation.';}
+  else if(guests<=20){type='Medium Gathering';icon='👥';color='#0c5460';bg='#d1ecf1';msg='At least 7 days advance reservation required.';reqAdvance=true;}
+  else{type='Large Event';icon='🎉';color='#721c24';bg='#fde8e8';msg='At least 7 days advance reservation required. Admin callback required.';reqAdvance=true;}
   infoEl.innerHTML='<div style="background:'+bg+';border-radius:8px;padding:0.75rem 1rem;display:flex;align-items:flex-start;gap:0.6rem;"><span style="font-size:1.2rem;">'+icon+'</span><div><p style="font-size:0.82rem;font-weight:600;color:'+color+';">'+type+'</p><p style="font-size:0.78rem;color:'+color+';line-height:1.5;margin-top:0.2rem;">'+msg+'</p></div></div>';
   if(reqAdvance&&selectedDate){const today=new Date();today.setHours(0,0,0,0);const bd=new Date(selectedDate+'T00:00:00');if(Math.ceil((bd-today)/(1000*60*60*24))<7)infoEl.innerHTML+='<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.75rem;margin-top:0.5rem;"><p style="font-size:0.78rem;color:#721c24;line-height:1.6;">⚠️ This booking requires at least 7 days advance notice. Please select a later date, or call us at <strong>0927 692 4831</strong>.</p></div>';}
 };

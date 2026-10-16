@@ -10,7 +10,7 @@ const botReplies=[
   {keys:['gcash','pay','payment','bank','bdo'],reply:'💳 We accept <strong>GCash, BDO, and UnionBank</strong>. GCash: <strong>0927 692 4831</strong> (ACCAZA).'},
   {keys:['delivery','deliver'],reply:'🛵 No delivery. Dasmariñas only: pick up, or book and pay your own courier. Or order on <b><b style=color:#d70f64>●</b> foodpanda</b> or <b>🟢 GrabFood</b>.'},
   {keys:['menu','food','drink','coffee','frappe','pastry'],reply:'🍽️ We serve <strong>Coffee, Non-Coffee, Iced Blended, Soda Refreshers, and Pastries</strong>. Check our menu above! ☕'},
-  {keys:['reserve','reservation','book','table'],reply:'📅 Use our <strong>Reservations section</strong> — pick a date, time slot, and fill in your details. Our staff will confirm! 😊'},
+  {keys:['reserve','reservation','book','table'],reply:'📅 Reservations are exclusively for <strong>events and organized gatherings</strong>. Use our Reservations section to send a request. Study, work, and regular café visits are walk-in and first-come, first-served. 😊'},
   {keys:['wifi','internet'],reply:'📶 Yes, we have free WiFi! Ask our staff for the password. 😊'},
   {keys:['price','cost','how much'],reply:'💰 Prices start from <strong>₱95 for pastries</strong> and <strong>₱155 for coffee</strong>. Check our menu! ☕'},
   {keys:['parking','park'],reply:'🚗 Yes, we have free parking! 😊'},
