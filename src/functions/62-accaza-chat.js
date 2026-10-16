@@ -102,6 +102,10 @@ async function askGroqGeneralChat(question,history,timeoutMs){
   const messages=[{role:"system",content:ACCAZA_AI_GENERAL_CHAT_INSTRUCTION},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}];
   return{answer:await askOpenAiCompatibleChat("Groq",ACCAZA_AI_GROQ_URL,accazaAiGroqKey(),ACCAZA_AI_GROQ_MODEL,messages,0.35,timeoutMs,ACCAZA_AI_GROQ_OPTIONS),sources:[]};
 }
+async function askGroqAccazaAi(question,facts,history,timeoutMs){
+  const messages=[{role:"system",content:ACCAZA_AI_ANALYSIS_SYSTEM},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}];
+  return askOpenAiCompatibleChat("Groq",ACCAZA_AI_GROQ_URL,accazaAiGroqKey(),ACCAZA_AI_GROQ_MODEL,messages,0.15,timeoutMs,ACCAZA_AI_GROQ_OPTIONS);
+}
 async function askQwenGeneralChat(question,history,timeoutMs){
   const messages=[{role:"system",content:ACCAZA_AI_GENERAL_CHAT_INSTRUCTION},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}];
   return{answer:await askOpenAiCompatibleChat("Qwen",ACCAZA_AI_QWEN_URL,accazaAiQwenKey(),ACCAZA_AI_QWEN_MODEL,messages,0.35,timeoutMs,ACCAZA_AI_QWEN_OPTIONS),sources:[]};
@@ -120,10 +124,11 @@ async function askQwenAccazaAi(question,facts,history,timeoutMs){
 }
 // Provider order (6 Oct 2026, Danilo removed DeepSeek, Jev/OpenRouter, Ashna and OrcaRouter after
 // their keys or plans stopped working): General chat Gemini -> Groq -> Cerebras -> direct Qwen;
-// analysis Gemini -> Cerebras -> direct Qwen. Groq stays general-chat only.
+// analysis Gemini -> Cerebras -> Groq -> direct Qwen. Groq and Qwen receive only fact packs.
 function accazaAiAnalysisProviders(question,facts,history){return[
   {name:"gemini",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiAccazaAi(question,facts,history,timeoutMs)},
   {name:"cerebras",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiCerebrasKey()),ask:timeoutMs=>askCerebrasAccazaAi(question,facts,history,timeoutMs)},
+  {name:"groq",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiGroqKey()),ask:timeoutMs=>askGroqAccazaAi(question,facts,history,timeoutMs)},
   {name:"qwen",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiQwenKey()),ask:timeoutMs=>askQwenAccazaAi(question,facts,history,timeoutMs)},
 ];}
 function accazaAiGeneralChatProviders(question,history){return[
