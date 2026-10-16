@@ -242,11 +242,11 @@ async function askOpenAiCompatibleAccazaAgent(label,url,key,model,question,facts
 }
 // Management analysis: trusted tool-capable providers can read records; bounded fact-pack
 // fallbacks can still answer without receiving record-tool access.
-// Order: Gemini -> Cerebras -> direct Qwen -> Qwen/Ollama. Both Qwen paths answer only from the
-// bounded FACT PACK, never with record-tool access.
+// Order: Gemini -> Cerebras -> Groq -> direct Qwen. Groq and Qwen answer only from the bounded
+// FACT PACK, never with record-tool access.
 function accazaAiAgentProviders(question,facts,history,ctx,now){return[
   {name:"gemini",maxMs:45000,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now)},
   {name:"cerebras",maxMs:30000,enabled:()=>Boolean(accazaAiCerebrasKey()),ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("Cerebras",ACCAZA_AI_CEREBRAS_URL,accazaAiCerebrasKey(),ACCAZA_AI_CEREBRAS_MODEL,question,facts,history,timeoutMs,ctx,now,ACCAZA_AI_CEREBRAS_OPTIONS)},
+  {name:"groq",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiGroqKey()),ask:timeoutMs=>askGroqAccazaAi(question,facts,history,timeoutMs)},
   {name:"qwen",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiQwenKey()),ask:timeoutMs=>askQwenAccazaAi(question,facts,history,timeoutMs)},
-  {name:"ollama",maxMs:ACCAZA_AI_OLLAMA_TIMEOUT_MS,enabled:accazaAiOllamaConfigured,ask:timeoutMs=>askOllamaAccazaAi(question,facts,history,timeoutMs)},
 ];}

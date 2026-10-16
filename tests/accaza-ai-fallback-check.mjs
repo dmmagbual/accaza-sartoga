@@ -17,7 +17,7 @@ let code=lineOf('function accazaAiText(')+lineOf('function accazaAiProviderFailu
   +pick('async function accazaAiRecordProviderHealth(','exports.askAccazaAI=');
 // Shrink the real time limits 1000x so the timeout paths run in milliseconds.
 code=code.replace('ACCAZA_AI_REQUEST_BUDGET_MS = 110000','ACCAZA_AI_REQUEST_BUDGET_MS = 1100').replace('ACCAZA_AI_CLOUD_TIMEOUT_MS = 25000','ACCAZA_AI_CLOUD_TIMEOUT_MS = 250')
-  .replace('ACCAZA_AI_OLLAMA_TIMEOUT_MS = 70000','ACCAZA_AI_OLLAMA_TIMEOUT_MS = 700').replace('ACCAZA_AI_MIN_ATTEMPT_MS = 8000','ACCAZA_AI_MIN_ATTEMPT_MS = 80')
+  .replace('ACCAZA_AI_MIN_ATTEMPT_MS = 8000','ACCAZA_AI_MIN_ATTEMPT_MS = 80')
   .replace('Math.max(1000,Number(timeoutMs)','Math.max(1,Number(timeoutMs)');
 class HttpsError extends Error{constructor(code,message,details){super(message);this.code=code;this.details=details;}}
 const build=new Function('HttpsError','fetch','accazaAiDay',`${code};return{accazaAiFetchJson,accazaAiWithFallback,accazaAiRecordProviderHealth,accazaAiAnswer,accazaAiTrimToSentence};`);
@@ -43,8 +43,8 @@ assert.ok(!source.includes('event:"accaza_ai_provider_answered",answer'));
 {const db=fakeDb(),r=await lib.accazaAiWithFallback([provider('gemini',failure('quota')),provider('cerebras',ok('B'))],{db,general:true});
 assert.equal(r.provider,'cerebras');const h=db.store['/accazaAiProviderHealth/2026-09-25'];assert.equal(h.backupAnswers.cerebras,1);assert.equal(h.providerFailures.gemini,1);assert.equal(h.failedQuestions,0);assert.equal(h.lastEvent.failures[0].reason,'quota');}
 // 3. A hung provider is aborted by its own timer and the next provider answers.
-{const started=Date.now(),db=fakeDb(),r=await lib.accazaAiWithFallback([provider('gemini',timeoutMs=>lib.accazaAiFetchJson('Gemini','https://x',{},timeoutMs)),provider('ollama',ok('C'),{maxMs:700})],{db});
-assert.equal(r.provider,'ollama');assert.ok(Date.now()-started<600,'hung provider must be cut off at its own limit');assert.match(db.store['/accazaAiProviderHealth/2026-09-25'].lastEvent.failures[0].reason,/did not answer within/);}
+{const started=Date.now(),db=fakeDb(),r=await lib.accazaAiWithFallback([provider('gemini',timeoutMs=>lib.accazaAiFetchJson('Gemini','https://x',{},timeoutMs)),provider('qwen',ok('C'),{maxMs:250})],{db});
+assert.equal(r.provider,'qwen');assert.ok(Date.now()-started<600,'hung provider must be cut off at its own limit');assert.match(db.store['/accazaAiProviderHealth/2026-09-25'].lastEvent.failures[0].reason,/did not answer within/);}
 // 4. A network error is a provider failure.
 {const netLib=build(HttpsError,()=>Promise.reject(new TypeError('fetch failed')),()=> '2026-09-25');
 await assert.rejects(netLib.accazaAiFetchJson('Cerebras','https://x',{},100),e=>e.details&&e.details.providerFailure===true&&/could not be reached/.test(e.message));}
@@ -53,10 +53,10 @@ assert.throws(()=>lib.accazaAiAnswer('   '),e=>e.details&&e.details.providerFail
 // 6. A non-provider error (e.g. permission) is rethrown immediately, never swallowed.
 {let called=false;await assert.rejects(lib.accazaAiWithFallback([provider('gemini',()=>Promise.reject(new HttpsError('permission-denied','no'))),provider('cerebras',()=>{called=true;return Promise.resolve('x');})],{db:fakeDb()}),e=>e.code==='permission-denied');assert.equal(called,false);}
 // 7. Everything fails: one clean user message, and the failure is recorded.
-{const db=fakeDb();await assert.rejects(lib.accazaAiWithFallback([provider('gemini',failure('a')),provider('cerebras',failure('b')),provider('ollama',failure('c'),{maxMs:700})],{db,general:true}),e=>e.code==='unavailable'&&/temporarily unavailable/.test(e.message)&&!/Accaza/.test(e.message));
-const h=db.store['/accazaAiProviderHealth/2026-09-25'];assert.equal(h.failedQuestions,1);assert.equal(h.lastEvent.answeredBy,'none');assert.deepEqual(Object.keys(h.providerFailures).sort(),['cerebras','gemini','ollama']);}
+{const db=fakeDb();await assert.rejects(lib.accazaAiWithFallback([provider('gemini',failure('a')),provider('cerebras',failure('b')),provider('qwen',failure('c'),{maxMs:250})],{db,general:true}),e=>e.code==='unavailable'&&/temporarily unavailable/.test(e.message)&&!/Accaza/.test(e.message));
+const h=db.store['/accazaAiProviderHealth/2026-09-25'];assert.equal(h.failedQuestions,1);assert.equal(h.lastEvent.answeredBy,'none');assert.deepEqual(Object.keys(h.providerFailures).sort(),['cerebras','gemini','qwen']);}
 // 8. The last provider's reserve shortens the one before it.
-{let qwenLimit=0;await lib.accazaAiWithFallback([provider('ollama',limit=>{qwenLimit=limit;return Promise.reject(new HttpsError('unavailable','slow',{providerFailure:true}));},{maxMs:700}),provider('cerebras',ok('D'),{maxMs:200,reserveMs:200})],{db:fakeDb()});
+{let qwenLimit=0;await lib.accazaAiWithFallback([provider('qwen',limit=>{qwenLimit=limit;return Promise.reject(new HttpsError('unavailable','slow',{providerFailure:true}));},{maxMs:700}),provider('cerebras',ok('D'),{maxMs:200,reserveMs:200})],{db:fakeDb()});
 assert.ok(qwenLimit<=900&&qwenLimit>=600,'Qwen gets the budget minus the next provider\'s reserve, capped at its own limit');}
 // 9. Disabled providers are skipped; none configured is a configuration error.
 await assert.rejects(lib.accazaAiWithFallback([provider('gemini',ok('x'),{enabled:()=>false})],{db:fakeDb()}),e=>e.code==='failed-precondition');
