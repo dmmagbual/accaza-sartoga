@@ -37,6 +37,7 @@ async function voidSaleDateRow(db, movements, mid, periods) {
   else if (order.payoutId || String(order.settlementStatus || "").toLowerCase() === "settled") locked = "already in a platform payout: review manually";
   else if (lines.some((line) => VOID_TAX_ACCOUNT.test(account(line))) && voidTaxQuarter(currentDate) !== voidTaxQuarter(targetDate)) locked = "VAT would move to another tax quarter: review manually";
   else if (order.inventoryReversed === true) locked = "stock already returned on the void date: review its cost manually";
+  else if (order.inventoryReversalRequested === true) locked = "stock return already pending: review after it completes";
   const restockable = !locked && order.inventoryDeducted === true && order.inventoryReversed !== true && order.voided === true;
   const amount = Financial.money(Number(mv.amount) || Financial.totals(lines).debit);
   return {movementId: mid, orderId, orderNode: found.node, amount, currentDate, targetDate, type: "order_void", basis: "void_sale_date", channel: String(order.channel || ""), voidReason: String(order.voidReason || "").slice(0, 120), locked, restockable};

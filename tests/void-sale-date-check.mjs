@@ -32,7 +32,7 @@ for (const source of [adj, built]) {
   assert.ok(source.includes('data.accountingDate=voidDate;'), 'the approval fingerprint and movement date use the sale date');
   assert.ok(!source.includes('voidDate=financeDate(data.accountingDate)'), 'the void date may no longer come from the client');
 }
-for (const marker of ['movement.occurredAt = (order.voidAccountingDate && Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`)) || Number(order.voidedAt || Date.now());', 'correction.occurredAt=(order.voidAccountingDate&&Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`))||Number(order.voidedAt||order.timestamp||Date.now());']) assert.ok(built.includes(marker), `trigger-posted void and void-balance corrections follow the void accounting date: ${marker}`);
+for (const marker of ['movement.occurredAt = (order.voidAccountingDate && Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`)) || Number(order.voidedAt || Date.now());', 'movement.occurredAt = (order.voidAccountingDate && Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`)) || Number(order.voidedAt || order.timestamp || Date.now());', 'correction.occurredAt=(order.voidAccountingDate&&Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`))||Number(order.voidedAt||order.timestamp||Date.now());']) assert.ok(built.includes(marker), `trigger-posted void and void-balance corrections follow the void accounting date: ${marker}`);
 assert.ok(built.includes('movement.occurredAt = data.action === "void" ? (Date.parse(`${financeDate(data.accountingDate)}T00:00:00+08:00`) || now) : now;'), 'the posted movement takes the normalized void date');
 
 // 2. Void dialog.
@@ -63,6 +63,7 @@ const store = {
   '/archivedOrders/GF-PAID': {id: 'GF-PAID', channel: 'grabfood', timestamp: at('2026-09-25T05:00:00Z'), voided: true, payoutId: 'PO-1', settlementStatus: 'settled'},
   '/archivedOrders/GF-VAT': {id: 'GF-VAT', channel: 'grabfood', timestamp: at('2026-09-26T05:00:00Z'), voided: true},
   '/archivedOrders/GF-REST': {id: 'GF-REST', channel: 'grabfood', timestamp: at('2026-09-27T05:00:00Z'), voided: true, inventoryDeducted: true, inventoryReversed: true},
+  '/archivedOrders/GF-PEND': {id: 'GF-PEND', channel: 'grabfood', timestamp: at('2026-09-28T05:00:00Z'), voided: true, inventoryDeducted: true, inventoryReversalRequested: true},
   '/accountingPeriods/2026-08': {status: 'closed'},
 };
 const db = {ref: (path) => ({get: async () => ({val: () => store[path] === undefined ? null : store[path]})})};
@@ -78,6 +79,7 @@ const movements = {
   void_GF_PAID: {type: 'order_void', sourceId: 'GF-PAID', occurredAt: at('2026-10-03T04:00:00Z'), amount: 60, lines: voidLines},
   void_GF_VAT: {type: 'order_void', sourceId: 'GF-VAT', occurredAt: at('2026-10-03T04:00:00Z'), amount: 112, lines: [...voidLines, {account: 'liability:output_vat', debit: 12, credit: 0}]},
   void_GF_REST: {type: 'order_void', sourceId: 'GF-REST', occurredAt: at('2026-10-03T04:00:00Z'), amount: 60, lines: voidLines},
+  void_GF_PEND: {type: 'order_void', sourceId: 'GF-PEND', occurredAt: at('2026-10-03T04:00:00Z'), amount: 60, lines: voidLines},
   sale_GF_SEP: {type: 'order_sale', sourceId: 'GF-SEP', occurredAt: at('2026-09-22T10:31:08Z'), amount: 490, lines: voidLines},
 };
 const merged = [];
@@ -86,7 +88,7 @@ const ctx = {BooksBridge: BB, Financial, AccountingPeriods, financeDateFromTimes
 vm.createContext(ctx); vm.runInContext(helpers, ctx);
 const rows = await ctx.voidSaleDateMismatches(db, movements);
 const byId = Object.fromEntries(rows.map((row) => [row.movementId, row]));
-assert.deepEqual(Object.keys(byId).sort(), ['void_GF_AUG', 'void_GF_LIVE', 'void_GF_PAID', 'void_GF_REST', 'void_GF_SEP', 'void_GF_VAT', 'void_POS_CASH'], 'same-date, already repaired, sale and missing-order movements are not listed');
+assert.deepEqual(Object.keys(byId).sort(), ['void_GF_AUG', 'void_GF_LIVE', 'void_GF_PAID', 'void_GF_PEND', 'void_GF_REST', 'void_GF_SEP', 'void_GF_VAT', 'void_POS_CASH'], 'same-date, already repaired, sale and missing-order movements are not listed');
 assert.equal(byId.void_GF_SEP.currentDate, '2026-10-06'); assert.equal(byId.void_GF_SEP.targetDate, '2026-09-22');
 assert.equal(byId.void_GF_SEP.locked, ''); assert.equal(byId.void_GF_SEP.restockable, true); assert.equal(byId.void_GF_SEP.basis, 'void_sale_date'); assert.equal(byId.void_GF_SEP.amount, 490);
 assert.equal(byId.void_GF_AUG.locked, '2026-08 is closed', 'a closed month is never re-dated');
@@ -94,7 +96,8 @@ assert.equal(byId.void_POS_CASH.locked, 'returned money: review manually', 'a vo
 assert.equal(byId.void_GF_PAID.locked, 'already in a platform payout: review manually', 'a void of a paid-out platform order stays put');
 assert.equal(byId.void_GF_VAT.locked, 'VAT would move to another tax quarter: review manually', 'VAT never moves into another (possibly filed) quarter');
 assert.equal(byId.void_GF_REST.locked, 'stock already returned on the void date: review its cost manually', 'a void whose cost reversal is already in the void month is not split from it');
-for (const id of ['void_GF_AUG', 'void_POS_CASH', 'void_GF_PAID', 'void_GF_VAT', 'void_GF_REST']) assert.equal(byId[id].restockable, false, `${id} is locked, so it offers no stock return`);
+assert.equal(byId.void_GF_PEND.locked, 'stock return already pending: review after it completes', 'a pending stock return would post its cost on the old date');
+for (const id of ['void_GF_AUG', 'void_POS_CASH', 'void_GF_PAID', 'void_GF_VAT', 'void_GF_REST', 'void_GF_PEND']) assert.equal(byId[id].restockable, false, `${id} is locked, so it offers no stock return`);
 assert.equal(byId.void_GF_SEP.orderNode, 'archivedOrders'); assert.equal(byId.void_GF_LIVE.orderNode, 'orders', 'the order side is written to the authoritative node');
 const plain = ctx.voidSaleDateOrderWrites(byId.void_GF_SEP, new Set(), 'Duplicate Grab entries', 1);
 assert.deepEqual(JSON.parse(JSON.stringify(plain)), {'archivedOrders/GF-SEP/voidAccountingDate': '2026-09-22', 'archivedOrders/GF-SEP/voidDateRepairedAt': 1}, 'without the tick only the void accounting date changes');
