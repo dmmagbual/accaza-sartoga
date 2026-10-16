@@ -38,6 +38,13 @@ const PROBES = {
     doneText: (id) => `Order ${id} now has its stock return confirmed.`,
     pendingText: (id) => `Order ${id} still has no confirmed stock return for its void or refund. Complete the reversal first; the card closes on the next health check.`,
   },
+  onArchivedOrderInventoryReversal: {
+    param: "orderId",
+    fields: ["status", "inventoryReversed"],
+    complete: (row) => row.inventoryReversed === true,
+    doneText: (id) => `Order ${id} now has its stock return confirmed.`,
+    pendingText: (id) => `Order ${id} still has no confirmed stock return for its void or refund. Complete the reversal first; the card closes on the next health check.`,
+  },
 };
 
 // Historical replica triggers (Oct 2026). They write only the derived Firestore

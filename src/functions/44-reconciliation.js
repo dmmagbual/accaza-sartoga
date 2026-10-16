@@ -41,7 +41,7 @@ exports.ensureFinancialLedger = onCall(
       // the sourceId index (was a second download of the whole ledger).
       const orderMovements=(await db.ref("/financialMovements").orderByChild("sourceId").equalTo(String(id)).get()).val()||{};
       const correction=Financial.netMovementCorrection(Object.values(orderMovements),id,"void_balance_correction","Bring voided platform order posting chain to zero");if(!correction)continue;
-      correction.occurredAt=Number(order.voidedAt||order.timestamp||Date.now());correction.actorName="Automated platform AR reconciliation";correction.controlReason="Admin Sales marks this order void; correct only the remaining source-specific posting balance";
+      correction.occurredAt=(order.voidAccountingDate&&Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`))||Number(order.voidedAt||order.timestamp||Date.now());correction.actorName="Automated platform AR reconciliation";correction.controlReason="Admin Sales marks this order void; correct only the remaining source-specific posting balance";
       const movementId=`void_balance_correction_${id}`,now=Date.now(),result=await commitFinancial(db,movementId,correction,serverActor,{[`operationalAudit/${now}_void_balance_${id}`]:{action:"voided_platform_order_balance_corrected",sourceType:"order",sourceId:id,movementId,channel:order.channel,actorUid:actor.uid,ts:now,schemaVersion:1}});if(result.duplicate)duplicates++;else{posted++;voidBalancesCorrected++;}
     }
     // The platform AR check needs the ledger as it now stands. If this run wrote no movement,
@@ -205,15 +205,18 @@ exports.repairFinanceDates = onCall(
       if (prev && prev.targetDate !== row.date) { prev.ambiguous = true; return; }
       if (!prev) byMovement[mid] = {movementId: mid, amount: Financial.money(row.amount), currentDate: cur, targetDate: row.date, type: String(mv.type || ""), cfLedgerId: id};
     });
-    const mismatches = Object.keys(byMovement).map((k) => byMovement[k]);
+    const mismatches = Object.keys(byMovement).map((k) => Object.assign({basis: "cash_ledger"}, byMovement[k]));
+    // A movement is listed once: a cash-ledger re-date wins over a void sale-date re-date.
+    mismatches.push(...(await voidSaleDateMismatches(db, movements)).filter((row) => !byMovement[row.movementId]));
     if (action === "preview" || !action) return {mismatches: mismatches.slice(0, 500), count: mismatches.length, ambiguous: mismatches.filter((m) => m.ambiguous).length};
     if (action !== "apply") throw new HttpsError("invalid-argument", "Unknown action.");
     if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can apply date corrections.");
     const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
     const approved = Array.isArray(data.movementIds) ? new Set(data.movementIds.map(String)) : null;
+    const approvedRestock = new Set((Array.isArray(data.restockOrderIds) ? data.restockOrderIds : []).map(String).slice(0, 200));
     const now = Date.now(); let repaired = 0, skipped = 0; const done = [];
     for (const m of mismatches) {
-      if (m.ambiguous) { skipped++; continue; }
+      if (m.ambiguous || m.locked) { skipped++; continue; }
       if (approved && !approved.has(m.movementId)) { skipped++; continue; }
       const mid = m.movementId, mv = Object.assign({id: mid}, movements[mid] || {});
       if (!Array.isArray(mv.lines) || !mv.lines.length) { skipped++; continue; }
@@ -221,8 +224,9 @@ exports.repairFinanceDates = onCall(
       const reversal = Financial.reverseMovement(mv, "finance_date_repair_reversal", "Re-date correction"); reversal.occurredAt = Number(mv.occurredAt) || now; reversal.controlReason = reason; reversal.redatedFromMovementId = mid;
       const repost = Financial.movement(mv.type || "finance_date_repair", mv.sourceType || "financeDateRepair", mv.sourceId || mid, mv.lines.map((l) => Financial.line(l.account, l.debit, l.credit, l.label || "Re-dated posting")), {occurredAt: targetTs, actorName: actor.role, controlReason: reason, redatedFromMovementId: mid, redatedFrom: m.currentDate, redatedTo: m.targetDate});
       const rr = await commitFinancial(db, revId, reversal, actor, {[`operationalAudit/${now}_datefix_${mid}`]: operationalAuditRecord("repair_finance_date", "financeDateRepair", mid, actor, {from: m.currentDate, to: m.targetDate, amount: m.amount, reversalId: revId, repostId: newId, reason})});
-      const pr = await commitFinancial(db, newId, repost, actor, {[`financialMovements/${mid}/dateRepairSupersededBy`]: newId, [`financialMovements/${mid}/dateRepairedAt`]: now});
-      if (rr.duplicate && pr.duplicate) skipped++; else { repaired++; done.push({movementId: mid, from: m.currentDate, to: m.targetDate, amount: m.amount}); }
+      const pr = await commitFinancial(db, newId, repost, actor, Object.assign({[`financialMovements/${mid}/dateRepairSupersededBy`]: newId, [`financialMovements/${mid}/dateRepairedAt`]: now}, m.basis === "void_sale_date" ? voidSaleDateOrderWrites(m, approvedRestock, reason, now) : {}));
+      if (m.basis === "void_sale_date" && pr.duplicate) await completeVoidSaleDateRepair(db, m, approvedRestock, reason);
+      if (rr.duplicate && pr.duplicate) skipped++; else { repaired++; done.push({movementId: mid, from: m.currentDate, to: m.targetDate, amount: m.amount, basis: m.basis}); }
     }
     return {repaired, skipped, done: done.slice(0, 500)};
   },
@@ -263,7 +267,7 @@ function financialControlResolution(issue) {
   return Object.assign(issue, {title:titles[issue.kind] || String(issue.kind || "Control exception").replace(/_/g, " "), solution:resolution[0], actionTarget:resolution[1], actionLabel:resolution[2]});
 }
 
-const ARCHIVED_ORDER_METADATA_FIELDS = new Set(["inventoryDeducted","inventoryUsage","inventoryDeductedAt","cogsSnapshot","cogsCategorySnapshot","cogsCategorySnapshotVersion","cogsAccountSnapshot","cogsAccountSnapshotVersion","cogsCovered","cogsDetail","cogsDetailSource","costingEngineVersion","deductedBy","inventoryLedgerVersion","inventoryMarkerRepairedAt","inventoryReversed","inventoryReversedAt","inventoryReversalRequested","inventoryReversalLedgerVersion","correctedInventoryUsage","correctionInventoryToken","correctedCogsSnapshot","correctedCogsCategorySnapshot","correctedCogsAccountSnapshot","correctedCogsCovered","costPendingLines","costCorrections","costCorrectionTotal","pushNotified","pushNotifiedAt","dupPlatformRef"]);
+const ARCHIVED_ORDER_METADATA_FIELDS = new Set(["inventoryDeducted","inventoryUsage","inventoryDeductedAt","cogsSnapshot","cogsCategorySnapshot","cogsCategorySnapshotVersion","cogsAccountSnapshot","cogsAccountSnapshotVersion","cogsCovered","cogsDetail","cogsDetailSource","costingEngineVersion","deductedBy","inventoryLedgerVersion","inventoryMarkerRepairedAt","inventoryReversed","inventoryReversedAt","inventoryReversalRequested","inventoryReversalLedgerVersion","correctedInventoryUsage","correctionInventoryToken","correctedCogsSnapshot","correctedCogsCategorySnapshot","correctedCogsAccountSnapshot","correctedCogsCovered","costPendingLines","costCorrections","costCorrectionTotal","pushNotified","pushNotifiedAt","dupPlatformRef","voidAccountingDate","voidDateRepairedAt","inventoryReversalReason"]);
 function isArchivedOrderMetadataGhost(live, archived) {
   if (!live || !archived || archived.status !== "Archived" || !archived.id) return false;
   if (live.id || live.status || live.lineItems || live.total != null || live.timestamp) return false;

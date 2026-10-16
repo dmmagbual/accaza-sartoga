@@ -44,10 +44,15 @@ assert.match(purchases, /managePurchaseCorrection\(\{action:'reverse',invoiceId:
 assert.match(purchaseCorrection, /reversalDate=financeDate\(data\.accountingDate\|\|invoice\.date\)/,
   'The Purchase server authority must use the explicitly selected accounting date.');
 
-assert.match(salesUi, /name:'accountingDate',label:'Posting date',type:'date'[\s\S]*title:'Void completed sale'/,
-  'Completed-sale voids must ask for the posting date.');
-assert.match(salesServer, /voidDate=financeDate\(data\.accountingDate\)/,
-  'The sale-void server must require and validate the selected date.');
+// 16 Oct 2026 (owner decision): a completed-sale void is the one reversal that does NOT take a
+// chosen date - it always posts on the original sale date so Finance Books follows Admin net sales.
+// The dialog shows that date locked, and the server rejects any other date.
+assert.match(salesUi, /name:'accountingDate',label:'Posting date \(original sale date\)',type:'date',required:true,min:postingDate,max:postingDate,value:postingDate[\s\S]*title:'Void completed sale'/,
+  'Completed-sale voids must show the posting date locked to the original sale date.');
+assert.match(salesServer, /originalDate=financeDateFromTimestamp\(o\.completedAt\|\|o\.receivedAt\|\|o\.timestamp\|\|now\),voidDate=originalDate/,
+  'The sale-void server must post the void on the original sale date.');
+assert.match(salesServer, /financeDate\(data\.accountingDate\)!==originalDate\)throw new HttpsError\("invalid-argument"/,
+  'The sale-void server must reject any other posting date.');
 assert.match(payoutUi, /title:'Reverse settled '[\s\S]*name:'accountingDate',label:'Posting date',type:'date'/,
   'Platform payout reversals must ask for the posting date.');
 assert.match(payoutServer, /reversalDate=financeDate\(data\.accountingDate\)/,

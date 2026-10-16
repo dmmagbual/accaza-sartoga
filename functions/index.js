@@ -6796,7 +6796,7 @@ exports.onOrderFinancialPosting = onValueWritten(
     }
     if (order.voided === true && before.voided !== true) {
       const remaining = Financial.money(Math.max(0, Financial.money(order.total) - afterRefund));
-      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
+      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = (order.voidAccountingDate && Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`)) || Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
     }
   },
 );
@@ -8294,7 +8294,7 @@ exports.processOrderAdjustment = onCall(
       writes[`operationalAudit/${now}_cash_order_change_refund_${o.id}`] = {action:"cash_order_change_refund",sourceType:"order",sourceId:o.id,movementId,amount:delta,originalTotal,currentNetBefore:currentNet,correctedOrderTotal:correctedTotal,originalPaymentMethods:movement.originalPaymentMethods,customerAcknowledgement:acknowledgement,orderStage:processed?"processed":"not_processed",inventoryOutcome:processed?inventoryOutcome:"not_yet_deducted",shiftId:activeShift.id,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};
     }
     else if (data.action === "refund") { const delta = Financial.money(data.amount), already = Financial.money(o.refundAmount), max = Financial.money(o.total); if (!(delta > 0) || already + delta > max + 0.009) throw new HttpsError("invalid-argument", "Refund exceeds the refundable amount."); const cumulative = Financial.money(already + delta), original = (Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior = o.refundPayments || {}, tender = Array.isArray(data.refundPayments)?data.refundPayments.map((row) => ({method:financeText(row.method,60),amount:Financial.money(row.amount)})).filter((row) => row.method&&row.amount>0):[]; if ((o.channel||"instore") === "instore") {if (Math.abs(tender.reduce((s,row)=>Financial.money(s+row.amount),0)-delta)>0.009) throw new HttpsError("invalid-argument","Refund tender allocations must equal the refund amount."); const allowed={}; original.forEach((row)=>{allowed[row.method]=Financial.money((allowed[row.method]||0)+Financial.money(row.amount));}); tender.forEach((row)=>{if (!allowed[row.method] || Financial.money((prior[row.method]||0)+row.amount)>allowed[row.method]+0.009) throw new HttpsError("invalid-argument",`Refund through ${row.method} exceeds the original payment.`);});} movementId = `refund_${o.id}_${Math.round(cumulative * 100)}`; const approval = await claimManagerApproval(db, data, "refund", o.id, delta, movementId); movement = Financial.reversalPosting(o, delta, "refund", accounts, tender, saleTax); Object.assign(writes, approval.usedWrites); const nextRefundPayments=Object.assign({},prior);tender.forEach((row)=>{nextRefundPayments[row.method]=Financial.money((nextRefundPayments[row.method]||0)+row.amount);}); writes[`${found.node}/${o.id}/refundAmount`] = cumulative; writes[`${found.node}/${o.id}/refundPayments`] = nextRefundPayments; writes[`${found.node}/${o.id}/refundHistory/${movementId}`] = {amount:delta,payments:tender,reason,at:now,by:actor.uid,approvalId:approval.id,approvedBy:approval.record.approvedEmail||approval.record.approvedRole}; writes[`${found.node}/${o.id}/refundReason`] = reason; writes[`${found.node}/${o.id}/refundedAt`] = now; writes[`${found.node}/${o.id}/refundedBy`] = actor.uid; writes[`${found.node}/${o.id}/refunded`] = true; }
-    else if (data.action === "void") { if (o.voided) throw new HttpsError("already-exists", "Order is already voided."); const value = Financial.money(Math.max(0, Financial.money(o.total) - Financial.money(o.refundAmount))),voidDate=financeDate(data.accountingDate),originalDate=financeDateFromTimestamp(o.completedAt||o.receivedAt||o.timestamp||now); if (!(value > 0)) throw new HttpsError("failed-precondition", "Nothing remains to void.");if(voidDate<originalDate)throw new HttpsError("invalid-argument","The posting date cannot be before the original sale date.");await assertAccountingPeriodOpen(db,voidDate,"voiding this completed sale"); movementId = `void_${o.id}`; const approval = await claimManagerApproval(db, data, "void", o.id, value, movementId, null, reversalApprovalFingerprint("void",o.id,{accountingDate:voidDate,amount:value,reason})), original=(Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior=o.refundPayments||{}, tender=[]; if ((o.channel||"instore")==="instore") {let rem=value; original.forEach((row)=>{const available=Financial.money(Math.max(0,Financial.money(row.amount)-Financial.money(prior[row.method]))),use=Financial.money(Math.min(rem,available));if(use>0){tender.push({method:row.method,amount:use});rem=Financial.money(rem-use);}});if(rem>0.009)throw new HttpsError("failed-precondition","Original payment allocation cannot support the void reversal.");} movement = await fullOrderVoidMovement(db, o, accounts, tender, taxSettings); if (!movement) throw new HttpsError("failed-precondition", "The void has no remaining financial balance to reverse."); Object.assign(writes, approval.usedWrites); writes[`${found.node}/${o.id}/voided`] = true; writes[`${found.node}/${o.id}/voidPayments`] = tender; writes[`${found.node}/${o.id}/voidApprovalId`] = approval.id; writes[`${found.node}/${o.id}/voidApprovedBy`] = approval.record.approvedEmail||approval.record.approvedRole; writes[`${found.node}/${o.id}/voidReason`] = reason; writes[`${found.node}/${o.id}/voidedAt`] = now; writes[`${found.node}/${o.id}/voidAccountingDate`] = voidDate; writes[`${found.node}/${o.id}/voidedBy`] = actor.uid; }
+    else if (data.action === "void") { if (o.voided) throw new HttpsError("already-exists", "Order is already voided."); const value = Financial.money(Math.max(0, Financial.money(o.total) - Financial.money(o.refundAmount))),originalDate=financeDateFromTimestamp(o.completedAt||o.receivedAt||o.timestamp||now),voidDate=originalDate; if (!(value > 0)) throw new HttpsError("failed-precondition", "Nothing remains to void.");if(data.accountingDate!=null&&data.accountingDate!==""&&financeDate(data.accountingDate)!==originalDate)throw new HttpsError("invalid-argument",`A void posts on the original sale date (${originalDate}) so Finance Books and Admin agree. Refresh the page and void again.`);const earlierDay=originalDate!==financeDateFromTimestamp(now);if(String(o.channel||"instore").toLowerCase()==="instore"&&earlierDay)throw new HttpsError("failed-precondition",`This in-store sale is from ${originalDate}. Its cash was counted in that day's shift, so use Refund instead of Void.`);data.accountingDate=voidDate;{const period=AccountingPeriods.periodForDate(voidDate);if(AccountingPeriods.isClosed((await db.ref(`/accountingPeriods/${period}`).get()).val()))throw new HttpsError("failed-precondition",`${period} is closed, so this sale cannot be voided on its sale date (${originalDate}). Use Refund instead; a refund posts today.`);}await assertAccountingPeriodOpen(db,voidDate,"voiding this completed sale"); movementId = `void_${o.id}`; const approval = await claimManagerApproval(db, data, "void", o.id, value, movementId, null, reversalApprovalFingerprint("void",o.id,{accountingDate:voidDate,amount:value,reason})), original=(Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior=o.refundPayments||{}, tender=[]; if ((o.channel||"instore")==="instore") {let rem=value; original.forEach((row)=>{const available=Financial.money(Math.max(0,Financial.money(row.amount)-Financial.money(prior[row.method]))),use=Financial.money(Math.min(rem,available));if(use>0){tender.push({method:row.method,amount:use});rem=Financial.money(rem-use);}});if(rem>0.009)throw new HttpsError("failed-precondition","Original payment allocation cannot support the void reversal.");} movement = await fullOrderVoidMovement(db, o, accounts, tender, taxSettings); if (!movement) throw new HttpsError("failed-precondition", "The void has no remaining financial balance to reverse."); if (earlierDay && (movement.lines||[]).some((line)=>/^asset:(register_cash|cash)/.test(String(line&&line.account||"")))) throw new HttpsError("failed-precondition", `This sale is from ${originalDate} and voiding it would return money today, so use Refund instead of Void.`); Object.assign(writes, approval.usedWrites); writes[`${found.node}/${o.id}/voided`] = true; writes[`${found.node}/${o.id}/voidPayments`] = tender; writes[`${found.node}/${o.id}/voidApprovalId`] = approval.id; writes[`${found.node}/${o.id}/voidApprovedBy`] = approval.record.approvedEmail||approval.record.approvedRole; writes[`${found.node}/${o.id}/voidReason`] = reason; writes[`${found.node}/${o.id}/voidedAt`] = now; writes[`${found.node}/${o.id}/voidAccountingDate`] = voidDate; writes[`${found.node}/${o.id}/voidedBy`] = actor.uid; }
     else throw new HttpsError("invalid-argument", "Adjustment action is invalid.");
     if (data.restock === true) {writes[`${found.node}/${o.id}/inventoryReversalRequested`] = true; writes[`${found.node}/${o.id}/inventoryReversalReason`] = reason;}
     movement.occurredAt = data.action === "void" ? (Date.parse(`${financeDate(data.accountingDate)}T00:00:00+08:00`) || now) : now; movement.actorName = actor.role; if (data.approvalId) movement.approvalId=financeText(data.approvalId,160); addOrderCashWrites(writes, movement, movementId, o, actor); const committed = await commitFinancial(db, movementId, movement, actor, writes); return {movementId, duplicate: committed.duplicate, amount:movement.amount, correctedOrderTotal:movement.correctedOrderTotal, refundShiftId:movement.refundShiftId};
@@ -8706,7 +8706,7 @@ exports.ensureFinancialLedger = onCall(
       // the sourceId index (was a second download of the whole ledger).
       const orderMovements=(await db.ref("/financialMovements").orderByChild("sourceId").equalTo(String(id)).get()).val()||{};
       const correction=Financial.netMovementCorrection(Object.values(orderMovements),id,"void_balance_correction","Bring voided platform order posting chain to zero");if(!correction)continue;
-      correction.occurredAt=Number(order.voidedAt||order.timestamp||Date.now());correction.actorName="Automated platform AR reconciliation";correction.controlReason="Admin Sales marks this order void; correct only the remaining source-specific posting balance";
+      correction.occurredAt=(order.voidAccountingDate&&Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`))||Number(order.voidedAt||order.timestamp||Date.now());correction.actorName="Automated platform AR reconciliation";correction.controlReason="Admin Sales marks this order void; correct only the remaining source-specific posting balance";
       const movementId=`void_balance_correction_${id}`,now=Date.now(),result=await commitFinancial(db,movementId,correction,serverActor,{[`operationalAudit/${now}_void_balance_${id}`]:{action:"voided_platform_order_balance_corrected",sourceType:"order",sourceId:id,movementId,channel:order.channel,actorUid:actor.uid,ts:now,schemaVersion:1}});if(result.duplicate)duplicates++;else{posted++;voidBalancesCorrected++;}
     }
     // The platform AR check needs the ledger as it now stands. If this run wrote no movement,
@@ -8870,15 +8870,18 @@ exports.repairFinanceDates = onCall(
       if (prev && prev.targetDate !== row.date) { prev.ambiguous = true; return; }
       if (!prev) byMovement[mid] = {movementId: mid, amount: Financial.money(row.amount), currentDate: cur, targetDate: row.date, type: String(mv.type || ""), cfLedgerId: id};
     });
-    const mismatches = Object.keys(byMovement).map((k) => byMovement[k]);
+    const mismatches = Object.keys(byMovement).map((k) => Object.assign({basis: "cash_ledger"}, byMovement[k]));
+    // A movement is listed once: a cash-ledger re-date wins over a void sale-date re-date.
+    mismatches.push(...(await voidSaleDateMismatches(db, movements)).filter((row) => !byMovement[row.movementId]));
     if (action === "preview" || !action) return {mismatches: mismatches.slice(0, 500), count: mismatches.length, ambiguous: mismatches.filter((m) => m.ambiguous).length};
     if (action !== "apply") throw new HttpsError("invalid-argument", "Unknown action.");
     if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can apply date corrections.");
     const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
     const approved = Array.isArray(data.movementIds) ? new Set(data.movementIds.map(String)) : null;
+    const approvedRestock = new Set((Array.isArray(data.restockOrderIds) ? data.restockOrderIds : []).map(String).slice(0, 200));
     const now = Date.now(); let repaired = 0, skipped = 0; const done = [];
     for (const m of mismatches) {
-      if (m.ambiguous) { skipped++; continue; }
+      if (m.ambiguous || m.locked) { skipped++; continue; }
       if (approved && !approved.has(m.movementId)) { skipped++; continue; }
       const mid = m.movementId, mv = Object.assign({id: mid}, movements[mid] || {});
       if (!Array.isArray(mv.lines) || !mv.lines.length) { skipped++; continue; }
@@ -8886,8 +8889,9 @@ exports.repairFinanceDates = onCall(
       const reversal = Financial.reverseMovement(mv, "finance_date_repair_reversal", "Re-date correction"); reversal.occurredAt = Number(mv.occurredAt) || now; reversal.controlReason = reason; reversal.redatedFromMovementId = mid;
       const repost = Financial.movement(mv.type || "finance_date_repair", mv.sourceType || "financeDateRepair", mv.sourceId || mid, mv.lines.map((l) => Financial.line(l.account, l.debit, l.credit, l.label || "Re-dated posting")), {occurredAt: targetTs, actorName: actor.role, controlReason: reason, redatedFromMovementId: mid, redatedFrom: m.currentDate, redatedTo: m.targetDate});
       const rr = await commitFinancial(db, revId, reversal, actor, {[`operationalAudit/${now}_datefix_${mid}`]: operationalAuditRecord("repair_finance_date", "financeDateRepair", mid, actor, {from: m.currentDate, to: m.targetDate, amount: m.amount, reversalId: revId, repostId: newId, reason})});
-      const pr = await commitFinancial(db, newId, repost, actor, {[`financialMovements/${mid}/dateRepairSupersededBy`]: newId, [`financialMovements/${mid}/dateRepairedAt`]: now});
-      if (rr.duplicate && pr.duplicate) skipped++; else { repaired++; done.push({movementId: mid, from: m.currentDate, to: m.targetDate, amount: m.amount}); }
+      const pr = await commitFinancial(db, newId, repost, actor, Object.assign({[`financialMovements/${mid}/dateRepairSupersededBy`]: newId, [`financialMovements/${mid}/dateRepairedAt`]: now}, m.basis === "void_sale_date" ? voidSaleDateOrderWrites(m, approvedRestock, reason, now) : {}));
+      if (m.basis === "void_sale_date" && pr.duplicate) await completeVoidSaleDateRepair(db, m, approvedRestock, reason);
+      if (rr.duplicate && pr.duplicate) skipped++; else { repaired++; done.push({movementId: mid, from: m.currentDate, to: m.targetDate, amount: m.amount, basis: m.basis}); }
     }
     return {repaired, skipped, done: done.slice(0, 500)};
   },
@@ -8928,7 +8932,7 @@ function financialControlResolution(issue) {
   return Object.assign(issue, {title:titles[issue.kind] || String(issue.kind || "Control exception").replace(/_/g, " "), solution:resolution[0], actionTarget:resolution[1], actionLabel:resolution[2]});
 }
 
-const ARCHIVED_ORDER_METADATA_FIELDS = new Set(["inventoryDeducted","inventoryUsage","inventoryDeductedAt","cogsSnapshot","cogsCategorySnapshot","cogsCategorySnapshotVersion","cogsAccountSnapshot","cogsAccountSnapshotVersion","cogsCovered","cogsDetail","cogsDetailSource","costingEngineVersion","deductedBy","inventoryLedgerVersion","inventoryMarkerRepairedAt","inventoryReversed","inventoryReversedAt","inventoryReversalRequested","inventoryReversalLedgerVersion","correctedInventoryUsage","correctionInventoryToken","correctedCogsSnapshot","correctedCogsCategorySnapshot","correctedCogsAccountSnapshot","correctedCogsCovered","costPendingLines","costCorrections","costCorrectionTotal","pushNotified","pushNotifiedAt","dupPlatformRef"]);
+const ARCHIVED_ORDER_METADATA_FIELDS = new Set(["inventoryDeducted","inventoryUsage","inventoryDeductedAt","cogsSnapshot","cogsCategorySnapshot","cogsCategorySnapshotVersion","cogsAccountSnapshot","cogsAccountSnapshotVersion","cogsCovered","cogsDetail","cogsDetailSource","costingEngineVersion","deductedBy","inventoryLedgerVersion","inventoryMarkerRepairedAt","inventoryReversed","inventoryReversedAt","inventoryReversalRequested","inventoryReversalLedgerVersion","correctedInventoryUsage","correctionInventoryToken","correctedCogsSnapshot","correctedCogsCategorySnapshot","correctedCogsAccountSnapshot","correctedCogsCovered","costPendingLines","costCorrections","costCorrectionTotal","pushNotified","pushNotifiedAt","dupPlatformRef","voidAccountingDate","voidDateRepairedAt","inventoryReversalReason"]);
 function isArchivedOrderMetadataGhost(live, archived) {
   if (!live || !archived || archived.status !== "Archived" || !archived.id) return false;
   if (live.id || live.status || live.lineItems || live.total != null || live.timestamp) return false;
@@ -9078,6 +9082,76 @@ exports.auditFinancialControls = onCall(
 // /inventoryAccounting/{itemId} is the authoritative per-item transaction
 // boundary. The public inventory stock and /inventoryBalances are projections.
 // ---------------------------------------------------------------------------
+// Void posting dates (owner decision 16 Oct 2026): a void removes its sale from the month it was made,
+// exactly as Admin net sales does, so its reversal belongs on the original sale date. Voids posted on a
+// later date (before the void dialog was locked to the sale date) are listed here and re-dated through
+// the same net-zero reversal + repost as cash-date repairs. Rows that cannot be moved safely are listed
+// but locked for manual review: a closed month (either date), a void that returned money (drawer, bank
+// or e-wallet - that money moved on the void date), an order already paid out by the platform, VAT lines
+// that would cross a tax quarter, and stock already returned on the void date (its cost reversal is
+// posted in the void month). A void whose order no longer exists is skipped: there is no sale date.
+const VOID_MONEY_ACCOUNT = /^asset:(register_cash|cash)/;
+const VOID_TAX_ACCOUNT = /vat|tax/i;
+const VOID_SCAN_BATCH = 20, VOID_SCAN_ROW_LIMIT = 500;
+async function accountingPeriodClosedFor(db, date, cache) {
+  const period = AccountingPeriods.periodForDate(date);
+  if (!Object.prototype.hasOwnProperty.call(cache, period)) cache[period] = AccountingPeriods.isClosed((await db.ref(`/accountingPeriods/${period}`).get()).val());
+  return cache[period] ? period : "";
+}
+function voidTaxQuarter(date) { const [y, m] = String(date).split("-").map(Number); return `${y}-Q${Math.ceil(m / 3)}`; }
+async function voidOrderFor(db, orderId) {
+  const live = (await db.ref(`/orders/${orderId}`).get()).val();
+  if (OrderRecords.isAuthoritativeOrder(live)) return {order: live, node: "orders"};
+  const archived = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
+  return OrderRecords.isAuthoritativeOrder(archived) ? {order: archived, node: "archivedOrders"} : null;
+}
+async function voidSaleDateRow(db, movements, mid, periods) {
+  const mv = movements[mid], orderId = String(mv.sourceId);
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(orderId)) return null;
+  const found = await voidOrderFor(db, orderId);
+  if (!found) return null;
+  const order = found.order, currentDate = BooksBridge.businessDate(mv.occurredAt);
+  const targetDate = financeDateFromTimestamp(Number(order.completedAt || order.receivedAt || order.timestamp) || Number(mv.occurredAt));
+  if (!targetDate || targetDate === currentDate) return null;
+  const lines = Array.isArray(mv.lines) ? mv.lines : [], account = (line) => String(line && line.account || "");
+  const closed = (await accountingPeriodClosedFor(db, currentDate, periods)) || (await accountingPeriodClosedFor(db, targetDate, periods));
+  let locked = "";
+  if (closed) locked = `${closed} is closed`;
+  else if (lines.some((line) => VOID_MONEY_ACCOUNT.test(account(line)))) locked = "returned money: review manually";
+  else if (order.payoutId || String(order.settlementStatus || "").toLowerCase() === "settled") locked = "already in a platform payout: review manually";
+  else if (lines.some((line) => VOID_TAX_ACCOUNT.test(account(line))) && voidTaxQuarter(currentDate) !== voidTaxQuarter(targetDate)) locked = "VAT would move to another tax quarter: review manually";
+  else if (order.inventoryReversed === true) locked = "stock already returned on the void date: review its cost manually";
+  const restockable = !locked && order.inventoryDeducted === true && order.inventoryReversed !== true && order.voided === true;
+  const amount = Financial.money(Number(mv.amount) || Financial.totals(lines).debit);
+  return {movementId: mid, orderId, orderNode: found.node, amount, currentDate, targetDate, type: "order_void", basis: "void_sale_date", channel: String(order.channel || ""), voidReason: String(order.voidReason || "").slice(0, 120), locked, restockable};
+}
+async function voidSaleDateMismatches(db, movements) {
+  const rows = [], periods = {};
+  const voids = Object.keys(movements).filter((id) => { const mv = movements[id] || {}; return String(mv.type || "") === "order_void" && !mv.dateRepairSupersededBy && !mv.redatedFromMovementId && mv.sourceId; });
+  // Read in small parallel batches; the row cap applies to real mismatches, not to voids already on their date.
+  for (let i = 0; i < voids.length && rows.length < VOID_SCAN_ROW_LIMIT; i += VOID_SCAN_BATCH) {
+    const batch = await Promise.all(voids.slice(i, i + VOID_SCAN_BATCH).map((mid) => voidSaleDateRow(db, movements, mid, periods)));
+    batch.forEach((row) => { if (row && rows.length < VOID_SCAN_ROW_LIMIT) rows.push(row); });
+  }
+  return rows;
+}
+// The order side of a void re-date, committed in the SAME multi-path update as the repost (so the
+// ledger and the order can never disagree): the corrected void accounting date (its COGS reversal
+// follows it) and, only when the owner ticked it, the stock-return request.
+function voidSaleDateMetadata(m, approvedRestock, reason, now) {
+  const metadata = {voidAccountingDate: m.targetDate, voidDateRepairedAt: now};
+  if (m.restockable && approvedRestock.has(m.orderId)) Object.assign(metadata, {inventoryReversalRequested: true, inventoryReversalReason: String(`${reason} (void re-dated to sale date)`).slice(0, 500)});
+  return metadata;
+}
+function voidSaleDateOrderWrites(m, approvedRestock, reason, now) {
+  const metadata = voidSaleDateMetadata(m, approvedRestock, reason, now), writes = {};
+  Object.keys(metadata).forEach((key) => { writes[`${m.orderNode}/${m.orderId}/${key}`] = metadata[key]; });
+  return writes;
+}
+// Re-run after a repost that already committed (duplicate): re-apply the same order fields safely.
+async function completeVoidSaleDateRepair(db, m, approvedRestock, reason) {
+  await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, m.orderId, voidSaleDateMetadata(m, approvedRestock, reason, Date.now()));
+}
 
 // AP Integrity Remediation Plan, step 0.3: read-only baseline of existing AP damage.
 // Super Admin only, run by hand from Finance Books → Payables → AP integrity check. It reads the
@@ -9722,13 +9796,11 @@ async function finalizeOrderInventory(db, orderId, o) {
       return {orderId, items: ids.length, uncosted: uncostedLines.length};
 }
 
-exports.onOrderInventoryReversal = onValueWritten(
-  {ref: "/orders/{orderId}/inventoryReversalRequested", region: ORDER_REGION, retry: true},
-  async (event) => {
-    if (event.data.after.val() !== true) return;
-    const orderId = event.params.orderId;
-    const db = getDatabase();
-    const orderRef = db.ref(`/orders/${orderId}`);
+// Returns an order's deducted stock (void or refund with restock) and reverses its COGS leg. Shared by
+// the live-order trigger and, since 16 Oct 2026, the archived-order trigger: a duplicate sale voided
+// after archiving (for example from Books > Repair date mismatches) can now return its stock too.
+async function reverseOrderInventoryAt(db, orderId, node) {
+    const orderRef = db.ref(`/${node}/${orderId}`);
     const order = (await orderRef.get()).val();
     if (!order || order.inventoryReversed) return;
     const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = positiveOrderInventoryUsage(corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {}));
@@ -9766,6 +9838,21 @@ exports.onOrderInventoryReversal = onValueWritten(
       }, undefined, false);
     }
     logger.info("Order inventory reversed", {orderId, type, items: Object.keys(usage).length});
+}
+
+exports.onOrderInventoryReversal = onValueWritten(
+  {ref: "/orders/{orderId}/inventoryReversalRequested", region: ORDER_REGION, retry: true},
+  async (event) => {
+    if (event.data.after.val() !== true) return;
+    await reverseOrderInventoryAt(getDatabase(), event.params.orderId, "orders");
+  },
+);
+
+exports.onArchivedOrderInventoryReversal = onValueWritten(
+  {ref: "/archivedOrders/{orderId}/inventoryReversalRequested", region: ORDER_REGION, retry: true},
+  async (event) => {
+    if (event.data.after.val() !== true) return;
+    await reverseOrderInventoryAt(getDatabase(), event.params.orderId, "archivedOrders");
   },
 );
 

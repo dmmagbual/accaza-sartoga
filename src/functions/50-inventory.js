@@ -579,13 +579,11 @@ async function finalizeOrderInventory(db, orderId, o) {
       return {orderId, items: ids.length, uncosted: uncostedLines.length};
 }
 
-exports.onOrderInventoryReversal = onValueWritten(
-  {ref: "/orders/{orderId}/inventoryReversalRequested", region: ORDER_REGION, retry: true},
-  async (event) => {
-    if (event.data.after.val() !== true) return;
-    const orderId = event.params.orderId;
-    const db = getDatabase();
-    const orderRef = db.ref(`/orders/${orderId}`);
+// Returns an order's deducted stock (void or refund with restock) and reverses its COGS leg. Shared by
+// the live-order trigger and, since 16 Oct 2026, the archived-order trigger: a duplicate sale voided
+// after archiving (for example from Books > Repair date mismatches) can now return its stock too.
+async function reverseOrderInventoryAt(db, orderId, node) {
+    const orderRef = db.ref(`/${node}/${orderId}`);
     const order = (await orderRef.get()).val();
     if (!order || order.inventoryReversed) return;
     const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = positiveOrderInventoryUsage(corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {}));
@@ -623,6 +621,21 @@ exports.onOrderInventoryReversal = onValueWritten(
       }, undefined, false);
     }
     logger.info("Order inventory reversed", {orderId, type, items: Object.keys(usage).length});
+}
+
+exports.onOrderInventoryReversal = onValueWritten(
+  {ref: "/orders/{orderId}/inventoryReversalRequested", region: ORDER_REGION, retry: true},
+  async (event) => {
+    if (event.data.after.val() !== true) return;
+    await reverseOrderInventoryAt(getDatabase(), event.params.orderId, "orders");
+  },
+);
+
+exports.onArchivedOrderInventoryReversal = onValueWritten(
+  {ref: "/archivedOrders/{orderId}/inventoryReversalRequested", region: ORDER_REGION, retry: true},
+  async (event) => {
+    if (event.data.after.val() !== true) return;
+    await reverseOrderInventoryAt(getDatabase(), event.params.orderId, "archivedOrders");
   },
 );
 

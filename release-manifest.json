@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 692,
-    "books": 155,
+    "admin": 693,
+    "books": 156,
     "customer": 101,
-    "serviceWorkerCache": 688
+    "serviceWorkerCache": 689
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -140,6 +140,7 @@
     "src/functions/43g-order-adjustments.js",
     "src/functions/43h-platform-catchup.js",
     "src/functions/44-reconciliation.js",
+    "src/functions/44a-void-sale-date.js",
     "src/functions/44b-ap-integrity.js",
     "src/functions/44c-purchase-doc-numbers.js",
     "src/functions/50-inventory.js",
@@ -375,6 +376,7 @@
     "recordClientTelemetry",
     "onOrderFinalize",
     "onOrderInventoryReversal",
+    "onArchivedOrderInventoryReversal",
     "preservePostedOrderOnDelete",
     "postInventoryMovements",
     "ensureInventoryLedger",
