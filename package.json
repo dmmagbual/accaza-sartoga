@@ -84,7 +84,7 @@
     "test:cash-balance-summary": "node tests/cash-balance-summary-check.mjs",
     "test:retry-guard": "node tests/retry-guard-check.mjs && node tests/dead-letter-resolution-check.mjs && node tests/firestore-contention-retry-check.mjs && node tests/historical-replica-repair-check.mjs && node tests/monitoring-alerts-check.mjs && node tests/void-sale-date-check.mjs && node tests/void-date-audit-visibility-check.mjs",
     "test:download-loopholes": "node tests/download-loophole-check.mjs",
-    "test:download-guards": "node tests/download-read-guard-check.mjs && node tests/client-download-guard-check.mjs && node tests/download-bounded-reads-check.mjs && node tests/download-attach-cost-check.mjs && node tests/books-live-feeds-check.mjs && node tests/books-sync-download-check.mjs && node tests/pos-heartbeat-cadence-check.mjs && node tests/stale-client-download-check.mjs && node tests/session-signout-check.mjs && node tests/saleshistory-feed-consolidation-check.mjs && node tests/download-audit-server-fixes-check.mjs",
+    "test:download-guards": "node tests/download-read-guard-check.mjs && node tests/client-download-guard-check.mjs && node tests/download-bounded-reads-check.mjs && node tests/download-attach-cost-check.mjs && node tests/books-live-feeds-check.mjs && node tests/books-sync-download-check.mjs && node tests/pos-heartbeat-cadence-check.mjs && node tests/stale-client-download-check.mjs && node tests/session-signout-check.mjs && node tests/saleshistory-feed-consolidation-check.mjs && node tests/download-audit-server-fixes-check.mjs && npm run test:order-financial-trigger",
     "test:undeposited-pagination": "node tests/undeposited-pagination-check.mjs",
     "test:cash-payment-evidence": "node tests/cash-payment-evidence-form-check.mjs && node tests/cash-payment-funding-accounts-check.mjs && node tests/suspense-supplier-advance-check.mjs && node tests/archived-order-ghost-check.mjs && node tests/unmapped-payment-audit-check.cjs",
     "test:cash-payment-expansion": "node tests/cash-payment-expansion-check.mjs",
@@ -140,7 +140,8 @@
     "test:cash-account-posting-guard": "node tests/cash-account-posting-guard-check.mjs",
     "test:books-cashflow-repair-action": "node tests/books-cashflow-repair-action-check.mjs",
     "test:platform-catchup-items": "node tests/platform-catchup-items-check.mjs",
-    "test:serving-queue": "node tests/serving-queue-check.mjs && node tests/serving-queue-runtime-check.mjs"
+    "test:serving-queue": "node tests/serving-queue-check.mjs && node tests/serving-queue-runtime-check.mjs",
+    "test:order-financial-trigger": "node tests/order-financial-trigger-check.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
