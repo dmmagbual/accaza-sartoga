@@ -8904,6 +8904,7 @@ function financialControlResolution(issue) {
     sale_amount_mismatch:["Open the Admin sale, verify its completion, discount and refund status, then run the Daily Financial Close again. The close identifies the exact missing or duplicated posting.","admin_sales","Open Sales History"],
     legacy_cash_without_movement:["Review the original cash record and create its missing Finance movement through the controlled Cash Flow workflow. Do not manually edit the ledger row.","books_cashflow","Open Cash Flow"],
     cash_finance_date_mismatch:["Automatic repair was skipped because this movement has conflicting or unsafe date evidence. Verify the original cash date and linked Finance entry before a Finance owner corrects the period.","books_cashflow","Review Cash Flow"],
+    void_not_on_sale_date:["Finance Books counts this void in a different month from Admin. On Cash Flow, use Repair date mismatches: it re-dates the void to its sale date with an audited reversal and repost. If the row is locked (closed month, money returned, platform payout or VAT quarter), correct it with a Refund dated today instead.","repair_finance_dates","Repair date mismatches"],
     sale_not_posted:["Open the completed order in Admin and run the Daily Financial Close. The system will identify the specific order posting that must be restored.","admin_sales","Open Sales History"],
     payout_movement_missing:["Open the platform payout and verify its linked settled orders. Re-run the controlled payout settlement; never journal Platform Payouts in Transit manually.","admin_finance","Open Platform Payouts"],
     reversed_payout_cash_not_reversed:["Use the controlled payout-deposit repair. It restores the clearing account and reverses the orphaned bank receipt while retaining the audit trail.","repair_reversed_payout","Repair deposit"],
@@ -8928,7 +8929,7 @@ function financialControlResolution(issue) {
     payables_control_mismatch:["Open Payables and reconcile each open supplier bill to its Finance posting. Correct or settle the bill from its own workflow; never net the difference with a free-form journal.","admin_finance","Open Payables"],
   };
   const resolution = resolutions[issue.kind] || ["Open the linked source record, verify the supporting evidence, and use its controlled correction workflow. The audit trail must remain intact.","books_cashflow","Review source"];
-  const titles = {payout_deposit_missing_reference:"Platform payout needs a reference",payout_movement_missing:"Platform payout posting is missing",payout_order_link_mismatch:"Platform payout order links need review",reversed_payout_cash_not_reversed:"Reversed platform payout still has a bank receipt"};
+  const titles = {void_not_on_sale_date:"Void is not on its sale date",payout_deposit_missing_reference:"Platform payout needs a reference",payout_movement_missing:"Platform payout posting is missing",payout_order_link_mismatch:"Platform payout order links need review",reversed_payout_cash_not_reversed:"Reversed platform payout still has a bank receipt"};
   return Object.assign(issue, {title:titles[issue.kind] || String(issue.kind || "Control exception").replace(/_/g, " "), solution:resolution[0], actionTarget:resolution[1], actionLabel:resolution[2]});
 }
 
@@ -8965,6 +8966,10 @@ exports.auditFinancialControls = onCall(
     const resolvedPaymentMappings=new Set();Object.values(movements).forEach((m)=>{if(m&&m.type==="payment_account_reclassification"&&m.originalMovementId&&m.method)resolvedPaymentMappings.add(`${m.originalMovementId}|${financeText(m.method,60).toLowerCase()}`);});
     Object.keys(movements).forEach((id)=>{const m=movements[id],sum=Financial.totals(m.lines||[]);if(Math.abs(sum.debit-sum.credit)>0.009)issues.push({severity:"critical",kind:"unbalanced",source:id,amount:Financial.money(sum.debit-sum.credit)});(m.warnings||[]).forEach((w)=>{const match=/^No cash-flow account mapping for (.+)\.$/.exec(String(w||"")),resolved=match&&resolvedPaymentMappings.has(`${id}|${financeText(match[1],60).toLowerCase()}`);if(!resolved)issues.push({severity:"warning",kind:"movement_warning",source:id,detail:w});});});
     const saleMovementRows=Object.values(movements);Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status;if(o.voided||!["Completed","Received"].includes(status)||o.paymentStatus==="pending"||!movements[`sale_${id}`])return;const expected=Financial.orderNetSales(o,Financial.effectiveTaxFor(taxSettings,Number(o.completedAt||o.receivedAt||o.timestamp||Date.now()))),actual=Financial.sourceNetSales(saleMovementRows,id),difference=Financial.money(actual-expected);if(Math.abs(difference)>0.009)issues.push({severity:"critical",kind:"sale_amount_mismatch",source:id,detail:`Admin net sales ${expected.toFixed(2)}; Finance Books ${actual.toFixed(2)}`,amount:difference,expected,actual});});
+    // Void sale date (owner decision 16 Oct 2026): a void belongs on its sale date, as Admin counts it. Any
+    // void still on another date is listed, so the mismatch is visible without the repair tool. Uses the
+    // orders and movements this audit already read: no extra database reads.
+    try{Object.keys(movements).forEach((id)=>{const mv=movements[id];if(!voidSaleDateCandidate(mv))return;const orderId=String(mv.sourceId),live=liveOrders[orderId],archived=archivedOrders[orderId],order=OrderRecords.isAuthoritativeOrder(live)?live:(OrderRecords.isAuthoritativeOrder(archived)?archived:null);if(!order)return;const dates=voidSaleDates(mv,order);if(!dates)return;issues.push({severity:"critical",kind:"void_not_on_sale_date",source:orderId,sourceLabel:`Void ${orderId}`,detail:`Void posted ${dates.currentDate}; sale date ${dates.targetDate}`,amount:Financial.money(Number(mv.amount)||Financial.totals(mv.lines||[]).debit)});});}catch(e){logger.warn("auditFinancialControls: void sale-date check skipped",{error:String(e)});}
     Object.keys(cash).forEach((id)=>{if(!cash[id].movementId)issues.push({severity:"warning",kind:"legacy_cash_without_movement",source:id,amount:Financial.money(cash[id].amount)});});
     Object.keys(cash).forEach((id)=>{const row=cash[id]||{},mv=movements[row.movementId];if(mv&&row.date&&!mv.dateRepairSupersededBy&&BooksBridge.businessDate(mv.occurredAt)!==row.date)issues.push({severity:"critical",kind:"cash_finance_date_mismatch",source:id,detail:`Cash ${row.date}; Finance ${BooksBridge.businessDate(mv.occurredAt)}`,amount:Financial.money(row.amount)});});
     let unsettledValue=0,unsettledCount=0;Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status,platform=["grabfood","foodpanda"].includes(String(o.channel||"").toLowerCase());if(!o.voided&&["Completed","Received"].includes(status)&&o.paymentStatus!=="pending"&&!movements[`sale_${id}`])issues.push({severity:"critical",kind:"sale_not_posted",source:id,amount:Financial.money(o.total)});if(platform&&!o.voided&&(o.settlementStatus||"unsettled")!=="settled"){unsettledCount++;unsettledValue=Financial.money(unsettledValue+Financial.money(o.netPlatform));}Financial.unmappedOrderPayments(o,accounts).forEach((p)=>issues.push({severity:"warning",kind:"unmapped_payment_method",source:id,detail:financeText(p.method,60),amount:Financial.money(p.amount)}));});
@@ -9105,14 +9110,21 @@ async function voidOrderFor(db, orderId) {
   const archived = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
   return OrderRecords.isAuthoritativeOrder(archived) ? {order: archived, node: "archivedOrders"} : null;
 }
+// One definition of "a void that is not on its sale date", shared by the repair preview and the control
+// audit, so the audit never flags a row the repair cannot see (or misses one it can).
+function voidSaleDateCandidate(mv) { mv = mv || {}; return String(mv.type || "") === "order_void" && !mv.dateRepairSupersededBy && !mv.redatedFromMovementId && /^[A-Za-z0-9_-]{1,80}$/.test(String(mv.sourceId || "")); }
+function voidSaleDates(mv, order) {
+  const currentDate = BooksBridge.businessDate(mv.occurredAt);
+  const targetDate = financeDateFromTimestamp(Number(order.completedAt || order.receivedAt || order.timestamp) || Number(mv.occurredAt));
+  return targetDate && targetDate !== currentDate ? {currentDate, targetDate} : null;
+}
 async function voidSaleDateRow(db, movements, mid, periods) {
   const mv = movements[mid], orderId = String(mv.sourceId);
-  if (!/^[A-Za-z0-9_-]{1,80}$/.test(orderId)) return null;
   const found = await voidOrderFor(db, orderId);
   if (!found) return null;
-  const order = found.order, currentDate = BooksBridge.businessDate(mv.occurredAt);
-  const targetDate = financeDateFromTimestamp(Number(order.completedAt || order.receivedAt || order.timestamp) || Number(mv.occurredAt));
-  if (!targetDate || targetDate === currentDate) return null;
+  const order = found.order, dates = voidSaleDates(mv, order);
+  if (!dates) return null;
+  const {currentDate, targetDate} = dates;
   const lines = Array.isArray(mv.lines) ? mv.lines : [], account = (line) => String(line && line.account || "");
   const closed = (await accountingPeriodClosedFor(db, currentDate, periods)) || (await accountingPeriodClosedFor(db, targetDate, periods));
   let locked = "";
@@ -9128,7 +9140,7 @@ async function voidSaleDateRow(db, movements, mid, periods) {
 }
 async function voidSaleDateMismatches(db, movements) {
   const rows = [], periods = {};
-  const voids = Object.keys(movements).filter((id) => { const mv = movements[id] || {}; return String(mv.type || "") === "order_void" && !mv.dateRepairSupersededBy && !mv.redatedFromMovementId && mv.sourceId; });
+  const voids = Object.keys(movements).filter((id) => voidSaleDateCandidate(movements[id]));
   // Read in small parallel batches; the row cap applies to real mismatches, not to voids already on their date.
   for (let i = 0; i < voids.length && rows.length < VOID_SCAN_ROW_LIMIT; i += VOID_SCAN_BATCH) {
     const batch = await Promise.all(voids.slice(i, i + VOID_SCAN_BATCH).map((mid) => voidSaleDateRow(db, movements, mid, periods)));

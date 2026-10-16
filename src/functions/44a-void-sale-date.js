@@ -21,14 +21,21 @@ async function voidOrderFor(db, orderId) {
   const archived = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
   return OrderRecords.isAuthoritativeOrder(archived) ? {order: archived, node: "archivedOrders"} : null;
 }
+// One definition of "a void that is not on its sale date", shared by the repair preview and the control
+// audit, so the audit never flags a row the repair cannot see (or misses one it can).
+function voidSaleDateCandidate(mv) { mv = mv || {}; return String(mv.type || "") === "order_void" && !mv.dateRepairSupersededBy && !mv.redatedFromMovementId && /^[A-Za-z0-9_-]{1,80}$/.test(String(mv.sourceId || "")); }
+function voidSaleDates(mv, order) {
+  const currentDate = BooksBridge.businessDate(mv.occurredAt);
+  const targetDate = financeDateFromTimestamp(Number(order.completedAt || order.receivedAt || order.timestamp) || Number(mv.occurredAt));
+  return targetDate && targetDate !== currentDate ? {currentDate, targetDate} : null;
+}
 async function voidSaleDateRow(db, movements, mid, periods) {
   const mv = movements[mid], orderId = String(mv.sourceId);
-  if (!/^[A-Za-z0-9_-]{1,80}$/.test(orderId)) return null;
   const found = await voidOrderFor(db, orderId);
   if (!found) return null;
-  const order = found.order, currentDate = BooksBridge.businessDate(mv.occurredAt);
-  const targetDate = financeDateFromTimestamp(Number(order.completedAt || order.receivedAt || order.timestamp) || Number(mv.occurredAt));
-  if (!targetDate || targetDate === currentDate) return null;
+  const order = found.order, dates = voidSaleDates(mv, order);
+  if (!dates) return null;
+  const {currentDate, targetDate} = dates;
   const lines = Array.isArray(mv.lines) ? mv.lines : [], account = (line) => String(line && line.account || "");
   const closed = (await accountingPeriodClosedFor(db, currentDate, periods)) || (await accountingPeriodClosedFor(db, targetDate, periods));
   let locked = "";
@@ -44,7 +51,7 @@ async function voidSaleDateRow(db, movements, mid, periods) {
 }
 async function voidSaleDateMismatches(db, movements) {
   const rows = [], periods = {};
-  const voids = Object.keys(movements).filter((id) => { const mv = movements[id] || {}; return String(mv.type || "") === "order_void" && !mv.dateRepairSupersededBy && !mv.redatedFromMovementId && mv.sourceId; });
+  const voids = Object.keys(movements).filter((id) => voidSaleDateCandidate(movements[id]));
   // Read in small parallel batches; the row cap applies to real mismatches, not to voids already on their date.
   for (let i = 0; i < voids.length && rows.length < VOID_SCAN_ROW_LIMIT; i += VOID_SCAN_BATCH) {
     const batch = await Promise.all(voids.slice(i, i + VOID_SCAN_BATCH).map((mid) => voidSaleDateRow(db, movements, mid, periods)));
