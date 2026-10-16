@@ -19,7 +19,7 @@ export const BUDGET_WARN_ROOM=0.025;
 // Any tracked runtime script at or above this size must have a ceiling below.
 export const BUDGET_COVERAGE_MIN_BYTES=10000;
 // Modules carved out of a guarded bundle keep a ceiling whatever their size.
-export const SPLIT_MODULES=Object.freeze(['assets/js/admin/daily-report-output.mjs','assets/js/admin/order-archive-panel.mjs','assets/js/admin/payment-account-links.mjs','assets/js/admin/baking.js','assets/js/customer/chatbot.mjs','assets/js/books/controlled-transactions.js']);
+export const SPLIT_MODULES=Object.freeze(['assets/js/admin/daily-report-output.mjs','assets/js/admin/order-archive-panel.mjs','assets/js/admin/payment-account-links.mjs','assets/js/admin/baking.js','assets/js/admin/baking-print.js','assets/js/admin/accaza-ai-manager.js','assets/js/customer/chatbot.mjs','assets/js/books/controlled-transactions.js']);
 export const usableBudget=(maximum,reserve=0)=>maximum-reserve;
 export const budgetState=(bytes,maximum,reserve=0)=>{
   const usable=usableBudget(maximum,reserve);
@@ -145,14 +145,16 @@ export const BUNDLE_BUDGETS=Object.freeze({
   'assets/js/admin/staff-access.js':27600, // reviewed 25,250; re-based 13 Oct 2026: hand-written file, no sections to split, growth headroom restored
   'assets/js/shared/costing.js':23400, // reviewed 22,196
   'assets/js/admin/historical-period-store.mjs':20900, // reviewed 19,832
-  'assets/js/admin/accaza-ai.js':19100, // reviewed 18,117
+  'assets/js/admin/accaza-ai.js':19100, // reviewed 18,117; 16 Oct 2026: manager tools split out, now 11,854
+  'assets/js/admin/accaza-ai-manager.js':8500, // 16 Oct 2026 split from accaza-ai.js (Operations Manual editor, Log issue); reviewed 8,004
   'assets/js/admin/packages.js':17500, // reviewed 16,576
   'assets/js/admin/admin-orders.mjs':15100, // reviewed 14,295
   'assets/js/admin/uncosted-sales.js':13600, // reviewed 12,896
   // Oct 2026 (admin 683): the Baking screen moved out of the POS bundle entirely, so the POS
   // ceiling and its 50 KB reserve are untouched. Reviewed at 26,105 bytes after each ingredient
   // line gained an editable recipe unit (Ingredient · Recipe unit · Quantity · Cost · Total cost).
-  'assets/js/admin/baking.js':27400,
+  'assets/js/admin/baking.js':27400, // 16 Oct 2026: printable batch card split out, now 25,620
+  'assets/js/admin/baking-print.js':2400, // 16 Oct 2026 split from baking.js; reviewed 2,215
   'assets/js/admin/channel-pricing.js':13400, // reviewed 12,727
   'assets/js/shared/serve-style-plan.js':13200, // reviewed 12,543
   'assets/js/admin/daily-report-output.mjs':11600, // reviewed 11,033

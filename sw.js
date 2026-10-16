@@ -36,7 +36,7 @@ self.addEventListener('notificationclick',function(e){
 /* Versioned customer + POS app shells. Installation downloads only the customer
    shell. Admin explicitly warms its larger offline shell after opening Admin;
    authenticated POS cash sales use the durable IndexedDB continuity queue. */
-const CACHE='accaza-v689';
+const CACHE='accaza-v690';
 const ASSETS=[
   '/index.html','/menu.html','/manifest.json','/manifest-menu.json','/manifest-rewards.json',
   '/favicon.ico','/favicon_32x32.png','/favicon_180x180.png','/favicon_192x192.png',
@@ -50,6 +50,7 @@ const ASSETS=[
 const ADMIN_ASSETS=[
   '/assets/js/admin/historical-period-store.mjs',
   '/assets/js/admin/accaza-ai.js',
+  '/assets/js/admin/accaza-ai-manager.js',
   '/assets/js/admin/pos-sync-health.js',
   '/assets/js/admin/pos-tab-guard.js',
   './assets/js/shared/admin-report-periods.js','./assets/js/shared/report-period.js','./assets/js/shared/report-pagination.js','./assets/js/admin/sales-period-data.mjs',
