@@ -120,4 +120,13 @@ assert.ok(dashboardSource.includes('How to fix ('), 'cards must render a How to 
 assert.ok(dashboardSource.includes("querySelectorAll('#opsBackupNow,[data-ops-backup-now]')"), 'card backup button must use the audited backup flow');
 assert.match(health.issueGuidance({category: 'financial_gap'}).action, /Finance Books → Cash Flow, select Run control audit/);
 
+// Oct 2026 (admin 691 outage): vm contexts silently accept a strict-mode assignment to an
+// undeclared name, so a vm-only check passed while the browser threw ReferenceError on load and
+// System Health never rendered. Evaluate the real file in this realm, as the browser does.
+{
+  const registered = [];
+  new Function('window', 'document', dashboardSource)({__accazaRegisterModule: name => registered.push(name)}, {});
+  assert.deepEqual(registered, ['operations'], 'operations-dashboard.js must load in strict mode and register the System Health screen');
+}
+
 console.log('PASS: Business Operating Status covers every server problem type and monitor alert, How to fix lists match card colour, and Admin never routes to a missing screen.');
