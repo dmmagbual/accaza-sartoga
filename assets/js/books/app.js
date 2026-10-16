@@ -295,7 +295,7 @@ const App = {
     if(this._controlledTransactionsPromise)return this._controlledTransactionsPromise;
     const self=this;this._controlledTransactionsPromise=new Promise(function(resolve,reject){
       var script=document.getElementById('booksControlledTransactions');if(script)script.remove();
-      script=document.createElement('script');script.id='booksControlledTransactions';script.src='assets/js/books/controlled-transactions.js?v=155';
+      script=document.createElement('script');script.id='booksControlledTransactions';script.src='assets/js/books/controlled-transactions.js?v=156';
       script.onload=function(){if(typeof PAGES.transactions!=='function'||typeof App.txnPay!=='function'){script.remove();self._controlledTransactionsPromise=null;return reject(new Error('Deferred Finance Books tools did not initialize.'));}window.__booksControlledTransactionsReady=true;self._controlledTransactionsPromise=null;resolve();};
       script.onerror=function(){script.remove();self._controlledTransactionsPromise=null;reject(new Error('Could not load Finance Books transaction tools.'));};
       document.head.appendChild(script);
@@ -540,14 +540,15 @@ App.repairFinanceDates=function(btn){
   window.__repairFinanceDates({action:'preview'}).then(function(r){
     if(btn){btn.disabled=false;btn.textContent='Repair date mismatches';}
     var list=(r&&r.mismatches)||[],count=(r&&r.count)||0,ambiguous=(r&&r.ambiguous)||0;
-    if(!count)return alert('No finance-date mismatches to repair. Every finance movement already matches its cash-ledger date.');
-    var rows=list.map(function(m){var amb=m.ambiguous;return '<tr'+(amb?' style="opacity:.5"':'')+'><td><input type="checkbox" class="rfd-chk" value="'+esc(m.movementId)+'" '+(amb?'disabled':'checked')+'/></td><td><div class="tiny">'+esc(m.type||'movement')+'</div><div class="tiny muted">'+esc(m.movementId)+'</div></td><td>'+esc(m.currentDate||'')+'</td><td>'+esc(m.targetDate||'')+(amb?' <span class="tiny muted">(ambiguous — skipped)</span>':'')+'</td><td class="num">'+peso(Math.abs(Number(m.amount)||0))+'</td></tr>';}).join('');
+    if(!count)return alert('No finance-date mismatches to repair. Every finance movement matches its cash-ledger date and every void posts on its sale date.');
+    // A void belongs on its sale date (owner decision 16 Oct 2026); cash movements on their cash-ledger date.
+    var rows=list.map(function(m){var amb=m.ambiguous,locked=amb||!!m.locked,isVoid=m.basis==='void_sale_date',note=amb?'ambiguous — skipped':(m.locked?String(m.locked)+' — skipped':'');return '<tr'+(locked?' style="opacity:.5"':'')+'><td><input type="checkbox" class="rfd-chk" value="'+esc(m.movementId)+'" '+(locked?'disabled':'checked')+'/></td><td><div class="tiny">'+esc(isVoid?'Void → sale date':'Cash → cash-ledger date')+'</div><div class="tiny muted">'+esc(m.movementId)+(m.voidReason?' · '+esc(m.voidReason):'')+'</div></td><td>'+esc(m.currentDate||'')+'</td><td>'+esc(m.targetDate||'')+(note?' <span class="tiny muted">('+esc(note)+')</span>':'')+'</td><td class="num">'+peso(Math.abs(Number(m.amount)||0))+'</td><td>'+(isVoid&&m.restockable&&!locked?'<label class="tiny"><input type="checkbox" class="rfd-restock" value="'+esc(m.orderId)+'"/> Return stock</label>':'')+'</td></tr>';}).join('');
     var m=document.getElementById('modal');
     m.innerHTML='<div class="modal-head"><h3>Repair finance-date mismatches</h3><button class="x" onclick="App.closeModal()">×</button></div>'+
       '<div class="modal-body">'+
-      '<div class="hint">Each checked movement is re-dated to match its cash-ledger date. Nothing is edited in place — the system posts a net-zero immutable reversal at the wrong date and a matching repost at the correct date. Original entries stay in the audit trail; total cash and balances do not change.</div>'+
+      '<div class="hint">Each checked movement is re-dated: a cash movement to its cash-ledger date, a void to its original sale date (so Finance Books and Admin net sales agree). Tick <b>Return stock</b> only for a duplicate or wrong entry whose drink was never made. Nothing is edited in place — the system posts a net-zero immutable reversal at the wrong date and a matching repost at the correct date. Original entries stay in the audit trail; total cash and balances do not change.</div>'+
       (ambiguous?'<div class="tiny" style="color:#9d3028">'+ambiguous+' movement(s) map to more than one cash date and are skipped — review those manually.</div>':'')+
-      '<div class="tbl-wrap" style="max-height:42vh;overflow:auto"><table><thead><tr><th></th><th>Movement</th><th>From</th><th>To (cash date)</th><th class="num">Amount</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+      '<div class="tbl-wrap" style="max-height:42vh;overflow:auto"><table><thead><tr><th></th><th>Movement</th><th>From</th><th>To (correct date)</th><th class="num">Amount</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
       '<div class="field"><label>Correction reason (required)</label><input id="rfd_reason" placeholder="e.g. Re-date platform-payout deposits to their cash-settlement dates"/></div>'+
       '</div>'+
       '<div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" onclick="App.repairFinanceDatesApply(this)">Repair checked movements</button></div>';
@@ -559,9 +560,10 @@ App.repairFinanceDatesApply=function(btn){
   if(!reason)return alert('Enter a correction reason.');
   var ids=Array.prototype.slice.call(document.querySelectorAll('.rfd-chk:checked')).map(function(c){return c.value;});
   if(!ids.length)return alert('Select at least one movement to repair.');
-  if(!confirm('Re-date '+ids.length+' movement(s) to their cash-ledger dates? This posts audited reverse-and-repost entries; nothing is edited in place.'))return;
+  var restock=Array.prototype.slice.call(document.querySelectorAll('.rfd-restock:checked')).map(function(c){return c.value;});
+  if(!confirm('Re-date '+ids.length+' movement(s) to their correct dates'+(restock.length?' and return stock for '+restock.length+' order(s)':'')+'? This posts audited reverse-and-repost entries; nothing is edited in place.'))return;
   btn.disabled=true;var old=btn.textContent;btn.textContent='Repairing…';
-  window.__repairFinanceDates({action:'apply',reason:reason,movementIds:ids}).then(function(r){
+  window.__repairFinanceDates({action:'apply',reason:reason,movementIds:ids,restockOrderIds:restock}).then(function(r){
     App.closeModal();
     alert('Re-dated '+((r&&r.repaired)||0)+' movement(s)'+((r&&r.skipped)?' · '+r.skipped+' skipped':'')+'. Re-running the control audit…');
     if(App.runControlAudit)App.runControlAudit();

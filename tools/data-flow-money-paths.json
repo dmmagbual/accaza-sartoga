@@ -44,6 +44,8 @@
         {"fn": "processOrderAdjustment", "writes": ["orders", "orderCorrections", "financialMovements"], "note": "Records the refund, void or correction; requests a stock return when restocking."},
         {"fn": "onOrderFinancialPosting", "watches": "/orders/{orderId}", "writes": ["financialMovements"], "note": "Posts a reversal for the refunded or voided amount, linked to the original sale."},
         {"fn": "onOrderInventoryReversal", "watches": "/orders/{orderId}/inventoryReversalRequested", "writes": ["inventoryMovements", "inventoryBalances", "financialMovements", "orders"], "note": "Returns the stock the sale used and offsets its COGS; waits for finalization if the sale is still being costed."},
+        {"fn": "repairFinanceDates", "writes": ["financialMovements", "orders", "archivedOrders", "operationalAudit"], "note": "Finance Books date repair: re-dates a void posted after its sale onto the sale date (net-zero reversal plus repost) and, when ticked, requests the stock return."},
+        {"fn": "onArchivedOrderInventoryReversal", "watches": "/archivedOrders/{orderId}/inventoryReversalRequested", "writes": ["inventoryMovements", "inventoryBalances", "financialMovements", "archivedOrders"], "note": "The same stock return for an order already archived; COGS reversal dated on the void accounting date."},
         {"fn": "mirrorPosMovementToBooks", "watches": "/financialMovements/{movementId}", "writes": ["books"]},
         {"fn": "updateBooksMonthlyNet", "watches": "/books/journal/{entryId}", "writes": ["books"]}
       ],

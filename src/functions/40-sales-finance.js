@@ -452,7 +452,7 @@ exports.onOrderFinancialPosting = onValueWritten(
     }
     if (order.voided === true && before.voided !== true) {
       const remaining = Financial.money(Math.max(0, Financial.money(order.total) - afterRefund));
-      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
+      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = (order.voidAccountingDate && Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`)) || Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
     }
   },
 );

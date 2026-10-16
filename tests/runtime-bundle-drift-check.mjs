@@ -109,6 +109,9 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('setTaxSettings')
 // Oct 2026: Settings restructure — Company Information tab with the owner-only setCompanyInfo
 // callable; TIN/branch/structure single-homed in /companyInfo and stamped into taxSettings at activation.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('prepareQuarterlyTaxReturn')+1,0,'setCompanyInfo');
+// Oct 2026: a void re-dated to its sale date can return stock for an archived order, so the
+// inventory reversal has a second trigger on /archivedOrders (same handler, same idempotency).
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('onOrderInventoryReversal')+1,0,'onArchivedOrderInventoryReversal');
 const functionsSource=fs.readFileSync(path.join(root,'functions/index.js'),'utf8');
 if(!functionsSource.includes('"x-goog-api-key":key')||functionsSource.includes('generateContent?key='))throw new Error('Accaza AI must authenticate Gemini requests with the current x-goog-api-key header, not a URL query key.');
 if(!functionsSource.includes('const ACCAZA_AI_QUERY_ROLES = ["owner","superadmin","admin","manager","cashier"]')||!functionsSource.includes('ACCAZA_AI_QUERY_ROLES.includes(actor.role)'))throw new Error('Accaza AI must authorize cashiers through the server-side query-role allowlist.');

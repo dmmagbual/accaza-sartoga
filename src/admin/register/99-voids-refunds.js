@@ -8,7 +8,11 @@ function voidSale(oid){
   if(document.getElementById('accazaFormDialog'))return;
   var o=ordersMap[oid];if(!o)return;
   var a=A(),amount=Math.max(0,(Number(o.total)||0)-(Number(o.refundAmount)||0));if(!a.processOrderAdjustment||!a.managerApproval){alert('3D adjustment service is not available. Refresh the portal.');return;}
-  var postingDate=String(o.date||'').slice(0,10)||window.AccazaDate.key(),fields=[{name:'accountingDate',label:'Posting date',type:'date',required:true,min:postingDate,max:window.AccazaDate.key(),value:postingDate},{name:'reason',label:'Void reason',type:'textarea',required:true,maxLength:300,placeholder:'Explain why this completed sale must be voided'}];
+  // A void posts on the original sale date (owner decision 16 Oct 2026) - the same Manila date the server
+  // derives from completedAt/receivedAt/timestamp. o.date is display text ("October 9, 2026"), never a key.
+  var saleTs=Number(o.completedAt||o.receivedAt||o.timestamp)||Date.now(),postingDate=window.AccazaDate.key(saleTs);
+  if(String(o.channel||'instore').toLowerCase()==='instore'&&postingDate!==window.AccazaDate.key()){alert('This in-store sale is from '+postingDate+'. Its cash was counted in that day\'s shift, so use Refund instead of Void.');return;}
+  var fields=[{name:'accountingDate',label:'Posting date (original sale date)',type:'date',required:true,min:postingDate,max:postingDate,value:postingDate,help:'A void always posts on the sale date so Finance Books and Admin net sales agree.'},{name:'reason',label:'Void reason',type:'textarea',required:true,maxLength:300,placeholder:'Explain why this completed sale must be voided'}];
   if(o.inventoryUsage&&!o.inventoryReversed)fields.push({name:'restock',label:'Return deducted ingredients to inventory',type:'checkbox',help:'Leave unchecked when the ingredients were consumed or wasted.'});
   F().run({title:'Void completed sale',subtitle:oid+' · reversible amount '+peso(amount),submitLabel:'Request void approval',busyLabel:'Posting reversal…',danger:true,fields:fields},function(v){var change={accountingDate:v.accountingDate,amount:amount,reason:v.reason};return a.managerApproval('void',oid,amount,v.reason,{change:change}).then(function(ap){return a.processOrderAdjustment({action:'void',orderId:oid,accountingDate:v.accountingDate,reason:v.reason,restock:!!v.restock,approvalId:ap.approvalId});}).then(function(){window.__posLog('void',oid,v.reason+' · posting date '+v.accountingDate);});}).then(function(){alert('Order voided and financial reversal posted.');}).catch(function(){});
 }
