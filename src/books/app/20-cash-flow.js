@@ -43,6 +43,7 @@ App.repairCashPaymentBankLedger=function(id,btn){
 App.controlAuditAction=function(issue){if(issue&&issue.repairAction==='repair_cash_payment_bank_ledger')return '<button class="btn sm" onclick="App.repairCashPaymentBankLedger(\''+esc(issue.source||'')+'\',this)">Repair cash register</button>';return issue&&issue.actionTarget?'<button class="btn sm" onclick="App.openControlResolution(\''+esc(issue.actionTarget)+'\',\''+esc(issue.source||'')+'\',this)">'+esc(issue.actionLabel||'Open solution')+'</button>':'';};
 App.openControlResolution=function(target,source,btn){
   if(target==='repair_reversed_payout')return App.repairPayoutDeposit(source,btn);
+  if(target==='repair_finance_dates')return App.repairFinanceDates(btn);
   if(target==='edit_payout_reference'){try{sessionStorage.setItem('accazaOpenPayoutMetadata',source);}catch(e){}window.location.href='admin.html';return;}
   if(target&&target.indexOf('admin_')===0){window.location.href='admin.html';return;}
   if(target==='books_transactions'){App.go('transactions');return;}

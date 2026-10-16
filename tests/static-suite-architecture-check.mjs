@@ -137,6 +137,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // tests/static/30-server-release.mjs now pins the deferred Finance Books bundle to
 // controlled-transactions.js?v=156, because Books was bumped to 156 for the void sale-date repair
 // screen. Same guard, same meaning; guard count stays at 577 and executable checks stay at 33.
-if(guardDigest!=='8b79aa078bb0026cbf839bc9ec8c97568d972dbb067cf8e38894ff63cf4293ef')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (void sale-date visibility, Books 157): the same guard now pins
+// controlled-transactions.js?v=157 after the Books bump for the always-visible Repair date mismatches
+// button. Same guard, same meaning; guard count stays at 577 and executable checks stay at 33.
+if(guardDigest!=='0c8536c9cb6e2da4c9cd1cafde5c5ba4a6158f2bf43518f3e6965b530c48e5fa')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
