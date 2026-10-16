@@ -7,9 +7,9 @@
 </div>
   <div class="res-inner">
     <div style="text-align:center;margin-bottom:3rem;">
-      <p class="section-label" style="color:var(--bl);">Book a Seat</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Reserve a Table</h2>
-      <div style="background:rgba(201,163,106,0.15);border:1px solid rgba(201,163,106,0.3);border-radius:8px;padding:1rem 1.5rem;margin-top:1rem;max-width:620px;margin-left:auto;margin-right:auto;"><p style="font-size:0.9rem;color:#c9a36a;line-height:1.7;text-align:center;">📋 <strong>All reservations are subject to confirmation.</strong><br/>One of our staff will reach out to your contact number to discuss the details of your booking and confirm your reservation. For faster assistance, call or message us at <strong>0927 692 4831</strong>. 😊</p></div>
+      <p class="section-label" style="color:var(--bl);">Event Reservations</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Plan an Event or Gathering</h2>
+      <div style="background:rgba(201,163,106,0.15);border:1px solid rgba(201,163,106,0.3);border-radius:8px;padding:1rem 1.5rem;margin-top:1rem;max-width:620px;margin-left:auto;margin-right:auto;"><p style="font-size:0.9rem;color:#c9a36a;line-height:1.7;text-align:center;">📋 <strong>Notice to the General Public</strong><br/>We accept reservations exclusively for events and organized gatherings. For study, work, or regular café visits, seating is walk-in and first-come, first-served. Our staff will be happy to help you find a suitable seat or nearby power outlet, subject to availability.<br/><br/><strong>All event reservations are subject to confirmation.</strong> One of our staff will reach out to your contact number to discuss the details and confirm your reservation. For faster assistance, call or message us at <strong>0927 692 4831</strong>. 😊</p></div>
     </div>
     <div class="res-layout">
       <div>
@@ -29,7 +29,7 @@
           <div class="res-field-group"><div class="res-field"><label class="res-label">Full Name</label><input type="text" id="resName" maxlength="100" placeholder="e.g. Maria Santos"/></div><div class="res-field"><label class="res-label">Phone Number</label><input type="text" id="resPhone" maxlength="40" placeholder="e.g. 0917 123 4567"/></div></div>
           <div class="res-field-group">
             <div class="res-field"><label class="res-label">Number of Guests</label><select id="resGuests" onchange="updateBookingType()"><option value="1">1 guest</option><option value="2">2 guests</option><option value="3">3 guests</option><option value="4">4 guests</option><option value="5">5 guests</option><option value="6">6 guests</option><option value="7">7 guests</option><option value="8">8 guests</option><option value="9">9 guests</option><option value="10">10 guests</option><option value="15">15 guests</option><option value="20">20 guests</option><option value="25">25 guests</option><option value="30">30 guests</option><option value="40">40 guests</option><option value="50">50 guests (max)</option></select></div>
-            <div class="res-field"><label class="res-label">Occasion (optional)</label><select id="resOccasion"><option value="">None / Regular visit</option><option>Birthday</option><option>Anniversary</option><option>Business Meeting</option><option>Date</option><option>Family Gathering</option><option>Other</option></select></div>
+            <div class="res-field"><label class="res-label">Event / Gathering Type (optional)</label><select id="resOccasion"><option value="">Select event or gathering</option><option>Birthday</option><option>Anniversary</option><option>Business Meeting</option><option>Family Gathering</option><option>Other Event or Gathering</option></select></div>
           </div>
           <div id="bookingTypeInfo" style="margin-bottom:1rem;"></div>
           <div class="res-field" style="margin-top:0.75rem;"><label class="res-label">Special Requests (optional)</label><textarea id="resNotes" rows="2" maxlength="500" placeholder="e.g. window seat, allergies, birthday setup..."></textarea></div>
@@ -51,10 +51,10 @@
         <div class="res-info-card"><div class="res-info-icon">📍</div><h4>Find Us</h4><p>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive</p><p class="res-time">Dasmariñas, Cavite, Philippines</p></div>
         <div class="res-info-card"><div class="res-info-icon">📞</div><h4>Call or Message</h4><p>Viber / WhatsApp / SMS</p><p class="res-time">0927 692 4831</p></div>
         <div class="res-info-card"><div class="res-info-icon">👥</div><h4>Booking Guidelines, Admin to Confirm</h4>
-          <p style="margin-bottom:0.4rem;">💑 <strong style="color:rgba(224,212,198,0.8);">Individual/Couple</strong> — Same day, no deposit</p>
-          <p style="margin-bottom:0.4rem;">👨‍👩‍👧 <strong style="color:rgba(224,212,198,0.8);">Small Group (3–5)</strong> — Same day, deposit discussed</p>
-          <p style="margin-bottom:0.4rem;">👥 <strong style="color:rgba(224,212,198,0.8);">Medium Group (6–20)</strong> — 7 days advance booking</p>
-          <p>🎉 <strong style="color:rgba(224,212,198,0.8);">Large Group (21–50)</strong> — 7 days advance booking</p>
+          <p style="margin-bottom:0.4rem;">🎉 <strong style="color:rgba(224,212,198,0.8);">Small Event (1–2)</strong> — Same day, no deposit</p>
+          <p style="margin-bottom:0.4rem;">👨‍👩‍👧 <strong style="color:rgba(224,212,198,0.8);">Small Gathering (3–5)</strong> — Same day, deposit discussed</p>
+          <p style="margin-bottom:0.4rem;">👥 <strong style="color:rgba(224,212,198,0.8);">Medium Gathering (6–20)</strong> — 7 days advance reservation</p>
+          <p>🎉 <strong style="color:rgba(224,212,198,0.8);">Large Event (21–50)</strong> — 7 days advance reservation</p>
         </div>
       </div>
     </div>

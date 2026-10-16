@@ -36,8 +36,9 @@ const manifest=JSON.parse(read('release-manifest.json'));
 /* Read the release numbers from their markers rather than memorizing them, so this guard keeps
    proving synchronization across a build bump instead of pinning one release. */
 const adminBuild=Number((read('admin.html').match(/name="accaza-admin-build" content="(\d+)"/)||[])[1]);
+const customerBuild=Number((read('index.html').match(/name="accaza-customer-build" content="(\d+)"/)||[])[1]);
 const swCache=Number((read('sw.js').match(/const CACHE='accaza-v(\d+)'/)||[])[1]);
 const booksBuild=Number((read('books.html').match(/name="accaza-books-build" content="(\d+)"/)||[])[1]);
-if(manifest.builds.admin!==adminBuild||manifest.builds.customer!==100||manifest.builds.books!==booksBuild||manifest.builds.serviceWorkerCache!==swCache)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==adminBuild||manifest.builds.customer!==customerBuild||manifest.builds.books!==booksBuild||manifest.builds.serviceWorkerCache!==swCache)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');
