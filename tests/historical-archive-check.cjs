@@ -125,8 +125,8 @@ assert(source.includes('batch.update(document.ref, {salesAt: stamp})'), "salesAt
 assert(!/\.remove\(|\[[`'"]archivedOrders\//.test(source), "historical archive phase 1 must not delete RTDB data");
 
 const maintenanceUi = fs.readFileSync("assets/js/admin/operations-dashboard.js", "utf8");
-assert(maintenanceUi.includes("salesAtStageState") && maintenanceUi.includes("dependentStageState(status,'salesAt',3)") && maintenanceUi.includes("dependentStageState(status,'salesRollup',4)") && maintenanceUi.includes("sourceReplicaRunId"), "the owner repair must rerun incomplete summary-schema states once");
-assert(maintenanceUi.includes("sales-replica-backfill") && maintenanceUi.includes("reportingReady"), "the owner repair must populate and validate the detailed-report reader before reporting success");
+assert(maintenanceUi.includes("salesAtStageState") && maintenanceUi.includes("dependentStageState(status,'salesAt',3)") && maintenanceUi.includes("dependentStageState(status,'salesRollup',9)") && maintenanceUi.includes("sourceReplicaRunId"), "the owner repair must rerun incomplete summary-schema states once");
+assert(maintenanceUi.includes("sales-replica-backfill") && maintenanceUi.includes("v9ReportingReady"), "the owner repair must populate and validate the detailed-report reader before reporting success");
 assert(maintenanceUi.includes("Detailed-report reader ready"), "the owner must be able to distinguish rollup-ready from detailed-reader-ready reporting");
 assert(maintenanceUi.includes("v9RollupState") && maintenanceUi.includes("v9RollupState(latest)") && maintenanceUi.includes("v9ReportingReady"), "a completed V8 rollup must start, rather than bypass, the required V9 monthly-summary rebuild that reports each e-wallet sale by the wallet that received it");
 

@@ -29,7 +29,7 @@ const sales={qualifies:()=>true,stamp:o=>o.timestamp,amounts:()=>({gross:100,net
 addLiveSales(dashboard,[{...order,timestamp:start-1}],{start,end},sales);assert.equal(dashboard.net,100,'outside-period live sales must stay excluded');
 addLiveSales(dashboard,[{...order,timestamp:Date.parse('2026-09-11T13:00:00+08:00')}],{start,end},sales);assert.equal(dashboard.hours[13].orders,1);assert.equal(dashboard.items.latte.categoryId,'coffee');
 const ui=fs.readFileSync('assets/js/admin/operations-dashboard.js','utf8');
-const stage=ui.slice(ui.indexOf('  function runHistoricalStage'),ui.indexOf('  function reportingReady'));
+const stage=ui.slice(ui.indexOf('  function runHistoricalStage'),ui.indexOf('  function historicalMaintenancePanel'));
 let calls=0;const batchContext={Promise,Error,String,Number,global:{__accaza:{manageHistoricalOrderArchive:async payload=>{calls++;assert.equal(payload.cursor,'saved-cursor');return {complete:false,cursor:'next',runId:'run',summary:{scanned:25,written:25}};}}}};
 vm.createContext(batchContext);vm.runInContext(stage,batchContext);
 await assert.rejects(()=>batchContext.runHistoricalStage('sales-rollup-backfill',{expectedCursor:'saved-cursor',runId:'run'},'Summary',{}),/Progress saved/);assert.equal(calls,1);
