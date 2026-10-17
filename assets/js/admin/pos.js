@@ -33,8 +33,8 @@ function usageAccountOptions(selected){return USAGE_ACCOUNT_OPTIONS.map(function
 var posCart={},posCat='coffee',posSearch='', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recCategory='', recSize='M', posScopedDisc=[], posChannel='instore', posView='counter', onlineOrdersMap={},qrTicketsMap={},posQrTicket=null,knownQrTicketIds=null;
 var posDraft={},posChargeBusy=false,posPaymentVerification=null,posCompletedCorrection=null;
 function telemetry(){return window.AccazaTelemetry||{start:function(){},end:function(){},metric:function(){},error:function(){}};}
-function capturePosDraft(root){if(!root)return;var active=document.activeElement,focusId=active&&root.contains(active)?active.id:'';root.querySelectorAll('input[id],textarea[id],select[id]').forEach(function(el){posDraft[el.id]={value:el.value,checked:!!el.checked,type:el.type};});posDraft.__focus=focusId;}
-function restorePosDraft(root){if(!root)return;Object.keys(posDraft).forEach(function(id){if(id==='__focus')return;var el=document.getElementById(id),v=posDraft[id];if(!el||!root.contains(el))return;if(v.type==='checkbox'||v.type==='radio')el.checked=v.checked;else el.value=v.value;});var f=posDraft.__focus&&document.getElementById(posDraft.__focus);if(f&&root.contains(f))setTimeout(function(){try{f.focus();}catch(e){}},0);}
+function capturePosDraft(root){if(!root)return;var active=document.activeElement,focusId=active&&root.contains(active)?active.id:'';root.querySelectorAll('input[id],textarea[id],select[id]').forEach(function(el){if(el.id==='posChannelSel')return;posDraft[el.id]={value:el.value,checked:!!el.checked,type:el.type};});posDraft.__focus=focusId;}
+function restorePosDraft(root){if(!root)return;Object.keys(posDraft).forEach(function(id){if(id==='__focus'||id==='posChannelSel')return;var el=document.getElementById(id),v=posDraft[id];if(!el||!root.contains(el))return;if(v.type==='checkbox'||v.type==='radio')el.checked=v.checked;else el.value=v.value;});var f=posDraft.__focus&&document.getElementById(posDraft.__focus);if(f&&root.contains(f))setTimeout(function(){try{f.focus();}catch(e){}},0);}
 var DISC_TYPES={senior:{label:'Senior Citizen',rate:0.20},pwd:{label:'PWD',rate:0.20},athlete:{label:'National Athlete',rate:0.20},promo5:{label:'5% Drink Promo',rate:0.05}};
 /* Effective tax regime right now, mirroring Financial.effectiveTaxFor on the server.
    Returns null before the effective date so statutory discounts keep their old basis. */
@@ -2929,7 +2929,7 @@ function renderPosCart(options){
       +'<button class="pz-btn sec" id="posClear" style="flex:1;"'+(keys.length||correction?'':' disabled')+'>'+(correction?'Cancel correction':'Clear')+'</button>'
     +'</div>';
   restorePosDraft(p);telemetry().metric('cart_render',performance.now()-_rt,true);if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();
-  var _chsel=document.getElementById('posChannelSel'); if(_chsel)_chsel.onchange=function(){ var v=this.value; if(v===posChannel)return; if(Object.keys(posCart).length&&!confirm('Switching channel clears the current sale — prices differ between in-store and platform. Continue?')){ this.value=posChannel; return; } posChannel=v; posCart={}; window.__posPkgs=[]; posScopedDisc=[]; setTimeout(buildPOS,0); };
+  var _chsel=document.getElementById('posChannelSel'); if(_chsel)_chsel.value=posChannel; if(_chsel)_chsel.onchange=function(){ var v=this.value; if(v===posChannel)return; if(Object.keys(posCart).length&&!confirm('Switching channel clears the current sale — prices differ between in-store and platform. Continue?')){ this.value=posChannel; return; } posChannel=v; posCart={}; window.__posPkgs=[]; posScopedDisc=[]; setTimeout(buildPOS,0); };
   p.querySelectorAll('[data-rm]').forEach(function(b){b.onclick=function(){delete posCart[b.getAttribute('data-rm')];renderPosCart();};});
   var disc=document.getElementById('posDisc');
   var splitRows=[];

@@ -59,7 +59,7 @@ function renderPosCart(options){
       +'<button class="pz-btn sec" id="posClear" style="flex:1;"'+(keys.length||correction?'':' disabled')+'>'+(correction?'Cancel correction':'Clear')+'</button>'
     +'</div>';
   restorePosDraft(p);telemetry().metric('cart_render',performance.now()-_rt,true);if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();
-  var _chsel=document.getElementById('posChannelSel'); if(_chsel)_chsel.onchange=function(){ var v=this.value; if(v===posChannel)return; if(Object.keys(posCart).length&&!confirm('Switching channel clears the current sale — prices differ between in-store and platform. Continue?')){ this.value=posChannel; return; } posChannel=v; posCart={}; window.__posPkgs=[]; posScopedDisc=[]; setTimeout(buildPOS,0); };
+  var _chsel=document.getElementById('posChannelSel'); if(_chsel)_chsel.value=posChannel; if(_chsel)_chsel.onchange=function(){ var v=this.value; if(v===posChannel)return; if(Object.keys(posCart).length&&!confirm('Switching channel clears the current sale — prices differ between in-store and platform. Continue?')){ this.value=posChannel; return; } posChannel=v; posCart={}; window.__posPkgs=[]; posScopedDisc=[]; setTimeout(buildPOS,0); };
   p.querySelectorAll('[data-rm]').forEach(function(b){b.onclick=function(){delete posCart[b.getAttribute('data-rm')];renderPosCart();};});
   var disc=document.getElementById('posDisc');
   var splitRows=[];
