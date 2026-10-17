@@ -4765,34 +4765,39 @@ async function postLoyaltyEarning(db, order) {
   return {applied, totals};
 }
 
-exports.onOrderLoyaltyEarning = onValueWritten(
-  {ref: "/orders/{orderId}", region: LOYALTY_REGION, retry: true},
-  async (event) => {
-    const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
-    if (!afterRaw) return;
-    const order = Object.assign({id: event.params.orderId}, afterRaw);
-    const db = getDatabase();
-    const beforeOrder = Object.assign({id: event.params.orderId}, before);
-    if (!loyaltyOrderCanEarn(beforeOrder) && loyaltyOrderCanEarn(order)) await postLoyaltyEarning(db, order);
-    // Void handling: flag (never silently restore) a redeemed reward from a voided order.
-    if (order.voided === true && before.voided !== true && order.loyaltyRewardId && order.loyaltyMemberId) {
-      const rewardRef = db.ref(`/loyaltyRewards/${loyaltyKey(order.loyaltyMemberId)}/${loyaltyKey(order.loyaltyRewardId)}`);
-      // Cold-cache hazard again, one degree worse: the un-guarded ternary this
-      // replaced returned `current` itself in its false branch. On a cold
-      // instance `current` starts out null even though the reward record
-      // genuinely exists, so that branch returned `null` — and returning
-      // `null` (unlike `undefined`) is not a safe no-op, it proposes DELETING
-      // the reward node. Pre-fetch the real record so the false branch always
-      // returns the real (non-null) current value unchanged, a true no-op.
-      const initialReward = (await rewardRef.get()).val();
-      const voidFlagState = {seen: false};
-      await rewardRef.transaction((current) => {
-        current = transactionCurrent(current, initialReward, voidFlagState);
-        return current && current.status === "redeemed" ? Object.assign({}, current, {status: "redeemed_void_flagged", voidFlaggedAt: Date.now(), voidedOrderId: order.id}) : current;
-      }, undefined, false);
-    }
-  },
-);
+// NOT DEPLOYED UNTIL LOYALTY LAUNCHES (17 Oct 2026). As the order trigger onOrderLoyaltyEarning
+// this ran on every write to every order and always exited early, because no order carries a
+// loyaltyMemberId before launch; with the Dragon Quest trigger it was about 11% of all Cloud
+// Functions time. To launch: export it again under that name as an onValueWritten trigger with
+// {ref: "/orders/{orderId}", region: LOYALTY_REGION, retry: true} and this handler, add it back
+// to the retry acknowledgement list in .github/workflows/deploy-functions.yml and to the export
+// lists in tests/retry-guard-check.mjs, tests/static/30-server-release.mjs,
+// tests/runtime-bundle-drift-check.mjs and release-manifest.json, then deploy.
+async function loyaltyEarningOnOrderWrite(event) {
+  const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
+  if (!afterRaw) return;
+  const order = Object.assign({id: event.params.orderId}, afterRaw);
+  const db = getDatabase();
+  const beforeOrder = Object.assign({id: event.params.orderId}, before);
+  if (!loyaltyOrderCanEarn(beforeOrder) && loyaltyOrderCanEarn(order)) await postLoyaltyEarning(db, order);
+  // Void handling: flag (never silently restore) a redeemed reward from a voided order.
+  if (order.voided === true && before.voided !== true && order.loyaltyRewardId && order.loyaltyMemberId) {
+    const rewardRef = db.ref(`/loyaltyRewards/${loyaltyKey(order.loyaltyMemberId)}/${loyaltyKey(order.loyaltyRewardId)}`);
+    // Cold-cache hazard again, one degree worse: the un-guarded ternary this
+    // replaced returned `current` itself in its false branch. On a cold
+    // instance `current` starts out null even though the reward record
+    // genuinely exists, so that branch returned `null` — and returning
+    // `null` (unlike `undefined`) is not a safe no-op, it proposes DELETING
+    // the reward node. Pre-fetch the real record so the false branch always
+    // returns the real (non-null) current value unchanged, a true no-op.
+    const initialReward = (await rewardRef.get()).val();
+    const voidFlagState = {seen: false};
+    await rewardRef.transaction((current) => {
+      current = transactionCurrent(current, initialReward, voidFlagState);
+      return current && current.status === "redeemed" ? Object.assign({}, current, {status: "redeemed_void_flagged", voidFlaggedAt: Date.now(), voidedOrderId: order.id}) : current;
+    }, undefined, false);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Reward redemption — badge scan or OTP only, transactional claim.
@@ -5597,18 +5602,20 @@ async function flagVoidedDragonOrder(db, order) {
   await db.ref().update(writes);
 }
 
-exports.onOrderDragonQuestProgress = onValueWritten(
-  {ref: "/orders/{orderId}", region: LOYALTY_REGION, retry: true},
-  async (event) => {
-    const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
-    if (!afterRaw) return;
-    const order = Object.assign({id: event.params.orderId}, afterRaw);
-    const beforeOrder = Object.assign({id: event.params.orderId}, before);
-    const db = getDatabase();
-    if (!loyaltyOrderCanEarn(beforeOrder) && loyaltyOrderCanEarn(order)) await postDragonQuestProgress(db, order);
-    if ((order.voided === true && before.voided !== true) || (order.refunded === true && before.refunded !== true)) await flagVoidedDragonOrder(db, order);
-  },
-);
+// NOT DEPLOYED UNTIL LOYALTY LAUNCHES (17 Oct 2026), for the same reason as the loyalty earning
+// handler in 26-loyalty.js: as the order trigger onOrderDragonQuestProgress it ran on every write
+// to every order and always exited early. To launch, export it again under that name as an
+// onValueWritten trigger with {ref: "/orders/{orderId}", region: LOYALTY_REGION, retry: true}
+// and follow the same checklist (deploy workflow retry list, test export lists, manifest).
+async function dragonQuestProgressOnOrderWrite(event) {
+  const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
+  if (!afterRaw) return;
+  const order = Object.assign({id: event.params.orderId}, afterRaw);
+  const beforeOrder = Object.assign({id: event.params.orderId}, before);
+  const db = getDatabase();
+  if (!loyaltyOrderCanEarn(beforeOrder) && loyaltyOrderCanEarn(order)) await postDragonQuestProgress(db, order);
+  if ((order.voided === true && before.voided !== true) || (order.refunded === true && before.refunded !== true)) await flagVoidedDragonOrder(db, order);
+}
 
 exports.manageDragonQuest = onCall(
   {region: LOYALTY_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
@@ -10468,69 +10475,20 @@ async function shallowDatabaseKeys(db, path) {
   return value && typeof value === "object" ? Object.keys(value) : [];
 }
 
-async function latestBackupEnvelope(bucket) {
-  const [files] = await bucket.getFiles({prefix: "db-backups/accaza-"});
-  const newest = files.filter((file) => /\.json$/.test(file.name)).sort((a, b) => String(b.name).localeCompare(String(a.name)))[0];
-  if (!newest) return null;
-  const [buffer] = await newest.download();
-  const envelope = JSON.parse(buffer.toString("utf8"));
-  const check = RecoveryValidation.validateEnvelope(envelope, {reconcile: false});
-  return check.ok ? Object.assign(envelope, {objectName: newest.name}) : null;
-}
-
-// Incremental snapshot: tracked history nodes come from the previous verified backup plus the
-// records marked dirty since; every other node is read in full, and one ~2 MB key range of the
-// tracked history is re-read and verified in rotation (see functions/lib/backup-delta.js).
-async function incrementalSnapshot(db, base, dirty, now) {
-  const topLevel = await shallowDatabaseKeys(db, ""), children = {};
-  for (const root of Object.keys(BackupDelta.partialRoots())) if (topLevel.includes(root)) children[root] = await shallowDatabaseKeys(db, root);
-  const slice = BackupDelta.rotationSlice(now, BackupDelta.verificationSlices(base));
-  const plan = BackupDelta.planIncremental({base, topLevel, children, excluded: BACKUP_EXCLUDE, dirty, verify: slice});
-  const values = {};
-  for (const path of plan.fullNodes.concat(plan.fullTracked)) values[path] = /* download-ok: backup nodes outside the incremental set are read in full */(await db.ref(`/${path}`).get()).val();
-  for (let i = 0; i < plan.records.length; i += 50) {
-    await Promise.all(plan.records.slice(i, i + 50).map(async ({path, key}) => { values[`${path}/${key}`] = (await db.ref(`/${path}/${key}`).get()).val(); }));
-  }
-  let sliceValue = null;
-  if (plan.verifySlice) {
-    let query = db.ref(`/${plan.verifySlice.path}`).orderByKey();
-    if (plan.verifySlice.start != null) query = query.startAt(plan.verifySlice.start);
-    if (plan.verifySlice.before != null) query = query.endBefore(plan.verifySlice.before);
-    sliceValue = (await query.get()).val();
-  }
-  const data = BackupDelta.mergeIncremental(base, plan, values);
-  const drift = BackupDelta.applyVerifiedSlice(data, plan.verifySlice, sliceValue);
-  return {data, plan, drift};
-}
-
-async function clearBackupDirty(db, dirty) {
-  const jobs = [];
-  Object.keys(dirty || {}).forEach((node) => Object.keys(dirty[node] || {}).forEach((key) => {
-    const seen = dirty[node][key];
-    jobs.push(() => db.ref(`/${BackupDelta.DIRTY_ROOT}/${node}/${key}`).transaction((current) => (current === seen ? null : current), undefined, false));
-  }));
-  for (let i = 0; i < jobs.length; i += 50) await Promise.all(jobs.slice(i, i + 50).map((job) => job()));
-  return jobs.length;
-}
-
-async function createVerifiedDatabaseBackup(now = Date.now(), options = {}) {
+// Full nightly copy (17 Oct 2026). From Sep 2026 the backup ran incrementally: 34 per-record
+// marker triggers (markBackupDirty*) recorded every write to the history nodes so the nightly
+// run could skip re-reading them. That saved about 20 MB of database download a night but the
+// markers fired on every write all day and grew to about half of all Cloud Functions time (Oct
+// 2026 Cloud Monitoring billable instance time). One full read of the database at 03:00 (29.3 MB
+// on 14 Oct 2026) costs far less, needs no previous backup file and cannot miss a record whose
+// marker failed. The envelope format is unchanged, so restores and the restore drill are too.
+// functions/lib/backup-delta.js keeps the unused incremental planner in case database growth
+// ever makes it worthwhile again.
+async function createVerifiedDatabaseBackup(now = Date.now()) {
     const db = getDatabase(), bucket = getStorage().bucket(PROOF_BUCKET);
-    const latest = (await db.ref("/systemHealth/backups/latest").get()).val() || {};
-    // Markers are captured before any record is read, so a change during the backup keeps its marker.
-    const dirty = /* download-ok: backup dirty markers, cleared by every backup */(await db.ref(`/${BackupDelta.DIRTY_ROOT}`).get()).val() || {};
-    let base = null;
-    try { base = await latestBackupEnvelope(bucket); } catch (error) { logger.warn("Previous backup could not be loaded; running a full backup", {error: String(error)}); }
-    const fullReason = BackupDelta.needsFullBackup({base, now, force: options.full === true, lastMode: latest.mode, lastTracked: latest.trackedPaths});
-    let snapshot = {}, mode = "full", drift = null, records = 0, verified = null;
-    if (fullReason) {
-      const root = (await db.ref("/").get()).val() || {};
-      Object.keys(root).forEach((node) => { if (!BACKUP_EXCLUDE.has(node)) snapshot[node] = root[node]; });
-    } else {
-      const built = await incrementalSnapshot(db, base, dirty, now);
-      verified = built.plan.verifySlice;
-      snapshot = built.data; mode = "incremental"; records = built.plan.records.length; drift = built.drift;
-      if (drift.length) logger.warn("Incremental backup drift corrected by today's verification read", {slice: verified, count: drift.length, sample: drift.slice(0, 20)});
-    }
+    const snapshot = {};
+    const root = /* download-ok: the nightly full backup reads the database once */ (await db.ref("/").get()).val() || {};
+    Object.keys(root).forEach((node) => { if (!BACKUP_EXCLUDE.has(node)) snapshot[node] = root[node]; });
     const stamp = new Date(now).toISOString().slice(0, 19).replace(/[:T]/g, "-");
     const objectName = `db-backups/accaza-${stamp}.json`;
     const envelope = RecoveryValidation.createEnvelope(snapshot, now, BACKUP_EXCLUDE);
@@ -10544,9 +10502,9 @@ async function createVerifiedDatabaseBackup(now = Date.now(), options = {}) {
       resumable: false, contentType: "application/json",
       metadata: {cacheControl: "private, max-age=0, no-store", metadata: {takenAt: String(now), dataSha256: validation.actualSha256, backupVersion: "backup-v2"}},
     });
-    const lastFullAt = mode === "full" ? now : Number(latest.lastFullAt) || null;
-    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v2", dataSha256: validation.actualSha256, validation: "passed", mode, fullReason: fullReason || null, lastFullAt, baseObject: mode === "incremental" ? base.objectName : null, recordsReread: records, verifiedSlice: verified, driftRecords: drift ? drift.length : null, trackedPaths: BackupDelta.TRACKED_PATHS.slice()});
-    const cleared = await clearBackupDirty(db, dirty);
+    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v2", dataSha256: validation.actualSha256, validation: "passed", mode: "full", lastFullAt: now});
+    // The retired incremental markers left /backupDirty behind; removing it is a write, not a download.
+    try { await db.ref(`/${BackupDelta.DIRTY_ROOT}`).remove(); } catch (error) { logger.warn("Retired backup marker cleanup skipped", {error: String(error)}); }
     // Legacy inline receipt images leave the voucher list after they are safely in this backup.
     // The voucher node is read in full by every backup, so this costs no extra download.
     try { await moveLegacyVoucherReceipts(db, snapshot.pettyCashVouchers || {}, now); } catch (error) { logger.warn("Legacy voucher receipt move skipped", {error: String(error)}); }
@@ -10560,52 +10518,10 @@ async function createVerifiedDatabaseBackup(now = Date.now(), options = {}) {
         if (created && created < cutoff) { await file.delete({ignoreNotFound: true}); removed++; }
       }));
     } catch (error) { logger.warn("Backup retention sweep failed", {error: String(error)}); }
-    logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, mode, fullReason: fullReason || null, recordsReread: records, dirtyCleared: cleared, driftRecords: drift ? drift.length : null, rev: 4});
+    logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, mode: "full", rev: 5});
     await evaluateProductionHealthNow(db,Date.now());
     return {takenAt:now,objectName,bytes:payload.length,nodes:Object.keys(snapshot).length,dataSha256:validation.actualSha256,validation:"passed",version:"backup-v2"};
 }
-// Mark written history records for the next incremental backup (tiny writes, idempotent).
-function backupDirtyTrigger(path) {
-  return onValueWritten({ref: `/${path}/{key}`, region: ORDER_REGION, retry: true, timeoutSeconds: 30, memory: "256MiB"}, async (event) => {
-    await getDatabase().ref(`/${BackupDelta.DIRTY_ROOT}/${BackupDelta.dirtyKey(path)}/${event.params.key}`).set(Date.now());
-  });
-}
-exports.markBackupDirtyArchivedOrders = backupDirtyTrigger("archivedOrders");
-exports.markBackupDirtyInventoryMovements = backupDirtyTrigger("inventoryMovements");
-exports.markBackupDirtyOrderInventoryPlans = backupDirtyTrigger("orderInventoryPlans");
-exports.markBackupDirtyFinancialMovements = backupDirtyTrigger("financialMovements");
-exports.markBackupDirtyCashBalanceApplied = backupDirtyTrigger("cashBalanceSummaryApplied");
-exports.markBackupDirtyBooksJournal = backupDirtyTrigger("books/journal");
-exports.markBackupDirtyShifts = backupDirtyTrigger("shifts");
-exports.markBackupDirtyOperationalAudit = backupDirtyTrigger("operationalAudit");
-exports.markBackupDirtyFinancialCommandClaims = backupDirtyTrigger("financialCommandClaims");
-exports.markBackupDirtyInventoryAccounting = backupDirtyTrigger("inventoryAccounting");
-exports.markBackupDirtyFinancialApprovals = backupDirtyTrigger("financialApprovals");
-exports.markBackupDirtyActivityLog = backupDirtyTrigger("activityLog");
-exports.markBackupDirtyCfLedger = backupDirtyTrigger("cfLedger");
-exports.markBackupDirtyPettyCashReceipts = backupDirtyTrigger("pettyCashReceipts");
-exports.markBackupDirtyStockReceipts = backupDirtyTrigger("stockReceipts");
-exports.markBackupDirtyPurchaseInvoices = backupDirtyTrigger("purchaseInvoices");
-exports.markBackupDirtyPlatformPayouts = backupDirtyTrigger("platformPayouts");
-exports.markBackupDirtyInternalUsage = backupDirtyTrigger("internalUsage");
-exports.markBackupDirtyInventoryAdjustments = backupDirtyTrigger("inventoryAdjustments");
-exports.markBackupDirtyPettyCashVouchers = backupDirtyTrigger("pettyCashVouchers");
-exports.markBackupDirtyPettyCashReplenishments = backupDirtyTrigger("pettyCashReplenishments");
-exports.markBackupDirtyReceivables = backupDirtyTrigger("receivables");
-exports.markBackupDirtyPayables = backupDirtyTrigger("payables");
-exports.markBackupDirtySuppliers = backupDirtyTrigger("suppliers");
-exports.markBackupDirtyInventorySku = backupDirtyTrigger("inventorySku");
-exports.markBackupDirtyAppCustomers = backupDirtyTrigger("appCustomers");
-exports.markBackupDirtyReviews = backupDirtyTrigger("reviews");
-exports.markBackupDirtyFeedbacks = backupDirtyTrigger("feedbacks");
-exports.markBackupDirtyPackages = backupDirtyTrigger("packages");
-// Oct 2026: loyalty, Dragon Quest and QR ticket history grow with every member sale or QR
-// order, so the nightly backup copies them incrementally instead of re-reading them in full.
-exports.markBackupDirtyLoyaltyLedger = backupDirtyTrigger("loyaltyLedger");
-exports.markBackupDirtyLoyaltyRewards = backupDirtyTrigger("loyaltyRewards");
-exports.markBackupDirtyDragonQuestLedger = backupDirtyTrigger("dragonQuestLedger");
-exports.markBackupDirtyDragonQuestOrderIndex = backupDirtyTrigger("dragonQuestOrderIndex");
-exports.markBackupDirtyArchivedQrTickets = backupDirtyTrigger("archivedQrTickets");
 
 // 2 GiB (15 Oct 2026): the whole-database snapshot outgrew 512 MiB and crashed nightly on
 // 6-12 Oct unnoticed. ~25 s once a night, so the larger size costs cents a month and gives

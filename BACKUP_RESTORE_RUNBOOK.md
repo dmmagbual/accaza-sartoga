@@ -15,6 +15,7 @@
 ## 1. How the backup works (context)
 
 - `backupDatabaseDaily` runs **03:00 Asia/Manila**, writes the whole Realtime Database (minus transient nodes) as an integrity envelope to Cloud Storage.
+- **Every run is a full read** of the database (one download of about the database size, 29.3 MB on 14 Oct 2026). The Sep 2026 incremental mode and its 34 `markBackupDirty*` marker triggers were retired on 17 Oct 2026 because the markers cost far more Cloud Functions time than the download they saved. A restore is unaffected: the envelope format is the same.
 - **Bucket / path:** `gs://accaza-sartoga.firebasestorage.app/db-backups/accaza-<YYYY-MM-DD-HH-MM-SS>.json`
 - **Health record:** `/systemHealth/backups/latest` in RTDB (`takenAt`, `objectName`, `bytes`, `nodes`, `dataSha256`, `validation:"passed"`).
 - **Retention:** 30 days (older snapshots auto-deleted).

@@ -48,12 +48,12 @@ const today=manilaDay(now),daysAgo=n=>manilaDay(now-n*DAY);
  for(const node of ['qrOrderCounters','accazaAiGuestUsage','accazaAiProviderHealth'])assert.ok(db.reads.some(r=>r.path===node&&r.query&&r.query.by==='key'),`${node} must be pruned by key range`);}
 
 // 2. Backup coverage
-for(const node of ['loyaltyLedger','loyaltyRewards','dragonQuestLedger','dragonQuestOrderIndex','archivedQrTickets']){
-  assert.ok(BackupDelta.TRACKED_PATHS.includes(node),`backup must track ${node} incrementally`);
-  const name='markBackupDirty'+node[0].toUpperCase()+node.slice(1);
-  assert.ok(bundle.includes(`exports.${name} = backupDirtyTrigger("${node}");`),`dirty trigger ${name} missing`);
-}
 const exclude=bundle.slice(bundle.indexOf('const BACKUP_EXCLUDE = new Set('),bundle.indexOf('\n',bundle.indexOf('const BACKUP_EXCLUDE = new Set(')));
+// 17 Oct 2026: the nightly backup is a full copy, so these history nodes are covered by not being excluded.
+for(const node of ['loyaltyLedger','loyaltyRewards','dragonQuestLedger','dragonQuestOrderIndex','archivedQrTickets']){
+  assert.ok(BackupDelta.TRACKED_PATHS.includes(node),`${node} stays on the history list`);
+  assert.ok(!exclude.includes(`"${node}"`),`the full backup must cover ${node}`);
+}
 for(const node of ['qrOrderLocks','loyaltyOtp','loyaltyLinkThrottle'])assert.ok(exclude.includes(`"${node}"`),`${node} is short-lived and must stay out of backups`);
 
 // 3. Public order paths
@@ -71,4 +71,4 @@ assert.ok(!body('manageQrOrderTicket').includes('db.ref("/posActiveShift").get()
  assert.ok(open.reads.every(r=>r.path==='posActiveShift/id'||r.path==='posActiveShift/status'),'only id and status are downloaded');
  assert.equal(await fn(createFakeDatabase({})),null,'no active shift reads as closed');}
 
-console.log('PASS: loyalty/QR/AI scratch state is pruned through indexed or key-range reads, per-sale loyalty, Dragon Quest and QR history is backed up incrementally, secrets and locks stay out of backups, and public order paths rate-limit first and read only the shift id and status.');
+console.log('PASS: loyalty/QR/AI scratch state is pruned through indexed or key-range reads, per-sale loyalty, Dragon Quest and QR history is covered by the full nightly backup, secrets and locks stay out of backups, and public order paths rate-limit first and read only the shift id and status.');

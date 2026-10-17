@@ -470,34 +470,39 @@ async function postLoyaltyEarning(db, order) {
   return {applied, totals};
 }
 
-exports.onOrderLoyaltyEarning = onValueWritten(
-  {ref: "/orders/{orderId}", region: LOYALTY_REGION, retry: true},
-  async (event) => {
-    const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
-    if (!afterRaw) return;
-    const order = Object.assign({id: event.params.orderId}, afterRaw);
-    const db = getDatabase();
-    const beforeOrder = Object.assign({id: event.params.orderId}, before);
-    if (!loyaltyOrderCanEarn(beforeOrder) && loyaltyOrderCanEarn(order)) await postLoyaltyEarning(db, order);
-    // Void handling: flag (never silently restore) a redeemed reward from a voided order.
-    if (order.voided === true && before.voided !== true && order.loyaltyRewardId && order.loyaltyMemberId) {
-      const rewardRef = db.ref(`/loyaltyRewards/${loyaltyKey(order.loyaltyMemberId)}/${loyaltyKey(order.loyaltyRewardId)}`);
-      // Cold-cache hazard again, one degree worse: the un-guarded ternary this
-      // replaced returned `current` itself in its false branch. On a cold
-      // instance `current` starts out null even though the reward record
-      // genuinely exists, so that branch returned `null` — and returning
-      // `null` (unlike `undefined`) is not a safe no-op, it proposes DELETING
-      // the reward node. Pre-fetch the real record so the false branch always
-      // returns the real (non-null) current value unchanged, a true no-op.
-      const initialReward = (await rewardRef.get()).val();
-      const voidFlagState = {seen: false};
-      await rewardRef.transaction((current) => {
-        current = transactionCurrent(current, initialReward, voidFlagState);
-        return current && current.status === "redeemed" ? Object.assign({}, current, {status: "redeemed_void_flagged", voidFlaggedAt: Date.now(), voidedOrderId: order.id}) : current;
-      }, undefined, false);
-    }
-  },
-);
+// NOT DEPLOYED UNTIL LOYALTY LAUNCHES (17 Oct 2026). As the order trigger onOrderLoyaltyEarning
+// this ran on every write to every order and always exited early, because no order carries a
+// loyaltyMemberId before launch; with the Dragon Quest trigger it was about 11% of all Cloud
+// Functions time. To launch: export it again under that name as an onValueWritten trigger with
+// {ref: "/orders/{orderId}", region: LOYALTY_REGION, retry: true} and this handler, add it back
+// to the retry acknowledgement list in .github/workflows/deploy-functions.yml and to the export
+// lists in tests/retry-guard-check.mjs, tests/static/30-server-release.mjs,
+// tests/runtime-bundle-drift-check.mjs and release-manifest.json, then deploy.
+async function loyaltyEarningOnOrderWrite(event) {
+  const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
+  if (!afterRaw) return;
+  const order = Object.assign({id: event.params.orderId}, afterRaw);
+  const db = getDatabase();
+  const beforeOrder = Object.assign({id: event.params.orderId}, before);
+  if (!loyaltyOrderCanEarn(beforeOrder) && loyaltyOrderCanEarn(order)) await postLoyaltyEarning(db, order);
+  // Void handling: flag (never silently restore) a redeemed reward from a voided order.
+  if (order.voided === true && before.voided !== true && order.loyaltyRewardId && order.loyaltyMemberId) {
+    const rewardRef = db.ref(`/loyaltyRewards/${loyaltyKey(order.loyaltyMemberId)}/${loyaltyKey(order.loyaltyRewardId)}`);
+    // Cold-cache hazard again, one degree worse: the un-guarded ternary this
+    // replaced returned `current` itself in its false branch. On a cold
+    // instance `current` starts out null even though the reward record
+    // genuinely exists, so that branch returned `null` — and returning
+    // `null` (unlike `undefined`) is not a safe no-op, it proposes DELETING
+    // the reward node. Pre-fetch the real record so the false branch always
+    // returns the real (non-null) current value unchanged, a true no-op.
+    const initialReward = (await rewardRef.get()).val();
+    const voidFlagState = {seen: false};
+    await rewardRef.transaction((current) => {
+      current = transactionCurrent(current, initialReward, voidFlagState);
+      return current && current.status === "redeemed" ? Object.assign({}, current, {status: "redeemed_void_flagged", voidFlaggedAt: Date.now(), voidedOrderId: order.id}) : current;
+    }, undefined, false);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Reward redemption — badge scan or OTP only, transactional claim.

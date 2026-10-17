@@ -641,9 +641,10 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.deepEqual(Object.fromEntries(Object.entries(index.openings).filter(([, v]) => v)), rebuilt.flow.openings, 'incremental openings equal a rebuild');
 }
 
-// 15. Incremental daily backups: tracked history nodes are rebuilt from the previous verified
-// backup plus dirty records, produce the same envelope data as a full read, and read no
-// tracked node in full on incremental days.
+// 15. Daily backups are a full copy (17 Oct 2026): one read of the whole database, no previous
+// backup file downloaded, no per-record marker triggers, and the markers the retired incremental
+// mode left behind are removed. The incremental planner in functions/lib/backup-delta.js is no
+// longer called; its pure helpers keep their unit tests below.
 {
   const BackupDelta = require('../functions/lib/backup-delta.js');
   const RecoveryValidation = require('../functions/lib/recovery-validation.js');
@@ -667,7 +668,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
     activeOrders: {a3: {status: 'Pending'}},
     systemHealth: {backups: {latest: {}}},
   };
-  const reads = [], files = {}, logs = [];
+  const reads = [], files = {}, logs = [], downloads = [];
   const at = (path) => path.split('/').filter(Boolean).reduce((n, k) => n == null ? undefined : n[k], state);
   // Like the database, removing the last child removes the parent.
   const put = (path, value) => { const parts = path.split('/').filter(Boolean), chain = [state]; let n = state; parts.slice(0, -1).forEach((k) => { n = n[k] = n[k] || {}; chain.push(n); }); if (value === null) delete n[parts.at(-1)]; else n[parts.at(-1)] = clone(value); for (let i = chain.length - 1; i > 0; i -= 1) if (!Object.keys(chain[i]).length) delete chain[i - 1][parts[i - 1]]; };
@@ -676,6 +677,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
     toString: () => 'https://example.firebasedatabase.app/',
     async get() { reads.push(path); return snap(path === '/' ? state : at(path)); },
     async set(v) { put(path, v); },
+    async remove() { put(path, null); },
     async transaction(fn) { const next = fn(clone(at(path)) ?? null); if (next !== undefined) put(path, next); return {committed: true}; },
     orderByKey() {
       const range = {};
@@ -689,7 +691,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
     },
   })};
   const bucket = {
-    async getFiles({prefix}) { return [Object.keys(files).filter((n) => n.startsWith(prefix)).map((name) => ({name, metadata: {timeCreated: new Date(files[name].at).toISOString()}, download: async () => [Buffer.from(files[name].body)], delete: async () => { delete files[name]; }}))]; },
+    async getFiles({prefix}) { return [Object.keys(files).filter((n) => n.startsWith(prefix)).map((name) => ({name, metadata: {timeCreated: new Date(files[name].at).toISOString()}, download: async () => { downloads.push(name); return [Buffer.from(files[name].body)]; }, delete: async () => { delete files[name]; }}))]; },
     file: (name) => ({save: async (body) => { files[name] = {body, at: clock}; }}),
   };
   let clock = Date.UTC(2026, 8, 17, 19);
@@ -707,65 +709,35 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
     logger: {info: (m, c) => logs.push([m, c]), warn: (m, c) => logs.push([m, c])}, evaluateProductionHealthNow: async () => null,
     exports: {}, onValueWritten: (opts, fn) => ({opts, fn}), ORDER_REGION: 'asia-southeast1', Date: class extends Date { static now() { return clock; } }, JSON, Object, Promise, String, Number, Buffer, Math, Set, Array, Error,
   });
-  vm.runInContext(`${bundle.slice(start, end)};globalThis.backup = createVerifiedDatabaseBackup; globalThis.trigger = backupDirtyTrigger;`, ctx);
+  vm.runInContext(`${bundle.slice(start, end)};globalThis.backup = createVerifiedDatabaseBackup;`, ctx);
   const fullData = () => { const out = clone(state); delete out.activeOrders; delete out.backupDirty; return out; };
-  // A backup file written before this release exists, but markers only start now: full read.
+  const newestEnvelope = () => JSON.parse(files[Object.keys(files).sort().at(-1)].body);
+  // A backup file from the incremental era exists and the retired markers left /backupDirty behind.
   files['db-backups/accaza-2026-09-16-19-00-00.json'] = {body: JSON.stringify(RecoveryValidation.createEnvelope({menuItems: {}}, clock - 86400000, [])), at: clock - 86400000};
+  put('backupDirty/archivedOrders/a1', clock - 5000); put('backupDirty/books~journal/j1', clock - 4000);
   let result = await ctx.backup(clock);
-  assert.equal(state.systemHealth.backups.latest.fullReason, 'markers_new');
+  let latest = state.systemHealth.backups.latest;
   assert.equal(result.version, 'backup-v2');
-  assert.equal(state.systemHealth.backups.latest.mode, 'full');
-  // Writes between backups, each marked by its trigger (the trigger is the real factory).
-  const write = async (path, key, value) => { put(`${path}/${key}`, value); const t = ctx.trigger(path); await t.fn({params: {key}}); };
-  clock += 86400000;
-  await write('archivedOrders', 'a2', {total: 25, settlementStatus: 'settled'});
-  await write('archivedOrders', 'a4', {total: 40});
-  await write('archivedOrders', 'a1', null);
-  await write('financialMovements', 'f2', bal('f2', 5));
-  await write('inventoryMovements', 'm1', null);
-  await write('books/journal', 'j2', bal('j2', 5));
-  put('menuItems/latte/price', 110); put('books/monthlyNet/2026-09/1000', 15); put('newNode', {x: 1});
-  assert.deepEqual(Object.keys(state.backupDirty).sort(), ['archivedOrders', 'books~journal', 'financialMovements', 'inventoryMovements']);
-  // Day 2: incremental.
-  reads.length = 0;
+  assert.equal(latest.mode, 'full'); assert.equal(latest.lastFullAt, clock); assert.equal(latest.validation, 'passed');
+  assert.deepEqual(reads, ['/'], 'the backup reads the whole database exactly once and nothing else');
+  assert.deepEqual(downloads, [], 'no previous backup file is downloaded');
+  let envelope = newestEnvelope();
+  assert.ok(RecoveryValidation.validateEnvelope(envelope).ok, 'the full envelope validates, including debit/credit balance');
+  let expected = fullData(); expected.systemHealth = envelope.data.systemHealth;
+  assert.equal(RecoveryValidation.canonicalJson(envelope.data), RecoveryValidation.canonicalJson(expected), 'the backup holds every non-excluded node');
+  assert.ok(!('activeOrders' in envelope.data) && !('backupDirty' in envelope.data), 'excluded nodes stay out of the backup');
+  assert.equal(state.backupDirty, undefined, 'markers left by the retired incremental mode are removed');
+  // Day 2: writes with no markers at all are in the next backup, because every night reads everything.
+  clock += 86400000; reads.length = 0;
+  put('archivedOrders/a2', {total: 25, settlementStatus: 'settled'}); put('archivedOrders/a4', {total: 40}); put('archivedOrders/a1', null);
+  put('financialMovements/f2', bal('f2', 5)); put('inventoryMovements/m1', null); put('books/journal/j2', bal('j2', 5));
+  put('menuItems/latte/price', 110); put('newNode', {x: 1});
   result = await ctx.backup(clock);
-  const latest = state.systemHealth.backups.latest;
-  assert.equal(latest.mode, 'incremental', 'the second day is incremental');
-  assert.equal(latest.recordsReread, 6, 'only the marked records are re-read');
-  const newest = Object.keys(files).sort().at(-1), envelope = JSON.parse(files[newest].body);
-  assert.ok(RecoveryValidation.validateEnvelope(envelope).ok, 'the incremental envelope validates, including debit/credit balance');
-  const expected = fullData(); expected.systemHealth = envelope.data.systemHealth;
-  assert.equal(RecoveryValidation.canonicalJson(envelope.data), RecoveryValidation.canonicalJson(expected), 'incremental backup data equals a full read');
-  for (const tracked of ['/', ...BackupDelta.TRACKED_PATHS.map((p) => `/${p}`)]) assert.ok(!reads.includes(tracked), `incremental backup must not read ${tracked} in full`);
-  assert.ok(reads.includes('/menuItems') && reads.includes('/newNode') && reads.includes('/books/monthlyNet'), 'untracked nodes are still read in full');
-  assert.equal(Object.keys(state.backupDirty || {}).length, 0, 'processed dirty markers are cleared');
-  // A marker written after capture survives (the change is picked up next time).
-  const captured = {archivedOrders: {a9: 1}};
-  put('backupDirty/archivedOrders/a9', 2);
-  const clearStart = bundle.indexOf('async function clearBackupDirty'), clearEnd = bundle.indexOf('async function createVerifiedDatabaseBackup');
-  vm.runInContext(`${bundle.slice(clearStart, clearEnd)};globalThis.clear = clearBackupDirty;`, ctx);
-  await ctx.clear(db, captured);
-  assert.equal(state.backupDirty.archivedOrders.a9, 2, 'a newer marker is not cleared');
-  delete state.backupDirty;
-  // A change whose trigger never ran is corrected (and reported) when its key range is verified.
-  clock += 86400000;
-  const baseNow = JSON.parse(files[Object.keys(files).sort().at(-1)].body);
-  const slice = BackupDelta.rotationSlice(clock, BackupDelta.verificationSlices(baseNow));
-  assert.ok(slice && BackupDelta.TRACKED_PATHS.includes(slice.path));
-  const existing = Object.keys(at(slice.path) || {}).find((k) => BackupDelta.inSlice(k, slice));
-  put(`${slice.path}/${existing}/unmarkedNote`, 'written without a marker');
-  reads.length = 0;
-  await ctx.backup(clock);
-  const day3 = state.systemHealth.backups.latest, envelope3 = JSON.parse(files[Object.keys(files).sort().at(-1)].body);
-  assert.equal(day3.mode, 'incremental'); assert.equal(day3.verifiedSlice.path, slice.path); assert.equal(day3.driftRecords, 1, 'the unmarked change is reported');
-  const expected3 = fullData(); expected3.systemHealth = envelope3.data.systemHealth;
-  assert.equal(RecoveryValidation.canonicalJson(envelope3.data), RecoveryValidation.canonicalJson(expected3), 'the verification read corrects the unmarked change');
-  assert.ok(reads.includes(`/${slice.path}?slice`) && !reads.includes('/') && !reads.includes(`/${slice.path}`), 'only a key range is re-read for verification');
-  // A backup file older than eight days forces a full read.
-  clock += 9 * 86400000;
-  await ctx.backup(clock);
-  assert.equal(state.systemHealth.backups.latest.mode, 'full');
-  assert.equal(state.systemHealth.backups.latest.fullReason, 'stale_base');
+  latest = state.systemHealth.backups.latest; envelope = newestEnvelope();
+  assert.equal(latest.mode, 'full'); assert.deepEqual(reads, ['/']); assert.deepEqual(downloads, []);
+  expected = fullData(); expected.systemHealth = envelope.data.systemHealth;
+  assert.equal(RecoveryValidation.canonicalJson(envelope.data), RecoveryValidation.canonicalJson(expected), 'unmarked writes are captured by the next full backup');
+  assert.ok(!/backupDirtyTrigger|exports\.markBackupDirty|incrementalSnapshot|latestBackupEnvelope/.test(bundle), 'the incremental backup machinery stays retired from the deployed bundle');
   // Plan rules.
   const plan = BackupDelta.planIncremental({base: {data: {archivedOrders: {}, books: {journal: {}}}}, topLevel: ['archivedOrders', 'books', 'activeOrders', 'shifts', 'menuItems'], children: {books: ['journal', 'config']}, excluded: ['activeOrders'], dirty: {archivedOrders: {x: 1}, shifts: {y: 1}, 'books~journal': {z: 1}}});
   assert.deepEqual(plan, {fullNodes: ['books/config', 'menuItems'], copyPaths: ['archivedOrders', 'books/journal'], records: [{path: 'archivedOrders', key: 'x'}, {path: 'books/journal', key: 'z'}], fullTracked: ['shifts'], verifySlice: null});

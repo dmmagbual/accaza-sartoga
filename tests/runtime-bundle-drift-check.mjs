@@ -60,7 +60,7 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSa
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('createOnlineOrder'),0,'createQrOrderTicket','manageQrOrderTicket');
 // 29 Sep 2026: Loyalty Program (Red/Yellow Stamps) Phase 1 backend foundation —
 // signup/OTP, badge scan, earning-rules engine, redemption claims, admin CRUD/reports.
-expectedFunctionExports.splice(expectedFunctionExports.indexOf('managePosSaleRecovery')+1,0,'startLoyaltySignup','completeLoyaltySignup','scanLoyaltyBadge','getLoyaltyMemberCard','lookupLoyaltyMemberByPhone','onOrderLoyaltyEarning','claimLoyaltyReward','finalizeLoyaltyRedemption','releaseLoyaltyClaim','startLoyaltyRedeemOtp','manageLoyaltyEarningRule','manageLoyaltyRewardCatalog','manageLoyaltyMemberStatus','getLoyaltyReports');
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('managePosSaleRecovery')+1,0,'startLoyaltySignup','completeLoyaltySignup','scanLoyaltyBadge','getLoyaltyMemberCard','lookupLoyaltyMemberByPhone','claimLoyaltyReward','finalizeLoyaltyRedemption','releaseLoyaltyClaim','startLoyaltyRedeemOtp','manageLoyaltyEarningRule','manageLoyaltyRewardCatalog','manageLoyaltyMemberStatus','getLoyaltyReports');
 // 30 Sep 2026: customer account <-> membership link (device -> durable membership) + own-card read.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('lookupLoyaltyMemberByPhone')+1,0,'getMyLoyaltyCard','linkLoyaltyByBadge','startLoyaltyLinkOtp','confirmLoyaltyLinkOtp','unlinkLoyaltyFromDevice');
 // 30 Sep 2026: stamp currencies are configurable (label/colour/daily cap), so the two
@@ -74,12 +74,12 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageLoyaltyRew
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getLoyaltyReports')+1,0,'searchLoyaltyMembers','startLoyaltyBadgeRecovery','confirmLoyaltyBadgeRecovery','manageLoyaltyMemberAnonymize');
 // Oct 2026: Dragon Brew Quest reads customer state through callables, advances only
 // from completed POS orders, and keeps campaign editing behind loyaltyAdmin.
-expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageLoyaltyMemberAnonymize')+1,0,'getDragonQuest','enrollDragonQuest','onOrderDragonQuestProgress','manageDragonQuest');
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageLoyaltyMemberAnonymize')+1,0,'getDragonQuest','enrollDragonQuest','manageDragonQuest');
 // Sep 2026: owner emergency sign-out of every portal session.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('onShiftCloseAssurance'),0,'signOutAllPortalSessions');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getUndepositedControlSnapshot')+1,0,'syncUndepositedLedgerPageIndex','syncPettyVoucherAttentionIndex','getUndepositedPage');
-// Sep 2026: incremental-backup dirty markers for the large history nodes.
-expectedFunctionExports.splice(expectedFunctionExports.indexOf('backupDatabaseDaily'),0,'markBackupDirtyArchivedOrders','markBackupDirtyInventoryMovements','markBackupDirtyOrderInventoryPlans','markBackupDirtyFinancialMovements','markBackupDirtyCashBalanceApplied','markBackupDirtyBooksJournal','markBackupDirtyShifts','markBackupDirtyOperationalAudit','markBackupDirtyFinancialCommandClaims','markBackupDirtyInventoryAccounting','markBackupDirtyFinancialApprovals','markBackupDirtyActivityLog','markBackupDirtyCfLedger','markBackupDirtyPettyCashReceipts','markBackupDirtyStockReceipts','markBackupDirtyPurchaseInvoices','markBackupDirtyPlatformPayouts','markBackupDirtyInternalUsage','markBackupDirtyInventoryAdjustments','markBackupDirtyPettyCashVouchers','markBackupDirtyPettyCashReplenishments','markBackupDirtyReceivables','markBackupDirtyPayables','markBackupDirtySuppliers','markBackupDirtyInventorySku','markBackupDirtyAppCustomers','markBackupDirtyReviews','markBackupDirtyFeedbacks','markBackupDirtyPackages','markBackupDirtyLoyaltyLedger','markBackupDirtyLoyaltyRewards','markBackupDirtyDragonQuestLedger','markBackupDirtyDragonQuestOrderIndex','markBackupDirtyArchivedQrTickets');
+// 17 Oct 2026: the Sep 2026 incremental-backup marker triggers and the pre-launch loyalty order
+// triggers (onOrderLoyaltyEarning, onOrderDragonQuestProgress) are retired; see src/functions/60-maintenance.js.
 // 24 Sep 2026: sales without a usable recipe are flagged and costed later by a manager.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('recordPlatformCatchup')+1,0,'manageUncostedSales');
 // 29 Sep 2026: serving queue — served / not collected / close-of-shift review.
