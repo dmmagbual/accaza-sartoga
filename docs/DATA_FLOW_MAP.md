@@ -6,7 +6,7 @@ Use this map to find *where to look*, then confirm in the source it points to. I
 
 Screens and server code connect through the Realtime Database rather than through imports: a screen writes a record or calls a callable, and a Cloud Function that watches that record reacts. Sources are the `src/functions/` sections that `npm run build:runtime` joins into `functions/index.js`; search the file for `exports.<name>` to find a function.
 
-Inventory: 41 database triggers, 117 callables, 6 scheduled jobs, 34 backup markers. Generated from `src/functions/` and `functions/lib/`.
+Inventory: 39 database triggers, 117 callables, 6 scheduled jobs, 0 backup markers. Generated from `src/functions/` and `functions/lib/`.
 
 ## 1. Money paths
 
@@ -32,10 +32,8 @@ Every till sale, online or replayed after being offline, reaches the server once
 |   | ↳ Keeps the daily and monthly net totals the Books reports read. | | | |
 | 7 | `updateCashBalanceSummary` | `/financialMovements/{movementId}` changes | `cashBalanceSummaryPending`, `cashFlowDaily` | `src/functions/23-cash-balance-summary.js` |
 |   | ↳ Keeps the cash balance and cash-flow summaries current. | | | |
-| 8 | `onOrderLoyaltyEarning` | `/orders/{orderId}` changes | `loyaltyLedger`, `loyaltyBalances` | `src/functions/26-loyalty.js` |
-|   | ↳ Credits Rewards points or stamps when a member is attached. | | | |
 
-Shows in: Admin Sales History and Daily Report (orders); inventory balances; Finance Books journal, P&L and Balance Sheet (books/journal and monthly net); Rewards member balance.
+Shows in: Admin Sales History and Daily Report (orders); inventory balances; Finance Books journal, P&L and Balance Sheet (books/journal and monthly net).
 
 If the numbers are wrong: follow the order id downstream: the /orders record (status, inventoryDeducted, cogsSnapshot), its /financialMovements, the /books/journal entry, then /books/reviewQueue for unmapped accounts. The first record that is missing points at the step that failed.
 
@@ -183,10 +181,8 @@ Database node → the triggers that fire when something under it is written.
 | `orderInventoryPlans` | `refreshHistoricalOrderAfterInventoryPlan` | `/orderInventoryPlans/{orderId}` | onValueWritten | `src/functions/61-historical-archive.js` |
 | `orders` | `indexPlatformOrderRef` | `/orders/{orderId}` | onValueCreated | `src/functions/10-books-bridge.js` |
 | `orders` | `notifyStaffOnOrder` | `/orders/{orderId}` | onValueCreated | `src/functions/00-bootstrap-notifications.js` |
-| `orders` | `onOrderDragonQuestProgress` | `/orders/{orderId}` | onValueWritten | `src/functions/26b-dragon-quest.js` |
 | `orders` | `onOrderFinalize` | `/orders/{orderId}` | onValueWritten | `src/functions/50-inventory.js` |
 | `orders` | `onOrderFinancialPosting` | `/orders/{orderId}` | onValueWritten | `src/functions/40-sales-finance.js` |
-| `orders` | `onOrderLoyaltyEarning` | `/orders/{orderId}` | onValueWritten | `src/functions/26-loyalty.js` |
 | `orders` | `preservePostedOrderOnDelete` | `/orders/{orderId}` | onValueDeleted | `src/functions/40-sales-finance.js` |
 | `orders` | `reopenFinancialCloseOnOrderChange` | `/orders/{orderId}` | onValueWritten | `src/functions/22-close-controls.js` |
 | `orders` | `syncActiveOrderProjection` | `/orders/{orderId}` | onValueWritten | `src/functions/30-orders.js` |
@@ -255,10 +251,9 @@ Database node → every Cloud Function whose code (or helpers) writes it. Browse
 | `deletionAudit/orders` | `manageOrderArchive` |
 | `discrepancies` | `legacyOwnerCapitalReset`, `managePettyVoucher`, `managePurchaseCorrection`, `manageShiftHandover`, `manageUncostedSales`, `onArchivedOrderInventoryReversal`, `onOrderFinalize`, `onOrderInventoryReversal`, `onShiftEndResolveEarlierHandovers`, `postBatchCard`, `postInventoryMovements`, `processOrderAdjustment`, `reopenDiscrepancy`, `repairOrderInventoryMarker`, `resolvePendingShiftHandovers`, `reverseBatchCard`, `reviewDiscrepancy` |
 | `dragonQuestConfig/activeSeasonId` | `manageDragonQuest` |
-| `dragonQuestEnrollments` | `enrollDragonQuest`, `onOrderDragonQuestProgress` |
-| `dragonQuestLedger` | `enrollDragonQuest`, `onOrderDragonQuestProgress` |
+| `dragonQuestEnrollments` | `enrollDragonQuest` |
+| `dragonQuestLedger` | `enrollDragonQuest` |
 | `dragonQuestMissions` | `manageDragonQuest` |
-| `dragonQuestOrderIndex` | `onOrderDragonQuestProgress` |
 | `dragonQuestSeasons` | `manageDragonQuest` |
 | `financialApprovals` | `consumeManagerApproval`, `correctPlatformPresettlement`, `createManagerApproval`, `manageOrderArchive`, `managePettyVoucher`, `managePurchaseCorrection`, `openLinkedPosShift`, `processOrderAdjustment`, `reconcileUndepositedCustody`, `recordPlatformCatchup`, `reopenDiscrepancy`, `repairClosedShiftTurnover`, `repairReversedPayoutDeposit`, `repairShiftDeclaredTips`, `retireRevolvingFund`, `reversePlatformPayout`, `reviewDiscrepancy`, `runFinancialClose`, `setUndepositedOpeningBalance`, `settlePlatformPayout` |
 | `financialCloseClaims` | `managePettyVoucher`, `managePurchaseCorrection`, `runFinancialClose` |
@@ -275,14 +270,13 @@ Database node → every Cloud Function whose code (or helpers) writes it. Browse
 | `inventoryBalances` | `ensureInventoryLedger`, `managePurchaseCorrection`, `manageUncostedSales`, `onArchivedOrderInventoryReversal`, `onOrderFinalize`, `onOrderInventoryReversal`, `postBatchCard`, `postInventoryMovements`, `processOrderAdjustment`, `repairOrderInventoryMarker`, `reverseBatchCard` |
 | `inventoryBatch` | `managePurchaseCorrection`, `manageSupplier` |
 | `inventoryMovements` | `ensureInventoryLedger`, `managePurchaseCorrection`, `manageUncostedSales`, `onArchivedOrderInventoryReversal`, `onOrderFinalize`, `onOrderInventoryReversal`, `postBatchCard`, `postInventoryMovements`, `processOrderAdjustment`, `repairOrderInventoryMarker`, `reverseBatchCard` |
-| `loyaltyBalances` | `claimLoyaltyReward`, `onOrderLoyaltyEarning`, `releaseLoyaltyClaim` |
-| `loyaltyDailyCounters` | `onOrderLoyaltyEarning` |
+| `loyaltyBalances` | `claimLoyaltyReward`, `releaseLoyaltyClaim` |
 | `loyaltyEarningRules` | `manageLoyaltyEarningRule` |
 | `loyaltyEarningRules/rule_red_per_order` | `completeLoyaltySignup` |
 | `loyaltyEarningRules/rule_signup_bonus` | `completeLoyaltySignup` |
 | `loyaltyEarningRules/rule_yellow_1000` | `completeLoyaltySignup` |
 | `loyaltyEarningRules/rule_yellow_500` | `completeLoyaltySignup` |
-| `loyaltyLedger` | `claimLoyaltyReward`, `confirmLoyaltyBadgeRecovery`, `onOrderLoyaltyEarning`, `releaseLoyaltyClaim` |
+| `loyaltyLedger` | `claimLoyaltyReward`, `confirmLoyaltyBadgeRecovery`, `releaseLoyaltyClaim` |
 | `loyaltyLinkThrottle` | `startLoyaltyBadgeRecovery`, `startLoyaltyLinkOtp` |
 | `loyaltyMembers` | `completeLoyaltySignup`, `confirmLoyaltyBadgeRecovery`, `manageLoyaltyMemberAnonymize`, `manageLoyaltyMemberStatus` |
 | `loyaltyMembersByPhone` | `completeLoyaltySignup`, `manageLoyaltyMemberAnonymize` |
@@ -290,9 +284,8 @@ Database node → every Cloud Function whose code (or helpers) writes it. Browse
 | `loyaltyRewardCatalog` | `manageLoyaltyRewardCatalog` |
 | `loyaltyRewardCatalog/reward_20_off` | `completeLoyaltySignup` |
 | `loyaltyRewardCatalog/reward_free_drink` | `completeLoyaltySignup` |
-| `loyaltyRewards` | `claimLoyaltyReward`, `finalizeLoyaltyRedemption`, `onOrderDragonQuestProgress`, `onOrderLoyaltyEarning`, `releaseLoyaltyClaim` |
+| `loyaltyRewards` | `claimLoyaltyReward`, `finalizeLoyaltyRedemption`, `releaseLoyaltyClaim` |
 | `loyaltyStats/redemptionCostByReward` | `finalizeLoyaltyRedemption` |
-| `loyaltyStats/stampsByCashier` | `onOrderLoyaltyEarning` |
 | `menuItems` | `manageUncostedSales` |
 | `offlinePosSync` | `managePosSaleRecovery`, `manageShiftHandover`, `onShiftEndResolveEarlierHandovers`, `resolvePendingShiftHandovers`, `syncOfflinePosSale` |
 | `operationalAudit` | `acceptOnlineOrder`, `apIntegrityBaseline`, `askAccazaAI`, `askAccazaAIStandalone`, `auditFinancialControls`, `autoCompleteReadyOnlineOrders`, `autoRepairFinanceDateOnCashLedgerCreate`, `backfillPurchaseDocumentNumbers`, `backupDatabaseDaily`, `checkBakingMapping`, `correctPlatformPresettlement`, `ensureBooksJournal`, `ensureFinancialLedger`, `evaluateProductionHealth`, `getOperationalExceptions`, `getProductionCertification`, `getProductionValidation`, `getSupplierAdvanceDetails`, `getUndepositedControlSnapshot`, `getUndepositedPage`, `legacyOwnerCapitalReset`, `manageAccazaAiIssue`, `manageAccazaAiKnowledge`, `manageAccountingPeriod`, `manageBooksAccount`, `manageCashAccount`, `manageDragonQuest`, `manageHistoricalOrderArchive`, `manageIncident`, `manageLoyaltyCurrency`, `manageLoyaltyEarningRule`, `manageLoyaltyMemberAnonymize`, `manageLoyaltyMemberStatus`, `manageLoyaltyRewardCatalog`, `manageOrderArchive`, `manageOrderService`, `managePettyVoucher`, `managePortalAccount`, `managePosSaleRecovery`, `managePosShiftCrew`, `managePosStaffIdentity`, `managePurchaseCorrection`, `manageQrOrderTicket`, `manageShiftHandover`, `manageStaffMessage`, `manageSupplier`, `manageUncostedSales`, `onArchivedOrderInventoryReversal`, `onOrderFinalize`, `onOrderInventoryReversal`, `onPettyVoucherFinancial`, `onShiftCloseAssurance`, `onShiftEndResolveEarlierHandovers`, `openLinkedPosShift`, `postBatchCard`, `postFinancialCommand`, `postInventoryMovements`, `prepareQuarterlyTaxReturn`, `processOrderAdjustment`, `reconcilePurchasePayable`, `reconcileUndepositedCustody`, `recordPlatformCatchup`, `reopenDiscrepancy`, `repairClosedShiftTurnover`, `repairFinanceDates`, `repairOrderInventoryMarker`, `repairPettyExpenseClassifications`, `repairPettyVoucherFinancial`, `repairReversalAccountingDate`, `repairReversedPayoutDeposit`, `repairShiftDeclaredTips`, `reportPosDeviceHealth`, `resolveBackgroundFailure`, `resolvePendingShiftHandovers`, `retireRevolvingFund`, `reverseBatchCard`, `reversePlatformPayout`, `reviewDiscrepancy`, `runDatabaseBackupNow`, `runFinancialClose`, `saveSharedChoiceIngredients`, `setCompanyInfo`, `setPlatformPayoutDate`, `setTaxSettings`, `setUndepositedOpeningBalance`, `settlePlatformPayout`, `signOutAllPortalSessions`, `sweepOrderArchive`, `syncActiveRegisterCashFloat`, `syncOfflinePosSale`, `syncRegisterCashFloat`, `updateOrderStatus` |
@@ -389,10 +382,8 @@ Database node → every Cloud Function whose code (or helpers) writes it. Browse
 | `refreshHistoricalOrderAfterInventoryPlan` | `/orderInventoryPlans/{orderId}` | onValueWritten | `historicalArchiveSync` | `archivedOrders`, `books/journal`, `financialMovements`, `inventoryMovements`, `orderInventoryPlans` | `src/functions/61-historical-archive.js` |
 | `indexPlatformOrderRef` | `/orders/{orderId}` | onValueCreated | `archivedOrders`, `orders`, `platformRefDuplicates`, `platformRefIndex` | — | `src/functions/10-books-bridge.js` |
 | `notifyStaffOnOrder` | `/orders/{orderId}` | onValueCreated | `staffPushTokens` | `admins`, `orders` | `src/functions/00-bootstrap-notifications.js` |
-| `onOrderDragonQuestProgress` | `/orders/{orderId}` | onValueWritten | `dragonQuestEnrollments`, `dragonQuestLedger`, `dragonQuestOrderIndex`, `loyaltyRewards` | `dragonQuestConfig/activeSeasonId`, `dragonQuestMissions`, `dragonQuestSeasons`, `orders` | `src/functions/26b-dragon-quest.js` |
 | `onOrderFinalize` | `/orders/{orderId}` | onValueWritten | `archivedOrders`, `books/chartCodeMigrations`, `books/journal`, `booksChart`, `cashCustodyOpenIndex`, `discrepancies`, `financialCommandClaims`, `financialMovements`, `inventory`, `inventoryAccounting`, `inventoryBalances`, `inventoryMovements`, `operationalAudit`, `orderInventoryPlans`, `orders`, `uncostedSales` | `accountingPeriods`, `cashCustody`, `menuItems`, `optionRecipes`, `posSettings`, `posSettings/tolerances` | `src/functions/50-inventory.js` |
 | `onOrderFinancialPosting` | `/orders/{orderId}` | onValueWritten | `cashCustodyOpenIndex`, `cfLedger`, `financialCommandClaims`, `financialMovements`, `payables` | `accountingPeriods`, `cashCustody`, `cfAccounts`, `orders`, `taxSettings` | `src/functions/40-sales-finance.js` |
-| `onOrderLoyaltyEarning` | `/orders/{orderId}` | onValueWritten | `loyaltyBalances`, `loyaltyDailyCounters`, `loyaltyLedger`, `loyaltyRewards`, `loyaltyStats/stampsByCashier` | `loyaltyEarningRules`, `loyaltyMembers`, `orders` | `src/functions/26-loyalty.js` |
 | `preservePostedOrderOnDelete` | `/orders/{orderId}` | onValueDeleted | `archivedOrders`, `deletionAudit` | `financialMovements`, `orders` | `src/functions/40-sales-finance.js` |
 | `reopenFinancialCloseOnOrderChange` | `/orders/{orderId}` | onValueWritten | `financialCloseIndex`, `financialCloses` | `orders`, `shifts` | `src/functions/22-close-controls.js` |
 | `syncActiveOrderProjection` | `/orders/{orderId}` | onValueWritten | `activeOrders`, `archivedOrders`, `orders` | `posActiveShift` | `src/functions/30-orders.js` |
@@ -550,4 +541,4 @@ Database node → every Cloud Function whose code (or helpers) writes it. Browse
 
 ## 7. Backup markers
 
-Each marks the nightly incremental backup dirty when its node changes: `archivedOrders`, `inventoryMovements`, `orderInventoryPlans`, `financialMovements`, `cashBalanceSummaryApplied`, `books`, `shifts`, `operationalAudit`, `financialCommandClaims`, `inventoryAccounting`, `financialApprovals`, `activityLog`, `cfLedger`, `pettyCashReceipts`, `stockReceipts`, `purchaseInvoices`, `platformPayouts`, `internalUsage`, `inventoryAdjustments`, `pettyCashVouchers`, `pettyCashReplenishments`, `receivables`, `payables`, `suppliers`, `inventorySku`, `appCustomers`, `reviews`, `feedbacks`, `packages`, `loyaltyLedger`, `loyaltyRewards`, `dragonQuestLedger`, `dragonQuestOrderIndex`, `archivedQrTickets`.
+Each marks the nightly incremental backup dirty when its node changes: .

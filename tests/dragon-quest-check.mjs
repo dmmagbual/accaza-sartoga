@@ -37,7 +37,9 @@ const page=fs.readFileSync('rewards.html','utf8');
 const pos=fs.readFileSync('src/admin/pos/50i-loyalty-member.js','utf8');
 const rules=fs.readFileSync('database.rules.json','utf8');
 const admin=fs.readFileSync('src/admin/rewards/50-dragon-quest.js','utf8');
-['getDragonQuest','enrollDragonQuest','onOrderDragonQuestProgress','manageDragonQuest'].forEach(name=>assert(backend.includes(`exports.${name}`),`missing ${name} backend export`));
+['getDragonQuest','enrollDragonQuest','manageDragonQuest'].forEach(name=>assert(backend.includes(`exports.${name}`),`missing ${name} backend export`));
+// 17 Oct 2026: the order trigger is not deployed until loyalty launches; its handler stays ready.
+assert(!backend.includes('exports.onOrderDragonQuestProgress')&&backend.includes('async function dragonQuestProgressOnOrderWrite(event)'),'the Dragon Quest order trigger stays undeployed until launch, with its handler kept');
 assert(backend.includes('processedOrders')&&backend.includes('transaction('),'quest order posting lacks transaction/idempotency evidence');
 assert(backend.includes('season.status === "paused"')&&backend.includes('Another Dragon Quest season is already active'),'paused-season ownership can be lost or resumed over another campaign');
 assert(backend.includes('seasonCount >= DRAGON_LIMITS.seasons'),'cloning can bypass the bounded season cap');

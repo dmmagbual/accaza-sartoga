@@ -29,9 +29,10 @@ const previousList = BackupDelta.TRACKED_PATHS.filter((p) => !newlyTracked.inclu
 assert.equal(BackupDelta.needsFullBackup({base: recentBase, now, lastMode: 'incremental', lastTracked: previousList}), 'tracked_changed', 'a tracked-set change forces a full backup');
 assert.equal(BackupDelta.needsFullBackup({base: recentBase, now, lastMode: 'incremental', lastTracked: BackupDelta.TRACKED_PATHS}), '', 'no forced full backup once the new list is recorded');
 const bundle = fs.readFileSync(new URL('../functions/index.js', import.meta.url), 'utf8');
-for (const name of ['markBackupDirtyStockReceipts', 'markBackupDirtyPurchaseInvoices', 'markBackupDirtyPlatformPayouts', 'markBackupDirtyInternalUsage', 'markBackupDirtyInventoryAdjustments', 'markBackupDirtyPettyCashVouchers', 'markBackupDirtyPettyCashReplenishments', 'markBackupDirtyReceivables', 'markBackupDirtyPayables', 'markBackupDirtySuppliers', 'markBackupDirtyInventorySku', 'markBackupDirtyAppCustomers', 'markBackupDirtyReviews', 'markBackupDirtyFeedbacks', 'markBackupDirtyPackages']) {
-  assert.ok(bundle.includes(`exports.${name} = backupDirtyTrigger(`), `bundle exports the dirty trigger ${name}`);
-}
+// 17 Oct 2026: the nightly backup is a full copy again, so coverage means "not excluded".
+const excludeLine = bundle.slice(bundle.indexOf('const BACKUP_EXCLUDE = new Set('), bundle.indexOf('\n', bundle.indexOf('const BACKUP_EXCLUDE = new Set(')));
+for (const node of [...newlyTracked, 'pettyCashReceipts']) assert.ok(!excludeLine.includes(`"${node}"`), `the full backup must cover ${node}`);
+assert.ok(!bundle.includes('backupDirtyTrigger('), 'the retired backup-marker triggers stay retired');
 
 // ── F-5: the health stop-watch path pays its reads once per TTL window, not once a minute ──
 const db = createFakeDatabase({
@@ -80,4 +81,4 @@ assert.ok(viewerRejected && viewerRejected.code === 'permission-denied', 'a mana
 assert.equal((await db.ref('/posDeviceHealth/SH1/pos_viewer').get()).exists(), false, 'a viewing manager creates no device health row');
 assert.equal((await db.ref('/posDeviceSessions/SH1/u2').get()).exists(), false, 'a viewing manager creates no primary-device claim');
 
-console.log('Audit server fixes: backup tracks the five ledgers with a forced full run; the POS health ping reads once per TTL.');
+console.log('Audit server fixes: the full nightly backup covers the money ledgers; the POS health ping reads once per TTL.');

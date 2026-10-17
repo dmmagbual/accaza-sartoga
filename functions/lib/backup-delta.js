@@ -2,6 +2,13 @@
 
 const {canonicalJson} = require("./recovery-validation");
 
+// RETIRED 17 Oct 2026: the nightly backup is a full copy again (src/functions/60-maintenance.js)
+// and the per-record marker triggers are gone, because they cost far more Cloud Functions time
+// than the database download they saved. Nothing calls the incremental planner below; it stays,
+// with its unit tests, in case database growth ever makes it worthwhile again. keyCompare is
+// still used by the close controls and the custody pool. DIRTY_ROOT stays excluded from backups.
+// TRACKED_PATHS remains the list of history nodes whose backup coverage the tests assert.
+//
 // Incremental daily backups (Sep 2026 download audit).
 //
 // The daily backup used to download the whole Realtime Database (13 MB on

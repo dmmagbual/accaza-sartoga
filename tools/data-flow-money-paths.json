@@ -12,10 +12,9 @@
         {"fn": "mirrorPosMovementToBooks", "watches": "/financialMovements/{movementId}", "writes": ["books"], "note": "Projects each movement into the Finance Books journal; unmapped accounts go to books/reviewQueue."},
         {"fn": "mirrorPosCogsToBooks", "watches": "/orders/{orderId}/cogsSnapshot", "writes": ["books"], "note": "Projects the order's COGS into the Finance Books journal."},
         {"fn": "updateBooksMonthlyNet", "watches": "/books/journal/{entryId}", "writes": ["books"], "note": "Keeps the daily and monthly net totals the Books reports read."},
-        {"fn": "updateCashBalanceSummary", "watches": "/financialMovements/{movementId}", "writes": ["cashBalanceSummaryPending", "cashFlowDaily"], "note": "Keeps the cash balance and cash-flow summaries current."},
-        {"fn": "onOrderLoyaltyEarning", "watches": "/orders/{orderId}", "writes": ["loyaltyLedger", "loyaltyBalances"], "note": "Credits Rewards points or stamps when a member is attached."}
+        {"fn": "updateCashBalanceSummary", "watches": "/financialMovements/{movementId}", "writes": ["cashBalanceSummaryPending", "cashFlowDaily"], "note": "Keeps the cash balance and cash-flow summaries current."}
       ],
-      "showsIn": "Admin Sales History and Daily Report (orders); inventory balances; Finance Books journal, P&L and Balance Sheet (books/journal and monthly net); Rewards member balance.",
+      "showsIn": "Admin Sales History and Daily Report (orders); inventory balances; Finance Books journal, P&L and Balance Sheet (books/journal and monthly net).",
       "ifBroken": "follow the order id downstream: the /orders record (status, inventoryDeducted, cogsSnapshot), its /financialMovements, the /books/journal entry, then /books/reviewQueue for unmapped accounts. The first record that is missing points at the step that failed."
     },
     {

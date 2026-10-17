@@ -229,18 +229,20 @@ async function flagVoidedDragonOrder(db, order) {
   await db.ref().update(writes);
 }
 
-exports.onOrderDragonQuestProgress = onValueWritten(
-  {ref: "/orders/{orderId}", region: LOYALTY_REGION, retry: true},
-  async (event) => {
-    const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
-    if (!afterRaw) return;
-    const order = Object.assign({id: event.params.orderId}, afterRaw);
-    const beforeOrder = Object.assign({id: event.params.orderId}, before);
-    const db = getDatabase();
-    if (!loyaltyOrderCanEarn(beforeOrder) && loyaltyOrderCanEarn(order)) await postDragonQuestProgress(db, order);
-    if ((order.voided === true && before.voided !== true) || (order.refunded === true && before.refunded !== true)) await flagVoidedDragonOrder(db, order);
-  },
-);
+// NOT DEPLOYED UNTIL LOYALTY LAUNCHES (17 Oct 2026), for the same reason as the loyalty earning
+// handler in 26-loyalty.js: as the order trigger onOrderDragonQuestProgress it ran on every write
+// to every order and always exited early. To launch, export it again under that name as an
+// onValueWritten trigger with {ref: "/orders/{orderId}", region: LOYALTY_REGION, retry: true}
+// and follow the same checklist (deploy workflow retry list, test export lists, manifest).
+async function dragonQuestProgressOnOrderWrite(event) {
+  const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
+  if (!afterRaw) return;
+  const order = Object.assign({id: event.params.orderId}, afterRaw);
+  const beforeOrder = Object.assign({id: event.params.orderId}, before);
+  const db = getDatabase();
+  if (!loyaltyOrderCanEarn(beforeOrder) && loyaltyOrderCanEarn(order)) await postDragonQuestProgress(db, order);
+  if ((order.voided === true && before.voided !== true) || (order.refunded === true && before.refunded !== true)) await flagVoidedDragonOrder(db, order);
+}
 
 exports.manageDragonQuest = onCall(
   {region: LOYALTY_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
