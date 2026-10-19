@@ -128,3 +128,13 @@ body.pos-bar-view .pos-serve-queue .sq-card{flex:none}
 }
 @media(max-width:520px){.sq-prepare-actions{grid-template-columns:1fr}.sq-prepare-card{padding:1rem}.sq-prepare-head h3{font-size:1.15rem}}
 @media(prefers-reduced-motion:reduce){body.admin-pos-workspace button{transition:none}.sq-prepare-card{animation:none}}
+/* Supplier master list (Oct 2026) */
+.pz-modal.sup-modal{max-width:1040px;}
+.sup-tools{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.6rem 0 .45rem;}
+.sup-tools input.pz-in{flex:1 1 240px;}.sup-tools select.pz-in{flex:0 1 200px;}
+.sup-table td{vertical-align:top;}.sup-table td small{display:block;color:#7a6a58;font-size:.74rem;line-height:1.35;margin-top:.1rem;}
+.sup-table a{color:#44523f;text-decoration:none;}.sup-table a:hover{text-decoration:underline;}
+.sup-badge{display:inline-block;margin-top:.15rem;padding:.06rem .45rem;border-radius:999px;font-size:.68rem;font-weight:700;border:1px solid #d8cbbb;background:#f3eee5;color:#6d5d4d;white-space:nowrap;}
+.sup-badge.vat{background:#e8f3ea;color:#155724;border-color:#b7d8bf;}.sup-badge.missing{background:#fff4e5;color:#8a5300;border-color:#f0cf9a;}
+.sup-act{min-width:9.5rem;padding:.38rem .5rem;font-size:.82rem;}
+@media(max-width:760px){.sup-table thead{display:none}.sup-table tr{display:block;border-bottom:1px solid #e3d8c8;padding:.5rem 0}.pz-table.sup-table td{display:block;border:0;padding:.18rem .55rem}.sup-table td[data-l]::before{content:attr(data-l);display:block;font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8a7a68}.sup-act{width:100%}}
