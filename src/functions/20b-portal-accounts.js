@@ -120,7 +120,10 @@ async function portalAccountList(db) {
     };
   }));
   accounts.sort((a, b) => (a.active === b.active ? a.name.localeCompare(b.name) : a.active ? -1 : 1));
-  return {accounts, openShift: shift && shift.status !== "closed" ? {id: financeText(shift.id, 120), staff: financeText(shift.staff, 120)} : null};
+  // Show the server-issued shift reference, never the internal shift key. Shifts opened
+  // through the server carry it on posActiveShift; older ones read that one field.
+  const shiftReference = !shiftOpen ? "" : financeText(shift.shiftReference, 80) || financeText((await db.ref(`/shifts/${financeKey(shift.id, "Shift")}/shiftReference`).get()).val(), 80);
+  return {accounts, openShift: shift && shift.status !== "closed" ? {id: financeText(shift.id, 120), reference: shiftReference, staff: financeText(shift.staff, 120)} : null};
 }
 
 exports.managePortalAccount = onCall(
