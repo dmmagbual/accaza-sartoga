@@ -536,15 +536,9 @@ exports.ensureBooksJournal = onCall(
       const tx=await db.ref(`/books/journal/${key}`).transaction((current)=>Number(current&&current.revision||0)>Number(singles[key].revision||0)?undefined:singles[key],undefined,false);
       if(tx.committed)journalWrites++;
     }
+    // Register Cash Float (1005) is posted as dated events and never re-dated here. The rebuild
+    // only converges the posted float to the live float after the journal batch below.
     const registerFloat = resolveRegisterFloat(posSettingsSnap.val(), activeShiftSnap.val());
-    // The float entry is a standing reclassification (Dr 1005 / Cr 1000), not a dated transaction.
-    // Re-dating it on every rebuild moved the 1000/1005 split across months while total cash stayed
-    // unchanged. Anchor it to the existing entry's date (or first-build now) so a no-change rebuild
-    // never rewrites it. Live float changes still re-date via syncRegisterCashFloat / syncActiveRegisterCashFloat.
-    const existingFloatEntry = existing.register_float_control;
-    const floatAt = existingFloatEntry && existingFloatEntry.date ? Date.parse(`${existingFloatEntry.date}T00:00:00+08:00`) : Date.now();
-    const floatEntry = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, floatAt, registerFloat) : null;
-    if (!sameJournalEntry(existing.register_float_control, floatEntry, ["createdAt", "rebuiltAt"])) writes["books/journal/register_float_control"] = floatEntry;
     if (!sameJournalEntry(existing.historical_suspense_capital_20260826, historicalSuspenseCapitalEntry(), [])) writes["books/journal/historical_suspense_capital_20260826"] = historicalSuspenseCapitalEntry();
     // Reconciliation metadata is non-financial. It changes only how the audit
     // distinguishes verified legacy history from genuinely new exceptions.
@@ -556,6 +550,7 @@ exports.ensureBooksJournal = onCall(
     // every write well under the 1,000-trigger limit.
     const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 150) { const batch = {}; paths.slice(i, i + 150).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
     journalWrites += paths.filter((path) => path.indexOf("books/journal/") === 0).length;
+    journalWrites += await reconcileRegisterFloatPosting(db, registerFloat);
     const openingCash = BooksBridge.r2(Object.values(cashAccountsSnap.val() || {}).reduce((sum, account) => sum + Number(account && account.opening || 0), 0));
     const netSales = BooksBridge.r2(Object.values(daily).reduce((sum, entry) => sum + BooksBridge.netSales(entry && entry.net), 0));
     // Totals are rebuilt from the journal as it now stands. When the rebuild changed nothing,
@@ -627,23 +622,158 @@ function historicalSuspenseCapitalEntry() {
   return {id: "historical_suspense_capital_20260826", date: "2026-08-26", ref: "EQUITY-RECLASS-20260826", memo: "One-time close of verified historical POS payment-reclassification residual to Owner's Capital", lines: [{code: "1900", debit: 995, credit: 0}, {code: "3000", debit: 0, credit: 995}], source: "finance-control", sourceType: "equityMigration", sourceId: "historical_pos_suspense_through_2026_08_26", sourceRef, sources, createdAt: at, rebuiltAt: at, schemaVersion: 1};
 }
 
-function registerFloatControlEntry(amount, at, control) {
-  amount = Financial.money(amount); at = Number(at) || Date.now();
-  control = control || {source: "posSettings/fixedFloat", shiftId: ""};
-  const sourceRef = financeText(control.source, 160), sourceKey = firebaseSafeSourceKey(sourceRef, "register_float");
-  const sources = {}; sources[sourceKey] = true;
-  return {id: "register_float_control", date: BooksBridge.businessDate(at), ref: "REGISTER-FLOAT", memo: "Register retained cash float · tied to live Register", lines: [{code: "1005", debit: amount, credit: 0}, {code: "1000", debit: 0, credit: amount}], source: "pos", sourceType: "registerFloat", sourceId: control.shiftId || "fixedFloat", sourceRef, sources, createdAt: at, rebuiltAt: at};
+// Register Cash Float (1005) is a fixed imprest reclassified out of Cash in Register (1000).
+// It is posted as dated events, never re-dated: one baseline entry on the day the float was
+// established (Danilo, 19 Oct 2026: 26 Aug 2026), then one dated adjustment per change for the
+// difference only. A past Balance Sheet therefore never moves when the float changes later.
+// books/registerFloatState carries the posted total so triggers never read the journal.
+const REGISTER_FLOAT_ESTABLISHED_DATE = "2026-08-26";
+const REGISTER_FLOAT_STATE = "books/registerFloatState";
+
+function registerFloatLines(amount) {
+  amount = Financial.money(amount);
+  return amount >= 0 ? [{code: "1005", debit: amount, credit: 0}, {code: "1000", debit: 0, credit: amount}] : [{code: "1000", debit: Financial.money(-amount), credit: 0}, {code: "1005", debit: 0, credit: Financial.money(-amount)}];
+}
+function registerFloatSources(control) {
+  const sourceRef = financeText(control && control.source || "posSettings/fixedFloat", 160), sources = {};
+  sources[firebaseSafeSourceKey(sourceRef, "register_float")] = true;
+  return {sourceRef, sources};
+}
+function registerFloatControlEntry(amount, control) {
+  const at = Date.parse(`${REGISTER_FLOAT_ESTABLISHED_DATE}T00:00:00+08:00`), {sourceRef, sources} = registerFloatSources(control);
+  return {id: "register_float_control", date: REGISTER_FLOAT_ESTABLISHED_DATE, ref: "REGISTER-FLOAT", memo: "Register retained cash float · established 26 Aug 2026; total cash unchanged", lines: registerFloatLines(amount), source: "pos", sourceType: "registerFloat", sourceId: "fixedFloat", sourceRef, sources, createdAt: at, rebuiltAt: at, schemaVersion: 2};
+}
+function registerFloatChangeEntry(pending, control) {
+  const before = Financial.money(pending.before), after = Financial.money(pending.after), at = Number(pending.at) || Date.now(), {sourceRef, sources} = registerFloatSources(control || {source: pending.source});
+  return {id: `register_float_change_${pending.seq}`, date: BooksBridge.businessDate(at), ref: `REGISTER-FLOAT-${pending.seq}`, memo: `Register cash float changed from ${before.toFixed(2)} to ${after.toFixed(2)}; total cash unchanged`, lines: registerFloatLines(after - before), source: "pos", sourceType: "registerFloatChange", sourceId: financeText(pending.shiftId || "fixedFloat", 120), sourceRef, sources, floatBefore: before, floatAfter: after, createdAt: at, rebuiltAt: at, schemaVersion: 1};
+}
+function registerFloatEntryTotal(entry) {
+  return Financial.money(((entry && entry.lines) || []).reduce((sum, line) => sum + (String(line && line.code) === "1005" ? Number(line.debit || 0) - Number(line.credit || 0) : 0), 0));
+}
+
+// First use after this release: adopt the existing standing entry's amount as the baseline.
+// Nothing is posted here; the posted total simply starts where the books already stand.
+async function registerFloatState(db, fallbackAmount, at) {
+  const stateRef = db.ref(`/${REGISTER_FLOAT_STATE}`), current = (await stateRef.get()).val();
+  if (current && current.schemaVersion === 1) return current;
+  const legacy = (await db.ref("/books/journal/register_float_control").get()).val();
+  const baselineAmount = legacy ? registerFloatEntryTotal(legacy) : Financial.money(Math.max(0, Number(fallbackAmount) || 0));
+  const init = {postedTotal: baselineAmount, baselineAmount, baselineDate: financeText(legacy && legacy.date, 10), anchored: false, seq: 0, createdAt: at, updatedAt: at, schemaVersion: 1};
+  const tx = await stateRef.transaction((cur) => (cur && cur.schemaVersion === 1 ? undefined : init), undefined, false);
+  return tx.snapshot.val() || init;
+}
+
+// One-time move of the standing entry onto the established date. The amount is kept, so total
+// cash is unchanged; only the 1000/1005 split for 26 Aug onward changes. A closed August period
+// blocks it like any other posting until a manager reopens it, then the next Books sync completes it.
+// Every month whose closing 1000/1005 split the re-date changes: 26 Aug through the month the
+// standing entry sits in now. Any one of them closed blocks the move.
+function registerFloatAnchorDates(currentDate) {
+  const out = [], end = String(currentDate || REGISTER_FLOAT_ESTABLISHED_DATE).slice(0, 7);
+  let [year, month] = REGISTER_FLOAT_ESTABLISHED_DATE.split("-").map(Number);
+  for (let i = 0; i < 120; i++) {
+    const key = `${year}-${String(month).padStart(2, "0")}`;
+    out.push(i ? `${key}-01` : REGISTER_FLOAT_ESTABLISHED_DATE);
+    if (key >= end) break;
+    month++; if (month > 12) { month = 1; year++; }
+  }
+  return out;
+}
+async function anchorRegisterFloatBaseline(db, state, at) {
+  if (!state || state.anchored) return state;
+  const periods = {};
+  let closed = "";
+  for (const date of registerFloatAnchorDates(state.baselineDate)) { closed = await accountingPeriodClosedFor(db, date, periods); if (closed) break; }
+  if (closed) {
+    if (state.anchorBlockedPeriod !== closed) await db.ref(`/${REGISTER_FLOAT_STATE}`).update({anchorBlockedPeriod: closed, updatedAt: at});
+    return Object.assign({}, state, {anchorBlockedPeriod: closed});
+  }
+  const baseline = Financial.money(state.baselineAmount), entry = baseline ? registerFloatControlEntry(baseline, {source: "posSettings/fixedFloat"}) : null;
+  await db.ref().update({
+    "books/journal/register_float_control": entry,
+    [`${REGISTER_FLOAT_STATE}/anchored`]: true,
+    [`${REGISTER_FLOAT_STATE}/baselineDate`]: REGISTER_FLOAT_ESTABLISHED_DATE,
+    [`${REGISTER_FLOAT_STATE}/anchorBlockedPeriod`]: null,
+    [`${REGISTER_FLOAT_STATE}/anchoredAt`]: at,
+    [`${REGISTER_FLOAT_STATE}/updatedAt`]: at,
+    [`operationalAudit/${at}_register_float_anchor`]: {action: "register_float_baseline_anchored", sourceType: "books", sourceId: "register_float_control", fromDate: state.baselineDate || null, toDate: REGISTER_FLOAT_ESTABLISHED_DATE, amount: baseline, journalId: "register_float_control", decidedBy: "Danilo, 19 Oct 2026", accounting: "Re-date the standing Dr 1005 / Cr 1000 float reclassification to the day the float was established; amount and total cash unchanged", ts: at, schemaVersion: 1},
+  });
+  return Object.assign({}, state, {anchored: true, anchoredNow: true, baselineDate: REGISTER_FLOAT_ESTABLISHED_DATE, anchorBlockedPeriod: null});
+}
+
+// A change claimed in the state node but not yet journalled (an interrupted run) is completed
+// with the same key and content, so retries and concurrent runs cannot double-post it.
+// The pending marker is cleared only while it still names this claim, so a slow run can never
+// clear a newer claim another run has not journalled yet.
+async function completeRegisterFloatPending(db, pending) {
+  if (!pending || !pending.seq) return 0;
+  const entry = registerFloatChangeEntry(pending), at = Number(pending.at) || Date.now();
+  await db.ref().update({
+    [`books/journal/${entry.id}`]: entry,
+    [`operationalAudit/${at}_register_float_change_${pending.seq}`]: {action: financeText(pending.action || "register_float_changed", 40), sourceType: "registerFloat", sourceId: financeText(pending.shiftId || "fixedFloat", 120), before: entry.floatBefore, after: entry.floatAfter, journalId: entry.id, accounting: "Dated Dr/Cr 1005 vs 1000 adjustment for the float change only; total cash unchanged", ts: at, schemaVersion: 1},
+  });
+  await db.ref(`/${REGISTER_FLOAT_STATE}/pending`).transaction((cur) => (cur && Number(cur.seq) !== Number(pending.seq) ? undefined : null), undefined, false);
+  return 1;
+}
+
+// Moves the posted float to the live float with one dated adjustment for the difference.
+async function postRegisterFloatTarget(db, control, at, action) {
+  const target = Financial.money(Math.max(0, Number(control && control.amount) || 0));
+  let state = await registerFloatState(db, target, at);
+  state = await anchorRegisterFloatBaseline(db, state, at);
+  let written = (state && state.anchoredNow ? 1 : 0) + await completeRegisterFloatPending(db, state && state.pending);
+  // Another run's unfinished claim is completed first, then this change is claimed again, so a
+  // second change arriving moments later is never dropped.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let claim = null, blocking = null;
+    const tx = await db.ref(`/${REGISTER_FLOAT_STATE}`).transaction((cur) => {
+      claim = null; blocking = null;
+      if (!cur) return cur;
+      if (cur.pending) { blocking = cur.pending; return; }
+      const before = Financial.money(cur.postedTotal);
+      if (Math.abs(target - before) < 0.005) return;
+      const seq = Math.trunc(Number(cur.seq) || 0) + 1;
+      claim = {seq, before, after: target, at, action, source: financeText(control && control.source, 160), shiftId: financeText(control && control.shiftId, 120)};
+      return Object.assign({}, cur, {postedTotal: target, seq, pending: claim, lastChangeAt: at, updatedAt: at});
+    }, undefined, false);
+    if (tx.committed && claim) return written + await completeRegisterFloatPending(db, claim);
+    if (!blocking) return written;
+    written += await completeRegisterFloatPending(db, blocking);
+  }
+  return written;
+}
+
+// Manual Books sync: anchor the baseline if still pending, finish any interrupted change, and
+// converge the posted float to the live float. Returns the number of journal entries written.
+// Triggers re-read the live float before posting, so a delayed or out-of-order event can never
+// post a stale amount. The event only signals that the amount changed. Reached only on a change.
+async function liveRegisterFloat(db) {
+  const [settings, activeShift] = await Promise.all([readPosSettings(db, ["fixedFloat"]), db.ref("/posActiveShift").get()]);
+  return resolveRegisterFloat(settings, activeShift.val() || {});
+}
+
+// Exception Center (auditFinancialControls): Books 1005 must equal the live float, and the
+// 26 Aug 2026 start date must not sit waiting on a closed period. One small node and one
+// bounded key-range read of the register float journal entries.
+async function registerFloatControlIssues(db, floatControl) {
+  const issues = [];
+  const floatState=(/* download-ok: bounded one small register float state node */await db.ref("/books/registerFloatState").get()).val()||{},floatEntries=(await db.ref("/books/journal").orderByKey().startAt("register_float_").endAt("register_float_\uf8ff").get()).val()||{},floatBooks=Financial.money(Object.values(floatEntries).reduce((sum,entry)=>sum+((entry&&entry.lines)||[]).reduce((t,line)=>t+(String(line&&line.code)==="1005"?Number(line.debit||0)-Number(line.credit||0):0),0),0));
+  if(floatState.anchorBlockedPeriod)issues.push({severity:"warning",kind:"register_float_anchor_blocked",source:"books/registerFloatState",sourceLabel:"Register Cash Float (Books 1005)",detail:`The float's 26 Aug 2026 start date is waiting because ${financeText(floatState.anchorBlockedPeriod,7)} is closed, so Balance Sheets from 26 Aug still show the float inside 1000 Cash in Register. Reopen that period, run Sync all Finance transactions, then close it again.`,amount:Financial.money(floatState.baselineAmount)});
+  if(Math.abs(floatBooks-floatControl.amount)>.009)issues.push({severity:"critical",kind:"register_float_books_mismatch",source:"books/registerFloatState",sourceLabel:"Register Cash Float (Books 1005)",detail:`Books 1005 Register Cash Float holds ${floatBooks.toFixed(2)} but the live register float is ${floatControl.amount.toFixed(2)}. Run Sync all Finance transactions to post the dated difference.`,amount:Financial.money(floatControl.amount-floatBooks)});
+  return issues;
+}
+
+function reconcileRegisterFloatPosting(db, control) {
+  return postRegisterFloatTarget(db, control, Date.now(), "register_float_reconciled");
 }
 
 exports.syncRegisterCashFloat = onValueWritten(
   {ref: "/posSettings/fixedFloat", region: "asia-southeast1"},
   async (event) => {
-    const db = getDatabase(), at = Date.now(), writes = {}, activeShift = (await db.ref("/posActiveShift").get()).val() || {};
+    const db = getDatabase(), at = Date.now(), activeShift = (await db.ref("/posActiveShift").get()).val() || {};
     const before = resolveRegisterFloat({fixedFloat: event.data.before.val()}, activeShift), after = resolveRegisterFloat({fixedFloat: event.data.after.val()}, activeShift);
-    if (Math.abs(before.amount - after.amount) < 0.005 && before.source === after.source) return;
-    writes["books/journal/register_float_control"] = after.amount > 0 ? registerFloatControlEntry(after.amount, at, after) : null;
-    writes[`operationalAudit/${at}_register_float`] = {action: "register_float_changed", sourceType: "posSettings", sourceId: "fixedFloat", before: before.amount, after: after.amount, journalId: "register_float_control", accounting: "Reclassify Cash on Hand to Register Cash Float; total cash unchanged", ts: at, schemaVersion: 1};
-    await db.ref().update(writes);
+    if (Math.abs(before.amount - after.amount) < 0.005) return;
+    await postRegisterFloatTarget(db, await liveRegisterFloat(db), at, "register_float_changed");
   },
 );
 
@@ -653,11 +783,9 @@ exports.syncActiveRegisterCashFloat = onValueWritten(
     const db = getDatabase(), at = Date.now();
     const settings = await readPosSettings(db, ["fixedFloat"]);
     const before = resolveRegisterFloat(settings, event.data.before.val()), after = resolveRegisterFloat(settings, event.data.after.val());
-    if (Math.abs(before.amount - after.amount) < 0.005 && before.source === after.source) return;
-    const writes = {};
-    writes["books/journal/register_float_control"] = after.amount > 0 ? registerFloatControlEntry(after.amount, at, after) : null;
-    writes[`operationalAudit/${at}_register_float_live`] = {action: "register_float_synced", sourceType: "posActiveShift", sourceId: after.shiftId || "", before: before.amount, after: after.amount, journalId: "register_float_control", accounting: "Reclassify Cash on Hand to Register Cash Float; total cash unchanged", ts: at, schemaVersion: 1};
-    await db.ref().update(writes);
+    // A new shift with the same float amount changes nothing in the books.
+    if (Math.abs(before.amount - after.amount) < 0.005) return;
+    await postRegisterFloatTarget(db, await liveRegisterFloat(db), at, "register_float_synced");
   },
 );
 
@@ -1628,7 +1756,10 @@ async function portalAccountList(db) {
     };
   }));
   accounts.sort((a, b) => (a.active === b.active ? a.name.localeCompare(b.name) : a.active ? -1 : 1));
-  return {accounts, openShift: shift && shift.status !== "closed" ? {id: financeText(shift.id, 120), staff: financeText(shift.staff, 120)} : null};
+  // Show the server-issued shift reference, never the internal shift key. Shifts opened
+  // through the server carry it on posActiveShift; older ones read that one field.
+  const shiftReference = !shiftOpen ? "" : financeText(shift.shiftReference, 80) || financeText((await db.ref(`/shifts/${financeKey(shift.id, "Shift")}/shiftReference`).get()).val(), 80);
+  return {accounts, openShift: shift && shift.status !== "closed" ? {id: financeText(shift.id, 120), reference: shiftReference, staff: financeText(shift.staff, 120)} : null};
 }
 
 exports.managePortalAccount = onCall(
@@ -8923,6 +9054,8 @@ function financialControlResolution(issue) {
     payout_order_link_mismatch:["Open the platform payout and its listed orders. Correct the payout/order assignment from Platform Payouts, then run Daily Financial Close.","admin_finance","Open Platform Payouts"],
     platform_ar_control_mismatch:["Open Platform Receivables and compare unsettled orders with payout settlements. Correct the affected payout or order from its source workflow, then rerun Daily Financial Close.","admin_finance","Open Platform Receivables"],
     duplicate_cash_account_code:["Open Cash Accounts and give each bank or wallet a unique Finance Books account mapping before recording more deposits.","books_cashflow","Open Cash Accounts"],
+    register_float_anchor_blocked:["Reopen the closed period named in the detail, run Sync all Finance transactions in Finance Books, then close the period again. Total cash does not change.","admin_finance","Open Accounting Periods"],
+    register_float_books_mismatch:["Run Sync all Finance transactions in Finance Books. It posts one dated Register Cash Float adjustment for the difference; do not post a manual journal to 1005.","admin_finance","Open Finance Books"],
     register_float_differs_from_control:["Open POS Settings and verify the approved register float. Use the controlled float adjustment; do not record it as a receipt or expense.","admin_finance","Open POS Settings"],
     undeposited_subledger_mismatch:["Open Undeposited Collection, reconcile the custody rows to the Finance balance, and use the controlled custody correction shown there.","admin_finance","Open Undeposited Collection"],
     cash_payment_missing_bank_ledger:["Open Undeposited Collection and use Repair missing cash payments, or run repairPettyVoucherFinancial for this voucher. It rebuilds the register row from the posted movement without changing Finance Books.","admin_petty","Open Cash Payments"],
@@ -8988,6 +9121,7 @@ exports.auditFinancialControls = onCall(
     const ledgerPlatform={grabfood:0,foodpanda:0};Object.values(movements).forEach((m)=>(m&&m.lines||[]).forEach((line)=>{for(const channel of ["grabfood","foodpanda"])if(line.account===`asset:platform_receivable:${channel}`)ledgerPlatform[channel]=Financial.money(ledgerPlatform[channel]+Financial.money(line.debit)-Financial.money(line.credit));}));const ledgerPlatformTotal=Financial.money(ledgerPlatform.grabfood+ledgerPlatform.foodpanda),platformDifference=Financial.money(ledgerPlatformTotal-unsettledValue);if(Math.abs(platformDifference)>0.009)issues.push({severity:"critical",kind:"platform_ar_control_mismatch",source:"platform_receivables",amount:platformDifference,expected:unsettledValue,actual:ledgerPlatformTotal});
     const codes={},resolvedCashCodes=BankLedgerLink.resolveCashAccountCodes(accounts,(await db.ref('/books/config/cashAccountMap').get()).val()||{});Object.keys(accounts).forEach((id)=>{const code=resolvedCashCodes[id];(codes[code]||(codes[code]=[])).push(id);});Object.keys(codes).forEach((code)=>{if(codes[code].length>1)issues.push({severity:"critical",kind:"duplicate_cash_account_code",source:code,detail:codes[code].join(", ")});});
     const floatControl=resolveRegisterFloat(snaps[9].val()||{},snaps[10].val()||{});if(Math.abs(floatControl.amount-4000)>.009)issues.push({severity:"warning",kind:"register_float_differs_from_control",source:floatControl.source,amount:floatControl.amount,expected:4000});
+    issues.push(...await registerFloatControlIssues(db,floatControl));
     let custodyValue=0,custodyCount=0;Object.keys(custody).forEach((id)=>{const rem=Financial.money(custody[id].remaining);if(rem>0){custodyCount++;custodyValue=Financial.money(custodyValue+rem);}});/* Undeposited Collection is reached in the workflow form (asset:cash_awaiting_deposit) and in the chart form a validated manual journal carries (coa:1001). Both are account 1001, so both belong in this figure; matching the string alone made a chart-form posting invisible and raised a false custody mismatch (Oct 2026, the same class as the Supplier Advances case). Cash-account strings are excluded by resolving with an empty account map: a bank or wallet account resolves to its own 10xx code, never 1001. */let undepositedLedgerValue=0;Object.values(movements).forEach((m)=>(m&&m.lines||[]).forEach((line)=>{const code=String((BooksBridge.mapAccount(String(line&&line.account||""),"",{}).code)||"");if(code!=="1001")return;undepositedLedgerValue=Financial.money(undepositedLedgerValue+(Number(line.debit)||0)-(Number(line.credit)||0));}));const undepositedDifference=Financial.money(undepositedLedgerValue-custodyValue);if(Math.abs(undepositedDifference)>0.009)issues.push({severity:"critical",kind:"undeposited_subledger_mismatch",source:"cashCustody",detail:`Finance Books ${undepositedLedgerValue.toFixed(2)}; custody subledger ${custodyValue.toFixed(2)}`,amount:undepositedDifference,expected:custodyValue,actual:undepositedLedgerValue});const openAr=Object.values(ars).filter((x)=>x&&x.status==="open"),openAp=Object.values(aps).filter((x)=>x&&x.status==="open"),undepositedPayouts=Object.values(payouts).filter((x)=>x&&!x.reversed&&!x.depositMovementId&&Financial.money(x.actualPayout)>0);
     // --- Additive control checks (read-only; each guarded so a failure degrades, never breaks the audit) ---
     try {
