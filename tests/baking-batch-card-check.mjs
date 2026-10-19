@@ -253,7 +253,11 @@ assert.ok(budgets.includes("'assets/js/admin/pos.js':650000"), 'the POS ceiling 
 assert.ok(budgets.includes("'assets/js/admin/pos.js':50000"), 'the POS hard reserve must be unchanged by this build');
 const posBytes = fs.statSync('assets/js/admin/pos.js').size;
 assert.ok(posBytes <= 650000 - 50000, `pos.js (${posBytes}) must stay under its usable limit (600000)`);
-assert.ok(posBytes < 541000, `pos.js (${posBytes}) must carry only the baking wiring, not the screen itself`);
+/* Oct 2026 (admin 700): the screen check is by content, not a byte tripwire that any later Purchases change trips.
+   The 600000 usable limit above still guards size. */
+const posJs = fs.readFileSync('assets/js/admin/pos.js', 'utf8'), bakingJs = fs.readFileSync('assets/js/admin/baking.js', 'utf8');
+assert.ok(bakingJs.includes('window.__accazaRenderBaking='), 'baking.js must own the baking screen renderer');
+assert.ok(!posJs.includes('window.__accazaRenderBaking=') && !/batch card/i.test(posJs), 'pos.js must carry only the baking wiring, not the screen itself');
 
 /* ── 10. Release bookkeeping ──────────────────────────────────────────────────────────────── */
 // Read from the manifest (15 Oct 2026) so every later release does not have to edit this test.

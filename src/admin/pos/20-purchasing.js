@@ -1,5 +1,7 @@
   var accOpts='<option value="">\u2014 choose cash / bank / e-wallet \u2014</option>'+accs.map(function(x){return '<option value="'+esc(x.id)+'"'+(P.acct===x.id?' selected':'')+(x.disabled?' disabled':'')+'>'+esc(x.name)+' · '+peso(x.balance)+(x.disabled?' · unavailable for purchases':'')+'</option>';}).join('');
-  var supplierOpts='<option value="">— select supplier —</option>'+purchaseSuppliers().map(function(x){return '<option value="'+esc(x.id)+'"'+(P.supplierId===x.id?' selected':'')+'>'+esc(x.name)+'</option>';}).join('');
+  var supList=purchaseSuppliers(),supDup={};supList.forEach(function(x){var k=String(x.name||'').trim().toLowerCase();supDup[k]=(supDup[k]||0)+1;});
+  function supLabel(x){var n=String(x.name||'').trim();return supDup[n.toLowerCase()]>1?n+' ('+String(x.id).slice(-4)+')':n;}
+  var curSup=purchaseSupplierById(P.supplierId),supplierOpts=supList.map(function(x){return '<option value="'+esc(supLabel(x))+'"></option>';}).join('');
   var invList=ingsActive().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   function itemOpts(sel){return '<option value="">— pick item —</option>'+invList.map(function(i){var required=recipeUsesInventory(i.id),n=activeSkusFor(i.id).length;return '<option value="'+esc(i.id)+'"'+(i.id===sel?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+(required?(n?' · '+n+' approved brand'+(n===1?'':'s'):' · BRAND REQUIRED'):'')+'</option>';}).join('');}
   function unitOpts(list,sel){return list.map(function(u){return '<option'+(uNorm(u)===uNorm(sel)?' selected':'')+'>'+esc(u)+'</option>';}).join('');}
@@ -75,7 +77,7 @@
   root.innerHTML='<div class="purchase-page-head"><div><div class="pz-h">Purchases <span>Goods received</span></div><p class="pz-sub">Record a supplier delivery and update stock in one clear receiving sheet.</p></div><div class="purchase-head-note">Receiving goods or an itemised supplier invoice? Record it here — whatever way it was paid. Settling a bill already raised: Finance Books → Payables. Paying a supplier before delivery, or a cost with no itemised invoice: Cash Payments.<br/><button type="button" class="pz-btn sec" data-open-payables style="margin-top:.45rem;">Open Payables to pay an existing bill</button></div></div>'
     +'<div class="pz-card purchase-sheet"><div class="purchase-sheet-banner"><div><span class="purchase-eyebrow">New delivery</span><h3>Supplier invoice</h3></div><span class="purchase-draft-status">Draft · not yet received</span></div>'
     +'<div class="purchase-section"><div class="purchase-section-head"><span class="purchase-step">1</span><div><b>Delivery details</b><small>Identify who supplied the stock and when it arrived.</small></div></div><div class="purchase-details-grid">'
-      +'<div><span class="pz-lbl">Supplier</span><div style="display:flex;gap:.35rem;"><select class="pz-in" id="purSupplier">'+supplierOpts+'</select><button type="button" class="pz-btn sec" id="purNewSupplier">＋ New</button><button type="button" class="pz-btn sec" id="purSupplierList">Suppliers</button></div><small class="tiny">One shared supplier record is used by Purchases, Cash Payments, Payables and Finance Books.</small></div>'
+      +'<div><span class="pz-lbl">Supplier</span><div style="display:flex;gap:.35rem;"><input class="pz-in" id="purSupplier" list="purSupplierOpts" autocomplete="off" placeholder="Type to search suppliers" value="'+esc(curSup?supLabel(curSup):'')+'"/><datalist id="purSupplierOpts">'+supplierOpts+'</datalist><button type="button" class="pz-btn sec" id="purNewSupplier">＋ New</button><button type="button" class="pz-btn sec" id="purSupplierList">Suppliers</button></div><small class="tiny" id="purSupplierHint">One shared supplier record is used by Purchases, Cash Payments, Payables and Finance Books.</small></div>'
       +'<div><span class="pz-lbl">Invoice / reference</span><input class="pz-in" id="purRef" value="'+esc(P.ref)+'" placeholder="Optional"/></div>'
       +'<div><span class="pz-lbl">Date</span><input class="pz-in" id="purDate" type="date" value="'+esc(P.date)+'"/></div>'
       +'<div><span class="pz-lbl">Received by</span><input class="pz-in" id="purBy" value="'+esc(P.by)+'" placeholder="Staff name"/></div>'
@@ -87,7 +89,13 @@
   function hb(id,f){var el=document.getElementById(id);if(el)el.oninput=function(){P[f]=el.value;};}
   hb('purRef','ref');hb('purDate','date');hb('purBy','by');hb('purDescription','description');
   var piv=document.getElementById('purInputVat');if(piv)piv.oninput=function(){P.inputVat=piv.value;purchUpdatePrev();};
-  var ps=document.getElementById('purSupplier');if(ps)ps.onchange=function(){var row=purchaseSupplierById(ps.value);P.supplierId=row?row.id:'';P.supplier=row?row.name:'';P.advanceId='';renderPurchases();};
+  var ps=document.getElementById('purSupplier');
+  function pickSup(commit){var t=ps.value,q=t.trim().toLowerCase(),hit=supList.filter(function(x){return supLabel(x).toLowerCase()===q;});
+    if(!hit.length&&commit&&q){hit=supList.filter(function(x){return String(x.name||'').toLowerCase().indexOf(q)>=0;});if(hit.length>1)hit=[];}
+    var row=hit[0]||null;if(!row&&!commit)return;
+    if((row?row.id:'')!==P.supplierId){P.supplierId=row?row.id:'';P.supplier=row?row.name:'';P.advanceId='';renderPurchases();}else if(row)ps.value=supLabel(row);
+    if(!row&&q){var n=document.getElementById('purSupplier'),h=document.getElementById('purSupplierHint');if(n)n.value=t;if(h){h.style.color='#b42318';h.textContent='No single supplier matches "'+t.trim()+'". Pick one from the list, or use + New.';}}}
+  if(ps){ps.oninput=function(){pickSup(false);};ps.onchange=function(){pickSup(true);};}
   var pns=document.getElementById('purNewSupplier');if(pns)pns.onclick=function(){createPurchaseSupplier('').then(function(x){supplierMap[x.supplierId]=Object.assign({},supplierMap[x.supplierId]||{},{name:x.name,active:true});P.supplierId=x.supplierId;P.supplier=x.name;renderPurchases();}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not create supplier: '+((e&&e.message)||e));});};
   var psl=document.getElementById('purSupplierList');if(psl)psl.onclick=function(){showSupplierList();};
   root.querySelectorAll('[data-open-payables]').forEach(function(button){button.onclick=function(){window.location.href='books.html?tab=payables';};});
