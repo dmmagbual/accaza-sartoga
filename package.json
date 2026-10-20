@@ -56,7 +56,7 @@
     "test:purchase-quantity-correction": "node tests/purchase-quantity-correction-check.mjs",
     "test:books-payable-target": "node tests/books-payable-payment-target-check.mjs",
     "test:supplier-opening-balance": "node tests/supplier-opening-balance-check.mjs",
-    "test:supplier-master": "node tests/supplier-master-merge-check.cjs",
+    "test:supplier-master": "node tests/supplier-master-merge-check.cjs && node tests/supplier-master-details-check.mjs",
     "test:module-loader-self-heal": "node tests/module-loader-self-heal-check.mjs",
     "test:purchase-record-rules": "node tests/purchase-record-rules-check.mjs",
     "test:supplier-legacy-sweep-guard": "node tests/supplier-legacy-sweep-guard-check.mjs",

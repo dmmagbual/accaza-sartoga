@@ -96,6 +96,46 @@ async function requireActiveSupplier(db, supplierId, supplierName) {
   return {id, name, row};
 }
 
+/* One supplier per TIN + branch. The claim is taken inside a transaction before the
+   supplier record is written, so two saves a moment apart cannot both keep the same TIN.
+   A claim held by a merged record is released at once. A claim whose holder is missing or
+   does not carry that TIN may be a save still in flight, so it is taken over only after a
+   two-minute grace (an unfinished save); inside the grace the save is refused as busy.
+   Returns the conflicting supplier, or null once this supplier holds the claim. */
+const SUPPLIER_TAX_CLAIM_GRACE_MS = 120000;
+async function claimSupplierTaxId(db, key, supplierId, now) {
+  const ref = db.ref(`/supplierTaxIdIndex/${key}`);let stale = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const result = await ref.transaction((current) => (!current || current.supplierId === supplierId || (stale && current.supplierId === stale)) ? {supplierId, claimedAt: now} : undefined);
+    if (result.committed) return null;
+    const claim = result.snapshot.val() || {}, holder = financeText(claim.supplierId, 160), row = holder ? (await db.ref(`/suppliers/${holder}`).get()).val() : null;
+    if (row && !row.mergedInto && SupplierMaster.taxIdKey(row.tin, row.branchCode) === key) return {id: holder, name: financeText(row.name, 120)};
+    if (!(row && row.mergedInto) && now - Number(claim.claimedAt || 0) < SUPPLIER_TAX_CLAIM_GRACE_MS) throw new HttpsError("aborted", "Another save with this TIN is in progress. Wait a minute and try again.");
+    stale = holder;
+  }
+  throw new HttpsError("aborted", "The TIN check was busy. Try saving again.");
+}
+
+/* Validates the contact and tax details and returns the writes that store them, the
+   before/after changes for the audit trail, and the TIN claim to release afterwards. */
+async function supplierDetailWrites(db, supplierId, supplier, input, now) {
+  const norm = SupplierMaster.normalizeSupplierDetails(input);
+  if (norm.errors.length) throw new HttpsError("invalid-argument", norm.errors[0]);
+  const details = norm.details, before = SupplierMaster.pickDetails(supplier), changes = SupplierMaster.changedDetails(before, details), writes = {};
+  const newKey = SupplierMaster.taxIdKey(details.tin, details.branchCode), oldKey = SupplierMaster.taxIdKey(before.tin, before.branchCode);
+  if (newKey) {
+    const conflict = await claimSupplierTaxId(db, newKey, supplierId, now);
+    if (conflict) throw new HttpsError("already-exists", `TIN ${SupplierMaster.formatTin(details.tin, details.branchCode)} already belongs to ${conflict.name || conflict.id}. If they are the same supplier, merge the two records instead.`);
+  }
+  if (oldKey && oldKey !== newKey) {
+    const held = (await db.ref(`/supplierTaxIdIndex/${oldKey}`).get()).val();
+    if (held && held.supplierId === supplierId) writes[`supplierTaxIdIndex/${oldKey}`] = null;
+  }
+  SupplierMaster.DETAIL_FIELDS.forEach((field) => { writes[`suppliers/${supplierId}/${field}`] = details[field] || null; });
+  writes[`suppliers/${supplierId}/detailsUpdatedAt`] = now;
+  return {writes, changes, details};
+}
+
 exports.manageSupplier = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
@@ -140,11 +180,20 @@ exports.manageSupplier = onCall(
     }
     if(action==="create"){
       const name=financeText(data.name,120).trim().replace(/\s+/g," "),key=supplierNameKey(name);if(!name)throw new HttpsError("invalid-argument","Supplier name is required.");
+      // Field errors are refused before the name is claimed, so a typo never leaves a name claim behind.
+      if(data.details&&typeof data.details==="object"){const check=SupplierMaster.normalizeSupplierDetails(data.details);if(check.errors.length)throw new HttpsError("invalid-argument",check.errors[0]);}
       const indexId=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),indexRef=db.ref(`/supplierNameIndex/${indexId}`),claim=await indexRef.transaction(current=>current||{supplierId:`sup_${indexId}`,normalizedName:key,claimedAt:now});
       const supplierId=financeKey(claim.snapshot.val().supplierId,"Supplier ID"),existing=(await db.ref(`/suppliers/${supplierId}`).get()).val();
       if(existing){if(supplierNameKey(existing.name)!==key)throw new HttpsError("already-exists","A supplier-name index conflict requires management review.");return{supplierId,name:existing.name,duplicate:true};}
       const record={name,normalizedName:key,active:true,createdAt:now,createdBy:actor.uid,createdByRole:actor.role,updatedAt:now,schemaVersion:1};
-      await db.ref().update({[`suppliers/${supplierId}`]:record,[`operationalAudit/${now}_supplier_create_${supplierId}`]:operationalAuditRecord("create_supplier","supplier",supplierId,actor,{name})});return{supplierId,name,duplicate:false};
+      let detail=null;
+      if(data.details&&typeof data.details==="object"){try{detail=await supplierDetailWrites(db,supplierId,{},data.details,now);}catch(e){
+        /* A TIN conflict leaves no record, so give back the name claim taken above. */
+        await indexRef.transaction(current=>current&&current.supplierId===supplierId&&!current.redirectedFrom?null:current);throw e;}}
+      const writes={[`suppliers/${supplierId}`]:record};
+      if(detail)SupplierMaster.DETAIL_FIELDS.forEach((field)=>{if(detail.details[field])record[field]=detail.details[field];});
+      writes[`operationalAudit/${now}_supplier_create_${supplierId}`]=operationalAuditRecord("create_supplier","supplier",supplierId,actor,detail?{name,details:detail.details}:{name});
+      await db.ref().update(writes);return{supplierId,name,duplicate:false,details:detail?detail.details:null};
     }
     const supplierId=financeKey(data.supplierId,"Supplier ID"),supplier=(await db.ref(`/suppliers/${supplierId}`).get()).val();if(!supplier)throw new HttpsError("not-found","Supplier was not found.");
     if(action==="deactivate"){
@@ -189,6 +238,9 @@ exports.manageSupplier = onCall(
       const mergedKey=supplierNameKey(supplier.name),mergedIndexId=crypto.createHash("sha256").update(mergedKey).digest("hex").slice(0,32);
       /* The duplicate's spelling now resolves to the survivor instead of blocking reuse. */
       if(mergedKey)writes[`supplierNameIndex/${mergedIndexId}`]={supplierId:targetId,normalizedName:mergedKey,claimedAt:now,redirectedFrom:supplierId};
+      /* The merged record keeps its details for the audit trail but gives up its TIN claim, so
+         the survivor can be given that TIN. Details are not copied: the survivor's are checked by hand. */
+      const mergedTaxKey=SupplierMaster.taxIdKey(supplier.tin,supplier.branchCode);if(mergedTaxKey){const held=(await db.ref(`/supplierTaxIdIndex/${mergedTaxKey}`).get()).val();if(held&&held.supplierId===supplierId)writes[`supplierTaxIdIndex/${mergedTaxKey}`]=null;}
       Object.assign(writes,{[`suppliers/${supplierId}/mergedInto`]:targetId,[`suppliers/${supplierId}/mergedAt`]:now,[`suppliers/${supplierId}/mergedBy`]:actor.uid,[`suppliers/${supplierId}/active`]:false,
         [`operationalAudit/${now}_supplier_merge_${supplierId}`]:operationalAuditRecord("merge_supplier","supplier",supplierId,actor,{mergedInto:targetId,mergedName:financeText(supplier.name,120),survivingName:targetName,reason,repointed:{purchaseInvoices:hits.purchaseInvoices.length,payables:hits.payables.length,pettyCashVouchers:hits.pettyCashVouchers.length,stockReceipts:hits.stockReceipts.length,inventoryBatch:hits.inventoryBatch.length,inventorySku:hits.inventorySku.length,shiftAdvances:hits.shiftAdvances.length},accounting:"No cash, inventory quantity, subledger balance, Finance movement or Books journal amount changed. Historical supplier name snapshots and posted financial movements are untouched; only the live supplier link moved to the surviving master."})});
       await db.ref().update(writes);
@@ -204,13 +256,20 @@ exports.manageSupplier = onCall(
       const key=supplierNameKey(supplier.name),indexId=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),writes={[`suppliers/${supplierId}`]:null};
       const index=(await db.ref(`/supplierNameIndex/${indexId}`).get()).val();
       if(index&&financeText(index.supplierId,160)===supplierId)writes[`supplierNameIndex/${indexId}`]=null;
+      const taxKey=SupplierMaster.taxIdKey(supplier.tin,supplier.branchCode);if(taxKey){const held=(await db.ref(`/supplierTaxIdIndex/${taxKey}`).get()).val();if(held&&held.supplierId===supplierId)writes[`supplierTaxIdIndex/${taxKey}`]=null;}
       writes[`operationalAudit/${now}_supplier_delete_${supplierId}`]=operationalAuditRecord("delete_supplier","supplier",supplierId,actor,{name:financeText(supplier.name,120),reason,accounting:"The record had no purchases, payables, advances, stock receipts, batches or brands linked to it, so nothing financial or operational referenced it."});
       await db.ref().update(writes);
       return{supplierId,deleted:true};
     }
     const name=financeText(data.name,120).trim().replace(/\s+/g," "),key=supplierNameKey(name),oldKey=supplierNameKey(supplier.name);if(!name)throw new HttpsError("invalid-argument","Supplier name is required.");
-    const indexId=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),index=(await db.ref(`/supplierNameIndex/${indexId}`).get()).val();if(index&&index.supplierId!==supplierId)throw new HttpsError("already-exists","Another supplier already uses this name.");
-    const oldIndexId=crypto.createHash("sha256").update(oldKey).digest("hex").slice(0,32),writes={[`suppliers/${supplierId}/name`]:name,[`suppliers/${supplierId}/normalizedName`]:key,[`suppliers/${supplierId}/updatedAt`]:now,[`suppliers/${supplierId}/updatedBy`]:actor.uid,[`supplierNameIndex/${indexId}`]:{supplierId,normalizedName:key,claimedAt:now},[`operationalAudit/${now}_supplier_update_${supplierId}`]:operationalAuditRecord("update_supplier","supplier",supplierId,actor,{beforeName:supplier.name||"",afterName:name})};if(oldIndexId!==indexId)writes[`supplierNameIndex/${oldIndexId}`]=null;await db.ref().update(writes);return{supplierId,name,active:supplier.active!==false};
+    const indexId=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),index=(await db.ref(`/supplierNameIndex/${indexId}`).get()).val();if(index&&index.supplierId!==supplierId&&(await db.ref(`/suppliers/${financeKey(index.supplierId,"Supplier ID")}`).get()).exists())throw new HttpsError("already-exists","Another supplier already uses this name.");
+    const oldIndexId=crypto.createHash("sha256").update(oldKey).digest("hex").slice(0,32),writes={[`suppliers/${supplierId}/name`]:name,[`suppliers/${supplierId}/normalizedName`]:key,[`suppliers/${supplierId}/updatedAt`]:now,[`suppliers/${supplierId}/updatedBy`]:actor.uid,[`supplierNameIndex/${indexId}`]:{supplierId,normalizedName:key,claimedAt:now}};if(oldIndexId!==indexId)writes[`supplierNameIndex/${oldIndexId}`]=null;
+    /* A rename alone (older clients) leaves the contact and tax details untouched. */
+    const hasDetails=!!data.details&&typeof data.details==="object";if(hasDetails&&supplier.mergedInto)throw new HttpsError("failed-precondition","A merged supplier is kept for the audit trail. Edit the surviving supplier instead.");
+    const detail=hasDetails?await supplierDetailWrites(db,supplierId,supplier,data.details,now):null;
+    if(detail)Object.assign(writes,detail.writes);
+    writes[`operationalAudit/${now}_supplier_update_${supplierId}`]=operationalAuditRecord("update_supplier","supplier",supplierId,actor,Object.assign({beforeName:supplier.name||"",afterName:name},detail?{detailChanges:detail.changes}:{}));
+    await db.ref().update(writes);return{supplierId,name,active:supplier.active!==false,details:detail?detail.details:null};
   },
 );
 
