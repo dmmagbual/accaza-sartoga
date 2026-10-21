@@ -148,6 +148,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // replaced by (amount, control), and the float date-anchor guard now pins the fixed 26 Aug date
 // and the amount-only trigger return instead of the retired existingFloatEntry re-anchor. Same guards, stronger assertions; guard count stays at 577 and
 // executable checks stay at 33.
-if(guardDigest!=='8c60ac73a5c15df548195c7d26a3530858d68a9bb3f310af3d59dae6dec1b893')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (UAT environment switch, Books 158): the same guard in tests/static/30-server-release.mjs
+// now pins controlled-transactions.js?v=158 after the Books bump for the Firebase environment switch
+// in live-pos.mjs. Same guard, same meaning; guard count stays at 577 and executable checks stay at 33.
+if(guardDigest!=='4ad5dfb363466152059cb7638df6e270819bbc44e255e9630c3b3615f3d48dd1')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
