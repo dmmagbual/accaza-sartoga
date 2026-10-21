@@ -3,7 +3,10 @@
   function supLabel(x){var n=String(x.name||'').trim();return supDup[n.toLowerCase()]>1?n+' ('+String(x.id).slice(-4)+')':n;}
   var curSup=purchaseSupplierById(P.supplierId),supplierOpts=supList.map(function(x){return '<option value="'+esc(supLabel(x))+'"></option>';}).join('');
   var invList=ingsActive().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
-  function itemOpts(sel){return '<option value="">— pick item —</option>'+invList.map(function(i){var required=recipeUsesInventory(i.id),n=activeSkusFor(i.id).length;return '<option value="'+esc(i.id)+'"'+(i.id===sel?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+(required?(n?' · '+n+' approved brand'+(n===1?'':'s'):' · BRAND REQUIRED'):'')+'</option>';}).join('');}
+  function itemBaseLabel(i){var required=recipeUsesInventory(i.id),n=activeSkusFor(i.id).length;return String(i.name||'').trim()+' ('+(i.unit||'')+') · '+ingType(i)+(required?(n?' · '+n+' approved brand'+(n===1?'':'s'):' · BRAND REQUIRED'):'');}
+  var itemDup={};invList.forEach(function(i){var k=itemBaseLabel(i).toLowerCase();itemDup[k]=(itemDup[k]||0)+1;});
+  function itemLabel(i){var b=itemBaseLabel(i);return itemDup[b.toLowerCase()]>1?b+' · #'+String(i.id).slice(-4):b;}
+  var itemDatalist='<datalist id="purItemOpts">'+invList.map(function(i){return '<option value="'+esc(itemLabel(i))+'"></option>';}).join('')+'</datalist>';
   function unitOpts(list,sel){return list.map(function(u){return '<option'+(uNorm(u)===uNorm(sel)?' selected':'')+'>'+esc(u)+'</option>';}).join('');}
   var invTotal=0;
   var lineHtml=P.lines.map(function(ln,i){
@@ -30,7 +33,7 @@
       skuCell='<div class="purchase-sku-cell '+(newRecipeItem?'required':'optional')+'"><span class="pz-lbl">First approved brand '+(newRecipeItem?'<b>required</b>':'(optional)')+'</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="e.g. Dabba"/></div>';
     } else {
       var inv=inventoryMap[ln.ing]||{};
-      firstCell='<div style="flex:1;min-width:170px;"><span class="pz-lbl">Item</span><select class="pz-in" data-pf="ing" data-pi="'+i+'">'+itemOpts(ln.ing)+'</select></div>';
+      firstCell='<div style="flex:1;min-width:220px;"><span class="pz-lbl">Item</span><input class="pz-in" data-pitem="'+i+'" list="purItemOpts" autocomplete="off" placeholder="Type to search items" value="'+esc(ln.ing&&inventoryMap[ln.ing]?itemLabel(inventoryMap[ln.ing]):'')+'"/><small class="tiny" data-pitem-hint="'+i+'"></small></div>';
       var cu=ln.ing?compatUnits(inv):[inv.unit||''];
       unitCell=ln.ing?('<select class="pz-in" data-pf="recvUnit" data-pi="'+i+'" style="width:74px;">'+unitOpts(cu,ln.recvUnit||inv.unit)+'</select>'):'<span style="color:var(--tl);font-size:0.85rem;">—</span>';
       var required=ln.ing&&recipeUsesInventory(ln.ing), skus=ln.ing?activeSkusFor(ln.ing):[];
@@ -83,7 +86,7 @@
       +'<div><span class="pz-lbl">Received by</span><input class="pz-in" id="purBy" value="'+esc(P.by)+'" placeholder="Staff name"/></div>'
       +'<div style="grid-column:1/-1;"><span class="pz-lbl">Description / notes</span><input class="pz-in" id="purDescription" value="'+esc(P.description||'')+'" placeholder="Optional non-financial description"/></div>'
     +'</div></div>'+payBlock
-    +'<div class="purchase-section purchase-items"><div class="purchase-section-head"><span class="purchase-step">3</span><div><b>Items purchased</b><small>Add stock, immediate expenses, or equipment. Equipment creates linked fixed-asset cards after the purchase posts.</small></div><button class="pz-btn sec purchase-add-line" id="purAddLine">＋ Add item</button></div><div class="purchase-lines">'+lineHtml+'</div></div>'
+    +'<div class="purchase-section purchase-items"><div class="purchase-section-head"><span class="purchase-step">3</span><div><b>Items purchased</b><small>Add stock, immediate expenses, or equipment. Equipment creates linked fixed-asset cards after the purchase posts.</small></div><button class="pz-btn sec purchase-add-line" id="purAddLine">＋ Add item</button></div><div class="purchase-lines">'+lineHtml+'</div>'+itemDatalist+'</div>'
     +'<div class="purchase-sheet-footer"><div class="purchase-total" style="flex-direction:column;align-items:flex-start;gap:0.2rem;border:1px solid var(--cd);border-radius:8px;padding:0.5rem 0.7rem;background:#f8f5ef;"><span style="white-space:nowrap;">Input VAT · 1250 claimable ₱</span><input class="pz-in" id="purInputVat" type="number" min="0" step="0.01" value="'+esc(P.inputVat||'')+'" placeholder="0.00" style="width:130px;text-align:right;"/><small class="tiny" style="max-width:230px;">VAT-registered supplier invoices only. Line costs stay net; VAT adds to the invoice total.</small></div><div class="purchase-total"><span>Invoice total</span><strong id="purTotal">'+peso(invTotalGross)+'</strong><small>'+P.lines.length+' item line'+(P.lines.length===1?'':'s')+(inputVat>0?' · incl. VAT '+peso(inputVat):'')+'</small></div><div class="purchase-primary-actions"><button class="pz-btn sec" id="purReset">Clear draft</button><button class="pz-btn ok" id="purPost">Receive stock</button></div></div>'
     +'<div id="purMsg" class="purchase-message"></div><details class="purchase-record-tools"><summary>Purchase corrections and repair tools</summary><div><button class="pz-btn sec" id="purCorrectDetails">Correct purchase details</button><button class="pz-btn warn" id="purReversePurchase">Reverse &amp; re-enter</button><button class="pz-btn sec" id="purRepairPayable">Repair missing payable</button></div></details></div>'+purchaseHistoryHtml()+purchaseAdvanceRegisterHtml();
   function hb(id,f){var el=document.getElementById(id);if(el)el.oninput=function(){P[f]=el.value;};}
@@ -96,6 +99,13 @@
     if((row?row.id:'')!==P.supplierId){P.supplierId=row?row.id:'';P.supplier=row?row.name:'';P.advanceId='';renderPurchases();}else if(row)ps.value=supLabel(row);
     if(!row&&q){var n=document.getElementById('purSupplier'),h=document.getElementById('purSupplierHint');if(n)n.value=t;if(h){h.style.color='#b42318';h.textContent='No single supplier matches "'+t.trim()+'". Pick one from the list, or use + New.';}}}
   if(ps){ps.oninput=function(){pickSup(false);};ps.onchange=function(){pickSup(true);};}
+  root.querySelectorAll('[data-pitem]').forEach(function(el){var i=Number(el.getAttribute('data-pitem'));
+    function pickItem(commit){var ln=P.lines[i];if(!ln)return;var t=el.value,q=t.trim().toLowerCase(),hit=q?invList.filter(function(x){return itemLabel(x).toLowerCase()===q;}):[];
+      if(!hit.length&&commit&&q){hit=invList.filter(function(x){return String(x.name||'').trim().toLowerCase()===q;});if(!hit.length)hit=invList.filter(function(x){return String(x.name||'').toLowerCase().indexOf(q)>=0;});if(hit.length>1)hit=[];}
+      var row=hit[0]||null;if(!row&&!commit)return;
+      var id=row?row.id:'';if(id!==ln.ing){ln.ing=id;ln.recvUnit=row?(row.unit||''):'';ln.skuId='';renderPurchases();}else if(row)el.value=itemLabel(row);
+      if(!row&&q){var n=root.querySelector('[data-pitem="'+i+'"]'),h=root.querySelector('[data-pitem-hint="'+i+'"]');if(n)n.value=t;if(h){h.style.color='#b42318';h.textContent='No single item matches "'+t.trim()+'". Pick one from the list, or use + new item.';}}}
+    el.onfocus=function(){try{el.select();}catch(e){}};el.oninput=function(){pickItem(false);};el.onchange=function(){pickItem(true);};});
   var pns=document.getElementById('purNewSupplier');if(pns)pns.onclick=function(){createPurchaseSupplier('').then(function(x){supplierMap[x.supplierId]=Object.assign({},supplierMap[x.supplierId]||{},{name:x.name,active:true});P.supplierId=x.supplierId;P.supplier=x.name;renderPurchases();}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not create supplier: '+((e&&e.message)||e));});};
   var psl=document.getElementById('purSupplierList');if(psl)psl.onclick=function(){showSupplierList();};
   root.querySelectorAll('[data-open-payables]').forEach(function(button){button.onclick=function(){window.location.href='books.html?tab=payables';};});
