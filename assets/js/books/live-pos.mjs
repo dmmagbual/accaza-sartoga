@@ -3,12 +3,14 @@ import {getDatabase, ref, get, set, push, remove, onDisconnect, serverTimestamp,
 import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import {initializeAccazaAppCheck} from "../shared/firebase-app-check.mjs";
+import {accazaFirebaseConfig, markUatPage} from "../shared/firebase-env.mjs";
 import {startPortalPresence, runningBuild} from "../shared/portal-presence.mjs?v=152";
 import {startPortalIdle} from "../shared/portal-idle.mjs";
 let stopPresence=null,idleController=null,booksShift=null;
 function endPresence(signedOut){ const stop=stopPresence;stopPresence=null;return stop?stop({signedOut:signedOut===true}):Promise.resolve(); }
 function endIdle(){if(idleController){idleController.stop();idleController=null;}}
-const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
+const cfg=accazaFirebaseConfig(globalThis.location&&globalThis.location.hostname);
+markUatPage('Finance Books');
 function setPill(text,cls){ const el=document.getElementById("liveStatus"); if(el){ el.textContent=text; el.className="live-pill "+cls; } }
 let app,db,auth;
 // Oct 2026: the public site signs every visitor in anonymously, and Books shares that session because it
