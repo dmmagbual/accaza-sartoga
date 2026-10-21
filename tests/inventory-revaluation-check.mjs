@@ -34,7 +34,7 @@ check(delta(150, 4.00, 5.00) === 150 && delta(400, 4.00, 5.00) === 400,
 
 /* ---------- server contract ---------- */
 const inv = read('src/functions/50-inventory.js');
-must(inv, '"purchase_quantity_correction", "revaluation"', 'revaluation must be a recognised inventory movement type.');
+must(inv, '"purchase_cost_correction", "revaluation"', 'revaluation must be a recognised inventory movement type.');
 must(inv, '"usage_reversal", "revaluation"', 'revaluation must post to Books.');
 must(inv, 'type === "revaluation"', 'the movement builder must special-case a revaluation.');
 must(inv, 'type === "revaluation" ? money(before * (requestedCost - costBefore))',
