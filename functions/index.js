@@ -9845,6 +9845,14 @@ async function applyInventoryMovement(db, raw, actor) {
   }
   const now = Date.now();
   if (Number(raw.occurredAt) && Number(raw.occurredAt) > now + 2 * 86400000) throw new HttpsError("invalid-argument", "An inventory movement can\u2019t be dated in the future.");
+  /* Every check the Finance Books posting makes runs BEFORE stock moves. The offset-account and closed-month
+     checks used to run only after the stock transaction, so a refused waste/adjustment left stock changed with
+     no journal, and a retry re-posted the same stored movement and failed again (found in UAT, 21 Oct 2026).
+     The validated values are the exact ones the stored movement keeps (same slicing as the movement record). */
+  if (INVENTORY_BOOK_POSTING_TYPES.has(type)) {
+    inventoryAdjustmentOffset(type, {offsetAccount: String(raw.offsetAccount || "").slice(0, 4), adjustmentNature: String(raw.adjustmentNature || "").slice(0, 80), note: String(raw.note || "").slice(0, 500)});
+    await assertAccountingPeriodOpen(db, Number(raw.occurredAt || now), `recording this ${type.replace(/_/g, " ")}`);
+  }
   let duplicate = false, insufficient = false, insufficientValue = false, nothingToRevalue = false;
   const accountingRef = db.ref(`/inventoryAccounting/${itemId}`);
   const projectedSnap = await db.ref(`/inventoryMovements/${movementId}`).get();
