@@ -70,12 +70,12 @@ try {
   if (-not $SkipFunctions) {
     $fnList = (node tools/uat/uat-function-list.mjs)
     if ($LASTEXITCODE -ne 0 -or -not $fnList) { throw 'Could not list functions for UAT.' }
-    $fnTargets = $fnList -split ','
+    $fnTargets = @($fnList -split ',')
     if ($Functions) {
-      $wanted = $Functions | ForEach-Object { $_ -split ',' } | Where-Object { $_ } | ForEach-Object { "functions:$($_.Trim())" }
+      $wanted = @($Functions | ForEach-Object { $_ -split ',' } | Where-Object { $_ } | ForEach-Object { "functions:$($_.Trim())" })
       $unknown = $wanted | Where-Object { $fnTargets -notcontains $_ }
       if ($unknown) { throw "Not deployable to UAT (unknown or scheduled): $($unknown -join ', ')" }
-      $fnTargets = $wanted
+      $fnTargets = @($wanted)
     }
   }
 

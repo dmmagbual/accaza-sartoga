@@ -1,7 +1,7 @@
 const INVENTORY_MOVEMENT_TYPES = new Set([
   "opening_balance", "purchase", "sale_usage", "staff_use", "rnd_testing",
   "waste", "adjustment", "manual_edit", "usage_reversal",
-  "void_reversal", "refund_reversal", "purchase_reversal", "purchase_quantity_correction", "revaluation",
+  "void_reversal", "refund_reversal", "purchase_reversal", "purchase_quantity_correction", "purchase_cost_correction", "revaluation",
   "production", "production_reversal",
 ]);
 function qty6(value) {
@@ -211,11 +211,20 @@ async function applyInventoryMovement(db, raw, actor) {
   }
   const qty = qty6(raw.qty);
   const requestedCost = qty6(raw.unitCost);
-  const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal" || type === "purchase_quantity_correction" || type === "revaluation";
+  const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal" || type === "purchase_quantity_correction" || type === "purchase_cost_correction" || type === "revaluation";
   if (type === "purchase" && qty > 0 && !(requestedCost > 0)) throw new HttpsError("invalid-argument", "A received purchase must have a unit cost greater than zero.");
   /* A batch card states what the bake it produced is worth, so its movements carry their own unit
      cost the way a purchase does: without it the pastry leg would move the item's old cost. */
   if ((type === "production" || type === "production_reversal") && qty !== 0 && !(requestedCost > 0)) throw new HttpsError("invalid-argument", "A batch card movement must carry a unit cost greater than zero.");
+  /* Purchase Edit: a corrected purchase amount. Only the share of the delivery still on hand
+     restates the stock value; the rest of the difference was already used and is charged to the
+     item's cost account by the purchase correction journal (this movement posts no journal itself). */
+  const costCorrectionValue = type === "purchase_cost_correction" ? Math.round((Number(raw.valueDelta) || 0) * 100) / 100 : 0, costCorrectionLineQty = type === "purchase_cost_correction" ? qty6(raw.lineQty) : 0;
+  if (type === "purchase_cost_correction") {
+    if (qty !== 0) throw new HttpsError("invalid-argument", "A purchase cost correction changes value only. Correct quantity separately.");
+    if (!Number.isFinite(costCorrectionValue) || costCorrectionValue === 0 || Math.abs(costCorrectionValue) > 100000000) throw new HttpsError("invalid-argument", "The purchase cost correction amount is invalid.");
+    if (!(costCorrectionLineQty > 0)) throw new HttpsError("invalid-argument", "The corrected purchase line quantity is required.");
+  }
   if (type === "revaluation") {
     if (qty !== 0) throw new HttpsError("invalid-argument", "A revaluation changes the unit cost only. Use a stock adjustment to move quantity.");
     if (!(requestedCost >= 0)) throw new HttpsError("invalid-argument", "Enter the corrected unit cost.");
@@ -272,8 +281,14 @@ async function applyInventoryMovement(db, raw, actor) {
     const after = qty6(before + qty);
     if (["purchase_reversal", "purchase_quantity_correction"].includes(type) && after < 0) {insufficient = true; return;}
     if (type === "revaluation" && !(before > 0)) {nothingToRevalue = true; return;}
-    let costAfter = costBefore;
-    if (type === "purchase" && qty > 0 && requestedCost >= 0) {
+    let costAfter = costBefore, costCorrectionStock = 0;
+    if (type === "purchase_cost_correction") {
+      const onHand = Math.max(0, Math.min(before, costCorrectionLineQty));
+      costCorrectionStock = before > 0 ? Math.round(costCorrectionValue * (onHand / costCorrectionLineQty) * 100) / 100 : 0;
+      const valueAfter = (before * costBefore) + costCorrectionStock;
+      if (before > 0 && valueAfter < -0.000001) {insufficientValue = true; return;}
+      costAfter = before > 0 ? qty6(valueAfter / before) : costBefore;
+    } else if (type === "purchase" && qty > 0 && requestedCost >= 0) {
       const denominator = before + qty;
       // A negative/zero opening balance represents prior uncosted consumption.
       // Blending it can create a nonsensical negative WAC, so the first receipt
@@ -293,10 +308,11 @@ async function applyInventoryMovement(db, raw, actor) {
     const movement = {
       id: movementId, itemId,
       itemName: String(item.name || itemId).slice(0, 160), unit: String(item.unit || "").slice(0, 40),
-      type, qty, unitCost: (type === "revaluation" || ["purchase", "purchase_reversal", "production", "production_reversal"].includes(type)) ? requestedCost : costBefore,
+      type, qty, unitCost: type === "purchase_cost_correction" ? costAfter : (type === "revaluation" || ["purchase", "purchase_reversal", "production", "production_reversal"].includes(type)) ? requestedCost : costBefore,
       /* A revaluation moves no quantity, so qty * cost is zero and nothing would reach the ledger.
          Its value is the restatement of the stock still on hand: qty on hand * (new cost - old cost). */
-      totalCost: type === "purchase_quantity_correction" ? 0 : type === "revaluation" ? money(before * (requestedCost - costBefore)) : money(qty * (["purchase", "purchase_reversal", "production", "production_reversal"].includes(type) ? requestedCost : costBefore)),
+      ...(type === "purchase_cost_correction" ? {valueDelta: costCorrectionValue, stockValueDelta: costCorrectionStock, usedValueDelta: Math.round((costCorrectionValue - costCorrectionStock) * 100) / 100, lineQty: costCorrectionLineQty} : {}),
+      totalCost: type === "purchase_cost_correction" ? costCorrectionStock : type === "purchase_quantity_correction" ? 0 : type === "revaluation" ? money(before * (requestedCost - costBefore)) : money(qty * (["purchase", "purchase_reversal", "production", "production_reversal"].includes(type) ? requestedCost : costBefore)),
       balanceBefore: before, balanceAfter: after, costBefore, costAfter,
       sourceType: String(raw.sourceType || type).slice(0, 80),
       sourceId: String(raw.sourceId || "").slice(0, 160),

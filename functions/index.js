@@ -7998,7 +7998,7 @@ exports.managePurchaseCorrection = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["purchases"]), data = request.data || {}, action = financeText(data.action, 30);
     const requestedId = financeText(data.invoiceId, 160), requestedRef = financeText(data.invoiceRef, 120);
-    const correctionLockActions=new Set(["correct_accounts","correct_quantity","correct_reversal_date","reverse"]);if(correctionLockActions.has(action)&&!requestedId)throw new HttpsError("invalid-argument","Refresh the purchase and submit its record ID before correcting it.");const correctionLock=correctionLockActions.has(action)?await claimPurchaseCorrection(db,financeKey(requestedId,"Purchase invoice ID"),actor):null;
+    const correctionLockActions=new Set(["correct_accounts","correct_quantity","correct_reversal_date","edit_lines","reverse"]);if(correctionLockActions.has(action)&&!requestedId)throw new HttpsError("invalid-argument","Refresh the purchase and submit its record ID before correcting it.");const correctionLock=correctionLockActions.has(action)?await claimPurchaseCorrection(db,financeKey(requestedId,"Purchase invoice ID"),actor):null;
     try{
     // By ID only the invoice is read; a lookup by reference has to compare every invoice.
     const requestedRow = requestedId && TrackedRead.trackable(requestedId) ? (await db.ref(`/purchaseInvoices/${requestedId}`).get()).val() : null;
@@ -8039,6 +8039,8 @@ exports.managePurchaseCorrection = onCall(
     }
     if (invoice.reversed === true) throw new HttpsError("failed-precondition", "This purchase has already been reversed.");
     const now = Date.now(), reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
+    if (action === "edit_lines") return await editPurchaseLines(db, actor, invoiceId, invoice, data, reason, now);
+    if (invoice.pendingEdit && ["correct_accounts","correct_quantity","reverse"].includes(action)) throw new HttpsError("failed-precondition", "An edit of this purchase did not finish. Open Edit and save the same change again before any other correction or Void.");
     if (action === "correct_accounts") {
       if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can correct posted purchase accounts.");
       const date=financeDate(invoice.date),expectedRevision=Math.max(0,Math.trunc(Number(data.expectedRevision)||0)),currentRevision=Math.max(0,Math.trunc(Number(invoice.accountCorrectionRevision)||0)),changes=Array.isArray(data.changes)?data.changes:[];
@@ -8053,7 +8055,7 @@ exports.managePurchaseCorrection = onCall(
       for(const change of changes){
         const lineIndex=Math.trunc(Number(change&&change.lineIndex)),line=lines[lineIndex],target=financeText(change&&change.accountCode,4);
         if(!Number.isInteger(lineIndex)||lineIndex<0||!line||seen.has(lineIndex)||line.lineType!=="expense")throw new HttpsError("invalid-argument","Only distinct purchase expense lines can be account-corrected here.");
-        seen.add(lineIndex);const oldCode=financeText(line.expenseAccount,4),amount=Financial.money(line.total),account=chart[target];
+        seen.add(lineIndex);if(Math.trunc(Number(line.editRevision||0))>0)throw new HttpsError("failed-precondition",`Line ${lineIndex+1} was changed with Edit, so its account can't be recoded here. Void the purchase and enter it again with the right account.`);const oldCode=financeText(line.expenseAccount,4),amount=Financial.money(line.total),account=chart[target];
         if(!/^6\d{3}$/.test(oldCode)||oldCode==="6110"||!(amount>0))throw new HttpsError("failed-precondition","A purchase expense line has invalid account coding or amount. Review the source purchase first.");
         if(oldCode!==target&&(!account||account.active===false||String(account.type||"").toLowerCase()!=="expense"||target==="6110"))throw new HttpsError("invalid-argument","Choose an active 6000-series operating expense account. Cash Short / Over is controlled separately.");
         before[lineIndex]={accountCode:oldCode,amount};after[lineIndex]={accountCode:target,amount};
@@ -8123,7 +8125,13 @@ exports.managePurchaseCorrection = onCall(
     if (!duplicateCleanup&&payable&&(invoice.payMode==="account"||invoice.payMode==="pending")&&Financial.payableHasSettlement(payable)) throw new HttpsError("failed-precondition",`This supplier bill already has ${Financial.payableSettledAmount(payable).toFixed(2)} paid against it. Reverse the payment first (Finance Books → Payables → Show settled → Reverse payment), then reverse or amend this purchase. A payment taken from Undeposited Collection cannot be reversed there yet; ask the owner.`);
     if (invoice.payMode==="owner_funded"&&financeText(invoice.ownerReimbursementId,160)) {const earlyReimbursement=(await db.ref(`/payables/${financeText(invoice.ownerReimbursementId,160)}`).get()).val();if (Financial.payableHasSettlement(earlyReimbursement)) throw new HttpsError("failed-precondition",`The owner/partner reimbursement for this purchase already has ${Financial.payableSettledAmount(earlyReimbursement).toFixed(2)} settled. Reverse that settlement first, then reverse or amend this purchase.`);}
     const paidAccountId=invoice.payMode==="paid"?financeText(invoice.accountId,120):"",paidSpecial=paidAccountId==="cash_on_hand"||paidAccountId==="undeposited"||paidAccountId==="register",paidCashAccount=invoice.payMode==="paid"&&!paidSpecial?accountIdFor((await db.ref("/cfAccounts").get()).val()||{},paidAccountId):paidAccountId;if(invoice.payMode==="paid"&&paidCashAccount==="undeposited")await claimCustodyPool(db,`purchase_cash_reversal_${invoiceId}`,custodyClaims);
-    for (const movementId of movementIds) {const movement=(await db.ref(`/inventoryMovements/${financeKey(movementId,"Movement ID")}`).get()).val();if (!movement) throw new HttpsError("failed-precondition", "An original inventory movement is missing. Run inventory review before reversal.");const accounting=(await db.ref(`/inventoryAccounting/${movement.itemId}`).get()).val()||{},reversalId=`purchase_reverse_${invoiceId}_${movement.itemId}`,already=accounting.applied&&accounting.applied[reversalId];if (!already&&qty6(accounting.balance)+0.000001<qty6(movement.qty)) throw new HttpsError("failed-precondition", `Not enough remaining stock to reverse ${movement.itemName||movement.itemId}.`);if (!already&&qty6(accounting.balance)>qty6(movement.qty)&&((qty6(accounting.balance)*qty6(accounting.unitCost))-(qty6(movement.qty)*qty6(movement.unitCost)))<-.000001) throw new HttpsError("failed-precondition", `The remaining stock value for ${movement.itemName||movement.itemId} cannot support this reversal.`);originals.push(movement);}
+    /* Purchase Edit: a purchase is reversed as it stands now (current line quantities and amounts, which
+       include any Edit or quantity correction), not at the originally received figures. A price edit that was partly charged to cost of sales
+       cannot be voided cleanly, because that share is no longer in stock: correct it with Edit instead. */
+    const currentStock={};
+    if(Math.abs(Financial.money(invoice.editUsedValueTotal))>=0.005)throw new HttpsError("failed-precondition","This purchase had a price correction partly charged to cost of sales, so it cannot be voided. Use Edit to correct it instead.");
+    (Array.isArray(invoice.lines)?invoice.lines:[]).forEach((line)=>{if(!line||line.lineType==="expense"||line.lineType==="fixed_asset"||!line.itemId||!(qty6(line.qty)>0))return;const row=currentStock[line.itemId]||(currentStock[line.itemId]={qty:0,value:0});row.qty=qty6(row.qty+qty6(line.qty));row.value=Financial.money(row.value+Financial.money(line.total));});
+    for (const movementId of movementIds) {let movement=(await db.ref(`/inventoryMovements/${financeKey(movementId,"Movement ID")}`).get()).val();if (!movement) throw new HttpsError("failed-precondition", "An original inventory movement is missing. Run inventory review before reversal.");if(currentStock[movement.itemId]&&currentStock[movement.itemId].qty>0)movement=Object.assign({},movement,{qty:currentStock[movement.itemId].qty,unitCost:qty6(currentStock[movement.itemId].value/currentStock[movement.itemId].qty)});const accounting=(await db.ref(`/inventoryAccounting/${movement.itemId}`).get()).val()||{},reversalId=`purchase_reverse_${invoiceId}_${movement.itemId}`,already=accounting.applied&&accounting.applied[reversalId];if (!already&&qty6(accounting.balance)+0.000001<qty6(movement.qty)) throw new HttpsError("failed-precondition", `Not enough remaining stock to reverse ${movement.itemName||movement.itemId}.`);if (!already&&qty6(accounting.balance)>qty6(movement.qty)&&((qty6(accounting.balance)*qty6(accounting.unitCost))-(qty6(movement.qty)*qty6(movement.unitCost)))<-.000001) throw new HttpsError("failed-precondition", `The remaining stock value for ${movement.itemName||movement.itemId} cannot support this reversal.`);originals.push(movement);}
     for (const movement of originals) await applyInventoryMovement(db,{movementId:`purchase_reverse_${invoiceId}_${movement.itemId}`,itemId:movement.itemId,type:"purchase_reversal",qty:-qty6(movement.qty),unitCost:qty6(movement.unitCost),sourceType:"purchase-invoice-reversal",sourceId:invoiceId,sourceLine:movement.sourceLine||movement.itemId,note:`Reverse purchase ${invoice.ref||invoiceId}: ${reason}`,reversalOf:movement.id,actorName:actor.role,occurredAt:reversalTimestamp},actor);
     const writes = Object.assign({},approval.usedWrites,{[`purchaseInvoices/${invoiceId}/reversed`]:true,[`purchaseInvoices/${invoiceId}/reversedAt`]:now,[`purchaseInvoices/${invoiceId}/reversalAccountingDate`]:reversalDate,[`purchaseInvoices/${invoiceId}/reversedBy`]:actor.uid,[`purchaseInvoices/${invoiceId}/reversalReason`]:reason,[`operationalAudit/${now}_purchase_reverse_${invoiceId}`]:{action:duplicateCleanup?"reverse_duplicate_purchase":"reverse_purchase",sourceType:"purchaseInvoice",sourceId:invoiceId,keptPurchaseId:duplicateCleanup?keepInvoiceId:"",amount:safeInvoice.total,reason,accountingDate:reversalDate,approvalId:approval.id,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}});if (duplicateCleanup&&payable) {if (payable.status==="open") {writes[`payables/${invoice.payableId}/purchaseInvoiceId`]=keepInvoiceId;writes[`purchaseInvoices/${keepInvoiceId}/payableId`]=invoice.payableId;} else {writes[`purchaseInvoices/${keepInvoiceId}/payableId`]=null;writes[`purchaseInvoices/${keepInvoiceId}/payableReconciledAt`]=null;}}(invoice.receiptIds||[]).forEach((id)=>{writes[`stockReceipts/${id}/reversed`]=true;writes[`stockReceipts/${id}/reversedAt`]=now;writes[`stockReceipts/${id}/reversalAccountingDate`]=reversalDate;});
     Object.keys(linkedAssets).forEach((id)=>{writes[`fixedAssets/${id}/status`]="acquisition_reversed";writes[`fixedAssets/${id}/reversedAt`]=now;writes[`fixedAssets/${id}/reversalReason`]=reason;});
@@ -8865,6 +8873,155 @@ exports.manageOrderService = onCall(
   },
 );
 
+// Purchase Edit (corrections only) — Danilo, 21 Oct 2026: "if you edit the amount then change the
+// amount, if you edit the quantity then change the quantity." A Super Admin corrects the quantity
+// and/or amount of the lines of a posted purchase (and its input VAT) while the purchase month is
+// open. Nothing posted is deleted or renumbered: stock receives correction movements, the unpaid
+// bill or the bank payment is adjusted, and ONE correction journal dated on the purchase date
+// carries only the difference. The purchase keeps its PUR number and an edit history.
+// Called from managePurchaseCorrection (action "edit_lines") under the purchase correction lock.
+// Every check runs BEFORE any stock moves, so a refused edit changes nothing.
+async function editPurchaseLines(db, actor, invoiceId, invoice, data, reason, now) {
+  if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can edit a posted purchase.");
+  if (invoice.reversed === true) throw new HttpsError("failed-precondition", "This purchase is voided. Enter a new purchase instead.");
+  const date = financeDate(invoice.date), accountingAt = Date.parse(`${date}T00:00:00+08:00`) || now;
+  await assertAccountingPeriodOpen(db, date, "editing this purchase");
+  const revision = Math.trunc(Number(invoice.editRevision || 0)), nextRevision = revision + 1;
+  if (Math.trunc(Number(data.expectedRevision)) !== revision || Financial.money(data.expectedTotal) !== Financial.money(invoice.total)) throw new HttpsError("failed-precondition", "This purchase changed after you opened it. Refresh and edit it again.");
+  const lines = Array.isArray(invoice.lines) ? invoice.lines : [], next = lines.map((line) => Object.assign({}, line)), changes = [], seen = new Set();
+  for (const row of (Array.isArray(data.lines) ? data.lines : []).slice(0, 200)) {
+    const index = Math.trunc(Number(row && row.lineIndex)), line = lines[index];
+    if (!Number.isInteger(index) || index < 0 || !line || seen.has(index)) throw new HttpsError("invalid-argument", "Each purchase line can be corrected once per edit. Refresh and try again.");
+    seen.add(index);
+    const oldQty = qty6(line.qty), oldTotal = Financial.money(line.total), newQty = qty6(row.qty), newTotal = Financial.money(row.total);
+    // The form states what it saw; a line corrected elsewhere since then must not be silently overwritten.
+    if (qty6(row.expectedQty) !== oldQty || Financial.money(row.expectedTotal) !== oldTotal) throw new HttpsError("failed-precondition", `Line ${index + 1} changed after you opened the form. Refresh and edit it again.`);
+    if (newQty === oldQty && newTotal === oldTotal) continue;
+    if (line.lineType === "fixed_asset") throw new HttpsError("failed-precondition", "Equipment lines are linked to fixed-asset cards. Void the purchase and enter it again to change them.");
+    if (!(newQty > 0) || newQty > 100000000) throw new HttpsError("invalid-argument", "Enter a quantity greater than zero.");
+    if (!(newTotal >= 0) || newTotal > 100000000) throw new HttpsError("invalid-argument", "Enter a valid line amount.");
+    const stock = line.lineType !== "expense";
+    if (stock && !(newTotal > 0)) throw new HttpsError("invalid-argument", "A stock line must have an amount greater than zero.");
+    if (stock && (!line.itemId || !line.receiptId)) throw new HttpsError("failed-precondition", "This stock line has no linked stock receipt. Repair the purchase receipt before editing it.");
+    next[index] = Object.assign(next[index], {qty: newQty, total: newTotal, unitCost: stock ? qty6(newTotal / newQty) : Math.round((newTotal / newQty) * 100000) / 100000, editRevision: nextRevision});
+    changes.push({index, line, stock, oldQty, newQty, oldTotal, newTotal});
+  }
+  const oldVat = Financial.money(invoice.inputVat), vatGiven = data.inputVat !== undefined && data.inputVat !== null && data.inputVat !== "", newVat = vatGiven ? Financial.money(data.inputVat) : oldVat;
+  if (!(newVat >= 0)) throw new HttpsError("invalid-argument", "Enter a valid input VAT amount.");
+  if (!changes.length && newVat === oldVat) throw new HttpsError("invalid-argument", "Nothing was changed.");
+  const linesNet = Financial.money(next.reduce((sum, line) => sum + Financial.money(line.total), 0));
+  if (newVat > 0 && newVat >= linesNet) throw new HttpsError("invalid-argument", "Input VAT must be less than the line amounts. Enter line costs net of VAT.");
+  const oldTotal = Financial.money(invoice.total), lineDelta = Financial.money(changes.reduce((sum, c) => sum + c.newTotal - c.oldTotal, 0));
+  const newTotal = Financial.money(oldTotal + lineDelta + (newVat - oldVat)), totalDelta = Financial.money(newTotal - oldTotal);
+  if (!(newTotal > 0)) throw new HttpsError("invalid-argument", "The purchase total must stay above zero.");
+  const after = Object.assign({}, invoice, {lines: next, total: newTotal, inputVat: newVat});
+  // The journal accounts are resolved now (this throws on bad coding) so nothing moves before they are known.
+  const [oldGl, newGl] = [await purchaseInventoryLines(db, invoice, false), await purchaseInventoryLines(db, after, false)];
+
+  const payMode = String(invoice.payMode || ""), writes = {}, payableClaims = [];
+  let fundingAccount = "", payableId = "", cashAccountId = "";
+  try {
+    // Funding side: the same bill, or the same bank / e-wallet account the purchase was paid from.
+    if (payMode === "account" || payMode === "pending") {
+      payableId = financeText(invoice.payableId, 160);
+      if (!payableId) throw new HttpsError("failed-precondition", "This purchase has no linked supplier bill. Use Purchase corrections → Repair payable first, then edit.");
+      const claim = await claimPayables(db, [payableId], `purchase_edit_${invoiceId}_r${nextRevision}`, actor, payableClaims), payable = claim.doc(payableId);
+      if (!payable || payable.status !== "open") throw new HttpsError("failed-precondition", "The supplier bill for this purchase is not open, so it can't be edited. Open it in Finance Books → Payables.");
+      if (Financial.payableHasSettlement(payable)) throw new HttpsError("failed-precondition", `This supplier bill already has ${Financial.payableSettledAmount(payable).toFixed(2)} paid against it. Reverse the payment first (Finance Books → Payables → Show settled → Reverse payment), then edit the purchase.`);
+      fundingAccount = payable.provisional === true ? `liability:grni:${payableId}` : `liability:payable:${payableId}`;
+      if (totalDelta !== 0) Object.assign(writes, {[`payables/${payableId}/amount`]: newTotal, [`payables/${payableId}/lastEditAt`]: now, [`payables/${payableId}/lastEditRevision`]: nextRevision});
+      Object.assign(writes, {[`payables/${payableId}/rev`]: claim.nextRev(payableId)}, claim.releaseWrites);
+    } else if (payMode === "paid") {
+      const paymentId = financeText(invoice.paymentMovementId, 160) || `purchase_cash_${invoiceId}`, payment = (await db.ref(`/financialMovements/${financeKey(paymentId, "Movement ID")}`).get()).val();
+      const cashLine = payment && payment.sourceId === invoiceId && Array.isArray(payment.lines) ? payment.lines.find((line) => /^asset:cash_account:/.test(String(line && line.account || "")) && Number(line.credit) > 0) : null;
+      if (!cashLine) throw new HttpsError("failed-precondition", "Only purchases paid from a bank or e-wallet account can be edited. A purchase paid from Cash on Hand or Undeposited Collection must be voided and entered again.");
+      fundingAccount = String(cashLine.account); cashAccountId = fundingAccount.slice("asset:cash_account:".length);
+    } else {
+      throw new HttpsError("failed-precondition", "Purchases paid by a supplier advance or personally by the owner can't be edited yet. Void the purchase and enter it again.");
+    }
+
+    // Stock pre-checks: item, receipt, batch and account mapping exist; the item's stock can absorb
+    // the quantity and value change. The on-hand share of a price change is capped at the item's
+    // total quantity on THIS purchase (all its lines), split pro rata per line.
+    const stockChanges = changes.filter((c) => c.stock), batches = stockChanges.length ? ((await db.ref("/inventoryBatch").orderByChild("invoiceId").equalTo(invoiceId).get()).val() || {}) : {}, items = {};
+    for (const change of stockChanges) {
+      const {line} = change, itemId = financeKey(line.itemId, "Inventory item");
+      if (!items[itemId]) {
+        const [itemSnap, poolSnap] = await Promise.all([db.ref(`/inventory/${itemId}`).get(), db.ref(`/inventoryAccounting/${itemId}`).get()]), item = itemSnap.val();
+        if (!item) throw new HttpsError("failed-precondition", `Stock item ${line.itemName || itemId} no longer exists.`);
+        const pool = poolSnap.val() || {}, invoiceQty = qty6(next.filter((l) => l && l.itemId === line.itemId && l.lineType !== "expense" && l.lineType !== "fixed_asset").reduce((sum, l) => sum + qty6(l.qty), 0));
+        items[itemId] = {item, mapping: BooksBridge.itemAccounts(item), balance: qty6(pool.balance !== undefined ? pool.balance : item.stock), cost: qty6(pool.unitCost || item.cost), invoiceQty, qtyDelta: 0, stockValue: 0};
+      }
+      const receiptId = financeKey(line.receiptId, "Stock receipt ID"), receipt = (await db.ref(`/stockReceipts/${receiptId}`).get()).val(), batchId = Object.keys(batches).find((id) => batches[id] && batches[id].receiptId === receiptId);
+      if (!receipt || receipt.invoiceId !== invoiceId || financeText(receipt.ing, 160) !== financeText(line.itemId, 160)) throw new HttpsError("failed-precondition", `The stock receipt for line ${change.index + 1} is missing or does not match. Repair the purchase receipt before editing.`);
+      if (!batchId) throw new HttpsError("failed-precondition", `The stock batch for line ${change.index + 1} is missing. Repair the purchase receipt before editing.`);
+      if (change.newTotal !== change.oldTotal && (!items[itemId].mapping.inventory || !items[itemId].mapping.cost)) throw new HttpsError("failed-precondition", `${items[itemId].item.name || itemId} is missing its Inventory (12xx) or COGS (5xxx) account. Map it under Stock Items, then edit again.`);
+      Object.assign(change, {itemId, receiptId, receipt, batchId});
+      items[itemId].qtyDelta = qty6(items[itemId].qtyDelta + change.newQty - change.oldQty);
+    }
+    Object.keys(items).forEach((itemId) => {const it = items[itemId], balanceAfterQty = qty6(it.balance + it.qtyDelta); if (it.qtyDelta < 0 && balanceAfterQty < 0) throw new HttpsError("failed-precondition", `${it.item.name || itemId} does not have enough stock on hand to lower this quantity. Count and adjust the stock first.`); it.balanceAfterQty = balanceAfterQty;});
+    for (const change of stockChanges.filter((c) => c.newTotal !== c.oldTotal)) {
+      const it = items[change.itemId], onHand = Math.max(0, Math.min(it.balanceAfterQty, it.invoiceQty)), share = it.balanceAfterQty > 0 && it.invoiceQty > 0 ? Math.round((change.newTotal - change.oldTotal) * (onHand / it.invoiceQty) * 100) / 100 : 0;
+      it.stockValue = Financial.money(it.stockValue + share); change.expectedStockShare = share;
+    }
+    Object.keys(items).forEach((itemId) => {const it = items[itemId]; if (it.balanceAfterQty > 0 && (it.balanceAfterQty * it.cost) + it.stockValue < -0.005) throw new HttpsError("failed-precondition", `${it.item.name || itemId} does not have enough stock value to absorb this price reduction. Review the stock first.`);});
+
+    // Guard against a half-finished earlier attempt with different values.
+    const intent = crypto.createHash("sha256").update(JSON.stringify({c: changes.map((c) => [c.index, c.newQty, c.newTotal]), v: newVat, r: nextRevision})).digest("hex").slice(0, 16), pending = invoice.pendingEdit || null;
+    if (pending && Number(pending.revision) === nextRevision && pending.intent !== intent) throw new HttpsError("failed-precondition", "An earlier edit of this purchase did not finish. Retry exactly the same change first, then make further corrections.");
+    if (!pending || pending.intent !== intent) await db.ref(`/purchaseInvoices/${invoiceId}/pendingEdit`).set({revision: nextRevision, intent, at: now, by: actor.uid});
+
+    // Stock: all quantity corrections first (value kept), then value corrections against the corrected pool.
+    const used = [], stockMovementIds = [], base = (c) => `purchase_edit_${invoiceId}_r${nextRevision}_${c.index}`, note = (c) => `Edit purchase ${invoice.documentNo || invoice.ref || invoiceId} line ${c.index + 1}: ${reason}`;
+    for (const change of stockChanges.filter((c) => c.newQty !== c.oldQty)) {
+      const moved = await applyInventoryMovement(db, {movementId: `${base(change)}_qty`, itemId: change.itemId, type: "purchase_quantity_correction", qty: qty6(change.newQty - change.oldQty), unitCost: qty6(change.oldTotal / change.newQty), sourceType: "purchase-edit", sourceId: invoiceId, sourceLine: String(change.index), note: note(change), actorName: actor.role, occurredAt: now}, actor);
+      if (moved.movement) stockMovementIds.push(moved.movement.id);
+    }
+    for (const change of stockChanges.filter((c) => c.newTotal !== c.oldTotal)) {
+      const it = items[change.itemId], moved = (await applyInventoryMovement(db, {movementId: `${base(change)}_cost`, itemId: change.itemId, type: "purchase_cost_correction", qty: 0, unitCost: 0, valueDelta: Financial.money(change.newTotal - change.oldTotal), lineQty: it.invoiceQty, sourceType: "purchase-edit", sourceId: invoiceId, sourceLine: String(change.index), note: note(change), actorName: actor.role, occurredAt: now}, actor)).movement || {};
+      if (moved.id) stockMovementIds.push(moved.id);
+      const usedValue = Financial.money(moved.usedValueDelta);
+      if (usedValue) used.push({inventory: it.mapping.inventory, cost: it.mapping.cost, value: usedValue});
+    }
+    for (const change of stockChanges) {
+      const batch = batches[change.batchId];
+      Object.assign(writes, {[`stockReceipts/${change.receiptId}/qty`]: change.newQty, [`stockReceipts/${change.receiptId}/total`]: change.newTotal, [`stockReceipts/${change.receiptId}/unitCost`]: next[change.index].unitCost, [`stockReceipts/${change.receiptId}/editRevision`]: nextRevision,
+        [`inventoryBatch/${change.batchId}/qtyRecv`]: change.newQty, [`inventoryBatch/${change.batchId}/qtyRemaining`]: qty6(Math.max(0, qty6(batch.qtyRemaining) + change.newQty - change.oldQty)), [`inventoryBatch/${change.batchId}/unitCost`]: next[change.index].unitCost, [`inventoryBatch/${change.batchId}/editRevision`]: nextRevision});
+      if (financeText(change.receipt.recvUnit, 40) === financeText(change.receipt.unit, 40)) writes[`stockReceipts/${change.receiptId}/recvQty`] = change.newQty;
+    }
+
+    // One correction journal: the difference between the corrected and the posted purchase lines,
+    // with any already-used share of a price change charged to the item's cost account.
+    const diff = {};
+    oldGl.forEach((line) => {diff[line.account] = Financial.money((diff[line.account] || 0) - Number(line.debit || 0));});
+    newGl.forEach((line) => {diff[line.account] = Financial.money((diff[line.account] || 0) + Number(line.debit || 0));});
+    used.forEach((u) => {diff[`coa:${u.inventory}`] = Financial.money((diff[`coa:${u.inventory}`] || 0) - u.value); diff[`coa:${u.cost}`] = Financial.money((diff[`coa:${u.cost}`] || 0) + u.value);});
+    const memo = `Edit ${invoice.documentNo || invoice.ref || "purchase"} · ${financeText(invoice.supplier, 80)}`, journal = [], journalId = `purchase_edit_${invoiceId}_r${nextRevision}`;
+    Object.keys(diff).sort().forEach((account) => {const value = Financial.money(diff[account]); if (Math.abs(value) >= 0.005) journal.push(Financial.line(account, value > 0 ? value : 0, value < 0 ? -value : 0, memo));});
+    if (Math.abs(totalDelta) >= 0.005) journal.push(Financial.line(fundingAccount, totalDelta < 0 ? -totalDelta : 0, totalDelta > 0 ? totalDelta : 0, memo));
+    const usedTotal = Financial.money(used.reduce((sum, u) => sum + u.value, 0));
+    Object.assign(writes, {
+      [`purchaseInvoices/${invoiceId}/lines`]: next, [`purchaseInvoices/${invoiceId}/total`]: newTotal, [`purchaseInvoices/${invoiceId}/inputVat`]: newVat,
+      [`purchaseInvoices/${invoiceId}/editRevision`]: nextRevision, [`purchaseInvoices/${invoiceId}/lastEditAt`]: now, [`purchaseInvoices/${invoiceId}/lastEditBy`]: actor.uid, [`purchaseInvoices/${invoiceId}/lastEditReason`]: reason,
+      [`purchaseInvoices/${invoiceId}/editUsedValueTotal`]: Financial.money(Financial.money(invoice.editUsedValueTotal) + usedTotal), [`purchaseInvoices/${invoiceId}/pendingEdit`]: null,
+      [`purchaseInvoices/${invoiceId}/editHistory/r${nextRevision}`]: {at: now, by: actor.uid, byName: financeText(actor.name || actor.role, 120), reason, before: {total: oldTotal, inputVat: oldVat, lines: changes.map((c) => ({line: c.index + 1, item: financeText(c.line.itemName, 120), qty: c.oldQty, total: c.oldTotal}))}, after: {total: newTotal, inputVat: newVat, lines: changes.map((c) => ({line: c.index + 1, item: financeText(c.line.itemName, 120), qty: c.newQty, total: c.newTotal}))}, usedValueToCost: usedTotal, journalId: journal.length ? journalId : "", stockMovementIds},
+      [`operationalAudit/${now}_purchase_edit_${invoiceId}`]: {action: "edit_purchase_lines", sourceType: "purchaseInvoice", sourceId: invoiceId, revision: nextRevision, beforeTotal: oldTotal, afterTotal: newTotal, totalDelta, usedValueToCost: usedTotal, fundingAccount, reason, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1},
+    });
+    if (journal.length) {
+      if (!BooksBridge.linesBalanced(journal)) throw new HttpsError("failed-precondition", "The purchase correction is not balanced. Nothing was posted to Finance Books; retry the same change or ask for a review.");
+      const movement = Financial.movement("purchase_edit", "purchaseInvoice", invoiceId, journal, {occurredAt: accountingAt, actorName: financeText(actor.name || actor.role, 120), revision: nextRevision, reason, documentNo: financeText(invoice.documentNo, 40), supplierId: financeText(invoice.supplierId, 160)});
+      // A bank-paid purchase also corrects the cash ledger, so the bank account's ledger stays equal to Finance Books.
+      if (cashAccountId && Math.abs(totalDelta) >= 0.005) writes[`cfLedger/fm_${journalId}`] = cashLedgerRecord({date, accountId: cashAccountId, dir: totalDelta > 0 ? "out" : "in", category: "Purchase correction", amount: Math.abs(totalDelta), party: invoice.supplier, ref: invoice.documentNo || invoice.ref, auto: true}, journalId, movement, actor);
+      await commitFinancial(db, journalId, movement, actor, writes);
+    } else {
+      await db.ref().update(writes);
+    }
+    return {invoiceId, result: "edited", revision: nextRevision, oldTotal, newTotal, totalDelta, usedValueToCost: usedTotal, journalLines: journal.length};
+  } finally {
+    for (const set of payableClaims) await set.release();
+  }
+}
+
 exports.ensureFinancialLedger = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 540, memory: "512MiB"},
   async (request) => {
@@ -9435,7 +9592,7 @@ exports.backfillPurchaseDocumentNumbers = onCall(
 const INVENTORY_MOVEMENT_TYPES = new Set([
   "opening_balance", "purchase", "sale_usage", "staff_use", "rnd_testing",
   "waste", "adjustment", "manual_edit", "usage_reversal",
-  "void_reversal", "refund_reversal", "purchase_reversal", "purchase_quantity_correction", "revaluation",
+  "void_reversal", "refund_reversal", "purchase_reversal", "purchase_quantity_correction", "purchase_cost_correction", "revaluation",
   "production", "production_reversal",
 ]);
 function qty6(value) {
@@ -9645,11 +9802,20 @@ async function applyInventoryMovement(db, raw, actor) {
   }
   const qty = qty6(raw.qty);
   const requestedCost = qty6(raw.unitCost);
-  const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal" || type === "purchase_quantity_correction" || type === "revaluation";
+  const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal" || type === "purchase_quantity_correction" || type === "purchase_cost_correction" || type === "revaluation";
   if (type === "purchase" && qty > 0 && !(requestedCost > 0)) throw new HttpsError("invalid-argument", "A received purchase must have a unit cost greater than zero.");
   /* A batch card states what the bake it produced is worth, so its movements carry their own unit
      cost the way a purchase does: without it the pastry leg would move the item's old cost. */
   if ((type === "production" || type === "production_reversal") && qty !== 0 && !(requestedCost > 0)) throw new HttpsError("invalid-argument", "A batch card movement must carry a unit cost greater than zero.");
+  /* Purchase Edit: a corrected purchase amount. Only the share of the delivery still on hand
+     restates the stock value; the rest of the difference was already used and is charged to the
+     item's cost account by the purchase correction journal (this movement posts no journal itself). */
+  const costCorrectionValue = type === "purchase_cost_correction" ? Math.round((Number(raw.valueDelta) || 0) * 100) / 100 : 0, costCorrectionLineQty = type === "purchase_cost_correction" ? qty6(raw.lineQty) : 0;
+  if (type === "purchase_cost_correction") {
+    if (qty !== 0) throw new HttpsError("invalid-argument", "A purchase cost correction changes value only. Correct quantity separately.");
+    if (!Number.isFinite(costCorrectionValue) || costCorrectionValue === 0 || Math.abs(costCorrectionValue) > 100000000) throw new HttpsError("invalid-argument", "The purchase cost correction amount is invalid.");
+    if (!(costCorrectionLineQty > 0)) throw new HttpsError("invalid-argument", "The corrected purchase line quantity is required.");
+  }
   if (type === "revaluation") {
     if (qty !== 0) throw new HttpsError("invalid-argument", "A revaluation changes the unit cost only. Use a stock adjustment to move quantity.");
     if (!(requestedCost >= 0)) throw new HttpsError("invalid-argument", "Enter the corrected unit cost.");
@@ -9706,8 +9872,14 @@ async function applyInventoryMovement(db, raw, actor) {
     const after = qty6(before + qty);
     if (["purchase_reversal", "purchase_quantity_correction"].includes(type) && after < 0) {insufficient = true; return;}
     if (type === "revaluation" && !(before > 0)) {nothingToRevalue = true; return;}
-    let costAfter = costBefore;
-    if (type === "purchase" && qty > 0 && requestedCost >= 0) {
+    let costAfter = costBefore, costCorrectionStock = 0;
+    if (type === "purchase_cost_correction") {
+      const onHand = Math.max(0, Math.min(before, costCorrectionLineQty));
+      costCorrectionStock = before > 0 ? Math.round(costCorrectionValue * (onHand / costCorrectionLineQty) * 100) / 100 : 0;
+      const valueAfter = (before * costBefore) + costCorrectionStock;
+      if (before > 0 && valueAfter < -0.000001) {insufficientValue = true; return;}
+      costAfter = before > 0 ? qty6(valueAfter / before) : costBefore;
+    } else if (type === "purchase" && qty > 0 && requestedCost >= 0) {
       const denominator = before + qty;
       // A negative/zero opening balance represents prior uncosted consumption.
       // Blending it can create a nonsensical negative WAC, so the first receipt
@@ -9727,10 +9899,11 @@ async function applyInventoryMovement(db, raw, actor) {
     const movement = {
       id: movementId, itemId,
       itemName: String(item.name || itemId).slice(0, 160), unit: String(item.unit || "").slice(0, 40),
-      type, qty, unitCost: (type === "revaluation" || ["purchase", "purchase_reversal", "production", "production_reversal"].includes(type)) ? requestedCost : costBefore,
+      type, qty, unitCost: type === "purchase_cost_correction" ? costAfter : (type === "revaluation" || ["purchase", "purchase_reversal", "production", "production_reversal"].includes(type)) ? requestedCost : costBefore,
       /* A revaluation moves no quantity, so qty * cost is zero and nothing would reach the ledger.
          Its value is the restatement of the stock still on hand: qty on hand * (new cost - old cost). */
-      totalCost: type === "purchase_quantity_correction" ? 0 : type === "revaluation" ? money(before * (requestedCost - costBefore)) : money(qty * (["purchase", "purchase_reversal", "production", "production_reversal"].includes(type) ? requestedCost : costBefore)),
+      ...(type === "purchase_cost_correction" ? {valueDelta: costCorrectionValue, stockValueDelta: costCorrectionStock, usedValueDelta: Math.round((costCorrectionValue - costCorrectionStock) * 100) / 100, lineQty: costCorrectionLineQty} : {}),
+      totalCost: type === "purchase_cost_correction" ? costCorrectionStock : type === "purchase_quantity_correction" ? 0 : type === "revaluation" ? money(before * (requestedCost - costBefore)) : money(qty * (["purchase", "purchase_reversal", "production", "production_reversal"].includes(type) ? requestedCost : costBefore)),
       balanceBefore: before, balanceAfter: after, costBefore, costAfter,
       sourceType: String(raw.sourceType || type).slice(0, 80),
       sourceId: String(raw.sourceId || "").slice(0, 160),
