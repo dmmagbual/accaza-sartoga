@@ -26,12 +26,23 @@ do {
   $page = $r.nextPageToken
 } while ($page)
 foreach ($def in $spec.policies) {
-  $extract = @{}; $def.labelExtractors.PSObject.Properties | ForEach-Object { $extract[$_.Name] = $_.Value }
+  $extract = @{}; if ($def.labelExtractors) { $def.labelExtractors.PSObject.Properties | ForEach-Object { $extract[$_.Name] = $_.Value } }
+  if ($def.kind -eq "metricThreshold") {
+    # Rate alert: catches failures that never reach our code (no log text to match).
+    $condition = @{displayName = "Error rate above threshold"; conditionThreshold = @{
+      filter = $def.filter; comparison = "COMPARISON_GT"; thresholdValue = $def.threshold; duration = $def.duration
+      aggregations = @(@{alignmentPeriod = $def.alignmentPeriod; perSeriesAligner = "ALIGN_SUM"; crossSeriesReducer = "REDUCE_SUM"})
+      trigger = @{count = 1}}}
+    $strategy = @{autoClose = "1800s"; notificationPrompts = @("OPENED", "CLOSED")}
+  } else {
+    $condition = @{displayName = "Matching log entry"; conditionMatchedLog = @{filter = $def.filter; labelExtractors = $extract}}
+    $strategy = @{notificationRateLimit = @{period = $def.rateLimit}; autoClose = "1800s"}
+  }
   $body = [ordered]@{
     displayName = $def.displayName; severity = $def.severity; combiner = "OR"; enabled = $true
     documentation = @{content = $def.doc; mimeType = "text/markdown"; subject = $def.subject}
-    conditions = @(@{displayName = "Matching log entry"; conditionMatchedLog = @{filter = $def.filter; labelExtractors = $extract}})
-    alertStrategy = @{notificationRateLimit = @{period = $def.rateLimit}; autoClose = "1800s"}
+    conditions = @($condition)
+    alertStrategy = $strategy
     notificationChannels = @($channels | ForEach-Object { $_.name })
   }
   $json = $body | ConvertTo-Json -Depth 8
