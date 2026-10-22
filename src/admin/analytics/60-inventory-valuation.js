@@ -13,7 +13,9 @@ function itemPeriod(id,cost,rng){var pQ=0,pV=0,uQ=0;
 }
 function itemMovements(id){
   var cost=Number((invMap[id]||{}).cost)||0;var out=[];
-  Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;out.push({ts:r.ts||Date.parse(r.date)||0,date:r.date||tsToDate(r.ts),type:'Purchase'+(r.supplier?' · '+r.supplier:'')+(r.brand?' · '+r.brand:''),in:Number(r.qty)||0,out:0});});
+  /* A line removed by Amend is no longer part of the purchase (qty 0), so it has no row. A voided
+     purchase keeps its receipt row, marked voided, plus a Void row on the void's posting date. */
+  Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id||r.removed||!(Number(r.qty)>0))return;var label=(r.supplier?' · '+r.supplier:'')+(r.brand?' · '+r.brand:'')+(r.ref?' · '+r.ref:'');out.push({ts:r.ts||Date.parse(r.date)||0,date:r.date||tsToDate(r.ts),type:'Purchase'+label+(r.reversed?' (voided)':'')+(r.editRevision?' (amended)':''),in:Number(r.qty)||0,out:0});if(r.reversed){var vd=r.reversalAccountingDate||tsToDate(r.reversedAt);out.push({ts:Math.max(Number(r.ts)||0,new Date(vd+'T12:00:00').getTime()||0)+1,date:vd,type:'Void'+label,in:0,out:Number(r.qty)||0});}});
   Object.keys(adjMap).forEach(function(k){var x=adjMap[k];if(!x||x.ing!==id)return;var dl=Number(x.delta)||0;out.push({ts:x.ts||0,date:tsToDate(x.ts),type:'Adjust · '+(x.reason||''),in:dl>0?dl:0,out:dl<0?-dl:0});});
   Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||!u.usage||!u.usage[id])return;out.push({ts:u.ts||0,date:tsToDate(u.ts),type:'Usage · '+(u.kindName||u.kind||''),in:0,out:Number(u.usage[id])||0});});
   var byDay={};[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k],usage=o.correctedInventoryUsage||o.inventoryUsage;if(!isSale(o)||!usage||!usage[id])return;var day=tsToDate(o.timestamp||Date.parse(o.date)||0);byDay[day]=(byDay[day]||0)+(Number(usage[id])||0);});});
@@ -30,6 +32,7 @@ function itemReconciliation(id,rng){
   var received=0,issued=0,adjustment=0;
   movements.forEach(function(m){var ts=Number(m.ts)||0;if(ts<fromTs||ts>=toTs)return;
     if(/^Purchase/i.test(m.type||''))received+=Number(m.in)||0;
+    else if(/^Void/i.test(m.type||''))received-=Number(m.out)||0;
     else if(isWasteMovement(m))adjustment+=(Number(m.in)||0)-(Number(m.out)||0);
     else issued+=Number(m.out)||0;
   });
@@ -105,7 +108,7 @@ function renderStockValue(){
   var recon=inventoryBooksLoaded?inventoryBooksReconciliation(summaries,rng):null;
   var reconReady=!!recon;
   var totalValue=summaries.reduce(function(s,x){return s+x.flow.ending*(Number(x.item.cost)||0);},0);
-  var periodPurch=0;Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng))periodPurch+=Number(r.total)||0;});
+  var periodPurch=0;Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.reversed||r.removed)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng))periodPurch+=Number(r.total)||0;});
   var periodUse=0;[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o))return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))periodUse+=Number(o.cogsSnapshot)||0;});});
   Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed)return;var d=tsToDate(u.ts);if(inRng(d,rng))periodUse+=Number(u.cost)||0;});
   var rows=summaries.map(function(x){var i=x.item,f=x.flow,cost=Number(i.cost)||0,val=f.ending*cost,unit=esc(i.unit||'');

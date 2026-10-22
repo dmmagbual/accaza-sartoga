@@ -59,14 +59,12 @@ if (/\.remove\(|set\(null\)/.test(edit)) failures.push('Edit must never delete p
 // Void of an edited purchase.
 must(corrections, 'This purchase had a price correction partly charged to cost of sales, so it cannot be voided.', 'Void must refuse a purchase whose price edit was partly charged to COGS.');
 must(corrections, 'movement=Object.assign({},movement,{qty:currentStock[movement.itemId].qty', 'Void must reverse an edited purchase at its current quantities and amounts.');
-// Admin.
-must(workspace, 'data-purchase-editlines=', 'Purchase history must offer Edit.');
+// Admin (22 Oct 2026): Amend replaced Edit in the Actions menu. edit_lines stays as a server action.
+must(workspace, 'data-purchase-amend=', 'Purchase history must offer Amend.');
 must(workspace, 'data-purchase-void=', 'Purchase history must offer Void.');
-if (workspace.includes('data-purchase-amend=')) failures.push('Edit replaces Amend in the Actions menu.');
-must(purchasing, "action:'edit_lines'", 'The Edit form must call the server edit action.');
-must(purchasing, 'expectedQty:Number(l.qty)||0', 'The Edit form must send what it saw for each changed line.');
+if (workspace.includes('data-purchase-editlines=')) failures.push('Amend replaces Edit in the Actions menu.');
 must(purchasing, "managerApproval('reverse_purchase'", 'Void must keep the manager approval.');
-for (const [name, s] of [['assets/js/admin/pos.js', pos], ['functions/index.js', bundle]]) if (!s.includes(name === 'functions/index.js' ? 'async function editPurchaseLines(' : "action:'edit_lines'")) failures.push(`${name} must be rebuilt with Purchase Edit.`);
+if (!bundle.includes('async function editPurchaseLines(')) failures.push('functions/index.js must be rebuilt with Purchase Edit.');
 
 if (failures.length) { console.error('Purchase edit check failed:\n- ' + failures.join('\n- ')); process.exit(1); }
 console.log('PASS: Purchase Edit corrects quantity and amount by the difference only (stock share vs used share), keeps the bill / bank payment and Finance Books in step, refuses paid bills, closed months and stale forms, and Void reverses the purchase as it stands.');

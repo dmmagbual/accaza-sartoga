@@ -30,6 +30,13 @@ async function releasePurchaseReversalCloseLocks(claims) {
   for(const claim of claims||[])await claim.ref.transaction((current)=>current&&current.token===claim.token?{status:"date_correction_complete",token:claim.token,completedAt:Date.now(),operationType:current.operationType,invoiceId:current.invoiceId}:current,undefined,false);
 }
 
+// A voided purchase's stock receipts carry the void, so the stock card shows it (22 Oct 2026).
+function purchaseVoidReceiptWrites(invoiceId, invoice, at, reversalDate) {
+  const writes = {[`purchaseInvoices/${invoiceId}/receiptsVoidMarkedAt`]: at};
+  (Array.isArray(invoice.receiptIds) ? invoice.receiptIds : []).forEach((id) => {const key = financeKey(id, "Stock receipt ID"); Object.assign(writes, {[`stockReceipts/${key}/reversed`]: true, [`stockReceipts/${key}/reversedAt`]: at, [`stockReceipts/${key}/reversalAccountingDate`]: reversalDate});});
+  return writes;
+}
+
 // Controlled purchase correction boundary. Metadata corrections preserve the
 // original financial amount. Reversals offset inventory and finance with
 // deterministic IDs so an interrupted request is safe to retry.
@@ -38,7 +45,7 @@ exports.managePurchaseCorrection = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["purchases"]), data = request.data || {}, action = financeText(data.action, 30);
     const requestedId = financeText(data.invoiceId, 160), requestedRef = financeText(data.invoiceRef, 120);
-    const correctionLockActions=new Set(["correct_accounts","correct_quantity","correct_reversal_date","edit_lines","reverse"]);if(correctionLockActions.has(action)&&!requestedId)throw new HttpsError("invalid-argument","Refresh the purchase and submit its record ID before correcting it.");const correctionLock=correctionLockActions.has(action)?await claimPurchaseCorrection(db,financeKey(requestedId,"Purchase invoice ID"),actor):null;
+    const correctionLockActions=new Set(["amend","discard_amend","correct_accounts","correct_quantity","correct_reversal_date","edit_lines","reverse"]);if(correctionLockActions.has(action)&&!requestedId)throw new HttpsError("invalid-argument","Refresh the purchase and submit its record ID before correcting it.");const correctionLock=correctionLockActions.has(action)?await claimPurchaseCorrection(db,financeKey(requestedId,"Purchase invoice ID"),actor):null;
     try{
     // By ID only the invoice is read; a lookup by reference has to compare every invoice.
     const requestedRow = requestedId && TrackedRead.trackable(requestedId) ? (await db.ref(`/purchaseInvoices/${requestedId}`).get()).val() : null;
@@ -77,10 +84,21 @@ exports.managePurchaseCorrection = onCall(
         await db.ref().update(writes);return{invoiceId,result:"reversal_date_corrected",movementId,accountingDate,previousDates:currentDates,revision};
       }finally{await releasePurchaseReversalCloseLocks(closeClaims);}
     }
+    /* Stock cards (22 Oct 2026): a void reverses stock in the ledger but older voids never marked the
+       purchase's stock receipts, so the card kept the receipt with no void row. One call per voided
+       purchase marks them; it only labels the receipts and moves no stock or money. */
+    if (action === "mark_void_receipts") {
+      if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can mark voided purchase receipts.");
+      if (invoice.reversed !== true) throw new HttpsError("failed-precondition", "Only a voided purchase can have its stock receipts marked as voided.");
+      const markWrites = purchaseVoidReceiptWrites(invoiceId, invoice, Number(invoice.reversedAt) || Date.now(), financeDate(invoice.reversalAccountingDate || invoice.date));
+      await db.ref().update(markWrites); return {invoiceId, result: "receipts_marked", receipts: Object.keys(markWrites).length};
+    }
     if (invoice.reversed === true) throw new HttpsError("failed-precondition", "This purchase has already been reversed.");
     const now = Date.now(), reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
     if (action === "edit_lines") return await editPurchaseLines(db, actor, invoiceId, invoice, data, reason, now);
-    if (invoice.pendingEdit && ["correct_accounts","correct_quantity","reverse"].includes(action)) throw new HttpsError("failed-precondition", "An edit of this purchase did not finish. Open Edit and save the same change again before any other correction or Void.");
+    if (action === "amend") return await amendPurchase(db, actor, invoiceId, invoice, data, reason, now);
+    if (action === "discard_amend") return await discardPendingAmend(db, actor, invoiceId, invoice, reason, now);
+    if (invoice.pendingEdit && ["correct_accounts","correct_quantity","reverse"].includes(action)) throw new HttpsError("failed-precondition", "A change to this purchase did not finish. Open Amend and save the same change again before any other correction or Void.");
     if (action === "correct_accounts") {
       if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can correct posted purchase accounts.");
       const date=financeDate(invoice.date),expectedRevision=Math.max(0,Math.trunc(Number(data.expectedRevision)||0)),currentRevision=Math.max(0,Math.trunc(Number(invoice.accountCorrectionRevision)||0)),changes=Array.isArray(data.changes)?data.changes:[];
@@ -118,7 +136,9 @@ exports.managePurchaseCorrection = onCall(
       const supplierMaster=await requireActiveSupplier(db,invoice.supplierId,invoice.supplier),requestedSupplierId=financeText(data.supplierId,160);if(requestedSupplierId&&requestedSupplierId!==supplierMaster.id)throw new HttpsError("failed-precondition","Changing a posted purchase supplier requires reversing and re-entering the purchase so inventory, advance, payable, and Finance Books links remain intact.");const next = {supplier:supplierMaster.name,ref:financeText(data.ref,120),due:data.due?financeDate(data.due, true):"",by:financeText(data.by,120),description:financeText(data.description,240)};if (!next.ref) throw new HttpsError("invalid-argument", "Invoice reference is required.");
       const duplicate = Object.keys(invoices).some((id) => id !== invoiceId && financeText(invoices[id] && invoices[id].ref,120).toLowerCase() === next.ref.toLowerCase());if (duplicate) throw new HttpsError("already-exists", "Another purchase already uses this invoice reference.");
       const writes = {[`purchaseInvoices/${invoiceId}/supplier`]:next.supplier,[`purchaseInvoices/${invoiceId}/ref`]:next.ref,[`purchaseInvoices/${invoiceId}/due`]:next.due,[`purchaseInvoices/${invoiceId}/by`]:next.by,[`purchaseInvoices/${invoiceId}/description`]:next.description,[`purchaseInvoices/${invoiceId}/lastCorrectionAt`]:now,[`purchaseInvoices/${invoiceId}/lastCorrectionBy`]:actor.uid,[`purchaseInvoices/${invoiceId}/lastCorrectionReason`]:reason,[`operationalAudit/${now}_purchase_correct_${invoiceId}`]:{action:"correct_purchase_details",sourceType:"purchaseInvoice",sourceId:invoiceId,before:{supplier:invoice.supplier||"",ref:invoice.ref||"",due:invoice.due||"",by:invoice.by||"",description:invoice.description||""},after:next,reason,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}};
-      (invoice.receiptIds||[]).forEach((id,index) => {writes[`stockReceipts/${id}/supplier`]=next.supplier;writes[`stockReceipts/${id}/ref`]=next.ref;writes[`stockReceipts/${id}/receivedBy`]=next.by;writes[`inventoryBatch/bat_${invoiceId}_${index}/supplier`]=next.supplier;});if (invoice.payableId) {writes[`payables/${invoice.payableId}/party`]=next.supplier;writes[`payables/${invoice.payableId}/ref`]=next.ref;writes[`payables/${invoice.payableId}/due`]=next.due;}
+      /* Batches are found by their receipt, not by line position, which Amend can shift (22 Oct 2026). */
+      const detailBatches=(invoice.receiptIds||[]).length?((await db.ref("/inventoryBatch").orderByChild("invoiceId").equalTo(invoiceId).get()).val()||{}):{};
+      (invoice.receiptIds||[]).forEach((id,index) => {writes[`stockReceipts/${id}/supplier`]=next.supplier;writes[`stockReceipts/${id}/ref`]=next.ref;writes[`stockReceipts/${id}/receivedBy`]=next.by;Object.keys(detailBatches).filter((b)=>detailBatches[b]&&detailBatches[b].receiptId===id).forEach((b)=>{writes[`inventoryBatch/${b}/supplier`]=next.supplier;});});if (invoice.payableId) {writes[`payables/${invoice.payableId}/party`]=next.supplier;writes[`payables/${invoice.payableId}/ref`]=next.ref;writes[`payables/${invoice.payableId}/due`]=next.due;}
       await db.ref().update(writes);return {invoiceId,result:"corrected",invoice:Object.assign({},safeInvoice,next)};
     }
     if (action === "correct_quantity") {
@@ -174,6 +194,7 @@ exports.managePurchaseCorrection = onCall(
     for (const movementId of movementIds) {let movement=(await db.ref(`/inventoryMovements/${financeKey(movementId,"Movement ID")}`).get()).val();if (!movement) throw new HttpsError("failed-precondition", "An original inventory movement is missing. Run inventory review before reversal.");if(currentStock[movement.itemId]&&currentStock[movement.itemId].qty>0)movement=Object.assign({},movement,{qty:currentStock[movement.itemId].qty,unitCost:qty6(currentStock[movement.itemId].value/currentStock[movement.itemId].qty)});const accounting=(await db.ref(`/inventoryAccounting/${movement.itemId}`).get()).val()||{},reversalId=`purchase_reverse_${invoiceId}_${movement.itemId}`,already=accounting.applied&&accounting.applied[reversalId];if (!already&&qty6(accounting.balance)+0.000001<qty6(movement.qty)) throw new HttpsError("failed-precondition", `Not enough remaining stock to reverse ${movement.itemName||movement.itemId}.`);if (!already&&qty6(accounting.balance)>qty6(movement.qty)&&((qty6(accounting.balance)*qty6(accounting.unitCost))-(qty6(movement.qty)*qty6(movement.unitCost)))<-.000001) throw new HttpsError("failed-precondition", `The remaining stock value for ${movement.itemName||movement.itemId} cannot support this reversal.`);originals.push(movement);}
     for (const movement of originals) await applyInventoryMovement(db,{movementId:`purchase_reverse_${invoiceId}_${movement.itemId}`,itemId:movement.itemId,type:"purchase_reversal",qty:-qty6(movement.qty),unitCost:qty6(movement.unitCost),sourceType:"purchase-invoice-reversal",sourceId:invoiceId,sourceLine:movement.sourceLine||movement.itemId,note:`Reverse purchase ${invoice.ref||invoiceId}: ${reason}`,reversalOf:movement.id,actorName:actor.role,occurredAt:reversalTimestamp},actor);
     const writes = Object.assign({},approval.usedWrites,{[`purchaseInvoices/${invoiceId}/reversed`]:true,[`purchaseInvoices/${invoiceId}/reversedAt`]:now,[`purchaseInvoices/${invoiceId}/reversalAccountingDate`]:reversalDate,[`purchaseInvoices/${invoiceId}/reversedBy`]:actor.uid,[`purchaseInvoices/${invoiceId}/reversalReason`]:reason,[`operationalAudit/${now}_purchase_reverse_${invoiceId}`]:{action:duplicateCleanup?"reverse_duplicate_purchase":"reverse_purchase",sourceType:"purchaseInvoice",sourceId:invoiceId,keptPurchaseId:duplicateCleanup?keepInvoiceId:"",amount:safeInvoice.total,reason,accountingDate:reversalDate,approvalId:approval.id,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}});if (duplicateCleanup&&payable) {if (payable.status==="open") {writes[`payables/${invoice.payableId}/purchaseInvoiceId`]=keepInvoiceId;writes[`purchaseInvoices/${keepInvoiceId}/payableId`]=invoice.payableId;} else {writes[`purchaseInvoices/${keepInvoiceId}/payableId`]=null;writes[`purchaseInvoices/${keepInvoiceId}/payableReconciledAt`]=null;}}(invoice.receiptIds||[]).forEach((id)=>{writes[`stockReceipts/${id}/reversed`]=true;writes[`stockReceipts/${id}/reversedAt`]=now;writes[`stockReceipts/${id}/reversalAccountingDate`]=reversalDate;});
+    Object.assign(writes,purchaseVoidReceiptWrites(invoiceId,invoice,now,reversalDate));
     Object.keys(linkedAssets).forEach((id)=>{writes[`fixedAssets/${id}/status`]="acquisition_reversed";writes[`fixedAssets/${id}/reversedAt`]=now;writes[`fixedAssets/${id}/reversalReason`]=reason;});
     const batches=(await db.ref("/inventoryBatch").orderByChild("invoiceId").equalTo(invoiceId).get()).val()||{};Object.keys(batches).forEach((id)=>{if (batches[id]&&batches[id].invoiceId===invoiceId){writes[`inventoryBatch/${id}/closed`]=true;writes[`inventoryBatch/${id}/reversedAt`]=now;writes[`inventoryBatch/${id}/reversalAccountingDate`]=reversalDate;}});
     if (invoice.payMode === "owner_funded") {
