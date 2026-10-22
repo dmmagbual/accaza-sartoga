@@ -19,6 +19,51 @@ function amendStockValue(movement) {
   const m = movement || {};
   return Financial.money(qty6(m.balanceAfter) * qty6(m.costAfter) - qty6(m.balanceBefore) * qty6(m.costBefore));
 }
+// Undeposited Collection (Danilo, 23 Oct 2026: "make undeposited collection able to amend too"). The cash
+// that paid the purchase is held per custody row. The purchase keeps its net custody allocation, so a later
+// amendment or Void restores exactly the rows it used: a higher total draws the extra from the pool (oldest
+// cash first, refused on a shortfall), a lower total puts the difference back on the rows it came from.
+// GL 1030 and the custody rows move by the same amount in the same commit, so custody stays equal to 1030.
+function purchaseCustodyNet(invoice, payment) {
+  const source = invoice && invoice.custodyAllocations && typeof invoice.custodyAllocations === "object" ? invoice.custodyAllocations : (payment && payment.custodyAllocations) || {}, net = {};
+  Object.keys(source).forEach((id) => {const value = Financial.money(source[id]); if (value > 0) net[id] = value;});
+  return net;
+}
+async function amendCustodyPlan(db, invoice, payment, oldTotal, totalDelta, movementId, claims) {
+  const net = purchaseCustodyNet(invoice, payment), held = Financial.money(Object.values(net).reduce((sum, value) => sum + value, 0));
+  if (!Object.keys(net).length || Math.abs(held - oldTotal) > 0.009) throw new HttpsError("failed-precondition", "This purchase does not record exactly which Undeposited Collection cash paid it, so it can't be amended safely. Nothing was changed; ask for a review.");
+  const writes = {}, paidOut = {}, restored = {};
+  if (Math.abs(totalDelta) < 0.005) return {writes, net, paidOut, restored};
+  await claimCustodyPool(db, movementId, claims);
+  if (totalDelta > 0) {
+    const out = await poolCustodyOutflow(db, totalDelta);
+    if (out.shortfall > 0.009) throw new HttpsError("failed-precondition", `The amendment adds ${Financial.money(totalDelta).toFixed(2)} but Undeposited Collection is short by ${out.shortfall.toFixed(2)}. Nothing was changed.`);
+    Object.assign(writes, out.writes);
+    Object.keys(out.allocations).forEach((id) => {net[id] = Financial.money((net[id] || 0) + out.allocations[id]); paidOut[id] = out.allocations[id]; writes[`cashCustody/${id}/lastPaymentMovementId`] = movementId;});
+    return {writes, net, paidOut, restored};
+  }
+  let need = Financial.money(-totalDelta);
+  // Put the difference back on the rows it used, most recently collected first (the outflow takes oldest first).
+  const used = [];
+  for (const id of Object.keys(net)) {
+    const key = financeKey(id, "Custody ID"), row = (await db.ref(`/cashCustody/${key}`).get()).val();
+    if (!row) throw new HttpsError("failed-precondition", `The cash custody row ${key} that paid this purchase is missing. Repair Undeposited Collection before amending.`);
+    used.push({id, key, row});
+  }
+  used.sort((a, b) => Number(b.row.closedAt || 0) - Number(a.row.closedAt || 0) || BackupDelta.keyCompare(b.id, a.id));
+  for (const {id, key, row} of used) {
+    if (need < 0.005) break;
+    const restore = Financial.money(Math.min(need, net[id])), paid = Financial.money(Number(row.paidOutAmount || 0) - restore), remaining = Financial.money(Number(row.remaining != null ? row.remaining : row.amount) + restore);
+    if (paid < -0.009) throw new HttpsError("failed-precondition", `The cash custody row ${key} does not show this purchase's payment, so the difference can't be put back. Repair Undeposited Collection first.`);
+    Object.assign(writes, {[`cashCustody/${key}/remaining`]: remaining, [`cashCustody/${key}/paidOutAmount`]: Math.max(0, paid), [`cashCustody/${key}/status`]: "awaiting_deposit", [`cashCustody/${key}/lastPaymentReversalAt`]: Date.now(), [`cashCustody/${key}/lastPaymentReversalMovementId`]: movementId});
+    // A row the deposit path dropped from the open index must be listed again, or the cash is invisible to the pool.
+    writes[`cashCustodyOpenIndex/${key}`] = remaining > 0 ? cashCustodyProjection(key, Object.assign({}, row, {remaining, paidOutAmount: Math.max(0, paid), status: "awaiting_deposit"})) : null;
+    net[id] = Financial.money(net[id] - restore); if (!(net[id] > 0)) delete net[id];
+    restored[key] = restore; need = Financial.money(need - restore);
+  }
+  if (need > 0.009) throw new HttpsError("failed-precondition", "The Undeposited Collection rows that paid this purchase can't take back the whole reduction. Nothing was changed; ask for a review.");
+  return {writes, net, paidOut, restored};
+}
 async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
   if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can amend a posted purchase.");
   if (invoice.reversed === true) throw new HttpsError("failed-precondition", "This purchase is voided. Enter a new purchase instead.");
@@ -117,8 +162,8 @@ async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
   const glSum = (gl) => Financial.money(gl.reduce((sum, line) => sum + Number(line.debit || 0), 0));
   if (Financial.money(glSum(newGl) - glSum(oldGl)) !== totalDelta) throw new HttpsError("failed-precondition", "This purchase's posted lines and total don't agree, so it can't be amended safely. Nothing was changed; ask for a review.");
 
-  const payMode = String(invoice.payMode || ""), writes = {}, payableClaims = [];
-  let fundingAccount = "", payableId = "", cashAccountId = "";
+  const payMode = String(invoice.payMode || ""), writes = {}, payableClaims = [], custodyClaims = [];
+  let fundingAccount = "", payableId = "", cashAccountId = "", custody = null;
   try {
     if (payMode === "account" || payMode === "pending") {
       payableId = financeText(invoice.payableId, 160);
@@ -131,9 +176,11 @@ async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
       Object.assign(writes, {[`payables/${payableId}/rev`]: claim.nextRev(payableId)}, claim.releaseWrites);
     } else if (payMode === "paid") {
       const paymentId = financeText(invoice.paymentMovementId, 160) || `purchase_cash_${invoiceId}`, payment = (await db.ref(`/financialMovements/${financeKey(paymentId, "Movement ID")}`).get()).val();
-      const cashLine = payment && payment.sourceId === invoiceId && Array.isArray(payment.lines) ? payment.lines.find((line) => /^asset:cash_account:/.test(String(line && line.account || "")) && Number(line.credit) > 0) : null;
-      if (!cashLine) throw new HttpsError("failed-precondition", "Only purchases paid from a bank or e-wallet account can be amended for now. A purchase paid from Cash on Hand or Undeposited Collection must be voided and entered again.");
-      fundingAccount = String(cashLine.account); cashAccountId = fundingAccount.slice("asset:cash_account:".length);
+      const cashLine = payment && payment.sourceId === invoiceId && Array.isArray(payment.lines) ? payment.lines.find((line) => /^asset:(cash_account:.+|cash_awaiting_deposit)$/.test(String(line && line.account || "")) && Number(line.credit) > 0) : null;
+      if (!cashLine) throw new HttpsError("failed-precondition", "Only purchases paid from a bank or e-wallet account or from Undeposited Collection can be amended. A purchase paid from Cash on Hand must be voided and entered again.");
+      fundingAccount = String(cashLine.account);
+      if (fundingAccount === "asset:cash_awaiting_deposit") {cashAccountId = "undeposited"; custody = await amendCustodyPlan(db, invoice, payment, oldTotal, totalDelta, `purchase_amend_${invoiceId}_r${nextRevision}`, custodyClaims);}
+      else cashAccountId = fundingAccount.slice("asset:cash_account:".length);
     } else {
       throw new HttpsError("failed-precondition", "Purchases paid by a supplier advance or personally by the owner can't be amended yet. Void the purchase and enter it again.");
     }
@@ -262,9 +309,11 @@ async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
       [`purchaseInvoices/${invoiceId}/editHistory/r${nextRevision}`]: {kind: "amend", at: now, by: actor.uid, byName: financeText(actor.name || actor.role, 120), reason, before: {total: oldTotal, inputVat: oldVat, lines: summary(lines)}, after: {total: newTotal, inputVat: newVat, lines: summary(next)}, added: adds.length, removed: removes.length, usedValueToCost: usedToCost, journalId: journal.length ? journalId : "", stockMovementIds},
       [`operationalAudit/${now}_purchase_amend_${invoiceId}`]: {action: "amend_purchase", sourceType: "purchaseInvoice", sourceId: invoiceId, revision: nextRevision, beforeTotal: oldTotal, afterTotal: newTotal, totalDelta, linesAdded: adds.length, linesRemoved: removes.length, usedValueToCost: usedToCost, fundingAccount, reason, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1},
     });
+    // Undeposited Collection: custody rows move with GL 1030 in this same commit; the purchase keeps its net allocation for a later amend or Void.
+    if (custody) Object.assign(writes, custody.writes, {[`purchaseInvoices/${invoiceId}/custodyAllocations`]: custody.net});
     if (journal.length) {
       if (!BooksBridge.linesBalanced(journal)) throw new HttpsError("failed-precondition", "The purchase amendment is not balanced. Nothing was posted to Finance Books; save the same amendment again or ask for a review.");
-      const movement = Financial.movement("purchase_amend", "purchaseInvoice", invoiceId, journal, {occurredAt: accountingAt, actorName: financeText(actor.name || actor.role, 120), revision: nextRevision, reason, documentNo: financeText(invoice.documentNo, 40), supplierId: financeText(invoice.supplierId, 160)});
+      const movement = Financial.movement("purchase_amend", "purchaseInvoice", invoiceId, journal, Object.assign({occurredAt: accountingAt, actorName: financeText(actor.name || actor.role, 120), revision: nextRevision, reason, documentNo: financeText(invoice.documentNo, 40), supplierId: financeText(invoice.supplierId, 160)}, custody ? {accountId: "undeposited", custodyAllocations: custody.paidOut, custodyRestoredAllocations: custody.restored} : {}));
       if (cashAccountId && Math.abs(totalDelta) >= 0.005) writes[`cfLedger/fm_${journalId}`] = cashLedgerRecord({date, accountId: cashAccountId, dir: totalDelta > 0 ? "out" : "in", category: "Purchase correction", amount: Math.abs(totalDelta), party: invoice.supplier, ref: invoice.documentNo || invoice.ref, auto: true}, journalId, movement, actor);
       await commitFinancial(db, journalId, movement, actor, writes);
     } else {
@@ -273,6 +322,7 @@ async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
     return {invoiceId, result: "amended", revision: nextRevision, oldTotal, newTotal, totalDelta, linesAdded: adds.length, linesRemoved: removes.length, usedValueToCost: usedAbs ? usedToCost : 0, journalLines: journal.length};
   } finally {
     for (const set of payableClaims) await set.release();
+    await releaseCustodyClaims(custodyClaims);
   }
 }
 

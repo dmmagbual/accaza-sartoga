@@ -18,7 +18,7 @@ function startPurchaseAmend(id){
 }
 function purchaseAmendPayBlock(P){
   var p=purchaseInvoicesMap[P.amendOf]||{};
-  return '<div class="purchase-section purchase-payment"><div class="purchase-section-head"><span class="purchase-step">2</span><div><b>Payment</b><small>'+esc(purchaseStatusLabel(p))+(p.payableId?' · bill '+esc(p.payableId):'')+'</small></div></div><div class="az-note">The new total is applied to the same supplier bill or bank / e-wallet payment. A bill with any payment against it must have that payment reversed first (Finance Books → Payables → Show settled).</div></div>';
+  return '<div class="purchase-section purchase-payment"><div class="purchase-section-head"><span class="purchase-step">2</span><div><b>Payment</b><small>'+esc(purchaseStatusLabel(p))+(p.payableId?' · bill '+esc(p.payableId):'')+'</small></div></div><div class="az-note">The new total is applied to the same supplier bill, bank / e-wallet payment, or Undeposited Collection payment (a higher total draws the extra from Undeposited Collection; a lower total puts the difference back). A bill with any payment against it must have that payment reversed first (Finance Books → Payables → Show settled).</div></div>';
 }
 function purchaseAmendRows(P){
   var p=purchaseInvoicesMap[P.amendOf]||{},orig=Array.isArray(p.lines)?p.lines:[],rows=[],problem='';
