@@ -45,6 +45,18 @@
       "rateLimit": "1800s",
       "subject": "Accaza: POS sale not saved",
       "doc": "The server refused a till sale (permanent error, 3 failed tries or 5 minutes). The till still holds it in its queue.\n\n**Do now:** Admin > Register Ops > Sales needing recovery. Recover or dismiss it. Do not ring it up again."
+    },
+    {
+      "displayName": "Accaza CRITICAL - Server functions failing",
+      "severity": "CRITICAL",
+      "kind": "metricThreshold",
+      "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"run.googleapis.com/request_count\" AND metric.labels.response_code_class=\"5xx\"",
+      "alignmentPeriod": "300s",
+      "threshold": 10,
+      "duration": "600s",
+      "rateLimit": "1800s",
+      "subject": "Accaza: server functions failing",
+      "doc": "More than 10 server requests per 5 minutes have failed for 10 minutes across Accaza's Cloud Functions. On 23 Oct 2026 a Google-side fault made every fresh function start fail for 85 minutes; it wrote no error text, so no log alert fired.\n\n**Do now:** Tell staff to keep ringing sales on the till (it queues them) and not to log out or clear the POS app. Purchases will show balances as unavailable, not zero. Check Cloud Run > Logs for status 500 by service. You get a second message when it clears."
     }
   ]
 }
