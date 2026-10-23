@@ -18,12 +18,16 @@ let app,db,auth;
 // portal does, so Books shows "Sign in" instead of an empty "Live" screen and sends nothing the server refuses.
 function staffUser(){const u=auth&&auth.currentUser;return u&&!u.isAnonymous?u:null;}
 try{ app=initializeApp(cfg);initializeAccazaAppCheck(app,'Finance Books'); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); };window.__booksFinancialClose=function(payload){return httpsCallable(fns,"runFinancialClose")(payload).then(function(r){return r.data;});};window.__booksCertifyClose=function(payload){if(!staffUser())return Promise.reject(new Error("Sign in first."));return auth.currentUser.getIdToken(true).then(function(token){return httpsCallable(fns,"createManagerApproval")({action:"certify_financial_close",sourceId:payload.closeId,reason:payload.reason,managerIdToken:token});}).then(function(ap){return httpsCallable(fns,"runFinancialClose")({action:"certify",closeType:"DAILY_CLOSE",businessDate:payload.businessDate,reason:payload.reason,approvalId:ap.data.approvalId});}).then(function(r){return r.data;});}; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksSync=function(){var ensureLedger=httpsCallable(fns,"ensureFinancialLedger"),ensureJournal=httpsCallable(fns,"ensureBooksJournal");return ensureLedger({}).then(function(ledger){return ensureJournal({}).then(function(books){return Object.assign({},books.data,{ordersScanned:ledger.data.scanned,financePosted:ledger.data.posted,financeDuplicates:ledger.data.duplicates,orphanReversed:ledger.data.orphanReversed});});});}; window.__cashAccountSave=function(payload){return httpsCallable(fns,"manageCashAccount")(payload).then(function(r){return r.data;});}; window.__manageBooksAccount=function(payload){return httpsCallable(fns,"manageBooksAccount")(payload).then(function(r){return r.data;});}; window.__booksRepairPayout=function(payload){if(!staffUser())return Promise.reject(new Error('Sign in to Accaza Books first.'));return auth.currentUser.getIdToken(true).then(function(token){return httpsCallable(fns,"createManagerApproval")({action:'repair_reversed_payout_deposit',sourceId:payload.payoutId,amount:payload.amount,reason:payload.reason,managerIdToken:token});}).then(function(approval){return httpsCallable(fns,"repairReversedPayoutDeposit")({payoutId:payload.payoutId,reason:payload.reason,approvalId:approval.data.approvalId});}).then(function(r){return r.data;});}; window.__booksRepairCashLedger=function(payload){return httpsCallable(fns,"repairPettyVoucherFinancial")(payload).then(function(r){return r.data;});}; window.__auditControls=function(){return httpsCallable(fns,"auditFinancialControls")({}).then(function(r){return r.data;});}; window.__apIntegrityBaseline=function(){return httpsCallable(fns,"apIntegrityBaseline")({}).then(function(r){return r.data;});}; window.__purchaseDocBackfill=function(payload){return httpsCallable(fns,"backfillPurchaseDocumentNumbers")(payload||{}).then(function(r){return r.data;});}; window.__repairFinanceDates=function(payload){return httpsCallable(fns,"repairFinanceDates")(payload).then(function(r){return r.data;});}; window.__booksAuthReady=true; }
-catch(e){ setPill("● Offline (local only)","off");window.__booksLiveLoading=false;if(window.App&&App.render)App.render(); }
+catch(e){ setPill("● Offline (local only)","off");window.__booksLiveLoading=false;if(window.BooksGate)window.BooksGate.show("offline");if(window.App&&App.render)App.render(); }
+// Sign-in gate (23 Oct 2026): BooksGate.decide (books-gate.js) applies the server's Books access rule. Permissions are read only when the role alone does not decide.
+async function booksAccess(user){const G=window.BooksGate;try{const raw=(await get(ref(db,"admins/"+user.uid))).val(),first=G.decide(raw,null);return first.allowed||first.reason!=="no_permission"?first:G.decide(raw,(await get(ref(db,"adminPerms/"+user.uid))).val());}
+  catch(e){return {allowed:false,reason:/permission/i.test(String(e&&(e.code||e.message)||""))?"not_staff":"unreachable"};}}
 if(typeof fns!=="undefined")window.__getSupplierAdvanceDetails=function(payload){return httpsCallable(fns,"getSupplierAdvanceDetails")(payload).then(function(r){return r.data;});};
 if(typeof fns!=="undefined")window.__manageSupplier=function(payload){return httpsCallable(fns,"manageSupplier")(payload).then(function(r){return r.data;});};
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});
   window.__booksSignIn=(email,pw)=>{ signInWithEmailAndPassword(auth,email,pw).then(()=>window.App&&App.closeModal()).catch(e=>alert("Sign-in failed: "+e.message)); };
+  window.__booksGateSignIn=(email,pw)=>signInWithEmailAndPassword(auth,String(email||"").trim(),String(pw||""));
   window.__booksSignOut=async()=>{ endIdle();await endPresence(true);return signOut(auth); };
   let journalCache={}, monthlyNetCache={}, reviewCache={}, booksStops=[], optionalStops={}, currentTab=(window.__booksCurrentTab||'dashboard');
   const OPTIONAL_FEEDS={
@@ -137,13 +141,21 @@ if(auth){
     
   }
   window.__booksRebindPeriod=function(){bindPeriodJournal();bindPeriodFinancial();};
+  let authSeq=0;
+  function clearLiveCaches(){ window.__booksLiveLoading=false;window.__booksChartManager=false; window.__posEntries=[]; window.__arMap={}; window.__apMap={};window.__supplierMap={}; window.__cashDiscrepancies={}; window.__booksReviewQueue={}; window.__cfAccounts={}; window.__cashAccountMap={}; window.__financialMovements={}; window.__platformPayouts={}; window.__booksActiveOrders={};window.__booksArchivedOrders={};window.__booksMenuItems={};window.__booksMenuCategories={};window.__cashCustody={};window.__faMap={}; window.__piMap={};window.__personalFundings={}; if(window.App&&App.render)App.render(); }
   onAuthStateChanged(auth, async signedIn=>{
+    const seq=++authSeq;
     const user=signedIn&&!signedIn.isAnonymous?signedIn:null;
     window.__booksUser = user?(user.email||"signed in"):null;
     window.__booksChartManager = !!(user && user.email && ["danilomagbual@gmail.com","contact.mariadaniela@gmail.com"].indexOf(String(user.email).toLowerCase())>=0);
-    if(user && window.__booksChartManager && window.__manageBooksAccount){ window.__manageBooksAccount({action:'initialize'}).catch(function(){}); }
     endIdle();await endPresence(!user);booksShift=null;stopBooksFeeds();orderStops.splice(0).forEach(function(stop){stop();});
     if(journalUnsub){journalUnsub();journalUnsub=null;}
+    // The gate: no feed, presence or server call starts until this account is confirmed for Finance Books.
+    const access=user?await booksAccess(user):null;
+    if(seq!==authSeq)return; // a newer sign-in or sign-out arrived while access was being checked
+    if(user&&!access.allowed){ window.__booksUser=null;clearLiveCaches();setPill(access.reason==="unreachable"?"● Offline":"● No Finance Books access","off"); if(window.BooksGate)window.BooksGate.show(access.reason==="unreachable"?"offline":"denied",{email:user.email||"",reason:access.reason}); return; }
+    if(user&&window.BooksGate)window.BooksGate.hide();
+    if(user && window.__booksChartManager && window.__manageBooksAccount){ window.__manageBooksAccount({action:'initialize'}).catch(function(){}); }
     if(user){ setPill("● Live · "+(user.email||"synced"),"ok");if(window.__manageSupplier)window.__manageSupplier({action:"initialize_legacy"}).catch(function(){});
       bindPeriodJournal();
       // Owner emergency sign-out: end this session if it signed in before the cutoff.
@@ -174,6 +186,6 @@ if(auth){
       bindOutstandingOrders();
       window.__platformPayouts={};window.__booksMenuItems={};window.__booksMenuCategories={};window.__cashCustody={};window.__faMap={};window.__piMap={};window.__personalFundings={};
       syncOptionalFeeds();
-    } else { window.__booksLiveLoading=false;setPill("● Sign in for live POS","off");window.__booksChartManager=false; window.__posEntries=[]; window.__arMap={}; window.__apMap={};window.__supplierMap={}; window.__cashDiscrepancies={}; window.__booksReviewQueue={}; window.__cfAccounts={}; window.__cashAccountMap={}; window.__financialMovements={}; window.__platformPayouts={}; window.__booksActiveOrders={};window.__booksArchivedOrders={};window.__booksMenuItems={};window.__booksMenuCategories={};window.__cashCustody={};window.__faMap={}; window.__piMap={};window.__personalFundings={}; if(window.App&&App.render)App.render(); }
+    } else { setPill("● Sign in for live POS","off");clearLiveCaches();if(window.BooksGate)window.BooksGate.show("signin"); }
   });
 }

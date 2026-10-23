@@ -5,6 +5,7 @@ test('Finance direct links render CSV controls and download journal lines',async
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('/books.html?tab=journal',{waitUntil:'domcontentloaded'});
   await page.evaluate(()=>{
+    window.BooksGate.hide(); // no Firebase in this check: open the sign-in gate by hand (books 159)
     window.__booksLiveLoading=false;
     window.__posEntries=[{id:'csv-test',date:window.AccazaDate.key(),ref:'CSV-260',memo:'CSV fixture',lines:[{code:'1000',debit:260},{code:'4000',credit:260}]}];
     window.App.go('journal');

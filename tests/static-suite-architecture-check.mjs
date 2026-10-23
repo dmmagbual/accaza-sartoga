@@ -155,6 +155,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // tests/static/45-operations-ui-continued.mjs no longer pins the retired "Use Amend to reverse and
 // re-enter ... accounting date" text; it now pins the purchase-date field and its correct_date call.
 // Same guard, stronger meaning; guard count stays at 577 and executable checks stay at 33.
-if(guardDigest!=='3b35b462f4565bf583530d10037516d909f017d1b3df1fd1d00f0f3867adf676')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// 23 Oct 2026 (Finance Books sign-in gate, Books 159): the guard in tests/static/30-server-release.mjs
+// now pins controlled-transactions.js?v=159 after the Books bump. Same guard, same meaning; guard count
+// stays at 577 and executable checks stay at 33.
+if(guardDigest!=='34692e542e8f59c92b0a91829a238540499c942a8e4fb06ea53ce9dc69230a3f')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

@@ -62,7 +62,7 @@
     "test:purchase-record-rules": "node tests/purchase-record-rules-check.mjs",
     "test:supplier-legacy-sweep-guard": "node tests/supplier-legacy-sweep-guard-check.mjs",
     "test:bank-ledger-link": "node tests/bank-ledger-link-check.mjs",
-    "test:books-navigation": "node tests/books-navigation-check.mjs",
+    "test:books-navigation": "node tests/books-navigation-check.mjs && node tests/books-sign-in-gate-check.mjs",
     "test:books-download-scope": "node tests/books-download-scope-check.mjs",
     "test:books-csv": "node tests/books-csv-export-check.mjs",
     "test:loyalty": "node tests/loyalty-check.mjs",

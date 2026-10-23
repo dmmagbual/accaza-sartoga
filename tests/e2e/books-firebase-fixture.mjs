@@ -39,8 +39,11 @@ const buildModules=(data={},options={})=>({
 });
 
 // options.anonymous: serve the public site's anonymous visitor session instead of the owner.
+// options.role / options.perms: the test owner's staff role (default Super Admin) and permissions, which
+// the Finance Books sign-in gate (books 159) reads before opening; data.admins / data.adminPerms override.
 export async function installBooksFirebaseFixture(page,data,options={}){
-  const modules=buildModules(data,options);
+  const staff={admins:{'books-test-owner':options.role||'superadmin'},adminPerms:options.perms?{'books-test-owner':options.perms}:{}};
+  const modules=buildModules(Object.assign(staff,data),options);
   await page.route(FIREBASE_ORIGIN+'**',async route=>{
     const name=new URL(route.request().url()).pathname.split('/').pop();
     const body=modules[name];

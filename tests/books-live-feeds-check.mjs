@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 
 const source = fs.readFileSync(new URL('../assets/js/books/live-pos.mjs', import.meta.url), 'utf8')
   .replace(/^import\s*\{([^}]*)\}\s*from\s*"[^"]+";/gm, '');
-const listeners = [], gets = [], data = {purchaseInvoices: {PI1: {date: '2026-09-02', total: 10}, PI2: {date: '2026-08-01', total: 20}}};
+// admins: the sign-in gate (books 159) reads the account's role before any feed attaches; owner_uid is a Super Admin.
+const listeners = [], gets = [], data = {admins: {owner_uid: 'superadmin'}, purchaseInvoices: {PI1: {date: '2026-09-02', total: 10}, PI2: {date: '2026-08-01', total: 20}}};
 const describe = (target) => (target.path + (target.constraints || []).map((c) => `|${Object.entries(c).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(',')}`).join(''));
 let authCallback = null, idleOptions = null;
 const windowListeners = {};
@@ -43,6 +44,9 @@ const context = {
 };
 context.globalThis = context;
 vm.createContext(context);
+// The real sign-in gate (its access rule is tested in tests/books-sign-in-gate-check.mjs).
+const gateContext = {window: win, location: {reload() {}}, setTimeout: () => 0, document: {readyState: 'complete', body: {classList: {add() {}, remove() {}}}, getElementById: () => null, addEventListener() {}}};
+vm.runInNewContext(fs.readFileSync(new URL('../assets/js/books/books-gate.js', import.meta.url), 'utf8'), gateContext);
 vm.runInContext(source, context);
 context.App = win.App;
 assert.ok(authCallback, 'Books waits for sign-in');
