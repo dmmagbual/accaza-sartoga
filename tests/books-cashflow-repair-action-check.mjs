@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const bridge = fs.readFileSync('assets/js/books/live-pos.mjs', 'utf8');
+const bridge = fs.readFileSync('assets/js/books/live-pos.mjs', 'utf8') + fs.readFileSync('assets/js/books/finance-callables.mjs', 'utf8');
 const cashFlow = fs.readFileSync('src/books/app/20-cash-flow.js', 'utf8');
 const statements = fs.readFileSync('src/books/app/30-statements-pages.js', 'utf8');
 

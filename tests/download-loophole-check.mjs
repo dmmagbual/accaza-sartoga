@@ -142,7 +142,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
 
 // 6. Finance Books, rules and server guards.
 {
-  const books = read('assets/js/books/live-pos.mjs');
+  const books = (read('assets/js/books/live-pos.mjs')+read('assets/js/books/finance-callables.mjs'));
   assert(!books.includes('query(ref(db,"/archivedOrders"),orderByChild("settlementStatus"),equalTo(null))'), 'Books must not download every in-store archived order');
   assert(books.includes('query(ref(db,"/archivedOrders"),orderByChild("settlementStatus"),equalTo("unsettled"))'));
   for (const marker of ['function syncInsightsOrders()', "httpsCallable(fns,\"readHistoricalSalesRollup\")", '__booksInsightsRollup', 'resetInsightsOrders();']) assert(books.includes(marker), `Books compact insights loader missing: ${marker}`);
@@ -610,7 +610,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
     for (const id of ['bdo', 'gcash', 'bank2']) assert.equal(newCtx.balance(id), oldCtx.balance(id), `ledger balance for ${id}`);
   }
   // Wiring: the Books feed reads only the period, the indexes, and reversal sources.
-  const live = read('assets/js/books/live-pos.mjs');
+  const live = (read('assets/js/books/live-pos.mjs')+read('assets/js/books/finance-callables.mjs'));
   assert.ok(live.includes('query(ref(db,"/financialMovements"),orderByChild("occurredAt"),startAt(p.startAt),endAt(p.endAt))'), 'Cash Flow must read only the selected period');
   assert.ok(!/ref\(db,"\/financialMovements"\)\)/.test(live) && !live.includes('endAt(Number(p.endAt)||Date.now())'), 'no all-history Finance movement listener');
   assert.ok(live.includes("orderByChild('sourceId'),equalTo(need[key].sourceId)"), 'reversal sources are read through the sourceId index');

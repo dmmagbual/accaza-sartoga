@@ -79,7 +79,7 @@ for(const marker of ['Number(original.revision||0)!==expected','classificationRe
 // journals out of authoritative net sales.
 for(const marker of ['receivables_control_mismatch','supplier_advances_control_mismatch','payables_control_mismatch'])if(!functionsSource.includes(marker))fail(`AR/AP/supplier-advances control audit missing: ${marker}`);
 for(const marker of ['date: REGISTER_FLOAT_ESTABLISHED_DATE, ref: "REGISTER-FLOAT"','if (Math.abs(before.amount - after.amount) < 0.005) return;'])if(!functionsSource.includes(marker))fail(`Register float entry date anchor missing: ${marker}`);
-const livePosSource=fs.readFileSync(path.join(root,'assets','js','books','live-pos.mjs'),'utf8');
+const livePosSource=fs.readFileSync(path.join(root,'assets','js','books','live-pos.mjs'),'utf8')+fs.readFileSync(path.join(root,'assets','js','books','finance-callables.mjs'),'utf8');
 for(const marker of ['entrySource','indexOf("booksManualJournal")===0?"manual":"pos"'])if(!livePosSource.includes(marker))fail(`Client manual-journal net-sales boundary missing: ${marker}`);
 for(const marker of ['authoritativeEntries=ents.filter(e=>e&&e.source==="pos")','manualEntries=ents.filter(e=>!e||e.source!=="pos")','Unverified manual sales — excluded from net sales','Admin-authorized bridge entries only'])if(!booksHtml.includes(marker))fail(`Books net-sales source boundary missing: ${marker}`);
 const platformBridgeSource=fs.readFileSync(path.join(root,'functions','lib','books-bridge.js'),'utf8');
