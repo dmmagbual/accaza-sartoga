@@ -22,7 +22,7 @@
       var expenseOptions=purchaseExpenseAccounts();
       if(!expenseOptions.length)expenseOptions=[{code:'6075',name:'Office & Administrative Supplies'},{code:'6070',name:'Cleaning & Operating Supplies'}];
       if(!expenseOptions.some(function(x){return String(x.code)===String(ln.expenseAccount);}))ln.expenseAccount=String(expenseOptions[0].code);
-      typeCell='<div class="purchase-expense-account"><span class="pz-lbl">Charge to Finance Books</span><select class="pz-in" data-pf="expenseAccount" data-pi="'+i+'" title="Active 6000-series operating expenses; 6110 Cash Short / Over is controlled separately.">'+expenseOptions.map(function(x){return '<option value="'+esc(x.code)+'"'+(String(ln.expenseAccount)===String(x.code)?' selected':'')+'>'+esc(x.code)+' · '+esc(x.name||'')+'</option>';}).join('')+'</select></div>';
+      typeCell='<div class="purchase-expense-account"><span class="pz-lbl">Charge to Finance Books</span><select class="pz-in" data-pf="expenseAccount" data-pi="'+i+'" title="Active 6000-series operating expenses; 6110 Cash Over / Short is controlled separately.">'+expenseOptions.map(function(x){return '<option value="'+esc(x.code)+'"'+(String(ln.expenseAccount)===String(x.code)?' selected':'')+'>'+esc(x.code)+' · '+esc(x.name||'')+'</option>';}).join('')+'</select></div>';
       unitCell='<span style="color:var(--tl);font-size:.82rem;">use</span>';
     } else if(ln.mode==='new'){
       var newRecipeItem=!isSupplyType(ln.newType)&&(ln.newType==='consumable'||ln.recipeItem!==false);

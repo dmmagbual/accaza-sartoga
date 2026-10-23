@@ -67,7 +67,12 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     // Older Finance movements used the revenue-shaped key; keep the immutable
     // source record but translate it to the overage control account on rebuild.
     "revenue:cash_overage": "2100", "revenue:payment_overage": "2100",
-    "revenue:unexplained_cash_overage": "4990",
+    // Register cash over/short (owner decision, 23 Oct 2026): new unexplained
+    // overages post to 6110 Cash Over / Short beside shortages, so 6110 carries
+    // the net register variance. The older key stays mapped to 4990 because a
+    // Books rebuild re-folds immutable movements; earlier months stay as posted
+    // and the open month moves only through linked reclass movements.
+    "revenue:unexplained_cash_overage": "4990", "revenue:register_cash_overage": "6110",
     // BIR tax split: output VAT payable, percentage tax payable, and the
     // percentage tax expense. Exact entries are mandatory — without them these
     // lines fall through to Suspense 1900 and the tax never reaches Books.

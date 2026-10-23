@@ -34,6 +34,7 @@ const FinancialClose = require("./lib/financial-close");
 const AccountingPeriods = require("./lib/accounting-periods");
 const CashJournalEdit = require("./lib/cash-journal-edit");
 const JournalReclassification = require("./lib/journal-reclassification");
+const CashOverShortReclass = require("./lib/cash-over-short-reclass");
 const ReconciliationControls = require("./lib/reconciliation-controls");
 const SupplierAdvancePosting = require("./lib/supplier-advance-posting");
 const ApIntegrity = require("./lib/ap-integrity");
