@@ -112,6 +112,11 @@ test('Finance Books starts from the assembled runtime without browser errors',as
   page.on('pageerror',error=>pageErrors.push(error.message));
   await page.goto('/books.html',{waitUntil:'domcontentloaded'});
   await expect(page.locator('meta[name="accaza-books-build"]')).toHaveAttribute('content',String(release.builds.books));
+  // Books starts locked behind its sign-in gate (books 159). This check is about the report screens with
+  // no Firebase at all, so it opens the gate by hand; access itself is covered by books-anonymous-session.
+  await expect(page.locator('body')).toHaveClass(/books-locked/);
+  await expect(page.locator('#page')).toBeHidden();
+  await page.evaluate(()=>window.BooksGate.hide());
   await expect(page.locator('#tabs').locator('button')).not.toHaveCount(0);
   await expect(page.locator('#page')).not.toBeEmpty();
   // CI intentionally has no Firebase credentials or dependable network. End the
