@@ -76,7 +76,7 @@ check(read('src/functions/00-bootstrap-notifications.js').includes('const ApInte
 check(read('functions/index.js').includes('exports.apIntegrityBaseline'), 'The deployed functions bundle must export apIntegrityBaseline (run npm run build:artifacts).');
 const manifest = JSON.parse(read('release-manifest.json'));
 check(JSON.stringify(manifest).includes('functions/lib/ap-integrity.js') && manifest.requiredFunctionExports.includes('apIntegrityBaseline'), 'The release manifest must ship the library and require the export.');
-check(read('assets/js/books/live-pos.mjs').includes('httpsCallable(fns,"apIntegrityBaseline")'), 'Finance Books must be able to call the AP integrity check.');
+check((read('assets/js/books/live-pos.mjs')+read('assets/js/books/finance-callables.mjs')).includes('httpsCallable(fns,"apIntegrityBaseline")'), 'Finance Books must be able to call the AP integrity check.');
 check(read('src/books/app/40-subledgers.js').includes('App.runApIntegrityCheck()') && read('assets/js/books/app.js').includes('App.runApIntegrityCheck=function'), 'Finance Books Payables must offer the AP integrity check (run npm run build:artifacts).');
 
 /* Review fixes: a purchase pointing at a REVERSED bill has no liability; duplicates are found across

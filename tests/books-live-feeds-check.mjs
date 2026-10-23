@@ -36,6 +36,8 @@ const context = {
   // Portal presence writes one small record and is covered by tests/portal-presence-check.mjs.
   set: async () => {}, push: (target) => ({path: `${target.path}/conn`}), remove: async () => {}, onDisconnect: () => ({remove: async () => {}, cancel: async () => {}}), serverTimestamp: () => 0,
   startPortalPresence: () => () => {}, runningBuild: () => 130,
+  // Server-function connectors (finance-callables.mjs) only define window.__* hooks; they read nothing.
+  installFinanceCallables: () => {},
   // Environment choice is covered by tests/firebase-env-check.mjs; Books always sees production here.
   accazaFirebaseConfig: () => ({projectId: 'accaza-sartoga'}), markUatPage: () => {},
   // Browser binding and inactivity are exercised in tests/portal-idle-check.mjs. This harness

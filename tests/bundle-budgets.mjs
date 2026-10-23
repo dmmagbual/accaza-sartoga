@@ -140,7 +140,8 @@ export const BUNDLE_BUDGETS=Object.freeze({
   'assets/js/customer/rewards.js':34700, // reviewed 32,991
   'assets/js/admin/sales-history.js':30000, // reviewed 28,541
   'assets/js/admin/reservations.mjs':28300, // reviewed 26,945
-  'assets/js/books/live-pos.mjs':29500, // reviewed 26,882; re-based 13 Oct 2026: hand-written module, no sections to split, growth headroom restored
+  'assets/js/books/live-pos.mjs':29500, // reviewed 26,882; re-based 13 Oct 2026; 23 Oct 2026: server-function connectors split to finance-callables.mjs, now 26,346
+  'assets/js/books/finance-callables.mjs':3500, // 23 Oct 2026 split from live-pos.mjs (connectors, text unchanged); reviewed 3,301
   'assets/js/admin/undeposited.js':28100, // reviewed 26,670
   'assets/js/admin/staff-access.js':27600, // reviewed 25,250; re-based 13 Oct 2026: hand-written file, no sections to split, growth headroom restored
   'assets/js/shared/costing.js':23400, // reviewed 22,196

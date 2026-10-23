@@ -102,7 +102,7 @@ check(backfill.includes('nextDocumentNumber(db, "PUR", year)') && backfill.inclu
 check(backfill.indexOf('if (preview) { numbered += 1; continue; }') < backfill.indexOf('nextDocumentNumber(db, "PUR", year)'), 'Preview mode must count without allocating a number (no counter burn).');
 // the bill is mirrored whether linked by payableId or back-linked by purchaseInvoiceId, and never created as a phantom.
 check(backfill.includes('billByPurchase[id] || financeText(inv.payableId, 160)') && backfill.includes('if (billKey && bills[billKey])'), 'The backfill must mirror onto an existing bill found by either link direction, never creating a phantom payable.');
-check(read('assets/js/books/live-pos.mjs').includes('window.__purchaseDocBackfill=function(payload){return httpsCallable(fns,"backfillPurchaseDocumentNumbers")'), 'Finance Books must expose the backfill callable.');
+check((read('assets/js/books/live-pos.mjs')+read('assets/js/books/finance-callables.mjs')).includes('window.__purchaseDocBackfill=function(payload){return httpsCallable(fns,"backfillPurchaseDocumentNumbers")'), 'Finance Books must expose the backfill callable.');
 check(booksSub.includes('App.runPurchaseDocBackfill=function(){') && booksSub.includes('Number old purchases</button>'), 'Finance Books Payables must have the Number-old-purchases button and handler.');
 const manifest = JSON.parse(read('release-manifest.json'));
 check(manifest.requiredFunctionExports.includes('backfillPurchaseDocumentNumbers'), 'The manifest must require the backfill export.');
