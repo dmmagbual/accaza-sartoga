@@ -8005,7 +8005,7 @@ exports.managePurchaseCorrection = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["purchases"]), data = request.data || {}, action = financeText(data.action, 30);
     const requestedId = financeText(data.invoiceId, 160), requestedRef = financeText(data.invoiceRef, 120);
-    const correctionLockActions=new Set(["amend","discard_amend","correct_accounts","correct_quantity","correct_reversal_date","edit_lines","reverse"]);if(correctionLockActions.has(action)&&!requestedId)throw new HttpsError("invalid-argument","Refresh the purchase and submit its record ID before correcting it.");const correctionLock=correctionLockActions.has(action)?await claimPurchaseCorrection(db,financeKey(requestedId,"Purchase invoice ID"),actor):null;
+    const correctionLockActions=new Set(["amend","discard_amend","correct_date","correct_accounts","correct_quantity","correct_reversal_date","edit_lines","reverse"]);if(correctionLockActions.has(action)&&!requestedId)throw new HttpsError("invalid-argument","Refresh the purchase and submit its record ID before correcting it.");const correctionLock=correctionLockActions.has(action)?await claimPurchaseCorrection(db,financeKey(requestedId,"Purchase invoice ID"),actor):null;
     try{
     // By ID only the invoice is read; a lookup by reference has to compare every invoice.
     const requestedRow = requestedId && TrackedRead.trackable(requestedId) ? (await db.ref(`/purchaseInvoices/${requestedId}`).get()).val() : null;
@@ -8058,6 +8058,7 @@ exports.managePurchaseCorrection = onCall(
     if (action === "edit_lines") return await editPurchaseLines(db, actor, invoiceId, invoice, data, reason, now);
     if (action === "amend") return await amendPurchase(db, actor, invoiceId, invoice, data, reason, now);
     if (action === "discard_amend") return await discardPendingAmend(db, actor, invoiceId, invoice, reason, now);
+    if (action === "correct_date") return await redatePurchase(db, actor, invoiceId, invoice, data, reason, now);
     if (invoice.pendingEdit && ["correct_accounts","correct_quantity","reverse"].includes(action)) throw new HttpsError("failed-precondition", "A change to this purchase did not finish. Open Amend and save the same change again before any other correction or Void.");
     if (action === "correct_accounts") {
       if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can correct posted purchase accounts.");
@@ -8178,9 +8179,12 @@ exports.managePurchaseCorrection = onCall(
       const paidAsset=paidCashAccount==="cash_on_hand"||paidCashAccount==="register"?"asset:register_cash":paidCashAccount==="undeposited"?"asset:cash_awaiting_deposit":`asset:cash_account:${paidCashAccount}`;
       financialMovement=Financial.movement("purchase_cash_reversed","purchaseInvoice",invoiceId,[Financial.line(paidAsset,safeInvoice.total,0,"Reverse purchase payment")].concat(reversalInventoryLines),{occurredAt:reversalAccountingTimestamp,actorName:actor.role,accountId:paidCashAccount,reversalDate});
       if(paidCashAccount==="undeposited"){
-        const original=(await db.ref(`/financialMovements/purchase_cash_${invoiceId}`).get()).val()||{},allocations=original.custodyAllocations||{};
+        /* An amended purchase keeps its net custody allocation on the invoice (23 Oct 2026); restore that, not the first payment's. */
+        const original=(await db.ref(`/financialMovements/${financeKey(financeText(invoice.paymentMovementId,160)||`purchase_cash_${invoiceId}`,"Movement ID")}`).get()).val()||{},allocations=purchaseCustodyNet(invoice,original),allocatedTotal=Financial.money(Object.values(allocations).reduce((sum,value)=>sum+value,0));
+        if(original.sourceId&&original.sourceId!==invoiceId)throw new HttpsError("failed-precondition","The payment linked to this purchase belongs to a different record. Nothing was changed; ask for a review.");
+        if(invoice.custodyAllocations&&Math.abs(allocatedTotal-safeInvoice.total)>0.009)throw new HttpsError("failed-precondition","The Undeposited Collection cash recorded for this purchase does not equal its total. Nothing was changed; ask for a review.");
         if(!Object.keys(allocations).length)throw new HttpsError("failed-precondition","The original Undeposited Collection custody allocation is missing. Repair it before reversing this purchase.");
-        for(const id of Object.keys(allocations)){const key=financeKey(id,"Custody ID"),row=(await db.ref(`/cashCustody/${key}`).get()).val();if(!row)throw new HttpsError("failed-precondition",`Cash custody ${key} is missing.`);const restore=Financial.money(allocations[id]),remaining=Financial.money(Number(row.remaining||0)+restore),paidOut=Financial.money(Math.max(0,Number(row.paidOutAmount||0)-restore));writes[`cashCustody/${key}/remaining`]=remaining;writes[`cashCustody/${key}/paidOutAmount`]=paidOut;writes[`cashCustody/${key}/status`]="awaiting_deposit";writes[`cashCustody/${key}/lastPaymentReversalMovementId`]=financialId;}
+        for(const id of Object.keys(allocations)){const key=financeKey(id,"Custody ID"),row=(await db.ref(`/cashCustody/${key}`).get()).val();if(!row)throw new HttpsError("failed-precondition",`Cash custody ${key} is missing.`);const restore=Financial.money(allocations[id]),remaining=Financial.money(Number(row.remaining||0)+restore),paidOut=Financial.money(Math.max(0,Number(row.paidOutAmount||0)-restore));writes[`cashCustody/${key}/remaining`]=remaining;writes[`cashCustody/${key}/paidOutAmount`]=paidOut;writes[`cashCustody/${key}/status`]="awaiting_deposit";writes[`cashCustody/${key}/lastPaymentReversalMovementId`]=financialId;writes[`cashCustodyOpenIndex/${key}`]=remaining>0?cashCustodyProjection(key,Object.assign({},row,{remaining,paidOutAmount:paidOut,status:"awaiting_deposit"})):null;}
       }
       writes[`cfLedger/fm_${financialId}`]=cashLedgerRecord({date:reversalDate,accountId:paidCashAccount==="register"?"cash_on_hand":paidCashAccount,dir:"in",category:"Purchase reversal",amount:safeInvoice.total,party:invoice.supplier,ref:invoice.ref,auto:true},financialId,financialMovement,actor);
     }else if(invoice.payMode==="advance"&&invoice.purchaseAdvanceId){
@@ -9063,6 +9067,51 @@ function amendStockValue(movement) {
   const m = movement || {};
   return Financial.money(qty6(m.balanceAfter) * qty6(m.costAfter) - qty6(m.balanceBefore) * qty6(m.costBefore));
 }
+// Undeposited Collection (Danilo, 23 Oct 2026: "make undeposited collection able to amend too"). The cash
+// that paid the purchase is held per custody row. The purchase keeps its net custody allocation, so a later
+// amendment or Void restores exactly the rows it used: a higher total draws the extra from the pool (oldest
+// cash first, refused on a shortfall), a lower total puts the difference back on the rows it came from.
+// GL 1030 and the custody rows move by the same amount in the same commit, so custody stays equal to 1030.
+function purchaseCustodyNet(invoice, payment) {
+  const source = invoice && invoice.custodyAllocations && typeof invoice.custodyAllocations === "object" ? invoice.custodyAllocations : (payment && payment.custodyAllocations) || {}, net = {};
+  Object.keys(source).forEach((id) => {const value = Financial.money(source[id]); if (value > 0) net[id] = value;});
+  return net;
+}
+async function amendCustodyPlan(db, invoice, payment, oldTotal, totalDelta, movementId, claims) {
+  const net = purchaseCustodyNet(invoice, payment), held = Financial.money(Object.values(net).reduce((sum, value) => sum + value, 0));
+  if (!Object.keys(net).length || Math.abs(held - oldTotal) > 0.009) throw new HttpsError("failed-precondition", "This purchase does not record exactly which Undeposited Collection cash paid it, so it can't be amended safely. Nothing was changed; ask for a review.");
+  const writes = {}, paidOut = {}, restored = {};
+  if (Math.abs(totalDelta) < 0.005) return {writes, net, paidOut, restored};
+  await claimCustodyPool(db, movementId, claims);
+  if (totalDelta > 0) {
+    const out = await poolCustodyOutflow(db, totalDelta);
+    if (out.shortfall > 0.009) throw new HttpsError("failed-precondition", `The amendment adds ${Financial.money(totalDelta).toFixed(2)} but Undeposited Collection is short by ${out.shortfall.toFixed(2)}. Nothing was changed.`);
+    Object.assign(writes, out.writes);
+    Object.keys(out.allocations).forEach((id) => {net[id] = Financial.money((net[id] || 0) + out.allocations[id]); paidOut[id] = out.allocations[id]; writes[`cashCustody/${id}/lastPaymentMovementId`] = movementId;});
+    return {writes, net, paidOut, restored};
+  }
+  let need = Financial.money(-totalDelta);
+  // Put the difference back on the rows it used, most recently collected first (the outflow takes oldest first).
+  const used = [];
+  for (const id of Object.keys(net)) {
+    const key = financeKey(id, "Custody ID"), row = (await db.ref(`/cashCustody/${key}`).get()).val();
+    if (!row) throw new HttpsError("failed-precondition", `The cash custody row ${key} that paid this purchase is missing. Repair Undeposited Collection before amending.`);
+    used.push({id, key, row});
+  }
+  used.sort((a, b) => Number(b.row.closedAt || 0) - Number(a.row.closedAt || 0) || BackupDelta.keyCompare(b.id, a.id));
+  for (const {id, key, row} of used) {
+    if (need < 0.005) break;
+    const restore = Financial.money(Math.min(need, net[id])), paid = Financial.money(Number(row.paidOutAmount || 0) - restore), remaining = Financial.money(Number(row.remaining != null ? row.remaining : row.amount) + restore);
+    if (paid < -0.009) throw new HttpsError("failed-precondition", `The cash custody row ${key} does not show this purchase's payment, so the difference can't be put back. Repair Undeposited Collection first.`);
+    Object.assign(writes, {[`cashCustody/${key}/remaining`]: remaining, [`cashCustody/${key}/paidOutAmount`]: Math.max(0, paid), [`cashCustody/${key}/status`]: "awaiting_deposit", [`cashCustody/${key}/lastPaymentReversalAt`]: Date.now(), [`cashCustody/${key}/lastPaymentReversalMovementId`]: movementId});
+    // A row the deposit path dropped from the open index must be listed again, or the cash is invisible to the pool.
+    writes[`cashCustodyOpenIndex/${key}`] = remaining > 0 ? cashCustodyProjection(key, Object.assign({}, row, {remaining, paidOutAmount: Math.max(0, paid), status: "awaiting_deposit"})) : null;
+    net[id] = Financial.money(net[id] - restore); if (!(net[id] > 0)) delete net[id];
+    restored[key] = restore; need = Financial.money(need - restore);
+  }
+  if (need > 0.009) throw new HttpsError("failed-precondition", "The Undeposited Collection rows that paid this purchase can't take back the whole reduction. Nothing was changed; ask for a review.");
+  return {writes, net, paidOut, restored};
+}
 async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
   if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can amend a posted purchase.");
   if (invoice.reversed === true) throw new HttpsError("failed-precondition", "This purchase is voided. Enter a new purchase instead.");
@@ -9161,8 +9210,8 @@ async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
   const glSum = (gl) => Financial.money(gl.reduce((sum, line) => sum + Number(line.debit || 0), 0));
   if (Financial.money(glSum(newGl) - glSum(oldGl)) !== totalDelta) throw new HttpsError("failed-precondition", "This purchase's posted lines and total don't agree, so it can't be amended safely. Nothing was changed; ask for a review.");
 
-  const payMode = String(invoice.payMode || ""), writes = {}, payableClaims = [];
-  let fundingAccount = "", payableId = "", cashAccountId = "";
+  const payMode = String(invoice.payMode || ""), writes = {}, payableClaims = [], custodyClaims = [];
+  let fundingAccount = "", payableId = "", cashAccountId = "", custody = null;
   try {
     if (payMode === "account" || payMode === "pending") {
       payableId = financeText(invoice.payableId, 160);
@@ -9175,9 +9224,11 @@ async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
       Object.assign(writes, {[`payables/${payableId}/rev`]: claim.nextRev(payableId)}, claim.releaseWrites);
     } else if (payMode === "paid") {
       const paymentId = financeText(invoice.paymentMovementId, 160) || `purchase_cash_${invoiceId}`, payment = (await db.ref(`/financialMovements/${financeKey(paymentId, "Movement ID")}`).get()).val();
-      const cashLine = payment && payment.sourceId === invoiceId && Array.isArray(payment.lines) ? payment.lines.find((line) => /^asset:cash_account:/.test(String(line && line.account || "")) && Number(line.credit) > 0) : null;
-      if (!cashLine) throw new HttpsError("failed-precondition", "Only purchases paid from a bank or e-wallet account can be amended for now. A purchase paid from Cash on Hand or Undeposited Collection must be voided and entered again.");
-      fundingAccount = String(cashLine.account); cashAccountId = fundingAccount.slice("asset:cash_account:".length);
+      const cashLine = payment && payment.sourceId === invoiceId && Array.isArray(payment.lines) ? payment.lines.find((line) => /^asset:(cash_account:.+|cash_awaiting_deposit)$/.test(String(line && line.account || "")) && Number(line.credit) > 0) : null;
+      if (!cashLine) throw new HttpsError("failed-precondition", "Only purchases paid from a bank or e-wallet account or from Undeposited Collection can be amended. A purchase paid from Cash on Hand must be voided and entered again.");
+      fundingAccount = String(cashLine.account);
+      if (fundingAccount === "asset:cash_awaiting_deposit") {cashAccountId = "undeposited"; custody = await amendCustodyPlan(db, invoice, payment, oldTotal, totalDelta, `purchase_amend_${invoiceId}_r${nextRevision}`, custodyClaims);}
+      else cashAccountId = fundingAccount.slice("asset:cash_account:".length);
     } else {
       throw new HttpsError("failed-precondition", "Purchases paid by a supplier advance or personally by the owner can't be amended yet. Void the purchase and enter it again.");
     }
@@ -9306,9 +9357,11 @@ async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
       [`purchaseInvoices/${invoiceId}/editHistory/r${nextRevision}`]: {kind: "amend", at: now, by: actor.uid, byName: financeText(actor.name || actor.role, 120), reason, before: {total: oldTotal, inputVat: oldVat, lines: summary(lines)}, after: {total: newTotal, inputVat: newVat, lines: summary(next)}, added: adds.length, removed: removes.length, usedValueToCost: usedToCost, journalId: journal.length ? journalId : "", stockMovementIds},
       [`operationalAudit/${now}_purchase_amend_${invoiceId}`]: {action: "amend_purchase", sourceType: "purchaseInvoice", sourceId: invoiceId, revision: nextRevision, beforeTotal: oldTotal, afterTotal: newTotal, totalDelta, linesAdded: adds.length, linesRemoved: removes.length, usedValueToCost: usedToCost, fundingAccount, reason, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1},
     });
+    // Undeposited Collection: custody rows move with GL 1030 in this same commit; the purchase keeps its net allocation for a later amend or Void.
+    if (custody) Object.assign(writes, custody.writes, {[`purchaseInvoices/${invoiceId}/custodyAllocations`]: custody.net});
     if (journal.length) {
       if (!BooksBridge.linesBalanced(journal)) throw new HttpsError("failed-precondition", "The purchase amendment is not balanced. Nothing was posted to Finance Books; save the same amendment again or ask for a review.");
-      const movement = Financial.movement("purchase_amend", "purchaseInvoice", invoiceId, journal, {occurredAt: accountingAt, actorName: financeText(actor.name || actor.role, 120), revision: nextRevision, reason, documentNo: financeText(invoice.documentNo, 40), supplierId: financeText(invoice.supplierId, 160)});
+      const movement = Financial.movement("purchase_amend", "purchaseInvoice", invoiceId, journal, Object.assign({occurredAt: accountingAt, actorName: financeText(actor.name || actor.role, 120), revision: nextRevision, reason, documentNo: financeText(invoice.documentNo, 40), supplierId: financeText(invoice.supplierId, 160)}, custody ? {accountId: "undeposited", custodyAllocations: custody.paidOut, custodyRestoredAllocations: custody.restored} : {}));
       if (cashAccountId && Math.abs(totalDelta) >= 0.005) writes[`cfLedger/fm_${journalId}`] = cashLedgerRecord({date, accountId: cashAccountId, dir: totalDelta > 0 ? "out" : "in", category: "Purchase correction", amount: Math.abs(totalDelta), party: invoice.supplier, ref: invoice.documentNo || invoice.ref, auto: true}, journalId, movement, actor);
       await commitFinancial(db, journalId, movement, actor, writes);
     } else {
@@ -9317,6 +9370,7 @@ async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
     return {invoiceId, result: "amended", revision: nextRevision, oldTotal, newTotal, totalDelta, linesAdded: adds.length, linesRemoved: removes.length, usedValueToCost: usedAbs ? usedToCost : 0, journalLines: journal.length};
   } finally {
     for (const set of payableClaims) await set.release();
+    await releaseCustodyClaims(custodyClaims);
   }
 }
 
@@ -9328,6 +9382,106 @@ async function discardPendingAmend(db, actor, invoiceId, invoice, reason, now) {
   for (const op of (Array.isArray(staged.plan) ? staged.plan : [])) if ((await db.ref(`/inventoryMovements/${financeKey(op.id, "Movement ID")}`).get()).exists()) throw new HttpsError("failed-precondition", "Stock already moved for this amendment, so it can't be discarded. Finish it instead.");
   await db.ref().update({[`purchaseInvoices/${invoiceId}/pendingEdit`]: null, [`operationalAudit/${now}_purchase_amend_discard_${invoiceId}`]: {action: "discard_purchase_amend", sourceType: "purchaseInvoice", sourceId: invoiceId, revision: Number(staged.revision) || 0, reason, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}});
   return {invoiceId, result: "amend_discarded"};
+}
+
+// Purchase date correction (Danilo, 23 Oct 2026): Edit details changes the date of a posted purchase, in
+// place, the way the purchase-reversal date correction already works. Every Finance Books posting of the
+// purchase that sits on the old date (the purchase itself, its payment, amendments and account
+// corrections), their bank / Undeposited Collection ledger rows, the supplier bill, and the stock receipts
+// and batches move to the new date. Amounts, accounts, stock quantities and the stock ledger's posting
+// order do not change. Super Admin only; both months must be open. Refused when the supplier bill has a
+// payment, when a cash row is bank-reconciled, when another posting of the purchase would end up before
+// it, when the purchase is paid by a supplier advance or by the owner, or when the year changes (the PUR
+// number belongs to its year). Each change keeps a dated revision with before/after values.
+async function redatePurchase(db, actor, invoiceId, invoice, data, reason, now) {
+  if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can change the date of a posted purchase.");
+  if (invoice.reversed === true) throw new HttpsError("failed-precondition", "This purchase is voided; its date can't be changed. Use Correct reversal date for the void.");
+  if (invoice.pendingEdit) throw new HttpsError("failed-precondition", "A change to this purchase did not finish. Open Amend and save the same change again before changing its date.");
+  const oldDate = financeDate(invoice.date), newDate = financeDate(data.date), revision = Math.max(0, Math.trunc(Number(invoice.dateRevision) || 0)), nextRevision = revision + 1;
+  if (newDate === oldDate) return {invoiceId, result: "date_unchanged", date: newDate, duplicate: true};
+  if (Math.trunc(Number(data.expectedDateRevision)) !== revision) throw new HttpsError("aborted", "This purchase's date was changed after you opened it. Refresh and try again.");
+  if (newDate.slice(0, 4) !== oldDate.slice(0, 4) && invoice.documentNo) throw new HttpsError("failed-precondition", `${invoice.documentNo} belongs to ${oldDate.slice(0, 4)}, so it can't move to ${newDate.slice(0, 4)}. Void it and enter the purchase again in ${newDate.slice(0, 4)}.`);
+  await assertAccountingPeriodOpen(db, oldDate, "changing this purchase date");
+  await assertAccountingPeriodOpen(db, newDate, "moving this purchase into it");
+  const payMode = String(invoice.payMode || ""), paidFrom = financeText(invoice.accountId, 120);
+  if (payMode === "advance" || payMode === "owner_funded") throw new HttpsError("failed-precondition", "Purchases paid by a supplier advance or personally by the owner can't be re-dated yet. Void the purchase and enter it again.");
+  if (payMode === "paid" && (paidFrom === "cash_on_hand" || paidFrom === "register")) throw new HttpsError("failed-precondition", "This purchase was paid from register cash, which belongs to a counted shift. Void it and enter it again on the right date.");
+
+  // Every Finance Books posting of this purchase (bounded: indexed by sourceId). A bill purchase's own
+  // posting (payable_created / grni_created) is filed under the supplier bill, not the purchase.
+  const payableKey = financeText(invoice.payableId, 160);
+  if ((payMode === "account" || payMode === "pending") && !payableKey) throw new HttpsError("failed-precondition", "This purchase has no linked supplier bill. Use Repair payable first, then change the date.");
+  const [ownSnap, billSnap] = await Promise.all([db.ref("/financialMovements").orderByChild("sourceId").equalTo(invoiceId).get(), payableKey ? db.ref("/financialMovements").orderByChild("sourceId").equalTo(payableKey).get() : Promise.resolve(null)]);
+  const own = ownSnap.val() || {}, bill = (billSnap && billSnap.val()) || {}, linked = {};
+  Object.keys(own).forEach((id) => {if (own[id] && own[id].sourceType === "purchaseInvoice") linked[id] = own[id];});
+  Object.keys(bill).forEach((id) => {if (bill[id] && bill[id].sourceType === "payable" && ["payable_created", "grni_created"].includes(String(bill[id].type || ""))) linked[id] = bill[id];});
+  const day = (date) => Date.parse(`${date}T00:00:00+08:00`), shift = day(newDate) - day(oldDate), moves = [];
+  for (const id of Object.keys(linked).sort()) {
+    const movement = linked[id], at = Number(movement.occurredAt || movement.postedAt || 0), date = financeDateFromTimestamp(at);
+    if (date === oldDate) {moves.push({id, movement, at}); continue;}
+    if (date < newDate) throw new HttpsError("failed-precondition", `Another posting of this purchase is dated ${date}, before ${newDate}. Nothing was changed; ask for a review.`);
+  }
+  // The purchase's own posting must be among the moved rows, or Books would keep it on the old date.
+  const paymentId = financeText(invoice.paymentMovementId, 160) || `purchase_cash_${invoiceId}`;
+  const main = payMode === "paid" ? moves.find((m) => m.id === paymentId) : moves.find((m) => m.movement.sourceType === "payable");
+  if (!main) throw new HttpsError("failed-precondition", `The ${payMode === "paid" ? "payment" : "supplier bill"} posting of this purchase is not dated ${oldDate}, so the date can't be moved safely. Nothing was changed; ask for a review.`);
+  // Undeposited Collection: the cash that paid it must already have been collected on the new date.
+  if (payMode === "paid" && paidFrom === "undeposited") {
+    const allocations = purchaseCustodyNet(invoice, main.movement);
+    for (const id of Object.keys(allocations)) {
+      const row = (await db.ref(`/cashCustody/${financeKey(id, "Custody ID")}`).get()).val(), collected = row && Number(row.closedAt) ? financeDateFromTimestamp(Number(row.closedAt)) : "";
+      if (collected && collected > newDate) throw new HttpsError("failed-precondition", `This purchase was paid from Undeposited Collection cash collected on ${collected}, so it can't be dated ${newDate}.`);
+    }
+  }
+
+  const payableClaims = [], writes = {};
+  let closeClaims = [];
+  try {
+    const payableId = payableKey;
+    if (payableId) {
+      const claim = await claimPayables(db, [payableId], `purchase_redate_${invoiceId}_r${nextRevision}`, actor, payableClaims), payable = claim.doc(payableId);
+      if (payable && Financial.payableHasSettlement(payable)) throw new HttpsError("failed-precondition", `This supplier bill already has ${Financial.payableSettledAmount(payable).toFixed(2)} paid against it. Reverse the payment first (Finance Books → Payables → Show settled → Reverse payment), then change the date.`);
+      if (payable) Object.assign(writes, {[`payables/${payableId}/date`]: newDate, [`payables/${payableId}/rev`]: claim.nextRev(payableId)}, claim.releaseWrites);
+    }
+    const before = {}, after = {}, movementIds = [];
+    for (const m of moves) {
+      const key = financeKey(m.id, "Movement ID"), [journalSnap, ledgerSnap] = await Promise.all([db.ref(`/books/journal/${key}`).get(), db.ref(`/cfLedger/fm_${key}`).get()]), journal = journalSnap.val(), ledger = ledgerSnap.val();
+      if (!journal || journal.sourceId !== String(m.movement.sourceId || "")) throw new HttpsError("failed-precondition", `The Finance Books journal for ${key} is missing or points elsewhere. Refresh Books and try again.`);
+      if (ledger && (ledger.bankReconciled === true || ledger.reconciled === true || ledger.reconciledAt || ledger.bankReconciliationId || ledger.statementId)) throw new HttpsError("failed-precondition", "The payment of this purchase is bank-reconciled. Reopen that bank reconciliation before changing the date.");
+      const occurredAt = m.at + shift;
+      writes[`financialMovements/${key}`] = Object.assign({}, m.movement, {occurredAt, accountingDate: newDate, accountingDateRevision: nextRevision, accountingDateReason: reason, accountingDateUpdatedAt: now, accountingDateUpdatedBy: actor.uid});
+      // Only the date moves; the journal's lines stay exactly as posted (Books totals follow via updateBooksMonthlyNet).
+      writes[`books/journal/${key}`] = Object.assign({}, journal, {date: newDate, updatedAt: now, updatedBy: actor.uid, accountingDateRevision: nextRevision});
+      if (ledger) writes[`cfLedger/fm_${key}`] = Object.assign({}, ledger, {date: newDate, ts: occurredAt, accountingDateRevision: nextRevision, accountingDateUpdatedAt: now, accountingDateUpdatedBy: actor.uid});
+      writes[`cashJournalRevisions/${key}/${nextRevision}`] = {revision: nextRevision, reason, changedAt: now, changedBy: actor.uid, changedByRole: actor.role, before: {occurredAt: m.at, journalDate: journal.date || oldDate, ledgerDate: ledger ? ledger.date : null}, after: {occurredAt, journalDate: newDate, ledgerDate: ledger ? newDate : null}, kind: "purchase_accounting_date"};
+      before[key] = m.at; after[key] = occurredAt; movementIds.push(key);
+    }
+    // Source documents: the purchase, its stock receipts and batches show the new date.
+    (Array.isArray(invoice.receiptIds) ? invoice.receiptIds : []).concat(Array.isArray(invoice.removedReceiptIds) ? invoice.removedReceiptIds : []).forEach((id) => {writes[`stockReceipts/${financeKey(id, "Stock receipt ID")}/date`] = newDate;});
+    const batches = (await db.ref("/inventoryBatch").orderByChild("invoiceId").equalTo(invoiceId).get()).val() || {};
+    Object.keys(batches).forEach((id) => {if (batches[id] && financeText(batches[id].recvDate, 10) === oldDate) writes[`inventoryBatch/${id}/recvDate`] = newDate;});
+    Object.assign(writes, {
+      [`purchaseInvoices/${invoiceId}/date`]: newDate, [`purchaseInvoices/${invoiceId}/dateRevision`]: nextRevision,
+      [`purchaseInvoices/${invoiceId}/lastDateCorrectionAt`]: now, [`purchaseInvoices/${invoiceId}/lastDateCorrectionBy`]: actor.uid, [`purchaseInvoices/${invoiceId}/lastDateCorrectionReason`]: reason,
+      [`purchaseInvoices/${invoiceId}/dateHistory/r${nextRevision}`]: {from: oldDate, to: newDate, at: now, by: actor.uid, byName: financeText(actor.name || actor.role, 120), reason, movementIds},
+      [`operationalAudit/${now}_purchase_redate_${invoiceId}_${nextRevision}`]: {action: "correct_purchase_date", sourceType: "purchaseInvoice", sourceId: invoiceId, revision: nextRevision, fromDate: oldDate, toDate: newDate, movementIds, before, after, payableId: payableId || "", total: Financial.money(invoice.total), reason, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1},
+    });
+    // Closes covering either date are reopened, as the reversal-date correction does.
+    closeClaims = await claimPurchaseReversalCloseLocks(db, [oldDate, newDate], actor, invoiceId);
+    for (const date of [oldDate, newDate]) {
+      const indexes = (await db.ref(`/financialCloseIndex/${date}`).get()).val() || {};
+      for (const closeId of Object.keys(indexes)) {
+        if (!(await db.ref(`/financialCloses/${closeId}/current`).get()).val()) continue;
+        Object.assign(writes, {[`financialCloses/${closeId}/current/status`]: "REOPENED", [`financialCloses/${closeId}/current/reopenedAt`]: now, [`financialCloses/${closeId}/current/reopenedByActivityId`]: `purchase_redate_${invoiceId}_${nextRevision}`, [`financialCloseIndex/${date}/${closeId}/status`]: "REOPENED"});
+      }
+    }
+    // One atomic update keeps the purchase, its postings, Books, the cash ledger, the bill and the audit in step.
+    await db.ref().update(writes);
+    return {invoiceId, result: "date_corrected", fromDate: oldDate, toDate: newDate, revision: nextRevision, movements: movementIds.length};
+  } finally {
+    await releasePurchaseReversalCloseLocks(closeClaims);
+    for (const set of payableClaims) await set.release();
+  }
 }
 
 exports.ensureFinancialLedger = onCall(

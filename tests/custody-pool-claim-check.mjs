@@ -158,7 +158,8 @@ const functionsDir = path.join(root, 'src/functions');
 const sources = Object.fromEntries(fs.readdirSync(functionsDir).filter((f) => f.endsWith('.js')).map((f) => [f, fs.readFileSync(path.join(functionsDir, f), 'utf8')]));
 const calls = (re) => Object.entries(sources).reduce((n, [, s]) => n + (s.match(re) || []).length, 0);
 /* Recurrence guard: a NEW caller changes these counts and must be reviewed for the claim. */
-check(calls(/await poolCustodyOutflow\(/g) === 10, `poolCustodyOutflow call sites changed (${calls(/await poolCustodyOutflow\(/g)}); add the custody claim to the new path, then update this count.`);
+/* 23 Oct 2026: +1 for Amend of a purchase paid from Undeposited Collection (43l), which claims first (checked below). */
+check(calls(/await poolCustodyOutflow\(/g) === 11, `poolCustodyOutflow call sites changed (${calls(/await poolCustodyOutflow\(/g)}); add the custody claim to the new path, then update this count.`);
 check(calls(/await poolCustodyDeposit\(/g) === 1, 'poolCustodyDeposit call sites changed; add the custody claim to the new path, then update this count.');
 for (const [file, s] of Object.entries(sources)) {
   if (file === '40-sales-finance.js') continue;
@@ -174,6 +175,9 @@ has('42a-financial-command-entry.js', 'await claimCustodyPool(db,commandId,apCla
 has('42a-financial-command-entry.js', 'await claimCustodyPool(db,commandId,apClaimSets);for(const [cid,raw] of Object.entries(allocations))', 'A batch payment reversal must claim before restoring custody.');
 has('42b-financial-command-transactions.js', 'await claimCustodyPool(db, commandId, apClaimSets);const custodyOut = await poolCustodyOutflow(db, value);', 'A cash purchase from Undeposited Collection must claim before reading custody.');
 has('42c-financial-command-controls.js', 'await claimCustodyPool(db,commandId,apClaimSets);const existingReceipt=', 'A cash-journal edit must claim before recomputing custody.');
+const am = sources['43l-purchase-amend.js'];
+check(am.indexOf('await claimCustodyPool(db, movementId, claims);') > 0 && am.indexOf('await claimCustodyPool(db, movementId, claims);') < am.indexOf('const out = await poolCustodyOutflow(db, totalDelta);') && am.indexOf('custody = await amendCustodyPlan(') < am.indexOf('await applyInventoryMovement(db, raw, actor)'), 'Amending a purchase paid from Undeposited Collection must claim before reading custody and before any stock moves.');
+has('43l-purchase-amend.js', 'await releaseCustodyClaims(custodyClaims);', 'Purchase amend must release the custody claim.');
 const pr = sources['43b-purchase-corrections.js'];
 check(pr.indexOf('await claimCustodyPool(db,`purchase_cash_reversal_${invoiceId}`,custodyClaims)') > 0 && pr.indexOf('await claimCustodyPool(db,`purchase_cash_reversal_${invoiceId}`,custodyClaims)') < pr.indexOf('await applyInventoryMovement(db,{movementId:`purchase_reverse_'), 'Reversing a purchase paid from Undeposited Collection must claim before any stock moves.');
 has('43b-purchase-corrections.js', '}finally{await releaseCustodyClaims(custodyClaims);', 'Purchase reversal must release the custody claim.');

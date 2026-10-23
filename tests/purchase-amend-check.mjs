@@ -25,7 +25,7 @@ const amendJournal = (expectedItemChange, ledgerValueChange, fundingDelta) => {
 
 // Server rules.
 must(corrections, 'if (action === "amend") return await amendPurchase(', 'managePurchaseCorrection must route amend to the Amend function.');
-must(corrections, 'new Set(["amend","discard_amend","correct_accounts"', 'Amend must run under the purchase correction lock.');
+must(corrections, 'new Set(["amend","discard_amend","correct_date","correct_accounts"', 'Amend must run under the purchase correction lock.');
 must(amend, 'actor.role !== "superadmin"', 'Only a Super Admin may amend a posted purchase.');
 must(amend, 'await assertAccountingPeriodOpen(db, date, "amending this purchase")', 'Amend must be refused in a closed month.');
 must(amend, 'Math.trunc(Number(data.expectedRevision)) !== revision', 'A stale amendment must be refused.');
@@ -40,7 +40,7 @@ must(amend, 'Financial.money(qty6(m.balanceAfter) * qty6(m.costAfter) - qty6(m.b
 must(amend, 'pending.intent === intent && Array.isArray(pending.plan)', 'A retried amendment must replay its stored stock plan.');
 must(amend, 'pending.intent !== intent', 'A half-finished amendment with different values must block a new one.');
 must(amend, 'BooksBridge.linesBalanced(journal)', 'An unbalanced amendment must never be posted.');
-must(amend, 'Financial.movement("purchase_amend", "purchaseInvoice", invoiceId, journal, {occurredAt: accountingAt', 'The amendment journal is dated on the purchase date.');
+must(amend, 'Financial.movement("purchase_amend", "purchaseInvoice", invoiceId, journal, Object.assign({occurredAt: accountingAt', 'The amendment journal is dated on the purchase date.');
 must(amend, 'await commitFinancial(db, journalId, movement, actor, writes)', 'Journal and purchase/bill/receipt updates must commit together.');
 must(amend, '[`purchaseInvoices/${invoiceId}/movementIds`]: movementIds', 'Void must still find one stock movement per item after lines are added or removed.');
 must(amend, '[`stockReceipts/${r.receiptId}/removed`]: true', 'A removed line must leave its receipt marked removed, not deleted.');
@@ -68,6 +68,21 @@ must(corrections, 'if (action === "mark_void_receipts") {', 'Older voids must be
 must(card, "type:'Void'+label", 'The stock card must show a Void row for a voided purchase.');
 must(card, "r.removed||!(Number(r.qty)>0)", 'A line removed by Amend must not show on the stock card.');
 must(card, "else if(/^Void/i.test(m.type||''))received-=Number(m.out)||0;", 'A void must reduce stock received in the reconciliation, not count as consumption.');
+// Undeposited Collection (23 Oct 2026): custody rows move with GL 1030; the purchase keeps its net allocation for a later amend or Void.
+must(amend, 'cash_awaiting_deposit)$/.test(', 'A purchase paid from Undeposited Collection must be amendable.');
+must(amend, 'const out = await poolCustodyOutflow(db, totalDelta);', 'A higher total must draw the extra from the Undeposited Collection pool.');
+must(amend, 'out.shortfall > 0.009', 'A higher total the pool cannot cover must be refused before anything moves.');
+must(amend, 'Math.abs(held - oldTotal) > 0.009', 'An Undeposited purchase whose recorded custody does not equal its total must be refused.');
+must(amend, 'writes[`cashCustodyOpenIndex/${key}`] = remaining > 0', 'Cash put back on a custody row must be listed in the open index again.');
+must(amend, '[`purchaseInvoices/${invoiceId}/custodyAllocations`]: custody.net', 'The purchase must keep its net custody allocation.');
+must(amend, 'await releaseCustodyClaims(custodyClaims);', 'The Undeposited Collection claim must always be released.');
+must(corrections, 'allocations=purchaseCustodyNet(invoice,original)', 'Void must restore the net custody allocation of an amended purchase.');
+must(corrections, 'writes[`cashCustodyOpenIndex/${key}`]=remaining>0?cashCustodyProjection(', 'Void must list restored custody rows in the open index.');
+// The custody arithmetic: P1,000 paid from rows A (600) and B (400); amend to P1,150 then to P900.
+{ const net = {A: 600, B: 400}; net.C = 150; const up = money(net.A + net.B + net.C); let need = money(up - 900); const restored = {};
+  for (const id of Object.keys(net).sort().reverse()) { if (need <= 0) break; const r = money(Math.min(need, net[id])); net[id] = money(net[id] - r); restored[id] = r; need = money(need - r); }
+  const left = money(Object.values(net).reduce((s, v) => s + v, 0));
+  if (up !== 1150 || left !== 900 || restored.C !== 150 || restored.B !== 100) failures.push('Amending an Undeposited purchase down must put the difference back on the rows it used, newest first, leaving exactly the new total allocated.'); }
 // Admin.
 must(workspace, 'data-purchase-amend=', 'Purchase history must offer Amend.');
 must(purchasing, 'pp.onclick=P.amendOf?savePurchaseAmendment:postPurchases;', 'Save on an amendment must call Amend, never post a second purchase.');

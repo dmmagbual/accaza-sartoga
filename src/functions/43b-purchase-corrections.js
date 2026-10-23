@@ -45,7 +45,7 @@ exports.managePurchaseCorrection = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["purchases"]), data = request.data || {}, action = financeText(data.action, 30);
     const requestedId = financeText(data.invoiceId, 160), requestedRef = financeText(data.invoiceRef, 120);
-    const correctionLockActions=new Set(["amend","discard_amend","correct_accounts","correct_quantity","correct_reversal_date","edit_lines","reverse"]);if(correctionLockActions.has(action)&&!requestedId)throw new HttpsError("invalid-argument","Refresh the purchase and submit its record ID before correcting it.");const correctionLock=correctionLockActions.has(action)?await claimPurchaseCorrection(db,financeKey(requestedId,"Purchase invoice ID"),actor):null;
+    const correctionLockActions=new Set(["amend","discard_amend","correct_date","correct_accounts","correct_quantity","correct_reversal_date","edit_lines","reverse"]);if(correctionLockActions.has(action)&&!requestedId)throw new HttpsError("invalid-argument","Refresh the purchase and submit its record ID before correcting it.");const correctionLock=correctionLockActions.has(action)?await claimPurchaseCorrection(db,financeKey(requestedId,"Purchase invoice ID"),actor):null;
     try{
     // By ID only the invoice is read; a lookup by reference has to compare every invoice.
     const requestedRow = requestedId && TrackedRead.trackable(requestedId) ? (await db.ref(`/purchaseInvoices/${requestedId}`).get()).val() : null;
@@ -98,6 +98,7 @@ exports.managePurchaseCorrection = onCall(
     if (action === "edit_lines") return await editPurchaseLines(db, actor, invoiceId, invoice, data, reason, now);
     if (action === "amend") return await amendPurchase(db, actor, invoiceId, invoice, data, reason, now);
     if (action === "discard_amend") return await discardPendingAmend(db, actor, invoiceId, invoice, reason, now);
+    if (action === "correct_date") return await redatePurchase(db, actor, invoiceId, invoice, data, reason, now);
     if (invoice.pendingEdit && ["correct_accounts","correct_quantity","reverse"].includes(action)) throw new HttpsError("failed-precondition", "A change to this purchase did not finish. Open Amend and save the same change again before any other correction or Void.");
     if (action === "correct_accounts") {
       if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can correct posted purchase accounts.");
@@ -218,9 +219,12 @@ exports.managePurchaseCorrection = onCall(
       const paidAsset=paidCashAccount==="cash_on_hand"||paidCashAccount==="register"?"asset:register_cash":paidCashAccount==="undeposited"?"asset:cash_awaiting_deposit":`asset:cash_account:${paidCashAccount}`;
       financialMovement=Financial.movement("purchase_cash_reversed","purchaseInvoice",invoiceId,[Financial.line(paidAsset,safeInvoice.total,0,"Reverse purchase payment")].concat(reversalInventoryLines),{occurredAt:reversalAccountingTimestamp,actorName:actor.role,accountId:paidCashAccount,reversalDate});
       if(paidCashAccount==="undeposited"){
-        const original=(await db.ref(`/financialMovements/purchase_cash_${invoiceId}`).get()).val()||{},allocations=original.custodyAllocations||{};
+        /* An amended purchase keeps its net custody allocation on the invoice (23 Oct 2026); restore that, not the first payment's. */
+        const original=(await db.ref(`/financialMovements/${financeKey(financeText(invoice.paymentMovementId,160)||`purchase_cash_${invoiceId}`,"Movement ID")}`).get()).val()||{},allocations=purchaseCustodyNet(invoice,original),allocatedTotal=Financial.money(Object.values(allocations).reduce((sum,value)=>sum+value,0));
+        if(original.sourceId&&original.sourceId!==invoiceId)throw new HttpsError("failed-precondition","The payment linked to this purchase belongs to a different record. Nothing was changed; ask for a review.");
+        if(invoice.custodyAllocations&&Math.abs(allocatedTotal-safeInvoice.total)>0.009)throw new HttpsError("failed-precondition","The Undeposited Collection cash recorded for this purchase does not equal its total. Nothing was changed; ask for a review.");
         if(!Object.keys(allocations).length)throw new HttpsError("failed-precondition","The original Undeposited Collection custody allocation is missing. Repair it before reversing this purchase.");
-        for(const id of Object.keys(allocations)){const key=financeKey(id,"Custody ID"),row=(await db.ref(`/cashCustody/${key}`).get()).val();if(!row)throw new HttpsError("failed-precondition",`Cash custody ${key} is missing.`);const restore=Financial.money(allocations[id]),remaining=Financial.money(Number(row.remaining||0)+restore),paidOut=Financial.money(Math.max(0,Number(row.paidOutAmount||0)-restore));writes[`cashCustody/${key}/remaining`]=remaining;writes[`cashCustody/${key}/paidOutAmount`]=paidOut;writes[`cashCustody/${key}/status`]="awaiting_deposit";writes[`cashCustody/${key}/lastPaymentReversalMovementId`]=financialId;}
+        for(const id of Object.keys(allocations)){const key=financeKey(id,"Custody ID"),row=(await db.ref(`/cashCustody/${key}`).get()).val();if(!row)throw new HttpsError("failed-precondition",`Cash custody ${key} is missing.`);const restore=Financial.money(allocations[id]),remaining=Financial.money(Number(row.remaining||0)+restore),paidOut=Financial.money(Math.max(0,Number(row.paidOutAmount||0)-restore));writes[`cashCustody/${key}/remaining`]=remaining;writes[`cashCustody/${key}/paidOutAmount`]=paidOut;writes[`cashCustody/${key}/status`]="awaiting_deposit";writes[`cashCustody/${key}/lastPaymentReversalMovementId`]=financialId;writes[`cashCustodyOpenIndex/${key}`]=remaining>0?cashCustodyProjection(key,Object.assign({},row,{remaining,paidOutAmount:paidOut,status:"awaiting_deposit"})):null;}
       }
       writes[`cfLedger/fm_${financialId}`]=cashLedgerRecord({date:reversalDate,accountId:paidCashAccount==="register"?"cash_on_hand":paidCashAccount,dir:"in",category:"Purchase reversal",amount:safeInvoice.total,party:invoice.supplier,ref:invoice.ref,auto:true},financialId,financialMovement,actor);
     }else if(invoice.payMode==="advance"&&invoice.purchaseAdvanceId){
