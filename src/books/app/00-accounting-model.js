@@ -127,10 +127,10 @@ function migrate(p){
     ["6085","Platform Penalties & Adjustments","Expense"],
     ["6086","Percentage Tax","Expense","Non-VAT percentage tax on gross receipts"],
     ["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],
-    ["6110","Cash Short / Over","Expense","Register variance"]
+    ["6110","Cash Over / Short","Expense","Net register variance: overages credit, shortages debit. P&L shows a net credit as other income and a net debit as other expense."]
   ];
   need.forEach(function(n){ if(!p.accounts.find(function(a){return a.code===n[0];})) p.accounts.push({code:n[0],name:n[1],type:n[2],note:n[3]||""}); });
-  var canonical={"1115":["Supplier Advances","Asset","Unallocated supplier payments; controlled by Cash Payments and Purchases"],"1120":["Staff Advances","Asset","Amounts advanced to staff pending liquidation or return"],"5900":["Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],"5905":["Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],"6077":["Staff Consumption & Welfare","Expense","Inventory consumed by staff"],"6078":["Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"]};Object.keys(canonical).forEach(function(code){var a=p.accounts.find(function(row){return row.code===code;}),v=canonical[code];if(a){a.name=v[0];a.type=v[1];a.note=v[2];}});p.accounts=p.accounts.filter(function(a){return a.code!=='4995';});(p.entries||[]).forEach(function(e){(e.lines||[]).forEach(function(line){if(String(line.code)==='4995')line.code='5905';});});
+  var canonical={"6110":["Cash Over / Short","Expense","Net register variance: overages credit, shortages debit. P&L shows a net credit as other income and a net debit as other expense."],"1115":["Supplier Advances","Asset","Unallocated supplier payments; controlled by Cash Payments and Purchases"],"1120":["Staff Advances","Asset","Amounts advanced to staff pending liquidation or return"],"5900":["Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],"5905":["Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],"6077":["Staff Consumption & Welfare","Expense","Inventory consumed by staff"],"6078":["Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"]};Object.keys(canonical).forEach(function(code){var a=p.accounts.find(function(row){return row.code===code;}),v=canonical[code];if(a){a.name=v[0];a.type=v[1];a.note=v[2];}});p.accounts=p.accounts.filter(function(a){return a.code!=='4995';});(p.entries||[]).forEach(function(e){(e.lines||[]).forEach(function(line){if(String(line.code)==='4995')line.code='5905';});});
   var supplies=p.accounts.find(function(a){return a.code==='6070';});if(supplies)supplies.name='Cleaning & Operating Supplies';
   p.accounts.sort(function(x,y){return String(x.code).localeCompare(String(y.code));});
   return p;
@@ -213,23 +213,38 @@ function workingCapitalAt(end){
   return {currentAssets,currentLiabilities,amount:r2(currentAssets-currentLiabilities)};
 }
 
+/* 6110 Cash Over / Short carries the net register variance (overages credit,
+   shortages debit). It is never an operating expense line: the period's net
+   shows under Other income when it is a credit and under Other expenses when
+   it is a debit (owner decision, 23 Oct 2026). */
+const CASH_OVER_SHORT_CODE="6110";
+function cashOverShortRow(ents){
+  const a=DB.accounts.find(x=>x.code===CASH_OVER_SHORT_CODE)||{code:CASH_OVER_SHORT_CODE,name:"Cash Over / Short",type:"Expense"};
+  const net=r2(normalBalanceFor(CASH_OVER_SHORT_CODE,ents));
+  if(Math.abs(net)<=0.005)return null;
+  return net<0?{side:"income",a,bal:r2(-net)}:{side:"expense",a,bal:net};
+}
+
 /* P&L numbers for the current period */
 function plData(){
   const ents = entriesInPeriod();
   const salesCodes = new Set(["4000","4010","4020","4030","4900","4910"]);
   const authoritativeEntries=ents.filter(e=>e&&e.source==="pos"),manualEntries=ents.filter(e=>!e||e.source!=="pos");
   const sum = type => DB.accounts.filter(a=>a.type===type).map(a=>({a, bal:normalBalanceFor(a.code,ents)})).filter(x=>Math.abs(x.bal)>0.005);
-  const income = sum("Income"), cogs = sum("COGS"), expense = sum("Expense");
+  const income = sum("Income"), cogs = sum("COGS"), expense = sum("Expense").filter(x=>x.a.code!==CASH_OVER_SHORT_CODE);
+  const overShort = cashOverShortRow(ents), otherExpense = overShort&&overShort.side==="expense"?[overShort]:[];
   const sales = DB.accounts.filter(a=>a.type==="Income"&&salesCodes.has(a.code)).map(a=>({a,bal:normalBalanceFor(a.code,authoritativeEntries)})).filter(x=>Math.abs(x.bal)>0.005);
   const otherIncome = income.filter(x=>!salesCodes.has(x.a.code));
   const manualSales=salesCodes.size?Array.from(salesCodes).reduce((s,code)=>s+normalBalanceFor(code,manualEntries),0):0;
+  if(overShort&&overShort.side==="income")otherIncome.push(overShort);
   if(Math.abs(manualSales)>0.005)otherIncome.push({a:{code:"REVIEW",name:"Unverified manual sales — excluded from net sales",type:"Income"},bal:r2(manualSales),synthetic:true});
   const netSales = sales.reduce((s,x)=>s+x.bal,0);
   const totalOtherIncome = otherIncome.reduce((s,x)=>s+x.bal,0);
   const totalIncome = netSales+totalOtherIncome;
   const totalCogs = cogs.reduce((s,x)=>s+x.bal,0);
   const totalExp = expense.reduce((s,x)=>s+x.bal,0);
+  const totalOtherExpense = otherExpense.reduce((s,x)=>s+x.bal,0);
   const gross = netSales-totalCogs;
-  const net = gross+totalOtherIncome-totalExp;
-  return {income,sales,otherIncome,cogs,expense,totalIncome,netSales,totalOtherIncome,totalCogs,totalExp,gross,net,ents};
+  const net = gross+totalOtherIncome-totalExp-totalOtherExpense;
+  return {income,sales,otherIncome,otherExpense,cogs,expense,totalIncome,netSales,totalOtherIncome,totalOtherExpense,totalCogs,totalExp,gross,net,ents};
 }

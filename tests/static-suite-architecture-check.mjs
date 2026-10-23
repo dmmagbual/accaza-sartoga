@@ -162,6 +162,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // live-pos.mjs to finance-callables.mjs, so the Finance Books guard in tests/static/60-finance-books.mjs
 // reads both files, and tests/static/30-server-release.mjs pins controlled-transactions.js?v=160. Same
 // guards, same meaning; guard count stays at 577 and executable checks stay at 33.
-if(guardDigest!=='2617d6fc7832b9ea12c9b3c9f95df57d90d5c65205fbe4e6a7ad071a579aa9b5')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// 23 Oct 2026 (cash over/short consolidation, Books 161): tests/static/30-server-release.mjs now pins
+// controlled-transactions.js?v=161 after the Books bump. Same guard, same meaning; guard count stays at
+// 577 and executable checks stay at 33.
+if(guardDigest!=='0986c46cd8fdd84711aca9eee42ccbbe566518e8e8380c12cf5ea0974d6886ab')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

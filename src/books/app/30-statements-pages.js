@@ -39,7 +39,9 @@ const PAGES = {
             <tr><td>Net sales</td><td class="num">${peso(pl.netSales)}</td></tr>
             <tr><td>Cost of goods sold</td><td class="num neg">(${peso(pl.totalCogs)})</td></tr>
             <tr class="sub-row"><td>Gross profit</td><td class="num">${peso(pl.gross)}</td></tr>
+            <tr><td>Other income</td><td class="num">${peso(pl.totalOtherIncome)}</td></tr>
             <tr><td>Operating expenses</td><td class="num neg">(${peso(pl.totalExp)})</td></tr>
+            ${pl.totalOtherExpense>0.005?`<tr><td>Other expenses</td><td class="num neg">(${peso(pl.totalOtherExpense)})</td></tr>`:''}
             <tr class="total-row"><td>Net ${pl.net>=0?'income':'loss'}</td><td class="num ${pl.net>=0?'pos':'neg'}">${peso(pl.net)}</td></tr>
           </tbody></table>
         </div>
@@ -144,6 +146,7 @@ const PAGES = {
       ?`<tr><td><span class="acc-code">${x.a.code}</span> <span class="linkish" onclick="App.drill('${x.a.code}')">Less: ${esc(x.a.name)} · gain reduces COGS</span></td><td class="num pos">${peso(Math.abs(x.bal))}</td></tr>`
       :line(x,true)).join("");
     const expRows = pl.expense.map(x=>line(x,true)).join("");
+    const otherExpRows = pl.otherExpense.map(x=>line(x,true)).join("");
     const grossPct = pl.netSales>0?(pl.gross/pl.netSales*100):0;
     const netPct = pl.netSales>0?(pl.net/pl.netSales*100):0;
     return `<div class="page-head"><div><h2>Profit &amp; Loss</h2><p>${periodLabel()}</p></div>
@@ -163,7 +166,8 @@ const PAGES = {
           <tr class="total-row"><td>Total other income</td><td class="num">${peso(pl.totalOtherIncome)}</td></tr>
           <tr class="sub-row"><td colspan="2">Operating expenses</td></tr>
           ${expRows||'<tr><td colspan=2 class="muted">—</td></tr>'}
-          <tr class="total-row"><td>Total expenses</td><td class="num neg">(${peso(pl.totalExp)})</td></tr>
+          <tr class="total-row"><td>Total operating expenses</td><td class="num neg">(${peso(pl.totalExp)})</td></tr>
+          ${otherExpRows?`<tr class="sub-row"><td colspan="2">Other expenses</td></tr>${otherExpRows}<tr class="total-row"><td>Total other expenses</td><td class="num neg">(${peso(pl.totalOtherExpense)})</td></tr>`:''}
           <tr class="total-row"><td>Net ${pl.net>=0?'income':'loss'} <span class="tiny muted">${netPct.toFixed(1)}%</span></td><td class="num ${pl.net>=0?'pos':'neg'}" style="font-size:1.05rem">${peso(pl.net)}</td></tr>
         </tbody></table></div></div>`;
   },

@@ -23,6 +23,30 @@ exports.postFinancialCommand = onCall(
       if(!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError('permission-denied','A privileged Finance role is required to view cash-journal revisions.');
       const id=financeKey(data.originalMovementId,'Journal ID');return{revisions:(await db.ref(`/cashJournalRevisions/${id}`).get()).val()||{}};
     }
+    if(action==='reclass_cash_overage_6110'){
+      // One-off, manager-approved: moves the open month's unexplained register overages
+      // already posted to 4990 Other Income into 6110 Cash Over / Short (owner decision,
+      // 23 Oct 2026). One linked movement per source, dated on the source date, id derived
+      // from the source, so a re-run posts nothing twice. Closed periods are refused by
+      // commitFinancial. Earlier months stay as posted.
+      if(!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError('permission-denied','Only a manager may reclassify register cash overages.');
+      const month=financeText(data.month,7),current=financeDateFromTimestamp(Date.now()).slice(0,7);
+      if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||month<CashOverShortReclass.FIRST_MONTH||month>current)throw new HttpsError('invalid-argument',`Choose a month from ${CashOverShortReclass.FIRST_MONTH} to ${current}.`);
+      const bounds=CashOverShortReclass.monthBounds(month);await assertAccountingPeriodOpen(db,bounds.start,"reclassifying register overages");
+      const snap=/* download-ok: manual one-off reclass; one month of Finance movements by the indexed occurredAt */await db.ref('/financialMovements').orderByChild('occurredAt').startAt(bounds.start).endAt(bounds.end).get(),plan=CashOverShortReclass.plan(snap.val()||{},month);
+      const pick=(c)=>({rootId:c.rootId,movementId:c.movementId,amount:c.amount,occurredAt:c.occurredAt,discrepancyId:c.discrepancyId||'',documentNo:c.documentNo||''});
+      const planIds=plan.candidates.map((c)=>c.movementId).concat(plan.undo.map((u)=>u.movementId)).sort();
+      const summary={month,total:plan.total,candidates:plan.candidates.map(pick),undo:plan.undo.map(pick),alreadyReclassed:plan.alreadyReclassed,skipped:plan.skipped,planIds};
+      if(data.preview===true)return Object.assign({preview:true},summary);
+      const reason=financeText(data.reason,300);if(!reason)throw new HttpsError('invalid-argument','A reclass reason is required.');
+      const expected=(Array.isArray(data.expectedIds)?data.expectedIds:[]).map((x)=>financeText(x,160)).sort();
+      if(JSON.stringify(expected)!==JSON.stringify(planIds))throw new HttpsError('failed-precondition','The overages changed since your preview. Preview again before posting.');
+      const actorName=financeText(actor.name||actor.email||actor.role,100),posted=[],failed=[];
+      const post=async(item,lines,extra,label)=>{try{const mv=Financial.movement(CashOverShortReclass.RECLASS_TYPE,'financialMovement',item.rootId,lines,Object.assign({occurredAt:item.occurredAt,actorName,discrepancyId:item.discrepancyId||null,shiftId:item.shiftId||null,reference:item.documentNo||item.rootId,memo:`${label} · ${reason}`,controlReason:reason},extra));const audit={[`operationalAudit/${Date.now()}_${item.movementId}`]:operationalAuditRecord('cash_over_short_reclass','financialMovement',item.rootId,actor,{movementId:item.movementId,amount:item.amount,month,reason,undo:!!extra.reclassUndoOf})};const committed=await commitFinancial(db,item.movementId,mv,actor,audit);posted.push({movementId:item.movementId,amount:item.amount,undo:!!extra.reclassUndoOf,duplicate:!!committed.duplicate});}catch(error){failed.push({movementId:item.movementId,amount:item.amount,error:financeText(error&&error.message,200)});}};
+      for(const c of plan.candidates)await post(c,CashOverShortReclass.lines(c,Financial.line),{reclassOf:c.rootId,sourceMovementIds:c.sourceMovementIds},'Reclass register overage from 4990 Other Income to 6110 Cash Over / Short');
+      for(const u of plan.undo)await post(u,CashOverShortReclass.undoLines(u,Financial.line),{reclassUndoOf:u.rootId,undoesMovementId:u.reclassMovementId},'Undo register overage reclass after its source was reversed');
+      return Object.assign({preview:false,posted,failed},summary);
+    }
     if(action==='list_customer_refund_payables'){
       const snap=/* download-ok: bounded indexed lookup returns at most 100 open payables, then filters customer refunds server-side */await db.ref('/payables').orderByChild('status').equalTo('open').limitToLast(100).get(),rows=[];Object.entries(snap.val()||{}).forEach(([id,row])=>{const remaining=Financial.money(row&&row.remainingAmount!=null?row.remainingAmount:row&&row.amount);if(row&&row.type==='customer_change_refund'&&remaining>0)rows.push({id,party:financeText(row.party||row.customerName||'Customer',160),ref:financeText(row.ref||id,120),date:financeText(row.date,10),remainingAmount:remaining,discrepancyId:financeText(row.discrepancyId,160)});});rows.sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||a.ref.localeCompare(b.ref));return{rows};
     }
