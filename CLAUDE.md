@@ -96,6 +96,7 @@ These rules govern how work is reported and how effort is spent. They never over
 20. Use targeted tests during development when safe, followed by the project's required full validation (`npm run test:ci`) at the appropriate checkpoint. Do not repeatedly run expensive full suites after inconsequential intermediate changes.
 21. Keep normal final responses to approximately 500 words or less. Exceed this only when a serious risk or necessary business decision genuinely requires more explanation.
 22. Keep detailed engineering analysis in an artifact or project document when useful rather than reproducing it in chat.
+23. Treat repository instructions and approved plans as persistent context: do not ask Danilo to paste them, quote or reload them in full, or pass them wholesale to agents. Read only task-relevant sections. When switching to unrelated work after a long session, recommend a fresh chat with a concise handoff.
 
 Default final response format:
 
