@@ -2274,22 +2274,39 @@ const ORDER_ARCHIVE_SWEEP_GRACE_MS = 30 * 60 * 1000;
 const ORDER_ARCHIVE_FINAL_STATUSES = ["Completed", "Received", "Rejected"];
 const ORDER_ARCHIVE_REFUSAL = {
   not_found: "Order not found.",
+  current_shift: "Orders from the current active shift cannot be archived.",
+  shift_missing: "The order is not linked to a confirmed closed shift.",
   shift_open: "Orders cannot be archived while their shift is open.",
   not_final: "Only completed, received, rejected, or voided orders can be archived.",
   serving_queue: "This order is still in the serving queue. Mark it served or not collected first.",
+  posting_incomplete: "The order is still posting to inventory or Finance Books.",
 };
 
+function orderArchiveFingerprint(value) {
+  function stable(input) {
+    if (Array.isArray(input)) return input.map(stable);
+    if (!input || typeof input !== "object") return input;
+    return Object.keys(input).sort().reduce((out, key) => { out[key] = stable(input[key]); return out; }, {});
+  }
+  return crypto.createHash("sha256").update(JSON.stringify(stable(value || {}))).digest("hex");
+}
+
 async function orderArchiveCheck(db, orderId, options = {}) {
-  const [orderSnap, archivedSnap] = await Promise.all([
-    db.ref(`/orders/${orderId}`).get(), db.ref(`/archivedOrders/${orderId}`).get(),
-  ]);
-  if (!orderSnap.exists()) return {ok: false, reason: archivedSnap.exists() ? "already_archived" : "not_found"};
-  const order = Object.assign({id: orderId}, orderSnap.val() || {});
+  const orderSnap = await db.ref(`/orders/${orderId}`).get();
+  if (!orderSnap.exists()) {
+    const archivedSnap = await db.ref(`/archivedOrders/${orderId}`).get();
+    return {ok: false, reason: archivedSnap.exists() ? "already_archived" : "not_found"};
+  }
+  const storedOrder = orderSnap.val() || {}, order = Object.assign({id: orderId}, storedOrder);
   if (order.shiftId) {
     let shiftId = "";
     try { shiftId = financeKey(order.shiftId, "Shift ID"); } catch (error) { return {ok: false, reason: "shift_invalid", error}; }
+    if (options.excludeShiftId && shiftId === options.excludeShiftId) return {ok: false, reason: "current_shift"};
     const shift = (await db.ref(`/shifts/${shiftId}`).get()).val() || null;
-    if (shift && shift.status !== "closed") return {ok: false, reason: "shift_open"};
+    if (!shift) return {ok: false, reason: "shift_missing"};
+    if (shift.status !== "closed") return {ok: false, reason: "shift_open"};
+  } else if (order.source === "pos") {
+    return {ok: false, reason: "shift_missing"};
   }
   if (!ORDER_ARCHIVE_FINAL_STATUSES.includes(String(order.status || "")) && order.voided !== true) return {ok: false, reason: "not_final"};
   if (OrderService.keepsOrderLive(order)) return {ok: false, reason: "serving_queue"};
@@ -2300,46 +2317,139 @@ async function orderArchiveCheck(db, orderId, options = {}) {
     // a requested inventory reversal - must not leave the live list even when its
     // shift is closed. Its own shift is already proven closed above, so the
     // active-shift clause of that rule cannot apply here.
-    if (shouldProjectOrder(order, null)) return {ok: false, reason: "still_live"};
+    if (shouldProjectOrder(order, null) || order.correctionPending || order.archivePending) return {ok: false, reason: "still_live"};
     const settledAt = Number(order.completedAt || order.receivedAt || order.timestamp || 0);
     if (!settledAt || Date.now() - settledAt < ORDER_ARCHIVE_SWEEP_GRACE_MS) return {ok: false, reason: "too_recent"};
+    if (String(order.status || "") !== "Rejected" || order.voided === true) {
+      const saleMovement = await db.ref(`/financialMovements/sale_${orderId}`).get();
+      if (!saleMovement.exists() || order.inventoryDeducted !== true || Number(order.inventoryLedgerVersion || 0) < 1) return {ok: false, reason: "posting_incomplete"};
+    }
   }
-  return {ok: true, order};
+  return {ok: true, order, fingerprint: orderArchiveFingerprint(storedOrder)};
 }
 
-async function archiveOrderNow(db, order, actor, source) {
-  const now = Date.now(), orderId = order.id;
+async function archiveOrderNow(db, order, actor, source, expectedFingerprint) {
+  const now = Date.now(), orderId = order.id, fingerprint = expectedFingerprint || orderArchiveFingerprint(order);
+  const attemptId = `${now}_${crypto.randomBytes(6).toString("hex")}`;
+  const liveRef = db.ref(`/orders/${orderId}`);
+  const claimed = await liveRef.transaction((current) => {
+    // A cold Admin SDK cache calls this with null before it reads the server; returning
+    // undefined there aborts the transaction for good, so keep null as null.
+    if (!current) return null;
+    if (current.archivePending || orderArchiveFingerprint(current) !== fingerprint) return;
+    return Object.assign({}, current, {archivePending: attemptId, archivePendingAt: now});
+  }, undefined, false);
+  if (!claimed.committed) return {orderId, changed: true};
+  const pending = Object.assign(archivedOrderRecord(order, now, source), {
+    archivePending: true, archiveAttemptId: attemptId, archiveSourceFingerprint: fingerprint,
+    archivedByUid: actor.uid, archivedByRole: actor.role,
+  });
+  const archiveRef = db.ref(`/archivedOrders/${orderId}`);
+  const staged = await archiveRef.transaction((current) => {
+    if (current && current.archivePending !== true) return;
+    return pending;
+  }, undefined, false);
+  if (!staged.committed) {
+    await liveRef.transaction((current) => current && current.archivePending === attemptId ? Object.assign({}, current, {archivePending: null, archivePendingAt: null}) : current, undefined, false);
+    return {orderId, duplicate: true};
+  }
+
+  // The transaction is the concurrency boundary: the live record is removed
+  // only when every field still matches the eligibility snapshot. A payment,
+  // service, correction, posting or shift-related update aborts this attempt.
+  const removed = await liveRef.transaction((current) => {
+    if (!current) return null;
+    if (current.archivePending !== attemptId) return;
+    const sourceRecord = Object.assign({}, current);
+    delete sourceRecord.archivePending;
+    delete sourceRecord.archivePendingAt;
+    if (orderArchiveFingerprint(sourceRecord) !== fingerprint) return;
+    return null;
+  }, undefined, false);
+  if (!removed.committed) {
+    await archiveRef.transaction((current) => current && current.archiveAttemptId === attemptId ? null : current, undefined, false);
+    await liveRef.transaction((current) => current && current.archivePending === attemptId ? Object.assign({}, current, {archivePending: null, archivePendingAt: null}) : current, undefined, false);
+    return {orderId, changed: true};
+  }
+
+  await archiveRef.transaction((current) => {
+    if (!current || current.archiveAttemptId !== attemptId) return current;
+    const finalRecord = Object.assign({}, current);
+    delete finalRecord.archivePending;
+    delete finalRecord.archiveAttemptId;
+    delete finalRecord.archiveSourceFingerprint;
+    return finalRecord;
+  }, undefined, false);
   await db.ref().update({
-    [`archivedOrders/${orderId}`]: archivedOrderRecord(order, now, source),
-    [`orders/${orderId}`]: null,
     [`activeOrders/${orderId}`]: null,
-    [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("archive_order", "order", orderId, actor, {previousStatus: order.status || ""}),
+    [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("archive_order", "order", orderId, actor, {previousStatus: order.status || "", archiveAttemptId: attemptId}),
   });
   return {orderId, archivedAt: now};
 }
 
+const ORDER_ARCHIVE_MANUAL_SCAN_LIMIT = 300;
+const ORDER_ARCHIVE_MANUAL_ARCHIVE_LIMIT = 150;
+
+async function archiveEligibleOrdersNow(db, actor) {
+  const [activeShiftSnap, keys] = await Promise.all([
+    db.ref("/posActiveShift").get(),
+    /* download-ok: explicit manager cleanup reads keys only; values are fetched one at a time under a 300-row cap */ shallowDatabaseKeys(db, "orders"),
+  ]);
+  const activeShift = activeShiftSnap.val() || {}, excludeShiftId = String(activeShift.id || "");
+  const candidates = keys.sort().slice(0, ORDER_ARCHIVE_MANUAL_SCAN_LIMIT);
+  const summary = {live: keys.length, scanned: 0, archived: 0, currentShiftId: excludeShiftId || null, skipped: {}};
+  for (const orderId of candidates) {
+    if (summary.archived >= ORDER_ARCHIVE_MANUAL_ARCHIVE_LIMIT) break;
+    summary.scanned++;
+    try {
+      const check = await orderArchiveCheck(db, orderId, {strict: true, excludeShiftId});
+      if (!check.ok) { summary.skipped[check.reason] = (summary.skipped[check.reason] || 0) + 1; continue; }
+      const result = await archiveOrderNow(db, check.order, actor, "manual-bulk-server", check.fingerprint);
+      if (result.changed) summary.skipped.changed = (summary.skipped.changed || 0) + 1;
+      else if (!result.duplicate) summary.archived++;
+    } catch (error) {
+      summary.skipped.error = (summary.skipped.error || 0) + 1;
+      logger.warn("Manual order archive skipped an order", {orderId, error: String(error && error.message || error)});
+    }
+  }
+  summary.hasMore = summary.scanned < keys.length;
+  const auditAt = Date.now();
+  await db.ref().update({
+    [`operationalAudit/${auditAt}_manual_order_archive`]: operationalAuditRecord("bulk_archive_orders", "orderArchive", "eligible_previous_orders", actor, summary),
+  });
+  return summary;
+}
+
 exports.manageOrderArchive = onCall(
-  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 300, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
     const actor = await requirePortalPermission(db, request, ["orders"]);
     const data = request.data || {};
     const action = financeText(data.action, 40);
-    const orderId = financeKey(data.orderId, "Order ID");
     const now = Date.now();
+    if (action === "archive_eligible") {
+      if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) {
+        throw new HttpsError("permission-denied", "Only managers may archive orders.");
+      }
+      return archiveEligibleOrdersNow(db, actor);
+    }
     if (action === "archive") {
       if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) {
         throw new HttpsError("permission-denied", "Only managers may archive orders.");
       }
-      const check = await orderArchiveCheck(db, orderId);
+      const orderId = financeKey(data.orderId, "Order ID");
+      const activeShift = (await db.ref("/posActiveShift").get()).val() || {};
+      const check = await orderArchiveCheck(db, orderId, {excludeShiftId: String(activeShift.id || "")});
       if (!check.ok) {
         if (check.reason === "already_archived") return {orderId, duplicate: true};
         if (check.error) throw check.error;
         throw new HttpsError(check.reason === "not_found" ? "not-found" : "failed-precondition", ORDER_ARCHIVE_REFUSAL[check.reason] || "This order cannot be archived.");
       }
-      return archiveOrderNow(db, check.order, actor, "manual-server");
+      return archiveOrderNow(db, check.order, actor, "manual-server", check.fingerprint);
     }
     if (action === "delete") {
+      const orderId = financeKey(data.orderId, "Order ID");
       const snap = await db.ref(`/archivedOrders/${orderId}`).get();
       if (!snap.exists()) throw new HttpsError("not-found", "Archived order not found.");
       const order = snap.val() || {};
@@ -7011,8 +7121,21 @@ exports.preservePostedOrderOnDelete = onValueDeleted(
   async (event) => {
     const id = event.params.orderId, order = event.data.val() || {};
     if (!id) return;
-    const db = getDatabase(), archivedRef = db.ref(`/archivedOrders/${id}`);
-    if ((await archivedRef.get()).exists() || !(await db.ref(`/financialMovements/sale_${id}`).get()).exists()) return;
+    const db = getDatabase(), archivedRef = db.ref(`/archivedOrders/${id}`), archivedSnap = await archivedRef.get(), archived = archivedSnap.val();
+    if (archived && archived.archivePending === true) {
+      const recoveredAt = Date.now();
+      const finalized = await archivedRef.transaction((current) => {
+        if (!current || current.archivePending !== true) return current;
+        const record = Object.assign({}, current, {archiveRecoveredAt: recoveredAt});
+        delete record.archivePending;
+        delete record.archiveAttemptId;
+        delete record.archiveSourceFingerprint;
+        return record;
+      }, undefined, false);
+      if (finalized.committed) await db.ref(`/operationalAudit/${recoveredAt}_order_archive_recovery_${id}`).set({action:"recover_pending_order_archive",sourceType:"order",sourceId:id,reason:"Live order was removed after its conditional archive stage; finalized the retained archive copy.",ts:recoveredAt,actorUid:"server",schemaVersion:1});
+      return;
+    }
+    if (archivedSnap.exists() || !(await db.ref(`/financialMovements/sale_${id}`).get()).exists()) return;
     const now = Date.now(), effectiveStatus = order.status === "Archived" ? order.prevStatus : order.status;
     const retained = Object.assign({}, order, {id, timestamp: Number(order.timestamp || order.completedAt || order.receivedAt || now), status: "Archived", prevStatus: effectiveStatus || "Completed", archivedAt: now, archiveReason: "Automatically preserved after unexpected deletion", recoveredFromDeletion: true, schemaVersion: Math.max(2, Number(order.schemaVersion) || 0)});
     const result = await archivedRef.transaction((current) => current || retained);
@@ -8504,7 +8627,7 @@ exports.processOrderAdjustment = onCall(
       const approvalOperation=`completed_order_correction_${o.id}_${requestId}`,correctionApproval=await claimManagerApproval(db,data,"correct_completed_order",o.id,originalTotal,approvalOperation,actor.uid),refundApproval=refund>0?await claimManagerApproval(db,{approvalId:data.refundApprovalId},"completed_order_cash_refund",o.id,refund,`${approvalOperation}_cash_refund`,actor.uid):null,approvedBy=correctionApproval.record.approvedName||correctionApproval.record.approvedEmail||correctionApproval.record.approvedRole;
       const claim=await commandRef.transaction((current)=>{if(current)return current;return{status:"processing",orderId:o.id,correctionId,claimedAt:now,actorUid:actor.uid,schemaVersion:1};},undefined,false),claimValue=claim.snapshot.val()||{};
       if(!claim.committed||claimValue.orderId!==o.id){if(claimValue.status==="posted")return{duplicate:true,correctionId:claimValue.correctionId,refundAmount:Number(claimValue.refundAmount)||0,correctedOrderTotal:Number(claimValue.correctedOrderTotal)||0};throw new HttpsError("aborted","This correction request is already being processed.");}
-      const locked=await db.ref(`/orders/${o.id}`).transaction((current)=>{if(current==null)return null;if(current.preparationStatus!=="not_prepared"||current.preparationStartedAt||current.completedOrderCorrectionId||(current.correctionPending&&current.correctionPending!==requestId))return;return Object.assign({},current,{correctionPending:requestId,correctionPendingAt:now});},undefined,false);
+      const locked=await db.ref(`/orders/${o.id}`).transaction((current)=>{if(current==null)return null;if(current.archivePending||current.preparationStatus!=="not_prepared"||current.preparationStartedAt||current.completedOrderCorrectionId||(current.correctionPending&&current.correctionPending!==requestId))return;return Object.assign({},current,{correctionPending:requestId,correctionPendingAt:now});},undefined,false);
       if(!locked.committed||!locked.snapshot.exists()){await commandRef.transaction((current)=>current&&current.status==="processing"?null:current,undefined,false);throw new HttpsError("aborted","The order changed or preparation started. Refresh before trying again.");}
       if(refund>0){const shifted=await db.ref(`/shifts/${o.shiftId}`).transaction((row)=>OfflineSync.applyDrawerDelta(row,requestId,drawerDelta,now,actor),undefined,false);if(!shifted.committed||!shifted.snapshot.exists())throw new HttpsError("failed-precondition","The drawer no longer has enough cash for this refund.");await db.ref("/posActiveShift").transaction((row)=>row&&row.id===o.shiftId?OfflineSync.applyDrawerDelta(row,requestId,drawerDelta,now,actor):row,undefined,false);}
       await applyCompletedOrderCorrectionInventory(db,o,plan,token,now,actor);
@@ -11297,8 +11420,9 @@ exports.sweepOrderArchive = onSchedule(
       try {
         const check = await orderArchiveCheck(db, orderId, {strict: true});
         if (!check.ok) { summary.skipped[check.reason] = (summary.skipped[check.reason] || 0) + 1; continue; }
-        await archiveOrderNow(db, check.order, {uid: "system", role: "system"}, "auto-sweep");
-        summary.archived++;
+        const archived = await archiveOrderNow(db, check.order, {uid: "system", role: "system"}, "auto-sweep", check.fingerprint);
+        if (archived.changed) summary.skipped.changed = (summary.skipped.changed || 0) + 1;
+        else if (!archived.duplicate) summary.archived++;
       } catch (error) {
         summary.skipped.error = (summary.skipped.error || 0) + 1;
         logger.warn("Order archive sweep skipped an order", {orderId, error: String(error && error.message || error)});

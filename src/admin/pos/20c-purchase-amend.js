@@ -82,3 +82,17 @@ function resolveUnfinishedAmend(id,p){
   if(!confirm('Discard the unfinished amendment of '+ref+' instead? This is only possible if no stock moved yet.'))return;
   a.managePurchaseCorrection({action:'discard_amend',invoiceId:id,reason:'Discard unfinished amendment'}).then(function(){renderPurchases();alert('Unfinished amendment discarded. You can amend the purchase again.');}).catch(function(e){alert('Could not discard it: '+((e&&e.message)||e));});
 }
+
+/* Purchase date in both detail dialogs (23 Oct 2026). Danilo changed a date in a details dialog and nothing
+   happened: the date he typed went into the payment due date (Edit details) or the dialog had no purchase
+   date at all (Correct purchase details). Both dialogs now show the purchase date first, labelled as the
+   posting date, and save it through the server date correction before the other details. */
+var PURCHASE_DUE_LABEL='Payment due date (when the supplier must be paid)';
+function purchaseDateField(inv){return [{name:'date',label:'Purchase date (posting date in Finance Books)',type:'date',required:true,max:window.AccazaDate.key(),value:inv.date||''}];}
+function savePurchaseDetails(inv,v,details){
+  var moved=!!(v.date&&v.date!==inv.date);
+  /* The date goes first: it is the step the server may refuse (closed month, paid bill, reconciled payment). */
+  return (moved?A().managePurchaseCorrection({action:'correct_date',invoiceId:inv.id,date:v.date,expectedDateRevision:Math.max(0,Math.trunc(Number(inv.dateRevision)||0)),reason:v.reason}):Promise.resolve())
+    .then(function(){return A().managePurchaseCorrection(details);}).then(function(){return moved?v.date:'';});
+}
+function purchaseDetailsSaved(inv,movedTo,unchanged){alert(movedTo?'Purchase date changed from '+inv.date+' to '+movedTo+'. Finance Books, the payment, the supplier bill and the stock receipts now use the new date. Amounts and stock did not change.':unchanged+' The purchase date was not changed.');}

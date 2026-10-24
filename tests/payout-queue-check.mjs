@@ -27,9 +27,10 @@ const reversed=factory({po_1:{channel:'grabfood',orderIds:['GF-LATE-1'],reversed
 if(reversed.length!==1)throw new Error('A reversed payout did not return its order to the settlement queue.');
 
 const uiMarkers=[
-  "a.orderByChild('settlementStatus'),a.equalTo('unsettled')",
-  "unsettled('orders')",
-  "unsettled('archivedOrders')",
+  "a.orderByChild('settlementStatus'),a.startAt('unsettled'),a.endAt('unsettled')",
+  'limitToLast(PO_UNSETTLED_PAGE_SIZE+1)',
+  "loadUnsettledPath(a,'orders')",
+  "loadUnsettledPath(a,'archivedOrders')",
   'Apply dates',
   'poAppliedRange',
   'all</b> unsettled orders',

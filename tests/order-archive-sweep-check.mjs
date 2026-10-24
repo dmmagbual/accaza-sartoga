@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
+import crypto from 'node:crypto';
 const require = createRequire(import.meta.url);
 // The real operational rule, not a stub: an order waiting to be served or a
 // "not collected" outcome awaiting a manager must stay live.
@@ -29,12 +30,14 @@ const lookup = (store, path) => {
   return node;
 };
 function fakeDb(store, writes) {
+  const assign = (path, value) => { const parts=path.split('/').filter(Boolean);let node=store;for(const part of parts.slice(0,-1))node=node[part]||(node[part]={});const key=parts.at(-1);if(value===null)delete node[key];else node[key]=value; };
   return {
     ref: (path) => ({
       // RTDB DataSnapshot: exists() is a method, unlike Firestore's exists property.
       get: async () => { const value = path === undefined ? store : lookup(store, path); return {exists: () => value !== undefined, val: () => value}; },
-      update: async (patch) => { writes.push(patch); },
+      update: async (patch) => { writes.push(patch);Object.keys(patch).forEach((key)=>assign(key,patch[key])); },
       set: async (value) => { writes.push({[path]: value}); },
+      transaction: async (fn) => {const current=lookup(store,path),next=fn(current);if(next===undefined)return{committed:false,snapshot:{exists:()=>current!==undefined,val:()=>current}};assign(path,next);writes.push({[path]:next});return{committed:true,snapshot:{exists:()=>next!==undefined&&next!==null,val:()=>next}};},
     }),
   };
 }
@@ -45,13 +48,14 @@ const ctx = {
   operationalAuditRecord: (action, sourceType, sourceId, actor, details = {}) => Object.assign({action, sourceType, sourceId, actorUid: actor.uid, ts: 1}, details),
   HttpsError: class extends Error { constructor(code, message) { super(message); this.code = code; } },
   ACTIVE_ONLINE_TTL_MS: 2 * 3600000,
-  Date, Number, String, Object, Promise, Array, Set,
+  Date, Number, String, Object, Promise, Array, Set, JSON, crypto,
+  shallowDatabaseKeys: async () => [], logger: {warn: () => {}},
 };
 vm.createContext(ctx);
 vm.runInContext(projection, ctx);
 vm.runInContext(helpers, ctx);
 
-const completed = {status: 'Completed', paymentStatus: 'manager_validated', shiftId: 'SH-1', completedAt: Date.now() - 2 * 3600000};
+const completed = {id:'A',status: 'Completed', paymentStatus: 'manager_validated', shiftId: 'SH-1', completedAt: Date.now() - 2 * 3600000,inventoryDeducted:true,inventoryLedgerVersion:1};
 const closedShift = {SH: {'SH-1': {status: 'closed'}}};
 const openShift = {SH: {'SH-1': {status: 'open'}}};
 
@@ -95,19 +99,18 @@ const openShift = {SH: {'SH-1': {status: 'open'}}};
 // 5. An eligible order archives in ONE multi-path write that cannot half-apply.
 {
   const writes = [];
-  const db = fakeDb({orders: {A: completed}, shifts: closedShift.SH}, writes);
+  const state={orders: {A: completed}, shifts: closedShift.SH,financialMovements:{sale_A:{id:'sale_A'}}};
+  const db = fakeDb(state, writes);
   const check = await ctx.orderArchiveCheck(db, 'A', {strict: true});
   assert.equal(check.ok, true);
-  const result = await ctx.archiveOrderNow(db, check.order, {uid: 'system', role: 'system'}, 'auto-sweep');
+  const result = await ctx.archiveOrderNow(db, check.order, {uid: 'system', role: 'system'}, 'auto-sweep',check.fingerprint);
   assert.equal(result.orderId, 'A');
-  assert.equal(writes.length, 1);
-  const patch = writes[0];
-  assert.equal(patch['orders/A'], null, 'the live order is cleared');
-  assert.equal(patch['activeOrders/A'], null, 'the active projection is cleared');
-  assert.equal(patch['archivedOrders/A'].status, 'Archived');
-  assert.equal(patch['archivedOrders/A'].archiveReason, 'auto-sweep');
-  const auditKey = Object.keys(patch).find((key) => key.startsWith('operationalAudit/'));
-  assert.equal(patch[auditKey].action, 'archive_order');
+  assert.equal(state.orders.A, undefined, 'the unchanged live order is conditionally cleared');
+  assert.equal(state.archivedOrders.A.status, 'Archived');
+  assert.equal(state.archivedOrders.A.archiveReason, 'auto-sweep');
+  assert.equal(state.archivedOrders.A.archivePending, undefined, 'the staged archive is finalized');
+  const auditPatch=writes.find((patch)=>Object.keys(patch).some((key)=>key.startsWith('operationalAudit/'))),auditKey=Object.keys(auditPatch).find((key)=>key.startsWith('operationalAudit/'));
+  assert.equal(auditPatch[auditKey].action, 'archive_order');
 }
 // 6. Re-running is idempotent: an already archived order is a duplicate, not a second archive.
 {
@@ -129,8 +132,16 @@ for (const marker of [
   'sweep_order_archive',
   'systemHealth/orderArchiveSweep/cursor',
 ]) assert(maintenanceSource.includes(marker), 'order archive sweep safeguard missing: ' + marker);
-assert(archiveSource.includes('if (shouldProjectOrder(order, null)) return {ok: false, reason: "still_live"};'), 'the sweep must reuse the live-projection rule instead of its own payment list');
-assert(archiveSource.includes('const check = await orderArchiveCheck(db, orderId);'), 'the manager action must use the same eligibility decision as the sweep');
+assert(archiveSource.includes('if (shouldProjectOrder(order, null) || order.correctionPending || order.archivePending) return {ok: false, reason: "still_live"};'), 'the sweep must reuse the live-projection rule instead of its own payment list');
+assert(archiveSource.includes('orderArchiveFingerprint(current) !== fingerprint'), 'archive removal must abort when the order changed after eligibility was checked');
+for(const marker of ['action === "archive_eligible"','ORDER_ARCHIVE_MANUAL_SCAN_LIMIT = 300','ORDER_ARCHIVE_MANUAL_ARCHIVE_LIMIT = 150','shallowDatabaseKeys(db, "orders")','{strict: true, excludeShiftId}','bulk_archive_orders'])if(!archiveSource.includes(marker))throw new Error('Manual bulk archive safeguard missing: '+marker);
+
+// The current active shift is protected even if its history row is stale and
+// incorrectly says closed.
+{
+  const db=fakeDb({orders:{A:completed},shifts:{'SH-1':{status:'closed'}}},[]);
+  assert.equal((await ctx.orderArchiveCheck(db,'A',{strict:true,excludeShiftId:'SH-1'})).reason,'current_shift');
+}
 
 const sweepBlock = maintenanceSource.slice(maintenanceSource.indexOf('const ORDER_ARCHIVE_SWEEP_SCAN_LIMIT'), maintenanceSource.indexOf('// Release 8B: automated recovery point'));
 let handler = null;

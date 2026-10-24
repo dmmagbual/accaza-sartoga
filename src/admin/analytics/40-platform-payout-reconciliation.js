@@ -21,20 +21,33 @@ function payoutPeriodBounds(from,to){
 }
 function payoutQueueEntries(current,live,archived){
   var out=[],seen={};
-  [[current||{},'orders'],[live||{},'orders'],[archived||{},'archivedOrders']].forEach(function(pair){Object.keys(pair[0]).forEach(function(k){var o=pair[0][k],id=String(o&&o.id||k);if(!o||seen[id]||o.source!=='pos'||['grabfood','foodpanda'].indexOf(o.channel)<0||o.voided||(o.settlementStatus||'unsettled')==='settled')return;seen[id]=1;out.push({key:k,node:pair[1],o:o});});});
+  // Freshly read rows win over the portal's in-memory copies: a reversed payout or a
+  // re-read order must become visible again on Reload instead of being hidden by a stale snapshot.
+  [[live||{},'orders'],[archived||{},'archivedOrders'],[current||{},'orders']].forEach(function(pair){Object.keys(pair[0]).forEach(function(k){var o=pair[0][k],id=String(o&&o.id||k);if(!o||seen[id]||o.source!=='pos'||['grabfood','foodpanda'].indexOf(o.channel)<0||o.voided||(o.settlementStatus||'unsettled')==='settled')return;seen[id]=1;out.push({key:k,node:pair[1],o:o});});});
   return out;
 }
 function payoutPeriodReady(bounds){return !!(bounds&&poAppliedRange===bounds.key&&poQueue.complete&&!poQueue.loading&&!poQueue.error);}
 function poUnsettled(ch,entries){var paid=settledPayoutOrderIds();return(entries||platEntries()).filter(function(e){var id=e.o.id||e.key;return e.o.channel===ch&&(e.o.settlementStatus||'unsettled')!=='settled'&&!paid[id];});}
+var PO_UNSETTLED_PAGE_SIZE=200,PO_UNSETTLED_MAX_PAGES=100;
+function loadUnsettledPath(a,path){
+  var rows={},before=null,pages=0;
+  function next(){
+    if(++pages>PO_UNSETTLED_MAX_PAGES)return Promise.reject(new Error('The unsettled queue is larger than the safe reload limit. Settle older payouts or contact support.'));
+    var base=a.ref(a.db,path),q=before==null?a.query(base,a.orderByChild('settlementStatus'),a.startAt('unsettled'),a.endAt('unsettled'),a.limitToLast(PO_UNSETTLED_PAGE_SIZE+1)):a.query(base,a.orderByChild('settlementStatus'),a.startAt('unsettled'),a.endBefore('unsettled',before),a.limitToLast(PO_UNSETTLED_PAGE_SIZE+1));
+    return a.get(q).then(function(snap){var page=[];snap.forEach(function(child){page.push({key:child.key,value:child.val()||{}});});var hasOlder=page.length>PO_UNSETTLED_PAGE_SIZE;if(hasOlder)page.shift();page.forEach(function(row){rows[row.key]=row.value;});if(!hasOlder)return rows;before=page[0]&&page[0].key;if(!before)throw new Error('The unsettled queue cursor did not advance.');return next();});
+  }
+  return next();
+}
 function loadPayoutQueue(force){
   if(!force&&(poQueue.loading||(poQueue.complete&&!poQueue.error)))return Promise.resolve(poQueue.complete);
   var a=A(),request=poQueue.request+1;
-  if(!a||!a.get||!a.query||!a.orderByChild||!a.equalTo){poQueue={live:{},archived:{},loading:false,error:'Unsettled-order reader is unavailable. Refresh the portal.',complete:false,request:request};renderPayouts();return Promise.resolve(false);}
+  if(!a||!a.get||!a.query||!a.orderByChild||!a.startAt||!a.endAt||!a.endBefore||!a.limitToLast){poQueue={live:{},archived:{},loading:false,error:'Unsettled-order reader is unavailable. Refresh the portal.',complete:false,request:request};renderPayouts();return Promise.resolve(false);}
   poQueue={live:{},archived:{},loading:true,error:'',complete:false,request:request};renderPayouts();
-  var unsettled=function(path){return a.get(a.query(a.ref(a.db,path),a.orderByChild('settlementStatus'),a.equalTo('unsettled')));};
-  return Promise.all([unsettled('orders'),unsettled('archivedOrders')]).then(function(snaps){
+  // Load live first, then archive. Orders move only in that direction, so a
+  // concurrent archive is present in at least one result and dedupes by ID.
+  return loadUnsettledPath(a,'orders').then(function(live){return loadUnsettledPath(a,'archivedOrders').then(function(archived){return[live,archived];});}).then(function(results){
     if(request!==poQueue.request)return false;
-    poQueue={live:snaps[0].val()||{},archived:snaps[1].val()||{},loading:false,error:'',complete:true,request:request};renderPayouts();return true;
+    poQueue={live:results[0]||{},archived:results[1]||{},loading:false,error:'',complete:true,request:request};renderPayouts();return true;
   }).catch(function(error){if(request!==poQueue.request)return false;poQueue={live:{},archived:{},loading:false,error:String(error&&error.message||error),complete:false,request:request};renderPayouts();return false;});
 }
 function applyPayoutDates(){
@@ -43,7 +56,19 @@ function applyPayoutDates(){
   var ready=poQueue.complete&&!poQueue.loading&&!poQueue.error?Promise.resolve(true):loadPayoutQueue(false);
   return ready.then(function(ok){if(ok){poAppliedRange=bounds.key;renderPayouts();}return ok;});
 }
-function refreshPayoutPeriod(){return loadPayoutQueue(true);}
+var poReloadNote='',poReloadFailed=false;
+function refreshPayoutPeriod(){
+  return loadPayoutQueue(true).then(function(ok){
+    if(ok){
+      var entries=payoutQueueEntries(ordersMap,poQueue.live,poQueue.archived);poReloadFailed=false;
+      poReloadNote='Unsettled queue reloaded at '+new Date().toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit',second:'2-digit'})+' — '+PO_CHANNELS.map(function(d){return entries.filter(function(e){return e.o.channel===d.k;}).length+' '+d.lbl;}).join(', ')+' order(s) awaiting settlement.';
+    }else{
+      var why=String(poQueue.error||'the reader returned no result').replace(/\.+$/,'');poReloadFailed=true;poReloadNote='Could not reload the unsettled queue — '+why+'. Nothing was changed; try Reload again.';
+    }
+    renderPayouts();
+    return ok;
+  });
+}
 /* Items sold on a missed platform order (required since 29 Sep 2026) so its stock and cost post. */
 var CATCHUP_ITEM_ROWS=5;
 function catchupItemFields(){var menu=(A()&&A().menuItemsMap)||{},opts=[{value:'',label:'— none —'}].concat(Object.keys(menu).filter(function(k){return menu[k]&&menu[k].name;}).sort(function(x,y){return String(menu[x].name).localeCompare(String(menu[y].name));}).map(function(k){return {value:k,label:menu[k].name};})),out=[];
@@ -184,6 +209,7 @@ function renderPayouts(){
   var adsMarketingSum=inRange.reduce(function(s,e){return s+(Number(e.o.platformAdsMarketing)||0);},0);
   var marketingFeeSum=inRange.reduce(function(s,e){return s+(Number(e.o.platformMarketingFee)||0);},0);
   var rangeStatus=poQueue.loading?'<div class="az-note" style="margin:.6rem 0;">Loading every unsettled platform order…</div>':poQueue.error?'<div class="az-note" style="margin:.6rem 0;border-color:#d58b8b;background:#fff3f3;"><b>Unsettled queue not loaded:</b> '+esc(poQueue.error)+' Nothing can be settled until it reloads successfully.</div>':!poFrom||!poTo?'<div class="az-note" style="margin:.6rem 0;">The cards above retain every unsettled platform order. Choose both dates, then click <b>Apply dates</b> to reconcile one payout statement.</div>':boundsError?'<div class="az-note" style="margin:.6rem 0;border-color:#d58b8b;background:#fff3f3;">'+esc(boundsError)+'</div>':!rangeReady?'<div class="az-note" style="margin:.6rem 0;border-color:#d8be74;background:#fff9e8;">Dates changed. Click <b>Apply dates</b>. Settlement remains locked until the filter is explicitly applied.</div>':'<div class="az-note" style="margin:.6rem 0;border-color:#7eb697;background:#f1faf4;"><b>Filter applied:</b> '+esc(poFrom)+' to '+esc(poTo)+'. The table is a date-filtered view of the complete unsettled queue.</div>';
+  var reloadNote=poReloadNote?'<div class="az-note" style="margin:.6rem 0;border-color:'+(poReloadFailed?'#d58b8b':'#7eb697')+';background:'+(poReloadFailed?'#fff3f3':'#f1faf4')+';">'+esc(poReloadNote)+'</div>':'';
   var recvCards=queueReady?PO_CHANNELS.map(function(d){var u=poUnsettled(d.k,queueEntries),net=u.reduce(function(s,e){return s+poNet(e.o);},0);return '<div style="flex:1;min-width:170px;background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:0.7rem 0.9rem;"><div style="font-size:0.72rem;color:var(--tl);text-transform:uppercase;letter-spacing:0.05em;">'+esc(d.lbl)+' unsettled receivable · all dates</div><div style="font-size:1.2rem;font-weight:700;color:var(--bd);">'+peso(net)+'</div><div style="font-size:0.72rem;color:var(--tl);">'+u.length+' order(s) remain until settled</div></div>';}).join(''):'<div class="az-note">Unsettled platform receivables are loading.</div>';
   inRange.sort(function(x,y){return poOrderStamp(x.o)-poOrderStamp(y.o);});
   var ordRows=!rangeReady?'<tr><td colspan="11" class="az-note" style="padding:0.7rem;">Apply a complete date period before selecting payout orders.</td></tr>':inRange.length?inRange.map(function(e,i){var o=e.o,pr=o.platformRef||o.id||e.key,d=poGrabDeductions(o);return '<tr><td style="text-align:center;"><input type="checkbox" data-poinc="'+i+'" checked/></td><td>'+esc(o.date||'')+'</td><td><button type="button" data-pocorrect="'+esc(pr)+'" class="pz-btn sec" style="padding:0.18rem 0.48rem;font-size:0.75rem;border-color:#b07a2b;color:#80520f;" title="Correct this unsettled order before settlement">'+esc(pr)+'</button></td><td class="r">'+peso(poGross(o))+'</td><td class="r">'+peso(d.merchantPromo)+'</td><td class="r">'+peso(Number(o.commission)||0)+'</td><td class="r">'+peso(d.deliveryFeeDiscount)+'</td><td class="r">'+peso(Number(o.platformAdsMarketing)||0)+'</td><td class="r">'+peso(Number(o.platformMarketingFee)||0)+'</td><td class="r">'+peso(poNet(o))+'</td><td class="r"><button class="pz-btn warn" data-povoid="'+esc(o.id||e.key)+'" data-povg="'+(poGross(o))+'" style="padding:0.15rem 0.5rem;font-size:0.72rem;" title="Void this order (e.g. a duplicate)">Void</button></td></tr>';}).join(''):'<tr><td colspan="11" class="az-note" style="padding:0.7rem;">No unsettled '+esc(chLbl)+' orders in this complete period.</td></tr>';
@@ -194,7 +220,7 @@ function renderPayouts(){
   var html='<div class="pz-h">💱 Platform Payout Reconciliation</div>'
     +'<p class="pz-sub">Weekly truth-up per platform. POS gross is booked as revenue and the flat commission as expense; here you enter the <b>actual payout</b> from Grab/Panda and allocate the difference to named accounts. Every peso is explained.</p>'
     +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:1rem;">'+recvCards+'</div>'
-    +rangeStatus
+    +rangeStatus+reloadNote
     +'<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:end;margin-bottom:0.8rem;">'
         +'<div><span class="pz-lbl">Platform</span><select class="pz-in" id="poCh">'+PO_CHANNELS.map(function(d){return '<option value="'+d.k+'"'+(d.k===ch?' selected':'')+'>'+d.lbl+'</option>';}).join('')+'</select></div>'
@@ -237,7 +263,7 @@ function renderPayouts(){
   document.getElementById('poFrom').onchange=function(){poFrom=this.value||null;poAppliedRange='';renderPayouts();};
   document.getElementById('poTo').onchange=function(){poTo=this.value||null;poAppliedRange='';renderPayouts();};
   var poApply=document.getElementById('poApply');if(poApply)poApply.onclick=function(){applyPayoutDates();};
-  var poReload=document.getElementById('poReload');if(poReload)poReload.onclick=function(){loadPayoutQueue(true);};
+  var poReload=document.getElementById('poReload');if(poReload)poReload.onclick=function(){refreshPayoutPeriod();};
   var _rk=document.getElementById('poReKey'); if(_rk)_rk.onclick=function(){reKeyMissedOrder(ch,chLbl);};
   var _pc=document.getElementById('poCorrect'); if(_pc){_pc.disabled=!rangeReady||!inRange.length;_pc.title=inRange.length?'Choose an unsettled order to correct':'Apply dates with unsettled orders first';_pc.onclick=function(){correctPlatformPresettlement(ch,chLbl,null,inRange);};}
   root.querySelectorAll('[data-pocorrect]').forEach(function(b){b.onclick=function(){correctPlatformPresettlement(ch,chLbl,b.getAttribute('data-pocorrect'));};});

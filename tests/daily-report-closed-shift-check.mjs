@@ -5,7 +5,9 @@ import vm from 'node:vm';
 // bundle, Oct 2026); the checks below cover the report and its outputs together.
 const source=fs.readFileSync('src/admin/analytics/30-daily-close-report.js','utf8')+'\n'+fs.readFileSync('assets/js/admin/daily-report-output.mjs','utf8');
 const adminCore=fs.readFileSync('assets/js/admin/core.mjs','utf8');
-if(!adminCore.includes('query,orderByChild,equalTo,startAt,endAt,callables'))throw new Error('Admin API does not expose the range-query constraints used by Daily Report.');
+const clientImport=(adminCore.match(/import\{([^}]+)\}from"\.\/firebase-client\.mjs"/)||[])[1]||'';
+const adminApi=new Set(clientImport.split(','));
+for(const name of ['query','orderByChild','equalTo','startAt','endAt','callables'])if(!adminApi.has(name))throw new Error(`Admin API does not expose ${name}, which Daily Report uses.`);
 const prefix=source.slice(0,source.indexOf('function renderDailyReport'));
 const calls=[];
 const context={
