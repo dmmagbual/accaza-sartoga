@@ -1,10 +1,11 @@
 import fs from 'node:fs';
+import {archiveOutcome} from '../assets/js/admin/order-display.mjs';
 // Active Orders cards must identify their sales channel (In-store / Online / GrabFood / FoodPanda),
 // matching the POS Shift Orders tags, so staff can tell platform orders apart at a glance.
 const read=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8');
-const src=read('assets/js/admin/admin-orders.mjs'),css=read('assets/css/admin-backoffice.css'),posCss=read('assets/css/admin/pos-workflow.css');
+const src=read('assets/js/admin/admin-orders.mjs'),display=read('assets/js/admin/order-display.mjs'),css=read('assets/css/admin-backoffice.css'),posCss=read('assets/css/admin/pos-workflow.css');
 const fail=m=>{throw new Error(m);};
-const labels=src.match(/const ORDER_CHANNEL_LABELS=\{[^}]*\};/),fn=src.match(/export function orderChannel\(o\)\{[^\n]*\}/);
+const labels=display.match(/const ORDER_CHANNEL_LABELS=\{[^}]*\};/),fn=display.match(/export function orderChannel\(o\)\{[^\n]*\}/);
 if(!labels||!fn)fail('Active Orders channel resolver is missing');
 const orderChannel=new Function(labels[0]+fn[0].replace('export ','')+';return orderChannel;')();
 const cases=[
@@ -22,4 +23,5 @@ for(const [ch,a,b] of pairs){if(!color(css,a)||color(css,a)!==color(posCss,b))fa
 if(color(css,pairs[0][1])===color(css,pairs[1][1]))fail('Online and GrabFood must not share a channel colour');
 // Walk-in / GrabFood / FoodPanda are not website pick-ups; the Pick-up/Delivery badge is website-only.
 if(!src.includes("modeBadge=orderChannel(o)!=='online'?'':"))fail('Pick-up/Delivery badge must be limited to website orders');
+if(archiveOutcome({voided:true}).label!=='Voided'||archiveOutcome({total:100,refundAmount:100}).label!=='Refunded'||archiveOutcome({status:'Completed'}).label!=='Completed')fail('Archived order outcomes changed while moving display helpers');
 console.log('Active order channel check passed');

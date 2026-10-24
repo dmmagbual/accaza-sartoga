@@ -168,6 +168,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // 24 Oct 2026 (Books startup capacity, Books 162): the same Admin-cache guard now pins both deferred
 // bundles in dependency order: subledgers.js?v=162 and controlled-transactions.js?v=162. The app logic
 // is byte-identical; only its delivery boundary changed. Guard count and executable checks stay unchanged.
-if(guardDigest!=='1612aee23a5ddd7645942a356d4ac4bd8583504ed595db8400bc84eb12d949c1')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// 25 Oct 2026 (Admin release capacity, Admin 713): the existing module-boundary guard now includes
+// order-display.mjs after moving pure channel/outcome helpers out of admin-orders.mjs. Same guard,
+// same boundary protection; guard count and executable checks stay unchanged.
+if(guardDigest!=='172e4bb22b9ad80a8d34bb8135e342b203f07349d90857f0402e1cc52cec974b')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
