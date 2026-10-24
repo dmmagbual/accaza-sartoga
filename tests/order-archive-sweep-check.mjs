@@ -96,7 +96,8 @@ const openShift = {SH: {'SH-1': {status: 'open'}}};
   const db = fakeDb({orders: {A: Object.assign({}, completed, {status: 'Preparing'})}, shifts: closedShift.SH}, []);
   assert.equal((await ctx.orderArchiveCheck(db, 'A', {strict: true})).reason, 'not_final');
 }
-// 5. An eligible order archives in ONE multi-path write that cannot half-apply.
+// 5. An eligible order stages a retained copy, then conditionally removes only
+//    the unchanged live record and finalizes the archive.
 {
   const writes = [];
   const state={orders: {A: completed}, shifts: closedShift.SH,financialMovements:{sale_A:{id:'sale_A'}}};
@@ -111,6 +112,16 @@ const openShift = {SH: {'SH-1': {status: 'open'}}};
   assert.equal(state.archivedOrders.A.archivePending, undefined, 'the staged archive is finalized');
   const auditPatch=writes.find((patch)=>Object.keys(patch).some((key)=>key.startsWith('operationalAudit/'))),auditKey=Object.keys(auditPatch).find((key)=>key.startsWith('operationalAudit/'));
   assert.equal(auditPatch[auditKey].action, 'archive_order');
+}
+// A crashed claim older than the callable timeout is safely taken over; a
+// current claim remains protected.
+{
+  const old=Date.now()-11*60000,state={orders:{A:Object.assign({},completed,{archivePending:'old',archivePendingAt:old})},shifts:closedShift.SH,financialMovements:{sale_A:{id:'sale_A'}}},writes=[],db=fakeDb(state,writes);
+  const check=await ctx.orderArchiveCheck(db,'A',{strict:true});
+  assert.equal(check.ok,true,'stale archive claim must be recoverable');
+  const result=await ctx.archiveOrderNow(db,check.order,{uid:'system',role:'system'},'auto-sweep',check.fingerprint);
+  assert.equal(result.archivedAt>0,true);
+  assert.equal(state.orders.A,undefined);
 }
 // 6. Re-running is idempotent: an already archived order is a duplicate, not a second archive.
 {
@@ -132,9 +143,9 @@ for (const marker of [
   'sweep_order_archive',
   'systemHealth/orderArchiveSweep/cursor',
 ]) assert(maintenanceSource.includes(marker), 'order archive sweep safeguard missing: ' + marker);
-assert(archiveSource.includes('if (shouldProjectOrder(order, null) || order.correctionPending || order.archivePending) return {ok: false, reason: "still_live"};'), 'the sweep must reuse the live-projection rule instead of its own payment list');
-assert(archiveSource.includes('orderArchiveFingerprint(current) !== fingerprint'), 'archive removal must abort when the order changed after eligibility was checked');
-for(const marker of ['action === "archive_eligible"','ORDER_ARCHIVE_MANUAL_SCAN_LIMIT = 300','ORDER_ARCHIVE_MANUAL_ARCHIVE_LIMIT = 150','shallowDatabaseKeys(db, "orders")','{strict: true, excludeShiftId}','bulk_archive_orders'])if(!archiveSource.includes(marker))throw new Error('Manual bulk archive safeguard missing: '+marker);
+assert(archiveSource.includes('storedOrder.archivePending && !staleArchiveClaim'), 'the sweep must retain live claims and recover only expired ones');
+assert(archiveSource.includes('orderArchiveFingerprint(sourceRecord) !== fingerprint'), 'archive removal must abort when the order changed after eligibility was checked');
+for(const marker of ['action === "archive_eligible"','ORDER_ARCHIVE_MANUAL_SCAN_LIMIT = 300','ORDER_ARCHIVE_MANUAL_ARCHIVE_LIMIT = 150','shallowDatabaseKeys(db, "orders")','stateRef.get()','keys.findIndex((key) => key > previousCursor)','{strict: true, excludeShiftId}','bulk_archive_orders'])if(!archiveSource.includes(marker))throw new Error('Manual bulk archive safeguard missing: '+marker);
 
 // The current active shift is protected even if its history row is stale and
 // incorrectly says closed.

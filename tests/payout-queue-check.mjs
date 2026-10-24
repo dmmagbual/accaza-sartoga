@@ -25,12 +25,21 @@ if(hidden.includes('GF-LATE-1'))throw new Error('A stale archived order linked t
 if(!hidden.includes('GF-OPEN-1'))throw new Error('A genuinely unsettled order was hidden from the settlement queue.');
 const reversed=factory({po_1:{channel:'grabfood',orderIds:['GF-LATE-1'],reversed:true}},[stale])('grabfood');
 if(reversed.length!==1)throw new Error('A reversed payout did not return its order to the settlement queue.');
+const legacyFactory=new Function(`${declaration('poLegacyUnsettled')};return poLegacyUnsettled;`),legacy=legacyFactory();
+if(!legacy({source:'pos',channel:'grabfood'},'grabfood'))throw new Error('A legacy unpaid GrabFood order with no settlementStatus is still excluded.');
+if(legacy({source:'pos',channel:'grabfood',payoutId:'po_1'},'grabfood'))throw new Error('A payout-linked legacy order was treated as unpaid.');
+if(legacy({source:'pos',channel:'foodpanda',settlementStatus:'settled'},'foodpanda'))throw new Error('A settled FoodPanda order entered the legacy unpaid queue.');
+if(legacy({source:'pos',channel:'grabfood',archivePending:true},'grabfood'))throw new Error('A staged archive copy leaked into the payout queue.');
 
 const uiMarkers=[
   "a.orderByChild('settlementStatus'),a.startAt('unsettled'),a.endAt('unsettled')",
   'limitToLast(PO_UNSETTLED_PAGE_SIZE+1)',
-  "loadUnsettledPath(a,'orders')",
-  "loadUnsettledPath(a,'archivedOrders')",
+  "loadUnsettledNode(a,'orders')",
+  "loadUnsettledNode(a,'archivedOrders')",
+  "loadLegacyUnsettledPath(a,path,'grabfood')",
+  "loadLegacyUnsettledPath(a,path,'foodpanda')",
+  "a.orderByChild('channel'),a.startAt(ch),a.endAt(ch)",
+  'o.archivePending',
   'Apply dates',
   'poAppliedRange',
   'all</b> unsettled orders',

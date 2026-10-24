@@ -23,12 +23,13 @@ function payoutQueueEntries(current,live,archived){
   var out=[],seen={};
   // Freshly read rows win over the portal's in-memory copies: a reversed payout or a
   // re-read order must become visible again on Reload instead of being hidden by a stale snapshot.
-  [[live||{},'orders'],[archived||{},'archivedOrders'],[current||{},'orders']].forEach(function(pair){Object.keys(pair[0]).forEach(function(k){var o=pair[0][k],id=String(o&&o.id||k);if(!o||seen[id]||o.source!=='pos'||['grabfood','foodpanda'].indexOf(o.channel)<0||o.voided||(o.settlementStatus||'unsettled')==='settled')return;seen[id]=1;out.push({key:k,node:pair[1],o:o});});});
+  [[live||{},'orders'],[archived||{},'archivedOrders'],[current||{},'orders']].forEach(function(pair){Object.keys(pair[0]).forEach(function(k){var o=pair[0][k],id=String(o&&o.id||k);if(!o||o.archivePending||seen[id]||o.source!=='pos'||['grabfood','foodpanda'].indexOf(o.channel)<0||o.voided||(o.settlementStatus||'unsettled')==='settled')return;seen[id]=1;out.push({key:k,node:pair[1],o:o});});});
   return out;
 }
 function payoutPeriodReady(bounds){return !!(bounds&&poAppliedRange===bounds.key&&poQueue.complete&&!poQueue.loading&&!poQueue.error);}
 function poUnsettled(ch,entries){var paid=settledPayoutOrderIds();return(entries||platEntries()).filter(function(e){var id=e.o.id||e.key;return e.o.channel===ch&&(e.o.settlementStatus||'unsettled')!=='settled'&&!paid[id];});}
 var PO_UNSETTLED_PAGE_SIZE=200,PO_UNSETTLED_MAX_PAGES=100;
+function poLegacyUnsettled(o,ch){return !!o&&!o.archivePending&&o.source==='pos'&&o.channel===ch&&(o.settlementStatus==null||o.settlementStatus==='')&&!o.payoutId&&!o.voided;}
 function loadUnsettledPath(a,path){
   var rows={},before=null,pages=0;
   function next(){
@@ -38,6 +39,19 @@ function loadUnsettledPath(a,path){
   }
   return next();
 }
+function loadLegacyUnsettledPath(a,path,ch){
+  var rows={},before=null,pages=0;
+  function next(){
+    if(++pages>PO_UNSETTLED_MAX_PAGES)return Promise.reject(new Error('The legacy '+ch+' order history is larger than the safe reload limit. Contact support before settling this payout.'));
+    // download-ok: manual/once-per-session compatibility read. The channel index
+    // limits this to GrabFood or FoodPanda history; only legacy blank-status rows
+    // are retained, so normalized orders continue using the cheaper open query.
+    var base=a.ref(a.db,path),q=before==null?a.query(base,a.orderByChild('channel'),a.startAt(ch),a.endAt(ch),a.limitToLast(PO_UNSETTLED_PAGE_SIZE+1)):a.query(base,a.orderByChild('channel'),a.startAt(ch),a.endBefore(ch,before),a.limitToLast(PO_UNSETTLED_PAGE_SIZE+1));
+    return a.get(q).then(function(snap){var page=[];snap.forEach(function(child){page.push({key:child.key,value:child.val()||{}});});var hasOlder=page.length>PO_UNSETTLED_PAGE_SIZE;if(hasOlder)page.shift();page.forEach(function(row){if(poLegacyUnsettled(row.value,ch))rows[row.key]=row.value;});if(!hasOlder)return rows;before=page[0]&&page[0].key;if(!before)throw new Error('The legacy '+ch+' queue cursor did not advance.');return next();});
+  }
+  return next();
+}
+function loadUnsettledNode(a,path){return Promise.all([loadUnsettledPath(a,path),loadLegacyUnsettledPath(a,path,'grabfood'),loadLegacyUnsettledPath(a,path,'foodpanda')]).then(function(parts){return Object.assign({},parts[1],parts[2],parts[0]);});}
 function loadPayoutQueue(force){
   if(!force&&(poQueue.loading||(poQueue.complete&&!poQueue.error)))return Promise.resolve(poQueue.complete);
   var a=A(),request=poQueue.request+1;
@@ -45,7 +59,7 @@ function loadPayoutQueue(force){
   poQueue={live:{},archived:{},loading:true,error:'',complete:false,request:request};renderPayouts();
   // Load live first, then archive. Orders move only in that direction, so a
   // concurrent archive is present in at least one result and dedupes by ID.
-  return loadUnsettledPath(a,'orders').then(function(live){return loadUnsettledPath(a,'archivedOrders').then(function(archived){return[live,archived];});}).then(function(results){
+  return loadUnsettledNode(a,'orders').then(function(live){return loadUnsettledNode(a,'archivedOrders').then(function(archived){return[live,archived];});}).then(function(results){
     if(request!==poQueue.request)return false;
     poQueue={live:results[0]||{},archived:results[1]||{},loading:false,error:'',complete:true,request:request};renderPayouts();return true;
   }).catch(function(error){if(request!==poQueue.request)return false;poQueue={live:{},archived:{},loading:false,error:String(error&&error.message||error),complete:false,request:request};renderPayouts();return false;});

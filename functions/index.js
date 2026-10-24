@@ -2271,6 +2271,7 @@ function operationalAuditRecord(action, sourceType, sourceId, actor, details = {
 // needs: an order the till may still be settling (unpaid, or completed moments
 // ago) is left for a human.
 const ORDER_ARCHIVE_SWEEP_GRACE_MS = 30 * 60 * 1000;
+const ORDER_ARCHIVE_CLAIM_STALE_MS = 10 * 60 * 1000;
 const ORDER_ARCHIVE_FINAL_STATUSES = ["Completed", "Received", "Rejected"];
 const ORDER_ARCHIVE_REFUSAL = {
   not_found: "Order not found.",
@@ -2297,7 +2298,10 @@ async function orderArchiveCheck(db, orderId, options = {}) {
     const archivedSnap = await db.ref(`/archivedOrders/${orderId}`).get();
     return {ok: false, reason: archivedSnap.exists() ? "already_archived" : "not_found"};
   }
-  const storedOrder = orderSnap.val() || {}, order = Object.assign({id: orderId}, storedOrder);
+  const storedOrder = orderSnap.val() || {}, staleArchiveClaim = storedOrder.archivePending && Number(storedOrder.archivePendingAt || 0) < Date.now() - ORDER_ARCHIVE_CLAIM_STALE_MS;
+  const archiveSource = Object.assign({}, storedOrder);
+  if (staleArchiveClaim) { delete archiveSource.archivePending; delete archiveSource.archivePendingAt; }
+  const order = Object.assign({id: orderId}, archiveSource);
   if (order.shiftId) {
     let shiftId = "";
     try { shiftId = financeKey(order.shiftId, "Shift ID"); } catch (error) { return {ok: false, reason: "shift_invalid", error}; }
@@ -2317,7 +2321,7 @@ async function orderArchiveCheck(db, orderId, options = {}) {
     // a requested inventory reversal - must not leave the live list even when its
     // shift is closed. Its own shift is already proven closed above, so the
     // active-shift clause of that rule cannot apply here.
-    if (shouldProjectOrder(order, null) || order.correctionPending || order.archivePending) return {ok: false, reason: "still_live"};
+    if (shouldProjectOrder(order, null) || order.correctionPending || (storedOrder.archivePending && !staleArchiveClaim)) return {ok: false, reason: "still_live"};
     const settledAt = Number(order.completedAt || order.receivedAt || order.timestamp || 0);
     if (!settledAt || Date.now() - settledAt < ORDER_ARCHIVE_SWEEP_GRACE_MS) return {ok: false, reason: "too_recent"};
     if (String(order.status || "") !== "Rejected" || order.voided === true) {
@@ -2325,19 +2329,27 @@ async function orderArchiveCheck(db, orderId, options = {}) {
       if (!saleMovement.exists() || order.inventoryDeducted !== true || Number(order.inventoryLedgerVersion || 0) < 1) return {ok: false, reason: "posting_incomplete"};
     }
   }
-  return {ok: true, order, fingerprint: orderArchiveFingerprint(storedOrder)};
+  return {ok: true, order, fingerprint: orderArchiveFingerprint(archiveSource)};
 }
 
 async function archiveOrderNow(db, order, actor, source, expectedFingerprint) {
   const now = Date.now(), orderId = order.id, fingerprint = expectedFingerprint || orderArchiveFingerprint(order);
   const attemptId = `${now}_${crypto.randomBytes(6).toString("hex")}`;
   const liveRef = db.ref(`/orders/${orderId}`);
+  let recoveredStaleClaim = false;
   const claimed = await liveRef.transaction((current) => {
     // A cold Admin SDK cache calls this with null before it reads the server; returning
     // undefined there aborts the transaction for good, so keep null as null.
     if (!current) return null;
-    if (current.archivePending || orderArchiveFingerprint(current) !== fingerprint) return;
-    return Object.assign({}, current, {archivePending: attemptId, archivePendingAt: now});
+    const sourceRecord = Object.assign({}, current);
+    if (sourceRecord.archivePending) {
+      if (Number(sourceRecord.archivePendingAt || 0) >= now - ORDER_ARCHIVE_CLAIM_STALE_MS) return;
+      delete sourceRecord.archivePending;
+      delete sourceRecord.archivePendingAt;
+      recoveredStaleClaim = true;
+    }
+    if (orderArchiveFingerprint(sourceRecord) !== fingerprint) return;
+    return Object.assign({}, sourceRecord, {archivePending: attemptId, archivePendingAt: now});
   }, undefined, false);
   if (!claimed.committed) return {orderId, changed: true};
   const pending = Object.assign(archivedOrderRecord(order, now, source), {
@@ -2345,6 +2357,10 @@ async function archiveOrderNow(db, order, actor, source, expectedFingerprint) {
     archivedByUid: actor.uid, archivedByRole: actor.role,
   });
   const archiveRef = db.ref(`/archivedOrders/${orderId}`);
+  const abandon = async () => {
+    await archiveRef.transaction((current) => current && current.archiveAttemptId === attemptId ? null : current, undefined, false);
+    await liveRef.transaction((current) => current && current.archivePending === attemptId ? Object.assign({}, current, {archivePending: null, archivePendingAt: null}) : current, undefined, false);
+  };
   const staged = await archiveRef.transaction((current) => {
     if (current && current.archivePending !== true) return;
     return pending;
@@ -2352,6 +2368,14 @@ async function archiveOrderNow(db, order, actor, source, expectedFingerprint) {
   if (!staged.committed) {
     await liveRef.transaction((current) => current && current.archivePending === attemptId ? Object.assign({}, current, {archivePending: null, archivePendingAt: null}) : current, undefined, false);
     return {orderId, duplicate: true};
+  }
+
+  if (order.shiftId) {
+    const [activeIdSnap, shiftStatusSnap] = await Promise.all([db.ref("/posActiveShift/id").get(), db.ref(`/shifts/${order.shiftId}/status`).get()]);
+    if (String(activeIdSnap.val() || "") === String(order.shiftId) || String(shiftStatusSnap.val() || "") !== "closed") {
+      await abandon();
+      return {orderId, changed: true};
+    }
   }
 
   // The transaction is the concurrency boundary: the live record is removed
@@ -2367,8 +2391,7 @@ async function archiveOrderNow(db, order, actor, source, expectedFingerprint) {
     return null;
   }, undefined, false);
   if (!removed.committed) {
-    await archiveRef.transaction((current) => current && current.archiveAttemptId === attemptId ? null : current, undefined, false);
-    await liveRef.transaction((current) => current && current.archivePending === attemptId ? Object.assign({}, current, {archivePending: null, archivePendingAt: null}) : current, undefined, false);
+    await abandon();
     return {orderId, changed: true};
   }
 
@@ -2382,7 +2405,7 @@ async function archiveOrderNow(db, order, actor, source, expectedFingerprint) {
   }, undefined, false);
   await db.ref().update({
     [`activeOrders/${orderId}`]: null,
-    [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("archive_order", "order", orderId, actor, {previousStatus: order.status || "", archiveAttemptId: attemptId}),
+    [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("archive_order", "order", orderId, actor, {previousStatus: order.status || "", archiveAttemptId: attemptId, recoveredStaleClaim}),
   });
   return {orderId, archivedAt: now};
 }
@@ -2391,12 +2414,16 @@ const ORDER_ARCHIVE_MANUAL_SCAN_LIMIT = 300;
 const ORDER_ARCHIVE_MANUAL_ARCHIVE_LIMIT = 150;
 
 async function archiveEligibleOrdersNow(db, actor) {
-  const [activeShiftSnap, keys] = await Promise.all([
+  const actorKey = String(actor.uid || "manager").replace(/[.#$\[\]\/]/g, "_").slice(0, 160), stateRef = db.ref(`/systemMaintenance/manualOrderArchive/${actorKey}`);
+  const [activeShiftSnap, keys, stateSnap] = await Promise.all([
     db.ref("/posActiveShift").get(),
     /* download-ok: explicit manager cleanup reads keys only; values are fetched one at a time under a 300-row cap */ shallowDatabaseKeys(db, "orders"),
+    stateRef.get(),
   ]);
   const activeShift = activeShiftSnap.val() || {}, excludeShiftId = String(activeShift.id || "");
-  const candidates = keys.sort().slice(0, ORDER_ARCHIVE_MANUAL_SCAN_LIMIT);
+  keys.sort();
+  const previousCursor = String(stateSnap.val() && stateSnap.val().cursor || ""), from = previousCursor ? keys.findIndex((key) => key > previousCursor) : 0;
+  const candidates = keys.slice(from === -1 ? 0 : from).slice(0, ORDER_ARCHIVE_MANUAL_SCAN_LIMIT);
   const summary = {live: keys.length, scanned: 0, archived: 0, currentShiftId: excludeShiftId || null, skipped: {}};
   for (const orderId of candidates) {
     if (summary.archived >= ORDER_ARCHIVE_MANUAL_ARCHIVE_LIMIT) break;
@@ -2412,9 +2439,12 @@ async function archiveEligibleOrdersNow(db, actor) {
       logger.warn("Manual order archive skipped an order", {orderId, error: String(error && error.message || error)});
     }
   }
-  summary.hasMore = summary.scanned < keys.length;
+  const lastKey = summary.scanned ? candidates[summary.scanned - 1] : "", hasMore = !!lastKey && lastKey < keys[keys.length - 1];
+  summary.cursor = hasMore ? lastKey : "";
+  summary.hasMore = hasMore;
   const auditAt = Date.now();
   await db.ref().update({
+    [`systemMaintenance/manualOrderArchive/${actorKey}`]: {cursor: summary.cursor, updatedAt: auditAt, schemaVersion: 1},
     [`operationalAudit/${auditAt}_manual_order_archive`]: operationalAuditRecord("bulk_archive_orders", "orderArchive", "eligible_previous_orders", actor, summary),
   });
   return summary;
