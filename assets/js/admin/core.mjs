@@ -3,8 +3,9 @@ import{createSubscriptionHub}from"./realtime-hub.mjs?v=616";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
-import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=710";
+import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs";
+import{archiveOutcome}from"./order-display.mjs";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=713";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -15,7 +16,7 @@ import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
 import{sortArchivedOrders,summarizeArchivedOrders}from"./archive-order-sort.mjs";
 import{createOrderArchivePanel}from"./order-archive-panel.mjs";
-import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=710";
+import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=713";
 const paymentAccountLinks=createPaymentAccountLinks(()=>overviewCashAccounts||{});
 
 const {getPaymentProof:getPaymentProofCall,getCurrentCashBalances:getCurrentCashBalancesCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,manageFixedAsset:manageFixedAssetCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,manageAccountingPeriod:manageAccountingPeriodCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,reopenDiscrepancy:reopenDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,setUndepositedOpeningBalance:setUndepositedOpeningBalanceCall,repairPettyVoucherFinancial:repairPettyVoucherFinancialCall,retireRevolvingFund:retireRevolvingFundCall,repairClosedShiftTurnover:repairClosedShiftTurnoverCall,repairShiftDeclaredTips:repairShiftDeclaredTipsCall,repairReversedPayoutDeposit:repairReversedPayoutDepositCall,reconcileUndepositedCustody:reconcileUndepositedCustodyCall,runFinancialClose:runFinancialCloseCall,archiveActivityLog:archiveActivityLogCall}=callables;
@@ -895,19 +896,6 @@ function renderDashboard(){
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='₱'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
   overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,historyComplete:subscriptionHub.historyStatus('orders').ready&&subscriptionHub.historyStatus('archivedOrders').ready,menuItems:menuItemsMap||{},catType:overviewCatType,drinkCategories:DRINK_CATS,cashAccounts:overviewCashAccounts||{}});
-}
-
-function drawPaymentPie(gcashR,bankR){
-  const canvas=document.getElementById('paymentChart');if(!canvas)return;
-  const size=160;canvas.width=size;canvas.height=size;
-  const ctx=canvas.getContext('2d'),cx=size/2,cy=size/2,r=size*0.42;
-  ctx.clearRect(0,0,size,size);
-  if(gcashR+bankR===0){ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='#cdbda7';ctx.fill();return;}
-  const start=-Math.PI/2;
-  [[gcashR,'#b08d57'],[bankR,'#3b8fd4']].forEach(function(pair,i){
-    const s=i===0?start:start+gcashR*Math.PI*2,e=i===0?start+gcashR*Math.PI*2:start+Math.PI*2;
-    ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,s,e);ctx.closePath();ctx.fillStyle=pair[1];ctx.fill();
-  });
 }
 
 window.downloadArchivePDF=function(){

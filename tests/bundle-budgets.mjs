@@ -19,7 +19,7 @@ export const BUDGET_WARN_ROOM=0.025;
 // Any tracked runtime script at or above this size must have a ceiling below.
 export const BUDGET_COVERAGE_MIN_BYTES=10000;
 // Modules carved out of a guarded bundle keep a ceiling whatever their size.
-export const SPLIT_MODULES=Object.freeze(['assets/js/admin/chart-axes.mjs','assets/js/admin/daily-report-output.mjs','assets/js/admin/order-archive-panel.mjs','assets/js/admin/payment-account-links.mjs','assets/js/admin/baking.js','assets/js/admin/baking-print.js','assets/js/admin/accaza-ai-manager.js','assets/js/customer/chatbot.mjs','assets/js/books/subledgers.js','assets/js/books/controlled-transactions.js']);
+export const SPLIT_MODULES=Object.freeze(['assets/js/admin/chart-axes.mjs','assets/js/admin/daily-report-output.mjs','assets/js/admin/order-archive-panel.mjs','assets/js/admin/order-display.mjs','assets/js/admin/payment-account-links.mjs','assets/js/admin/baking.js','assets/js/admin/baking-print.js','assets/js/admin/accaza-ai-manager.js','assets/js/customer/chatbot.mjs','assets/js/books/subledgers.js','assets/js/books/controlled-transactions.js']);
 export const usableBudget=(maximum,reserve=0)=>maximum-reserve;
 export const budgetState=(bytes,maximum,reserve=0)=>{
   const usable=usableBudget(maximum,reserve);
@@ -151,6 +151,7 @@ export const BUNDLE_BUDGETS=Object.freeze({
   'assets/js/admin/accaza-ai-manager.js':8500, // 16 Oct 2026 split from accaza-ai.js (Operations Manual editor, Log issue); reviewed 8,004
   'assets/js/admin/packages.js':17500, // reviewed 16,576
   'assets/js/admin/admin-orders.mjs':15100, // reviewed 14,295
+  'assets/js/admin/order-display.mjs':1700, // reviewed 1,359; shared channel labels and archive outcomes
   'assets/js/admin/uncosted-sales.js':13600, // reviewed 12,896
   // Oct 2026 (admin 683): the Baking screen moved out of the POS bundle entirely, so the POS
   // ceiling and its 50 KB reserve are untouched. Reviewed at 26,105 bytes after each ingredient
