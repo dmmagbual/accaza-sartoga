@@ -13,7 +13,7 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const failures = [];
 const must = (source, marker, message) => { if (!source.includes(marker)) failures.push(message); };
 
-for (const file of ['assets/js/books/app.js', 'src/books/app/40-subledgers.js']) {
+for (const file of ['assets/js/books/subledgers.js', 'src/books/app/40-subledgers.js']) {
   const s = read(file);
   must(s, "d.provisional===true?'<span class=\"tiny muted\">Finalize invoice in Purchases first</span>'",
     `${file}: a provisional payable must show finalize guidance instead of a Pay button.`);

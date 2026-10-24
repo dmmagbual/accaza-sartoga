@@ -469,8 +469,21 @@ exports.preservePostedOrderOnDelete = onValueDeleted(
   async (event) => {
     const id = event.params.orderId, order = event.data.val() || {};
     if (!id) return;
-    const db = getDatabase(), archivedRef = db.ref(`/archivedOrders/${id}`);
-    if ((await archivedRef.get()).exists() || !(await db.ref(`/financialMovements/sale_${id}`).get()).exists()) return;
+    const db = getDatabase(), archivedRef = db.ref(`/archivedOrders/${id}`), archivedSnap = await archivedRef.get(), archived = archivedSnap.val();
+    if (archived && archived.archivePending === true) {
+      const recoveredAt = Date.now();
+      const finalized = await archivedRef.transaction((current) => {
+        if (!current || current.archivePending !== true) return current;
+        const record = Object.assign({}, current, {archiveRecoveredAt: recoveredAt});
+        delete record.archivePending;
+        delete record.archiveAttemptId;
+        delete record.archiveSourceFingerprint;
+        return record;
+      }, undefined, false);
+      if (finalized.committed) await db.ref(`/operationalAudit/${recoveredAt}_order_archive_recovery_${id}`).set({action:"recover_pending_order_archive",sourceType:"order",sourceId:id,reason:"Live order was removed after its conditional archive stage; finalized the retained archive copy.",ts:recoveredAt,actorUid:"server",schemaVersion:1});
+      return;
+    }
+    if (archivedSnap.exists() || !(await db.ref(`/financialMovements/sale_${id}`).get()).exists()) return;
     const now = Date.now(), effectiveStatus = order.status === "Archived" ? order.prevStatus : order.status;
     const retained = Object.assign({}, order, {id, timestamp: Number(order.timestamp || order.completedAt || order.receivedAt || now), status: "Archived", prevStatus: effectiveStatus || "Completed", archivedAt: now, archiveReason: "Automatically preserved after unexpected deletion", recoveredFromDeletion: true, schemaVersion: Math.max(2, Number(order.schemaVersion) || 0)});
     const result = await archivedRef.transaction((current) => current || retained);

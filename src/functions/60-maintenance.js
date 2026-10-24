@@ -154,8 +154,9 @@ exports.sweepOrderArchive = onSchedule(
       try {
         const check = await orderArchiveCheck(db, orderId, {strict: true});
         if (!check.ok) { summary.skipped[check.reason] = (summary.skipped[check.reason] || 0) + 1; continue; }
-        await archiveOrderNow(db, check.order, {uid: "system", role: "system"}, "auto-sweep");
-        summary.archived++;
+        const archived = await archiveOrderNow(db, check.order, {uid: "system", role: "system"}, "auto-sweep", check.fingerprint);
+        if (archived.changed) summary.skipped.changed = (summary.skipped.changed || 0) + 1;
+        else if (!archived.duplicate) summary.archived++;
       } catch (error) {
         summary.skipped.error = (summary.skipped.error || 0) + 1;
         logger.warn("Order archive sweep skipped an order", {orderId, error: String(error && error.message || error)});

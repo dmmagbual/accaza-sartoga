@@ -10,23 +10,12 @@ function agingBucket(due){
   var days = Math.floor((Date.now()-t)/86400000);
   if(days<=0) return 'Current'; if(days<=30) return '1–30'; if(days<=60) return '31–60'; if(days<=90) return '61–90'; return '90+';
 }
-function openDocs(map){ return Object.keys(map||{}).map(function(k){return Object.assign({id:k}, map[k]||{});}).filter(function(d){return (d.status||'open')==='open' && (Number(d.remainingAmount!=null?d.remainingAmount:d.amount)||0)>0;}); }
 /* AP Integrity Remediation step 0.1: openDocs() hides a supplier bill with a negative balance
    and one reversed through its PURCHASE after money was paid against it (the purchase reversal cleared
    the full total), so list them instead of netting them silently. A bill reversed on its own clears only
    its unpaid balance and is correct, so it is not listed. */
 function payableReviewIssues(map){return Object.keys(map||{}).map(function(k){return Object.assign({id:k},map[k]||{});}).filter(function(d){if(d.type==='customer_change_refund')return false;var amount=Number(d.amount)||0,remaining=Number(d.remainingAmount!=null?d.remainingAmount:d.amount)||0,live=Object.keys(d.settlements||{}).some(function(k){var s=d.settlements[k]||{};return s.status!=='reversed'&&(Number(s.amount)||0)>0.009;});if(d.status==='reversed')return /^purchase_(ap|owner)_reversal_/.test(String(d.reversalMovementId||''))&&((Number(d.paidAmount)||0)>0.009||live);return remaining<-0.009||remaining>amount+0.009;});}
 function payableReviewBanner(map){var issues=payableReviewIssues(map);if(!issues.length)return '';return '<div class="card" style="border-left:4px solid #c0392b"><b>'+issues.length+' supplier bill'+(issues.length===1?' needs':'s need')+' review</b><div class="tiny muted">A negative balance, or a bill reversed after money was paid against it, leaves Accounts Payable wrong. Correct it with a documented reversal; never edit the balance.</div><ul class="tiny">'+issues.map(function(d){var remaining=Number(d.remainingAmount!=null?d.remainingAmount:d.amount)||0;return '<li><button class="btn sm ghost" onclick="App.showPayableTrace(\''+esc(d.id)+'\')">'+esc(billRefLabel(d,d.id))+'</button> '+esc(d.party||'Supplier')+' · '+(d.status==='reversed'?'reversed with '+peso(Number(d.paidAmount)||0)+' paid':'balance '+peso(remaining))+'</li>';}).join('')+'</ul></div>';}
-function adminSalesAr(){
-  var combined=Object.assign({},window.__booksArchivedOrders||{},window.__booksActiveOrders||{}),rows=[];
-  Object.keys(combined).forEach(function(id){var o=combined[id]||{},channel=String(o.channel||'').toLowerCase();if(o.source!=='pos'||(channel!=='grabfood'&&channel!=='foodpanda')||o.voided===true||(o.settlementStatus||'unsettled')==='settled')return;var gross=Number(o.grossPlatform||o.subtotal||o.total)||0,net=o.netPlatform!=null?(Number(o.netPlatform)||0):r2(gross-(Number(o.commission)||0)-(Number(o.platformDiscount)||0)-(Number(o.platformWht)||0)-(Number(o.platformVat)||0)-(Number(o.platformAdsMarketing)||0)-(Number(o.platformMarketingFee)||0));if(Math.abs(net)<.005)return;rows.push({id:id,channel:channel,date:String(o.completedAt||o.receivedAt||o.createdAt||o.timestamp||''),ref:o.platformOrderRef||o.orderNumber||id,amount:r2(net)});});
-  rows.sort(function(a,b){return String(b.date).localeCompare(String(a.date));});var byChannel={grabfood:0,foodpanda:0};rows.forEach(function(x){byChannel[x.channel]=r2(byChannel[x.channel]+x.amount);});return{rows:rows,byChannel:byChannel,total:r2(byChannel.grabfood+byChannel.foodpanda)};
-}
-function arApTotals(){
-  var ar=r2(adminSalesAr().total+openDocs(window.__arMap).reduce(function(s,d){return s+(Number(d.remainingAmount!=null?d.remainingAmount:d.amount)||0);},0));
-  var ap=openDocs(window.__apMap).reduce(function(s,d){return s+(Number(d.remainingAmount!=null?d.remainingAmount:d.amount)||0);},0);
-  return {ar:ar, ap:ap, net:ar-ap};
-}
 function receivablesPage(){
   if(!window.__booksUser) return '<div class="page-head"><div><h2>Receivables</h2><p>Money owed to you</p></div></div><div class="empty"><div class="big">📥</div><b>Sign in for live receivables</b><br><span class="tiny">This ledger reads the same authoritative Finance journal used by the Balance Sheet.</span></div>';
   var salesAr=adminSalesAr(),salesRows=salesAr.rows.map(function(x){var shown=x.date&&/^\d+$/.test(x.date)?new Date(Number(x.date)).toLocaleDateString('en-PH'):String(x.date||'').slice(0,10);return '<tr><td class="tiny">'+esc(shown||'—')+'</td><td><b>'+esc(x.channel==='grabfood'?'GrabFood':'FoodPanda')+'</b><div class="tiny muted">'+esc(x.ref)+'</div></td><td class="num">'+peso(x.amount)+'</td></tr>';}).join('');

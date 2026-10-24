@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=709";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=710";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -15,7 +15,7 @@ import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
 import{sortArchivedOrders,summarizeArchivedOrders}from"./archive-order-sort.mjs";
 import{createOrderArchivePanel}from"./order-archive-panel.mjs";
-import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=709";
+import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=710";
 const paymentAccountLinks=createPaymentAccountLinks(()=>overviewCashAccounts||{});
 
 const {getPaymentProof:getPaymentProofCall,getCurrentCashBalances:getCurrentCashBalancesCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,manageFixedAsset:manageFixedAssetCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,manageAccountingPeriod:manageAccountingPeriodCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,reopenDiscrepancy:reopenDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,setUndepositedOpeningBalance:setUndepositedOpeningBalanceCall,repairPettyVoucherFinancial:repairPettyVoucherFinancialCall,retireRevolvingFund:retireRevolvingFundCall,repairClosedShiftTurnover:repairClosedShiftTurnoverCall,repairShiftDeclaredTips:repairShiftDeclaredTipsCall,repairReversedPayoutDeposit:repairReversedPayoutDepositCall,reconcileUndepositedCustody:reconcileUndepositedCustodyCall,runFinancialClose:runFinancialCloseCall,archiveActivityLog:archiveActivityLogCall}=callables;
@@ -66,7 +66,7 @@ window.__setupPush=setupPush;
 
 const feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
 window.__accaza={
-  db,ref,set,get,update,remove,onValue,runTransaction,query,orderByChild,equalTo,startAt,endAt,callables,sendPasswordResetEmail:function(email){return sendPasswordResetEmail(auth,email);},hub:subscriptionHub,readHistoricalOrders,readHistoricalSalesRollup,summarizeHistoricalSales,addLiveSales,reconcileCashierSales,
+  db,ref,set,get,update,remove,onValue,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,callables,sendPasswordResetEmail:function(email){return sendPasswordResetEmail(auth,email);},hub:subscriptionHub,readHistoricalOrders,readHistoricalSalesRollup,summarizeHistoricalSales,addLiveSales,reconcileCashierSales,
   subscribe:function(path,callback,opts){return subscriptionHub.subscribe(path,callback,opts);},
   postInventoryMovements:function(movements){return postInventoryMovementsCall({movements:movements});},
   ensureInventoryLedger:function(){return ensureInventoryLedgerCall({});},
@@ -820,7 +820,7 @@ window.submitFeedback=async function(){
 
 function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(reservationManager.getReservations()).length;document.getElementById('statRevenue').textContent='₱'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
 
-const orderAdmin=createOrderAdmin({getOrders:function(){return adminOrdersMap;},canArchiveOrder:function(o){var verifiedRole=window.__accazaAuthz&&window.__accazaAuthz.role,manager=['owner','superadmin','admin','manager'].indexOf(String(verifiedRole||'').toLowerCase())>=0,shift=window.__posShift;return manager&&(!o.shiftId||!shift||shift.id!==o.shiftId||shift.status==='closed');},escHtml:escHtml,safeImageSrc:safeImageSrc,showDeletePopup:showDeletePopup,printOrder:function(id){if(window.printOrder)return window.printOrder(id);},notifyCustomer:function(id){if(window.notifyCustomer)return window.notifyCustomer(id);}});
+const orderAdmin=createOrderAdmin({getOrders:function(){return adminOrdersMap;},canManageArchive:function(){var verifiedRole=window.__accazaAuthz&&window.__accazaAuthz.role;return['owner','superadmin','admin','manager'].indexOf(String(verifiedRole||'').toLowerCase())>=0;},canArchiveOrder:function(o){var verifiedRole=window.__accazaAuthz&&window.__accazaAuthz.role,manager=['owner','superadmin','admin','manager'].indexOf(String(verifiedRole||'').toLowerCase())>=0,shift=window.__posShift;return manager&&(!o.shiftId||!shift||shift.id!==o.shiftId||shift.status==='closed');},escHtml:escHtml,safeImageSrc:safeImageSrc,showDeletePopup:showDeletePopup,printOrder:function(id){if(window.printOrder)return window.printOrder(id);},notifyCustomer:function(id){if(window.notifyCustomer)return window.notifyCustomer(id);}});
 const renderOrders=orderAdmin.renderOrders,patchOrderCards=orderAdmin.patchOrderCards;
 
 window.togglePwVis=function(inputId,btn){var inp=document.getElementById(inputId);if(!inp)return;var show=inp.type==='password';inp.type=show?'text':'password';btn.textContent=show?'🙈':'👁️';};

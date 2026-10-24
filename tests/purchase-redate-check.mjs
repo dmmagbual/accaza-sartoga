@@ -4,7 +4,7 @@
    place, like the reversal-date correction. Also guards the removed Legacy brand note and Lot # fields. */
 import fs from 'node:fs';
 const read = (p) => fs.readFileSync(p, 'utf8');
-const redate = read('src/functions/43m-purchase-redate.js'), corrections = read('src/functions/43b-purchase-corrections.js'), purchasing = read('src/admin/pos/20-purchasing.js');
+const redate = read('src/functions/43m-purchase-redate.js'), corrections = read('src/functions/43b-purchase-corrections.js'), purchasing = read('src/admin/pos/20-purchasing.js'), dialogs = read('src/admin/pos/20c-purchase-amend.js');
 const bundle = read('functions/index.js'), pos = read('assets/js/admin/pos.js');
 const failures = [], must = (s, marker, message) => { if (!s.includes(marker)) failures.push(message); };
 
@@ -40,9 +40,16 @@ if (/\.remove\(|set\(null\)/.test(redate)) failures.push('Re-dating must never d
 { const day = (d) => Date.parse(`${d}T00:00:00+08:00`), at = day('2026-10-23') + 3600000, moved = at + (day('2026-10-21') - day('2026-10-23'));
   if (moved !== day('2026-10-21') + 3600000) failures.push('A re-dated posting must keep its time of day.'); }
 // Admin.
-must(purchasing, "{name:'date',label:'Purchase date',type:'date'", 'Edit details must offer the purchase date to a Super Admin.');
-must(purchasing, "action:'correct_date'", 'Edit details must call the server date correction.');
-must(purchasing, 'expectedDateRevision:', 'Edit details must send the date revision it opened.');
+must(dialogs, "{name:'date',label:'Purchase date (posting date in Finance Books)',type:'date'", 'The purchase date field must say it is the posting date.');
+must(dialogs, "action:'correct_date'", 'A changed purchase date must call the server date correction.');
+must(dialogs, 'expectedDateRevision:', 'The date correction must send the date revision it opened.');
+must(dialogs, "var PURCHASE_DUE_LABEL='Payment due date", 'The due date must be labelled as the payment due date so it is not mistaken for the purchase date.');
+// 23 Oct 2026: both detail dialogs carry the purchase date and save it the same way (the second one had none).
+for (const [name, start] of [['Edit details', "querySelectorAll('[data-purchase-edit]')"], ['Correct purchase details', "purchaseLookup('Correct purchase details')"]]) {
+  const at = purchasing.indexOf(start), block = at >= 0 ? purchasing.slice(at, at + 2600) : '';
+  for (const marker of ['purchaseDateField(', 'savePurchaseDetails(', 'purchaseDetailsSaved(', 'label:PURCHASE_DUE_LABEL']) if (!block.includes(marker)) failures.push(`${name} must use ${marker} so the purchase date is offered and saved.`);
+}
+if (/label:'Due date'/.test(purchasing.slice(purchasing.indexOf("purchaseLookup('Correct purchase details')"), purchasing.indexOf("purchaseLookup('Reverse a purchase')")))) failures.push('Correct purchase details must not show an unlabelled Due date.');
 if (purchasing.includes('Use Amend to reverse and re-enter if the wrong supplier or accounting date')) failures.push('The stale Edit details text pointing to Amend for the date must be gone.');
 if (purchasing.includes('Legacy brand note')) failures.push('The Legacy brand note field must stay removed from the purchase card.');
 if (purchasing.includes('data-pf="lot"')) failures.push('The Lot # field must stay removed from the purchase card.');

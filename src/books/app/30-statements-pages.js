@@ -1,4 +1,19 @@
 
+/* Dashboard totals (Receivables open, Payables open, Working capital) render on the startup path, so
+   these helpers must stay in the always-loaded bundle. The receivables/payables pages that also use
+   them live in subledgers.js, which loads only on controlled routes. */
+function openDocs(map){ return Object.keys(map||{}).map(function(k){return Object.assign({id:k}, map[k]||{});}).filter(function(d){return (d.status||'open')==='open' && (Number(d.remainingAmount!=null?d.remainingAmount:d.amount)||0)>0;}); }
+function adminSalesAr(){
+  var combined=Object.assign({},window.__booksArchivedOrders||{},window.__booksActiveOrders||{}),rows=[];
+  Object.keys(combined).forEach(function(id){var o=combined[id]||{},channel=String(o.channel||'').toLowerCase();if(o.source!=='pos'||(channel!=='grabfood'&&channel!=='foodpanda')||o.voided===true||(o.settlementStatus||'unsettled')==='settled')return;var gross=Number(o.grossPlatform||o.subtotal||o.total)||0,net=o.netPlatform!=null?(Number(o.netPlatform)||0):r2(gross-(Number(o.commission)||0)-(Number(o.platformDiscount)||0)-(Number(o.platformWht)||0)-(Number(o.platformVat)||0)-(Number(o.platformAdsMarketing)||0)-(Number(o.platformMarketingFee)||0));if(Math.abs(net)<.005)return;rows.push({id:id,channel:channel,date:String(o.completedAt||o.receivedAt||o.createdAt||o.timestamp||''),ref:o.platformOrderRef||o.orderNumber||id,amount:r2(net)});});
+  rows.sort(function(a,b){return String(b.date).localeCompare(String(a.date));});var byChannel={grabfood:0,foodpanda:0};rows.forEach(function(x){byChannel[x.channel]=r2(byChannel[x.channel]+x.amount);});return{rows:rows,byChannel:byChannel,total:r2(byChannel.grabfood+byChannel.foodpanda)};
+}
+function arApTotals(){
+  var ar=r2(adminSalesAr().total+openDocs(window.__arMap).reduce(function(s,d){return s+(Number(d.remainingAmount!=null?d.remainingAmount:d.amount)||0);},0));
+  var ap=openDocs(window.__apMap).reduce(function(s,d){return s+(Number(d.remainingAmount!=null?d.remainingAmount:d.amount)||0);},0);
+  return {ar:ar, ap:ap, net:ar-ap};
+}
+
 /* ============================================================ PAGES ============================================================ */
 const PAGES = {
   dashboard(){

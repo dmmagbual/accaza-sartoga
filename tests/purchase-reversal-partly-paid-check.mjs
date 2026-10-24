@@ -74,7 +74,7 @@ const listed = issues({
 }).map((d) => d.id).sort();
 check(JSON.stringify(listed) === JSON.stringify(['neg', 'ownerRevPaid', 'revPaid']), `Books must list the negative bill and bills reversed through their purchase after payment, but not a standalone bill reversed for its unpaid remainder (got ${JSON.stringify(listed)}).`);
 check((books.match(/'\+review\+/g) || []).length === 2, 'The review banner must show on the Payables page whether or not open bills exist.');
-check(read('assets/js/books/app.js').includes('function payableReviewIssues('), 'The Books runtime bundle must contain the review list (run npm run build:artifacts).');
+check(read('assets/js/books/subledgers.js').includes('function payableReviewIssues('), 'The Books subledger bundle must contain the review list (run npm run build:artifacts).');
 
 if (failures.length) { console.error(`FAIL: ${failures.length} partly-paid purchase reversal check(s)\n- ${failures.join('\n- ')}`); process.exit(1); }
 console.log('PASS: partly paid purchases cannot be reversed or amended, and negative or paid-then-reversed bills are flagged in the close and in Finance Books.');

@@ -9,7 +9,8 @@ const bundles=[
   {source:'src/admin/analytics',target:'assets/js/admin/analytics.js'},
   {source:'src/admin/finance',target:'assets/js/admin/finance.js'},
   {source:'src/customer/core',target:'assets/js/customer/core.mjs'},
-  {source:'src/books/app',target:'assets/js/books/app.js',exclude:['50-controlled-transactions.js']},
+  {source:'src/books/app',target:'assets/js/books/app.js',exclude:['40-subledgers.js','50-controlled-transactions.js','55-payable-batch.js']},
+  {source:'src/books/app',target:'assets/js/books/subledgers.js',include:['40-subledgers.js','55-payable-batch.js']},
   {source:'src/books/app',target:'assets/js/books/controlled-transactions.js',include:['50-controlled-transactions.js']},
   {source:'src/functions',target:'functions/index.js'}
 ];
@@ -21,7 +22,7 @@ for(const bundle of bundles){
   const actual=fs.readFileSync(path.join(root,bundle.target),'utf8');
   if(actual!==expected)throw new Error(`${bundle.target} has drifted from ${bundle.source}. Run npm run build:runtime.`);
 }
-console.log('PASS: POS, Admin operations, Rewards admin, customer core, Finance Books core and deferred transactions, and Functions runtime bundles exactly match their ordered source sections.');
+console.log('PASS: POS, Admin operations, Rewards admin, customer core, Finance Books core and deferred subledger/transaction bundles, and Functions runtime bundles exactly match their ordered source sections.');
 
 const retiredLargeSections=[
   'src/admin/pos/11-inventory-skus.js',

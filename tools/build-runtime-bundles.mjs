@@ -10,7 +10,8 @@ const bundles=[
   {source:'src/admin/analytics',target:'assets/js/admin/analytics.js'},
   {source:'src/admin/finance',target:'assets/js/admin/finance.js'},
   {source:'src/customer/core',target:'assets/js/customer/core.mjs'},
-  {source:'src/books/app',target:'assets/js/books/app.js',exclude:['50-controlled-transactions.js']},
+  {source:'src/books/app',target:'assets/js/books/app.js',exclude:['40-subledgers.js','50-controlled-transactions.js','55-payable-batch.js']},
+  {source:'src/books/app',target:'assets/js/books/subledgers.js',include:['40-subledgers.js','55-payable-batch.js']},
   {source:'src/books/app',target:'assets/js/books/controlled-transactions.js',include:['50-controlled-transactions.js']},
   {source:'src/functions',target:'functions/index.js'}
 ];

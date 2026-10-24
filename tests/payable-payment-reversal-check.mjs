@@ -86,7 +86,7 @@ must(read('functions/index.js'), 'cashLedgerRecord(entry, movementIdOverride || 
   'functions/index.js: the cash-ledger row must reference the posted movement, not the client command id.');
 
 /* ---------- Books UI: a settled bill has to be reachable at all ---------- */
-for (const file of ['assets/js/books/app.js', 'src/books/app/40-subledgers.js']) {
+for (const file of ['assets/js/books/subledgers.js', 'src/books/app/40-subledgers.js']) {
   const s = read(file);
   must(s, 'function settledDocs(map)', `${file}: settled bills must be listable — the open-only filter hid them completely.`);
   must(s, 'App.toggleSettled=function()', `${file}: the settled list must be toggleable.`);
