@@ -17,6 +17,8 @@ const OrderService = require('../functions/lib/order-service.js');
 const archiveSource = fs.readFileSync('src/functions/21-operational-controls.js', 'utf8');
 const maintenanceSource = fs.readFileSync('src/functions/60-maintenance.js', 'utf8');
 const ordersSource = fs.readFileSync('src/functions/30-orders.js', 'utf8');
+const adminOrdersSource = fs.readFileSync('assets/js/admin/admin-orders.mjs', 'utf8');
+const adminWorkspaceSource = fs.readFileSync('src/html/admin/50-admin-workspace.html', 'utf8');
 // The production live-projection rule, evaluated for real: the sweep must not be
 // a second opinion about which orders the register still shows.
 const projection = ordersSource.slice(ordersSource.indexOf('function shouldProjectOrder('), ordersSource.indexOf('exports.syncOfflinePosSale'));
@@ -146,6 +148,9 @@ for (const marker of [
 assert(archiveSource.includes('storedOrder.archivePending && !staleArchiveClaim'), 'the sweep must retain live claims and recover only expired ones');
 assert(archiveSource.includes('orderArchiveFingerprint(sourceRecord) !== fingerprint'), 'archive removal must abort when the order changed after eligibility was checked');
 for(const marker of ['action === "archive_eligible"','ORDER_ARCHIVE_MANUAL_SCAN_LIMIT = 300','ORDER_ARCHIVE_MANUAL_ARCHIVE_LIMIT = 150','shallowDatabaseKeys(db, "orders")','stateRef.get()','keys.findIndex((key) => key > previousCursor)','{strict: true, excludeShiftId}','bulk_archive_orders'])if(!archiveSource.includes(marker))throw new Error('Manual bulk archive safeguard missing: '+marker);
+assert(adminWorkspaceSource.includes('onclick="if(window.archiveEligibleOrders)window.archiveEligibleOrders(this)"'),'bulk archive button must call its initialized module action directly');
+assert(adminOrdersSource.includes('window.archiveEligibleOrders=function(btn)'),'bulk archive module action is missing');
+assert(!adminOrdersSource.includes("btn.addEventListener('click',async function(){if(!confirm('Archive every eligible previous order?"),'bulk archive must not rely on render-time listener wiring or a native confirm dialog');
 
 // The current active shift is protected even if its history row is stale and
 // incorrectly says closed.
