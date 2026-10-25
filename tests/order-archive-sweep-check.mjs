@@ -83,11 +83,11 @@ const openShift = {SH: {'SH-1': {status: 'open'}}};
 //    register's review list and its Z-report total.
 {
   const cashier = fakeDb({orders: {A: Object.assign({}, completed, {paymentStatus: 'cashier_verified'})}, shifts: closedShift.SH}, []);
-  assert.equal((await ctx.orderArchiveCheck(cashier, 'A', {strict: true})).reason, 'still_live', 'a cashier-verified electronic payment must stay live for the manager');
+  assert.equal((await ctx.orderArchiveCheck(cashier, 'A', {strict: true})).reason, 'payment_review', 'a cashier-verified electronic payment must stay live for the manager');
   const pending = fakeDb({orders: {A: Object.assign({}, completed, {paymentStatus: 'pending'})}, shifts: closedShift.SH}, []);
-  assert.equal((await ctx.orderArchiveCheck(pending, 'A', {strict: true})).reason, 'still_live');
+  assert.equal((await ctx.orderArchiveCheck(pending, 'A', {strict: true})).reason, 'payment_review');
   const platform = fakeDb({orders: {A: Object.assign({}, completed, {channel: 'grabfood', settlementStatus: 'unsettled'})}, shifts: closedShift.SH}, []);
-  assert.equal((await ctx.orderArchiveCheck(platform, 'A', {strict: true})).reason, 'still_live', 'an unsettled platform order must stay live');
+  assert.equal((await ctx.orderArchiveCheck(platform, 'A', {strict: true})).reason, 'platform_unsettled', 'an unsettled platform order must stay live');
   const fresh = fakeDb({orders: {A: Object.assign({}, completed, {completedAt: Date.now() - 60000})}, shifts: closedShift.SH}, []);
   assert.equal((await ctx.orderArchiveCheck(fresh, 'A', {strict: true})).reason, 'too_recent');
   const undated = fakeDb({orders: {A: Object.assign({}, completed, {completedAt: 0, receivedAt: 0, timestamp: 0})}, shifts: closedShift.SH}, []);
@@ -150,6 +150,7 @@ assert(archiveSource.includes('orderArchiveFingerprint(sourceRecord) !== fingerp
 for(const marker of ['action === "archive_eligible"','ORDER_ARCHIVE_MANUAL_SCAN_LIMIT = 300','ORDER_ARCHIVE_MANUAL_ARCHIVE_LIMIT = 150','shallowDatabaseKeys(db, "orders")','stateRef.get()','keys.findIndex((key) => key > previousCursor)','{strict: true, excludeShiftId}','bulk_archive_orders'])if(!archiveSource.includes(marker))throw new Error('Manual bulk archive safeguard missing: '+marker);
 assert(adminWorkspaceSource.includes('onclick="if(window.archiveEligibleOrders)window.archiveEligibleOrders(this)"'),'bulk archive button must call its initialized module action directly');
 assert(adminOrdersSource.includes('window.archiveEligibleOrders=function(btn)'),'bulk archive module action is missing');
+assert(adminOrdersSource.includes("add('payment_review','awaiting manager payment validation')")&&adminOrdersSource.includes("add('platform_unsettled','unsettled platform receivables')"),'bulk archive result must explain protected financial orders');
 assert(!adminOrdersSource.includes("btn.addEventListener('click',async function(){if(!confirm('Archive every eligible previous order?"),'bulk archive must not rely on render-time listener wiring or a native confirm dialog');
 
 // The current active shift is protected even if its history row is stale and

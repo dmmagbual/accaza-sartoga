@@ -2280,6 +2280,9 @@ const ORDER_ARCHIVE_REFUSAL = {
   shift_open: "Orders cannot be archived while their shift is open.",
   not_final: "Only completed, received, rejected, or voided orders can be archived.",
   serving_queue: "This order is still in the serving queue. Mark it served or not collected first.",
+  payment_review: "This order is still awaiting manager payment validation.",
+  inventory_reversal: "This order is still waiting for its inventory reversal.",
+  platform_unsettled: "This platform receivable is still unsettled.",
   posting_incomplete: "The order is still posting to inventory or Finance Books.",
 };
 
@@ -2321,7 +2324,11 @@ async function orderArchiveCheck(db, orderId, options = {}) {
     // a requested inventory reversal - must not leave the live list even when its
     // shift is closed. Its own shift is already proven closed above, so the
     // active-shift clause of that rule cannot apply here.
-    if (shouldProjectOrder(order, null) || order.correctionPending || (storedOrder.archivePending && !staleArchiveClaim)) return {ok: false, reason: "still_live"};
+    if (order.correctionPending || (storedOrder.archivePending && !staleArchiveClaim)) return {ok: false, reason: "still_live"};
+    if (["pending", "cashier_verified"].includes(String(order.paymentStatus || ""))) return {ok: false, reason: "payment_review"};
+    if (order.inventoryReversalRequested === true && order.inventoryReversed !== true) return {ok: false, reason: "inventory_reversal"};
+    const channel = String(order.channel || "").toLowerCase().replace(/[^a-z0-9]/g, ""), platformUnsettled = ["grabfood", "foodpanda"].includes(channel) && (order.settlementStatus || "unsettled") === "unsettled";
+    if (shouldProjectOrder(order, null)) return {ok: false, reason: platformUnsettled ? "platform_unsettled" : "still_live"};
     const settledAt = Number(order.completedAt || order.receivedAt || order.timestamp || 0);
     if (!settledAt || Date.now() - settledAt < ORDER_ARCHIVE_SWEEP_GRACE_MS) return {ok: false, reason: "too_recent"};
     if (String(order.status || "") !== "Rejected" || order.voided === true) {

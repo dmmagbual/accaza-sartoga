@@ -75,8 +75,9 @@ var poReloadNote='',poReloadFailed=false;
 function refreshPayoutPeriod(){
   return loadPayoutQueue(true).then(function(ok){
     if(ok){
-      var entries=payoutQueueEntries(ordersMap,poQueue.live,poQueue.archived);poReloadFailed=false;
-      poReloadNote='Unsettled queue reloaded at '+new Date().toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit',second:'2-digit'})+' — '+PO_CHANNELS.map(function(d){return entries.filter(function(e){return e.o.channel===d.k;}).length+' '+d.lbl;}).join(', ')+' order(s) awaiting settlement.';
+      var entries=payoutQueueEntries(ordersMap,poQueue.live,poQueue.archived),stamps=entries.map(function(e){return poOrderStamp(e.o);}).filter(function(t){return t>0;}).sort(function(a,b){return a-b;}),applied='';poReloadFailed=false;
+      if(stamps.length&&stamps[stamps.length-1]-stamps[0]<=93*86400000){poFrom=businessDate(stamps[0]);poTo=businessDate(stamps[stamps.length-1]);poAppliedRange=poFrom+':'+poTo;applied=' Showing '+poFrom+' to '+poTo+'.';}else if(stamps.length){poAppliedRange='';applied=' All orders loaded; choose and apply a period of 93 days or less to settle them in batches.';}
+      poReloadNote='Unsettled queue reloaded at '+new Date().toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit',second:'2-digit'})+' — '+PO_CHANNELS.map(function(d){return entries.filter(function(e){return e.o.channel===d.k;}).length+' '+d.lbl;}).join(', ')+' order(s) awaiting settlement.'+applied;
     }else{
       var why=String(poQueue.error||'the reader returned no result').replace(/\.+$/,'');poReloadFailed=true;poReloadNote='Could not reload the unsettled queue — '+why+'. Nothing was changed; try Reload again.';
     }
