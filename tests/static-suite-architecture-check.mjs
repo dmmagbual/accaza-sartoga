@@ -171,7 +171,7 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // 25 Oct 2026 (Admin release capacity, Admin 713): the existing module-boundary guard now includes
 // order-display.mjs after moving pure channel/outcome helpers out of admin-orders.mjs. Same guard,
 // same boundary protection; guard count and executable checks stay unchanged.
-// 25 Oct 2026 (Admin button wiring, Admin 714): the existing module-boundary guard accepts the
+// 26 Oct 2026 (Admin action-result clarity, Admin 715): the existing module-boundary guard accepts the
 // versioned admin-orders.mjs import so a deployed button fix cannot reuse a stale nested module.
 // Same boundary protection; guard count and executable checks stay unchanged.
 if(guardDigest!=='7d8d7674e0b644340b2a8577b8e41daa886b49389bee3a7f9b456ac17be65c68')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
