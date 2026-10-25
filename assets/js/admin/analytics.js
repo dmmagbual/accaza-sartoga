@@ -493,6 +493,7 @@ function poGrabDeductions(o){
 }
 function refNorm(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
 function refEq(a,b){var x=refNorm(a),y=refNorm(b);if(!x||!y)return false;if(x===y)return true;var lo=x.length<y.length?x:y,hi=x.length<y.length?y:x;return lo.length>=5&&hi.slice(-lo.length)===lo;}
+function poChannelKey(value){var key=String(value||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'');return key==='grabfood'?'grabfood':key==='foodpanda'?'foodpanda':'';}
 function settledPayoutOrderIds(){var ids={};Object.keys(payoutsMap).forEach(function(k){var p=payoutsMap[k]||{};if(p.reversed)return;(p.orderIds||[]).forEach(function(id){if(id)ids[id]=k;});});return ids;}
 function platEntries(){var out=[];Object.keys(ordersMap).forEach(function(k){var o=ordersMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'orders',o:o});});Object.keys(archMap).forEach(function(k){var o=archMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'archivedOrders',o:o});});return out;}
 function poOrderStamp(o){return Number(o&&o.completedAt)||Number(o&&o.receivedAt)||Number(o&&o.timestamp)||Date.parse(o&&o.date)||0;}
@@ -507,13 +508,13 @@ function payoutQueueEntries(current,live,archived){
   var out=[],seen={};
   // Freshly read rows win over the portal's in-memory copies: a reversed payout or a
   // re-read order must become visible again on Reload instead of being hidden by a stale snapshot.
-  [[live||{},'orders'],[archived||{},'archivedOrders'],[current||{},'orders']].forEach(function(pair){Object.keys(pair[0]).forEach(function(k){var o=pair[0][k],id=String(o&&o.id||k);if(!o||o.archivePending||seen[id]||o.source!=='pos'||['grabfood','foodpanda'].indexOf(o.channel)<0||o.voided||(o.settlementStatus||'unsettled')==='settled')return;seen[id]=1;out.push({key:k,node:pair[1],o:o});});});
+  [[live||{},'orders'],[archived||{},'archivedOrders'],[current||{},'orders']].forEach(function(pair){Object.keys(pair[0]).forEach(function(k){var o=pair[0][k],id=String(o&&o.id||k),channel=poChannelKey(o&&o.channel);if(!o||o.archivePending||seen[id]||o.source!=='pos'||!channel||o.voided||(o.settlementStatus||'unsettled')==='settled')return;seen[id]=1;out.push({key:k,node:pair[1],o:o.channel===channel?o:Object.assign({},o,{channel:channel})});});});
   return out;
 }
 function payoutPeriodReady(bounds){return !!(bounds&&poAppliedRange===bounds.key&&poQueue.complete&&!poQueue.loading&&!poQueue.error);}
 function poUnsettled(ch,entries){var paid=settledPayoutOrderIds();return(entries||platEntries()).filter(function(e){var id=e.o.id||e.key;return e.o.channel===ch&&(e.o.settlementStatus||'unsettled')!=='settled'&&!paid[id];});}
-var PO_UNSETTLED_PAGE_SIZE=200,PO_UNSETTLED_MAX_PAGES=100;
-function poLegacyUnsettled(o,ch){return !!o&&!o.archivePending&&o.source==='pos'&&o.channel===ch&&(o.settlementStatus==null||o.settlementStatus==='')&&!o.payoutId&&!o.voided;}
+var PO_UNSETTLED_PAGE_SIZE=200,PO_UNSETTLED_MAX_PAGES=100,PO_CHANNEL_QUERY_VARIANTS={grabfood:['grabfood','GrabFood','GRABFOOD','Grab Food','grab-food','Grab-Food','grab_food','Grab_Food','Grab.Food'],foodpanda:['foodpanda','FoodPanda','FOODPANDA','Food Panda','food-panda','Food-Panda','food_panda','Food_Panda','Food.Panda']};
+function poLegacyUnsettled(o,ch){return !!o&&!o.archivePending&&o.source==='pos'&&poChannelKey(o.channel)===ch&&(o.settlementStatus==null||o.settlementStatus==='')&&!o.payoutId&&!o.voided;}
 function loadUnsettledPath(a,path){
   var rows={},before=null,pages=0;
   function next(){
@@ -523,19 +524,19 @@ function loadUnsettledPath(a,path){
   }
   return next();
 }
-function loadLegacyUnsettledPath(a,path,ch){
+function loadLegacyUnsettledPath(a,path,queryChannel,ch){
   var rows={},before=null,pages=0;
   function next(){
     if(++pages>PO_UNSETTLED_MAX_PAGES)return Promise.reject(new Error('The legacy '+ch+' order history is larger than the safe reload limit. Contact support before settling this payout.'));
     // download-ok: manual/once-per-session compatibility read. The channel index
     // limits this to GrabFood or FoodPanda history; only legacy blank-status rows
     // are retained, so normalized orders continue using the cheaper open query.
-    var base=a.ref(a.db,path),q=before==null?a.query(base,a.orderByChild('channel'),a.startAt(ch),a.endAt(ch),a.limitToLast(PO_UNSETTLED_PAGE_SIZE+1)):a.query(base,a.orderByChild('channel'),a.startAt(ch),a.endBefore(ch,before),a.limitToLast(PO_UNSETTLED_PAGE_SIZE+1));
+    var base=a.ref(a.db,path),q=before==null?a.query(base,a.orderByChild('channel'),a.startAt(queryChannel),a.endAt(queryChannel),a.limitToLast(PO_UNSETTLED_PAGE_SIZE+1)):a.query(base,a.orderByChild('channel'),a.startAt(queryChannel),a.endBefore(queryChannel,before),a.limitToLast(PO_UNSETTLED_PAGE_SIZE+1));
     return a.get(q).then(function(snap){var page=[];snap.forEach(function(child){page.push({key:child.key,value:child.val()||{}});});var hasOlder=page.length>PO_UNSETTLED_PAGE_SIZE;if(hasOlder)page.shift();page.forEach(function(row){if(poLegacyUnsettled(row.value,ch))rows[row.key]=row.value;});if(!hasOlder)return rows;before=page[0]&&page[0].key;if(!before)throw new Error('The legacy '+ch+' queue cursor did not advance.');return next();});
   }
   return next();
 }
-function loadUnsettledNode(a,path){return Promise.all([loadUnsettledPath(a,path),loadLegacyUnsettledPath(a,path,'grabfood'),loadLegacyUnsettledPath(a,path,'foodpanda')]).then(function(parts){return Object.assign({},parts[1],parts[2],parts[0]);});}
+function loadUnsettledNode(a,path){var legacy=[];Object.keys(PO_CHANNEL_QUERY_VARIANTS).forEach(function(ch){PO_CHANNEL_QUERY_VARIANTS[ch].forEach(function(queryChannel){legacy.push(loadLegacyUnsettledPath(a,path,queryChannel,ch));});});return Promise.all([loadUnsettledPath(a,path)].concat(legacy)).then(function(parts){return Object.assign.apply(Object,[{}].concat(parts.slice(1)).concat([parts[0]]));});}
 function loadPayoutQueue(force){
   if(!force&&(poQueue.loading||(poQueue.complete&&!poQueue.error)))return Promise.resolve(poQueue.complete);
   var a=A(),request=poQueue.request+1;
@@ -567,6 +568,7 @@ function refreshPayoutPeriod(){
     return ok;
   });
 }
+window.reloadUnsettledPlatformOrders=function(btn){if(!btn||btn.disabled)return;var old=btn.textContent;btn.disabled=true;btn.textContent='Reloading…';refreshPayoutPeriod().finally(function(){btn.disabled=false;btn.textContent=old;btn.focus();});};
 /* Items sold on a missed platform order (required since 29 Sep 2026) so its stock and cost post. */
 var CATCHUP_ITEM_ROWS=5;
 function catchupItemFields(){var menu=(A()&&A().menuItemsMap)||{},opts=[{value:'',label:'— none —'}].concat(Object.keys(menu).filter(function(k){return menu[k]&&menu[k].name;}).sort(function(x,y){return String(menu[x].name).localeCompare(String(menu[y].name));}).map(function(k){return {value:k,label:menu[k].name};})),out=[];
@@ -725,7 +727,7 @@ function renderPayouts(){
         +'<div><span class="pz-lbl">From</span><input type="date" class="pz-in" id="poFrom" value="'+(poFrom||'')+'"/></div>'
         +'<div><span class="pz-lbl">To</span><input type="date" class="pz-in" id="poTo" value="'+(poTo||'')+'"/></div>'
         +'<button class="pz-btn ok" id="poApply"'+((!poFrom||!poTo||poQueue.loading)?' disabled':'')+'>Apply dates</button>'
-        +'<button class="pz-btn sec" id="poReload"'+(poQueue.loading?' disabled':'')+'>Reload unsettled</button>'
+        +'<button class="pz-btn sec" id="poReload" type="button" onclick="if(window.reloadUnsettledPlatformOrders)window.reloadUnsettledPlatformOrders(this)"'+(poQueue.loading?' disabled':'')+'>Reload unsettled</button>'
         +'<div style="font-size:0.74rem;color:var(--tl);">The cards keep <b>all</b> unsettled orders. Applied dates only narrow the statement-matching table.</div>'
         +'<div style="margin-left:auto;display:flex;gap:0.4rem;flex-wrap:wrap;"><button class="pz-btn sec" id="poCorrect" style="border-color:#b07a2b;color:#80520f;">✎ Pre-settlement correction</button><button class="pz-btn sec" id="poReKey" style="border-color:#3a8a6a;color:#256b52;">➕ Re-key missed order</button></div>'
       +'</div>'
@@ -761,7 +763,6 @@ function renderPayouts(){
   document.getElementById('poFrom').onchange=function(){poFrom=this.value||null;poAppliedRange='';renderPayouts();};
   document.getElementById('poTo').onchange=function(){poTo=this.value||null;poAppliedRange='';renderPayouts();};
   var poApply=document.getElementById('poApply');if(poApply)poApply.onclick=function(){applyPayoutDates();};
-  var poReload=document.getElementById('poReload');if(poReload)poReload.onclick=function(){refreshPayoutPeriod();};
   var _rk=document.getElementById('poReKey'); if(_rk)_rk.onclick=function(){reKeyMissedOrder(ch,chLbl);};
   var _pc=document.getElementById('poCorrect'); if(_pc){_pc.disabled=!rangeReady||!inRange.length;_pc.title=inRange.length?'Choose an unsettled order to correct':'Apply dates with unsettled orders first';_pc.onclick=function(){correctPlatformPresettlement(ch,chLbl,null,inRange);};}
   root.querySelectorAll('[data-pocorrect]').forEach(function(b){b.onclick=function(){correctPlatformPresettlement(ch,chLbl,b.getAttribute('data-pocorrect'));};});
