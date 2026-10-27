@@ -106,7 +106,14 @@ const tokenEfficiencyContract = [
   'pass them wholesale to agents',
   'the relevant diff and tests',
   'Never weaken a financial, inventory, security, POS, authorization, audit or verification control',
+  'npm run test:ci:quiet',
+  'Never paste full test logs',
+  'use a Superpowers skill only when its trigger clearly matches the task or an approved plan requires it',
 ];
+const quietPkg = JSON.parse(files.get(resolve(root, 'package.json')) ?? readFileSync(resolve(root, 'package.json'), 'utf8'));
+if (quietPkg.scripts?.['test:quiet'] !== 'node tools/quiet-run.mjs test' || quietPkg.scripts?.['test:ci:quiet'] !== 'node tools/quiet-run.mjs test:ci') {
+  errors.push('Quiet test runner scripts missing from package.json');
+}
 for (const name of ['AGENTS.md', 'CLAUDE.md']) {
   const text = files.get(resolve(root, name)) ?? '';
   for (const term of tokenEfficiencyContract) {
@@ -130,7 +137,7 @@ for (const term of [
   'Authentication, authorization, roles, permissions or approvals require Identity & Access Engineer',
   'Material architecture requires Software Architect',
   'material UI requires Frontend Developer',
-  'Material completed implementations require Code Reviewer before final handoff',
+  'Material completed implementations require Code Reviewer before final handoff when they change money, inventory, COGS, postings, permissions/approvals, database schema/rules/queries or POS checkout, or when an approved plan requires it',
 ]) {
   for (const [name, text] of [['AGENTS.md', agentsInstructions], ['CLAUDE.md', claudeInstructions]]) {
     if (!text.includes(term)) errors.push(`Mandatory specialist routing missing in ${name}: ${term}`);
