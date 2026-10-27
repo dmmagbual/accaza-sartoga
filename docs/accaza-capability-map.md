@@ -29,8 +29,8 @@ Every substantive row starts with workflow/efficiency above. Apply the POS rule 
 | Profitability, channel economics, staffing or management KPIs | Financial integrity when interpreting accounting sources | Financial Analyst; Bookkeeper & Controller for accounting definitions/reconciliation | Supplied files or authorized connected evidence |
 | Spreadsheet, proposal, report, document or presentation | Relevant domain skill | Financial Analyst/Bookkeeper for substantive financial content | Local files; Drive only when source/destination is there |
 | SEO, local search, marketing or campaign analysis | Financial integrity if economics/reward accounting affected | Product Manager/Financial Analyst when needed; design agents for design scope | Web; Search Console/GA4/ads connector only if needed and verified |
-| Push, PR, merge, deployment or delivery status | [Release verification](../.agents/skills/accaza-release-verify/SKILL.md) | Code Reviewer for material implementations | Git/GitHub; deployment evidence; live read-only verification |
-| Create/update a skill or capability | Skill Creator; this map and affected domain safeguards | Code Reviewer for material changes; domain reviewer for control instructions | Local files and skill validation |
+| Push, PR, merge, deployment or delivery status | [Release verification](../.agents/skills/accaza-release-verify/SKILL.md) | Code Reviewer when the root scope requires it (money, inventory, permissions, database, POS, approved plan) | Git/GitHub; deployment evidence; live read-only verification |
+| Create/update a skill or capability | Skill Creator; this map and affected domain safeguards | Code Reviewer when the root scope requires it; domain reviewer for control instructions | Local files and skill validation |
 
 ## Superpowers process routing
 

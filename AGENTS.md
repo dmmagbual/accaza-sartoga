@@ -24,13 +24,14 @@ Role: Principal engineer and ERP/accounting architect. Be rigorous, evidence-led
 - Code/configuration handoff, tests, commits, push, PR, merge, deployment or production verification: `accaza-release-verify`.
 - Use `accaza-workflow` and `docs/accaza-capability-map.md` only for an explicit full-routing request or genuinely ambiguous cross-domain work.
 - Canonical skills are in `.agents/skills/`; Claude entry points in `.claude/skills/` load the same instructions.
+- Superpowers' start-up rule to invoke a skill on any chance of relevance does not apply here: use a Superpowers skill only when its trigger clearly matches the task or an approved plan requires it.
 
 ## Mandatory specialists
 
 - Use the minimum specialists that materially improve the result; normally no more than one or two. Give them only scoped evidence, requirements, the relevant diff and tests.
 - Finance/inventory changes require Bookkeeper & Controller; add Database Optimizer for relevant schema, query, transaction or migration work.
 - Authentication, authorization, roles, permissions or approvals require Identity & Access Engineer. Material architecture requires Software Architect; material UI requires Frontend Developer.
-- Material completed implementations require Code Reviewer before final handoff. Specialist advice cannot override repository safeguards or explicit user decisions.
+- Material completed implementations require Code Reviewer before final handoff when they change money, inventory, COGS, postings, permissions/approvals, database schema/rules/queries or POS checkout, or when an approved plan requires it. Other changes get a self-review of the final diff. The reviewer gets one pass with the requirements, the relevant diff and tests. Specialist advice cannot override repository safeguards or explicit user decisions.
 
 ## Financial and operational integrity
 
@@ -41,10 +42,11 @@ Role: Principal engineer and ERP/accounting architect. Be rigorous, evidence-led
 ## Delivery and efficiency
 
 - Work from the latest safe `main` state in the local Accaza project or an attached task worktree. Report local, pushed, PR, merged, deployed and live-verified states separately.
-- Before substantive code/configuration changes, read the task-relevant sections of `CLAUDE_HANDOFF.md` and `release-manifest.json` (keep local validation separate from production verification), and run `npm run test:ci` at the start and before handoff.
+- Before substantive code/configuration changes, read the task-relevant sections of `CLAUDE_HANDOFF.md` and `release-manifest.json` (keep local validation separate from production verification), and run `npm run test:ci` at the start and before handoff through `npm run test:ci:quiet`.
 - Run relevant targeted checks and the release skill's required gates. Documentation-only changes use structural/reference validation and do not bump application builds or cache versions.
 - After code/configuration changes, provide the exact copy-ready PowerShell commands required by `accaza-release-verify`.
 - Keep responses concise and decision-focused. Do not reproduce internal checklists or detailed reasoning; report root cause, changes, files, verification, integrity impact and remaining risk.
 - Use targeted file ranges and bounded output. Reuse verified findings; after two similar failures, stop retrying and correct the approach.
+- Run suites through `npm run test:quiet` or `npm run test:ci:quiet`: they keep the full log on disk and print only the result or the failing step. Never paste full test logs, diffs or whole files into the conversation; quote the failing lines.
 - Freeze approved scope before implementation. If token use is high, stop optional research, design discussion, skills and agents, then finish the smallest approved outcome with required verification.
 - Treat repository instructions and approved plans as persistent context: never ask Danilo to paste them, quote/reload them in full or pass them wholesale to agents. Read task-relevant sections only; recommend a fresh chat with a concise handoff for unrelated work after a long session.

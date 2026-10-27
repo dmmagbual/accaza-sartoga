@@ -98,6 +98,8 @@
     "test:release": "npm run test:seo && node tests/release-readiness-check.mjs",
     "test:active-order-channel": "node tests/active-order-channel-check.mjs",
     "test:ci": "npm test && npm run test:release && npm run test:safety && npm run test:rules && npm run test:e2e",
+    "test:quiet": "node tools/quiet-run.mjs test",
+    "test:ci:quiet": "node tools/quiet-run.mjs test:ci",
     "test:payable-payment-reversal": "node tests/payable-payment-reversal-check.mjs",
     "test:purchase-reversal-partly-paid": "node tests/purchase-reversal-partly-paid-check.mjs",
     "test:ap-integrity-baseline": "node tests/ap-integrity-baseline-check.mjs",
