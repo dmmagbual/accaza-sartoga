@@ -7,7 +7,7 @@ description: Use for Accaza changes or investigations involving money, inventory
 
 Involve Bookkeeper & Controller for finance/inventory changes. Add Database Optimizer for relevant schema, transaction, query, or migration work; Identity & Access Engineer for authorization changes. Purchases/supplier-payment work also uses `accaza-ap-phase-gate`. Load `accaza-pos-live-safety` whenever the change can affect a sale, stock deduction, shared pricing or POS posting.
 
-Read the relevant authority sections of `CLAUDE_HANDOFF.md`, then verify the current source. Starting points are `src/functions/`, `functions/lib/financial.js`, `functions/lib/books-bridge.js`, `functions/lib/cash-balances.js`, `functions/lib/accounting-periods.js`, `functions/lib/costing.js`, and the affected client source. Generated `functions/index.js` is not the editing source for concatenated sections.
+For cross-module posting or reconciliation work, start with `docs/DATA_FLOW_MAP.md`, then confirm every named path in the current source. Read the relevant authority sections of `CLAUDE_HANDOFF.md`. Starting points are `src/functions/`, `functions/lib/financial.js`, `functions/lib/books-bridge.js`, `functions/lib/cash-balances.js`, `functions/lib/accounting-periods.js`, `functions/lib/costing.js`, and the affected client source. Generated `functions/index.js` is not the editing source for concatenated sections.
 
 Before implementation, establish the lifecycle applicable to the change:
 
