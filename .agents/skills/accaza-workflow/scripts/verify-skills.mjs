@@ -10,7 +10,8 @@ const mapPath = resolve(root, 'docs/accaza-capability-map.md');
 const expected = [
   'accaza-workflow', 'accaza-financial-integrity',
   'accaza-pos-live-safety', 'accaza-ap-phase-gate',
-  'accaza-firebase-cost-review', 'accaza-release-verify',
+  'accaza-firebase-cost-review', 'accaza-operations-incident',
+  'accaza-release-verify',
 ];
 const errors = [];
 const files = new Map();
@@ -84,20 +85,27 @@ for (const base of [canonical, wrappers]) {
 
 for (const name of ['AGENTS.md', 'CLAUDE.md']) {
   const text = read(resolve(root, name));
-  if (!text.includes('docs/accaza-capability-map.md') || !text.includes('Default to these root instructions')) {
+  if (!text.includes('docs/accaza-capability-map.md') || !text.includes('Root instructions are the default')) {
     errors.push(`Missing root activation route: ${name}`);
+  }
+  if (text.length > 8000 || text.split(/\r?\n/).length > 80) {
+    errors.push(`Root instruction context is too large: ${name}`);
+  }
+  for (const skill of expected) {
+    if (!text.includes(skill)) errors.push(`Root route missing in ${name}: ${skill}`);
   }
 }
 
 const tokenEfficiencyContract = [
-  'Diagnosis does not authorize implementation',
-  'Freeze the approved scope and acceptance criteria before implementation',
-  'If a routine read or search result is truncated',
-  'After two substantially similar command, patch, or test failures',
-  'If Danilo says token use is high',
-  'Do not pass the full conversation history to a specialist',
-  'Give reviewers only the task requirements, acceptance criteria, relevant diff, and test results',
-  'They never override correctness, financial integrity, inventory integrity, security, authorization, auditability, testing requirements, server authority',
+  'Diagnosis, review and planning are read-only',
+  'do not authorize deployment, live financial mutations or external messages',
+  'Freeze approved scope before implementation',
+  'Use targeted file ranges and bounded output',
+  'after two similar failures',
+  'If token use is high',
+  'pass them wholesale to agents',
+  'the relevant diff and tests',
+  'Never weaken a financial, inventory, security, POS, authorization, audit or verification control',
 ];
 for (const name of ['AGENTS.md', 'CLAUDE.md']) {
   const text = files.get(resolve(root, name)) ?? '';
@@ -108,18 +116,21 @@ for (const name of ['AGENTS.md', 'CLAUDE.md']) {
 
 const agentsInstructions = files.get(resolve(root, 'AGENTS.md')) ?? '';
 const claudeInstructions = files.get(resolve(root, 'CLAUDE.md')) ?? '';
-for (const title of ['Specialist Agent Orchestration', 'Output and Token Efficiency']) {
+if (agentsInstructions.replace(/\r\n/g, '\n') !== claudeInstructions.replace(/\r\n/g, '\n')) {
+  errors.push('AGENTS.md and CLAUDE.md compact core drift');
+}
+for (const title of ['Mandatory specialists', 'Delivery and efficiency']) {
   const agentsSection = instructionSection(agentsInstructions, title);
   const claudeSection = instructionSection(claudeInstructions, title);
   if (!agentsSection || !claudeSection) errors.push(`Missing synchronized instruction section: ${title}`);
   else if (agentsSection !== claudeSection) errors.push(`Instruction section drift: ${title}`);
 }
 for (const term of [
-  'Financial or inventory-impacting work: involve **Bookkeeper & Controller**; also involve **Database Optimizer** when database work is relevant',
-  'Authentication, authorization, permissions, roles, or approval controls: involve **Identity & Access Engineer**',
-  'Material architectural changes: involve **Software Architect** before implementation',
-  'Material UI changes: involve **Frontend Developer**',
-  'Material completed implementations: obtain **Code Reviewer** review before final handoff',
+  'Finance/inventory changes require Bookkeeper & Controller; add Database Optimizer',
+  'Authentication, authorization, roles, permissions or approvals require Identity & Access Engineer',
+  'Material architecture requires Software Architect',
+  'material UI requires Frontend Developer',
+  'Material completed implementations require Code Reviewer before final handoff',
 ]) {
   for (const [name, text] of [['AGENTS.md', agentsInstructions], ['CLAUDE.md', claudeInstructions]]) {
     if (!text.includes(term)) errors.push(`Mandatory specialist routing missing in ${name}: ${term}`);
@@ -140,9 +151,38 @@ for (const term of [
   'execution time', 'memory', 'CPU', 'timeout', 'concurrency',
   'minimum/maximum instances', 'workload baseline', 'expected change',
   'alert/rollback threshold', 'Normalize comparisons', 'cost regression',
+  'database.rules.json', 'Firestore index configuration',
 ]) {
   if (!firebaseSkill.toLowerCase().includes(term.toLowerCase())) {
     errors.push(`Firebase cost contract missing: ${term}`);
+  }
+}
+
+const domainContracts = new Map([
+  ['accaza-financial-integrity', [
+    'balanced debits/credits', 'fixed-precision', 'Posted history is immutable',
+    'period locks', 'idempotency', 'Admin/POS records', 'Finance Books/GL',
+    'correction/reversal', 'reconciliation',
+  ]],
+  ['accaza-pos-live-safety', [
+    'active shift', 'IndexedDB queue', 'exactly-once', 'offline',
+    'Z report', 'Unresolved POS regression blocks release',
+  ]],
+  ['accaza-ap-phase-gate', [
+    'approved AP Integrity Remediation Plan', 'AP remediation takes precedence',
+    'Decision Gates', 'R0-R4', 'one approved step at a time',
+  ]],
+  ['accaza-operations-incident', [
+    'production', 'dead letter', 'functionFailureBudget', 'Live or not live',
+    'Blast radius', 'cause is fixed', 'fix is live',
+  ]],
+]);
+for (const [skill, terms] of domainContracts) {
+  const text = files.get(resolve(canonical, skill, 'SKILL.md')) ?? '';
+  for (const term of terms) {
+    if (!text.toLowerCase().includes(term.toLowerCase())) {
+      errors.push(`${skill} contract missing: ${term}`);
+    }
   }
 }
 
@@ -150,22 +190,10 @@ const releaseSkill = files.get(resolve(canonical, 'accaza-release-verify', 'SKIL
 for (const term of [
   'can affect a Firebase billing meter', 'workload-normalized', 'rollback threshold',
   'no-cost-change basis', 'accaza-pos-live-safety', 'Unresolved POS regressions block',
+  'backup, pricing/costing, pictures, video or retired-copy paths',
 ]) {
   if (!releaseSkill.toLowerCase().includes(term.toLowerCase())) {
     errors.push(`Release cost/POS safeguard missing: ${term}`);
-  }
-}
-
-for (const name of ['AGENTS.md', 'CLAUDE.md']) {
-  const text = files.get(resolve(root, name)) ?? '';
-  for (const term of [
-    'Every relevant change', 'Firestore document reads', 'Function compute/scaling cost',
-    'new RTDB index', 'Firestore index configuration', 'workload baseline',
-    'alert/rollback threshold', 'cost regression blocks the affected release',
-  ]) {
-    if (!text.toLowerCase().includes(term.toLowerCase())) {
-      errors.push(`Root Firebase safeguard missing in ${name}: ${term}`);
-    }
   }
 }
 

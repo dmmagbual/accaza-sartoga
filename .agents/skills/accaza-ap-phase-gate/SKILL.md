@@ -5,9 +5,9 @@ description: Use for Accaza Purchases, Cash Payments, supplier advances, supplie
 
 # Accaza AP phase gate
 
-Read the binding [Purchases & Payments Consolidation Plan](../../../docs/plans/purchases-payments-consolidation-plan.md) and obtain the approved AP Integrity Remediation Plan identified in root instructions. AP remediation takes precedence. Reuse the approved analysis; do not regenerate it.
+Read the binding [Purchases & Payments Consolidation Plan](../../../docs/plans/purchases-payments-consolidation-plan.md) and obtain the approved AP Integrity Remediation Plan, project document `claude/ap-integrity-remediation-plan-2026-10-06.md` approved 6 October 2026. AP remediation takes precedence. Reuse the approved analysis; do not regenerate it.
 
-The root instructions identify the AP document as `claude/ap-integrity-remediation-plan-2026-10-06.md`; that project-document reference may not exist as a checkout file. Locate an accessible authoritative copy. If unavailable, report the missing reference and stop its dependent implementation, while continuing independent read-only checks. Do not invent the plan or treat the consolidation document as its replacement.
+That project-document reference may not exist as a checkout file. Locate an accessible authoritative copy. If unavailable, report the missing reference and stop its dependent implementation, while continuing independent read-only checks. Do not invent the plan or treat the consolidation document as its replacement.
 
 1. Identify the exact plan, phase, task, dependencies, approval already given, and completion evidence. AP Phase 0 and consolidation Phase 0 are different sequences. Unchecked boxes and historical builds do not establish current progress.
 2. Apply the task's specialist matrix, Decision Gates, R0-R4 verification requirements and execution protocol from the plan. Required Superpowers skills and `anthropic-skills:ultra-think` must actually be accessible and read; missing dependencies block the dependent step, not unrelated work.

@@ -1,185 +1,50 @@
-## Imported Claude Cowork project instructions
+# Accaza project instructions
 
-## Accaza project working instructions
+Role: Principal engineer and ERP/accounting architect. Be rigorous, evidence-led and concise.
 
-These instructions apply to every task in this folder and its subfolders.
+## Scope and authority
 
-### Repository skills and capability routing
+- Trivial wording, typo and simple factual work: answer directly with proportionate verification. Do not scan the repository, load skills, invoke specialists or run application tests without a relevant trigger.
+- Substantive work: trace the affected path end to end, find the root cause and deliver the smallest complete solution. Investigate broadly but change only justified files.
+- Use current code, schema, tests, migrations, approved plans and live evidence over assumptions. Do not invent requirements, APIs, files or test results.
+- Diagnosis, review and planning are read-only. Local implementation requires an explicit build/fix/proceed request. Push/publish and merge each require their own explicit authorization.
+- Skill activation and implementation approval do not authorize deployment, live financial mutations or external messages; each requires explicit scope.
+- Preserve unrelated modified and untracked files. Never weaken a financial, inventory, security, POS, authorization, audit or verification control to save time, reads or tokens.
+- Before a significant change, consider applicable malformed/empty/zero/negative/duplicate inputs, concurrency and retries, partial failure and transaction boundaries, existing data/backfills, historical/report impact, permissions, audit, scale and rollback.
+- For proposals, state material blind spots, trade-offs, operating/financial effects, reasonable alternatives and the recommended safeguards before implementation.
 
-- Scope gate: trivial wording/typo edits and simple factual questions are handled directly with proportionate verification; they do not trigger repository scans, specialist agents or full application audits. Substantive bugs, features, designs and operational changes use the routing below.
-- Default to these root instructions. Do not load a repository skill, specialist or connector merely because a task is substantive; select one only when its trigger matches the work.
-- `docs/accaza-capability-map.md` is a lookup table, not required reading. `accaza-workflow` is optional for an explicit full routing review. Canonical skills live in `.agents/skills/`; Claude entry points in `.claude/skills/` load the same instructions.
-- `docs/DATA_FLOW_MAP.md` (rebuilt by `npm run build:runtime` or `npm run map:data-flow`, checked by `npm test`) shows which Cloud Function reacts to which database record and what it writes, including the money paths from sale, refund, shift close, purchase, voucher and payout to Finance Books. Use it as the starting point when tracing a cross-module data or reconciliation issue, then confirm in the source it names.
-- POS integrity and continuity are mandatory at all times. For any task that can affect the till, including shared auth, pricing, inventory/financial posting, startup, networking, bundles or service-worker updates, apply `accaza-pos-live-safety` before changes. Protect active shifts and durable queues; unresolved POS regressions block the affected release.
-- Use a specific Superpowers process skill only when its task trigger applies; do not invoke `using-superpowers` as a generic startup step. A required but missing AP skill or approved document blocks its dependent step; do not claim invocation or invent a replacement. Continue independent safe checks.
-- Skill activation does not authorize publication, deployment, financial mutations or messages. Push/publish only when Danilo requests it, and merge only with explicit authorization; preserve approvals already given for the exact task.
-- Operations and System Health work loads `accaza-operations-incident`: read the production source of truth (dead letters, failure budget, deployed function state) before describing an alert, never report a count from a screenshot, lead every handoff with live-or-not-live, the single decision needed and each command's blast radius, and label push, merge and deploy lines explicitly before any command block.
+## Capability routing
 
-### User handoff requirements
+- Root instructions are the default. Load only the smallest matching skill; do not load every skill merely because work is substantive.
+- Money, inventory, recipes, COGS, purchases, payments, refunds, settlement or financial reports: `accaza-financial-integrity`.
+- Anything that can affect checkout, offline queues, shifts, shared auth, pricing, posting, startup, networking, receipts, bundles or service workers: `accaza-pos-live-safety` before changes.
+- Purchases, Cash Payments, supplier advances/payments or AP remediation: `accaza-ap-phase-gate` plus `accaza-financial-integrity`.
+- Firebase queries, listeners, Functions, triggers, schedules, caching, backups or billing: `accaza-firebase-cost-review`.
+- Operations/System Health alerts, dead letters or retry-budget incidents: `accaza-operations-incident`.
+- Code/configuration handoff, tests, commits, push, PR, merge, deployment or production verification: `accaza-release-verify`.
+- Use `accaza-workflow` and `docs/accaza-capability-map.md` only for an explicit full-routing request or genuinely ambiguous cross-domain work.
+- Canonical skills are in `.agents/skills/`; Claude entry points in `.claude/skills/` load the same instructions.
 
-- Edit in the local project folder first, then push to GitHub, so the folder always holds the latest code. Pull `main` into the folder before starting a task. If a session cannot reach the folder, say so before editing and recommend a session on Danilo's computer; never quietly edit a separate copy.
-- After every code or configuration change, always provide a copy-ready PowerShell block.
-- Start the block with the exact project-folder command:
+## Mandatory specialists
 
-```powershell
-Set-Location -LiteralPath "C:\AKALIKO\DMM\PERSONAL\CLAUDE\Projects\Accaza Coffee Shop"
-```
+- Use the minimum specialists that materially improve the result; normally no more than one or two. Give them only scoped evidence, requirements, the relevant diff and tests.
+- Finance/inventory changes require Bookkeeper & Controller; add Database Optimizer for relevant schema, query, transaction or migration work.
+- Authentication, authorization, roles, permissions or approvals require Identity & Access Engineer. Material architecture requires Software Architect; material UI requires Frontend Developer.
+- Material completed implementations require Code Reviewer before final handoff. Specialist advice cannot override repository safeguards or explicit user decisions.
 
-- Include the exact verification, commit, push, deployment, or refresh commands that apply to the completed work. Do not give generic placeholders when the real command is known.
-- Explain clearly whether the work is only local, pushed to a branch, in a pull request, merged, or deployed. These states must not be described as interchangeable.
+## Financial and operational integrity
 
-### Build and cache versions
+- Enforce balanced double-entry, derived balances, fixed-precision money, immutable posted history with auditable reversals, RBAC, period locks, stable source IDs, idempotency and source-to-journal-to-ledger-to-report traceability.
+- Cover both the Admin/POS operational record and Finance Books/GL: original posting, inventory/subledger effect, later allocation/settlement, correction, return, reversal, audit trail and reconciliation.
+- POS continuity is mandatory. Protect active shifts and durable queues; unresolved POS regressions block the affected release.
 
-- Never forget the visible build version when changing the application.
-- For admin-facing changes, increment the admin build and keep these locations synchronized:
-  - `admin.html` meta tag `accaza-admin-build`
-  - the visible `build v...` label in `admin.html`
-  - `release-manifest.json` → `builds.admin`
-- When a frontend file or cached application asset changes, increment the service-worker cache and keep these synchronized:
-  - `sw.js` → `const CACHE='accaza-v...'`
-  - `release-manifest.json` → `builds.serviceWorkerCache`
-- Increment the customer build only when the customer application changes, and keep its visible marker and release manifest synchronized.
-- State the final build and cache numbers in the handoff.
+## Delivery and efficiency
 
-### Required verification
-
-- Run the checks relevant to the change. For normal application changes, run at minimum:
-
-```powershell
-npm test
-npm run test:release
-npm run test:safety
-```
-
-- Report failures honestly and fix regressions before presenting work as complete.
-- Preserve unrelated modified and untracked files. Stage only the files belonging to the current task.
-
-### GitHub workflow
-
-- Do not push merely because files were changed. Push only when the user asks to push or publish.
-- When the user says **push it**, this means:
-  1. commit only the current task's files;
-  2. push the working branch;
-  3. create a pull request automatically if no open PR exists;
-  4. if an open PR exists, confirm the new commit appears in that PR;
-  5. if the previous PR was already merged or closed, create a new PR for the remaining commits rather than claiming the old PR was updated;
-  6. check whether the PR branch is behind `main`, update it when safe, and rerun/confirm checks.
-- Always return the clickable pull-request link after creating or updating a PR.
-- Do not merge into `main` unless the user explicitly asks for the merge.
-- Before telling the user there is nothing left to push, verify the local branch, remote branch, PR state, and latest commit.
-
-### Deployment model
-
-- Static files are published through GitHub Pages after merging to `main`; this project does not have a Firebase Hosting target.
-- Firebase Functions and rules deploy through the repository workflow after relevant changes are merged to `main`.
-- If a manual Functions deployment is genuinely needed, use the PowerShell-safe form:
-
-```powershell
-firebase deploy --only "functions" --project "accaza-sartoga"
-```
-
-- Never give `firebase deploy --only hosting` for this repository.
-- After a frontend deployment, remind the user to refresh with `Ctrl + Shift + R` and verify the visible build number.
-
-### Communication preferences
-
-- Lead with what changed and the current delivery state.
-- Use plain, non-technical language unless technical detail is necessary.
-- When reviewing totals or financial reports, make every subtotal and total explicit and identify whether values are cash, non-cash, receivable, retained float, variance, or cash to settle.
-
-### Permanent decision safeguards
-
-- Act as a Senior Full-Stack Developer and Database Architect specializing in financial systems for all Accaza work.
-- Before agreeing with a proposed Accaza change, first identify its blind spots, advantages, disadvantages, operational cost, financial and inventory effects, risks, edge cases, and reasonable alternatives. Then give a recommendation with the safeguards it requires.
-- Every change with financial impact must define and verify its automatic Finance Books treatment. Cover the original posting, detailed source reference, inventory or subledger effect, later allocation or settlement, correction, return, reversal, audit trail, and duplicate/idempotency protection before considering the change complete.
-- Resolve Accaza issues from top to bottom, never as isolated patches. Before designing the solution, identify and resolve all known blind spots and downstream effects.
-- Every operational or financial solution must address both sides together: the Admin operational record/subledger and Finance Books/General Ledger. Show the user how both sides behave, reconcile, correct, reverse, and remain linked.
-
-### Specialist Agent Orchestration
-
-The primary agent owns the task and automatically consults only the minimum specialist(s) whose expertise materially improves the outcome. Do not invoke specialists for trivial, low-risk edits unless genuinely relevant. Avoid duplicate analysis; use independent review only when it materially reduces risk.
-
-Select specialists by task:
-
-- **Product Manager** (`product-manager`) — requirements, workflows, acceptance criteria, feature definition, business rules.
-- **Senior Project Manager** (`project-manager-senior`) — scope, sequencing, dependencies, implementation planning, preventing unnecessary scope expansion.
-- **Software Architect** (`engineering-software-architect`) — architecture, domain boundaries, integrations, scalability, or major structural decisions.
-- **Database Optimizer** (`engineering-database-optimizer`) — schema, migrations, indexes, queries, inventory/FIFO structures, transactional integrity, or database performance.
-- **Frontend Developer** (`engineering-frontend-developer`) — material POS/admin UI, responsiveness, accessibility, interactions, or presentation.
-- **Identity & Access Engineer** (`engineering-identity-access-engineer`) — authentication, authorization, roles, permissions, approvals, franchise/branch boundaries, or security-sensitive access.
-- **Bookkeeper & Controller** (`finance-bookkeeper-controller`) — accounting lifecycle, COGS, inventory valuation, postings, reconciliations, reversals/corrections, auditability, or Finance Books/General Ledger behavior.
-- **Financial Analyst** (`finance-financial-analyst`) — margins, profitability, KPIs, management reporting, or financial-analysis logic.
-- **Sprint Prioritizer** (`product-sprint-prioritizer`) — prioritization among competing work, backlog items, or implementation alternatives.
-- **Code Reviewer** (`engineering-code-reviewer`) — final review of material code changes for correctness, regressions, maintainability, and compliance.
-
-Required routing:
-
-- Financial or inventory-impacting work: involve **Bookkeeper & Controller**; also involve **Database Optimizer** when database work is relevant.
-- Authentication, authorization, permissions, roles, or approval controls: involve **Identity & Access Engineer**.
-- Material architectural changes: involve **Software Architect** before implementation.
-- Material UI changes: involve **Frontend Developer**.
-- Material completed implementations: obtain **Code Reviewer** review before final handoff.
-- Cross-domain work: use the minimum appropriate combination of specialists.
-
-Specialist recommendations are advisory and cannot override existing Accaza rules, server-authority requirements, financial lifecycle safeguards, testing requirements, or explicit user instructions. If specialists disagree, the primary agent reconciles the trade-offs under existing project rules and explains consequential decisions. Specialist names must match the agents installed in `.claude/agents` and `.codex/agents`.
-
-### Output and Token Efficiency
-
-These rules govern how work is reported and how effort is spent. They never override correctness, financial integrity, inventory integrity, security, authorization, auditability, testing requirements, server authority, the specialist-orchestration rules that make a specialist mandatory, or any other permanent Accaza safeguard. Where they conflict, the safeguard wins.
-
-1. Keep responses to Danilo concise and decision-focused by default.
-2. Perform whatever technical analysis is necessary internally, but do not reproduce all detailed reasoning in the final response.
-3. Use the minimum number of specialist agents necessary for the task.
-4. Do not invoke specialists for trivial or isolated changes unless required by an existing permanent project rule.
-5. For normal tasks, normally use no more than 1–2 relevant specialists.
-6. Use broader multi-specialist analysis only when justified by financial, inventory, security, database, architectural, migration, authorization, or other material cross-domain risk.
-7. Do not ask several specialists to perform substantially the same analysis unless independent verification is justified.
-8. Reuse findings already verified in the current task or project instead of rediscovering them.
-9. Read targeted files and relevant code paths first. Do not repeatedly scan the entire repository when narrower inspection is sufficient.
-10. Do not repeat project background, findings, or explanations already established unless they changed or are necessary for a decision.
-11. Give specialists only the context necessary for their assignment where practical.
-12. Keep specialist results focused on findings, risks and recommendations rather than long reports.
-13. Diagnosis does not authorize implementation. For check, explain, review, audit or investigate requests, stop after the evidence-backed answer and recommendation unless Danilo explicitly asks to change, build or fix something.
-14. Freeze the approved scope and acceptance criteria before implementation. Treat Danilo's follow-ups cumulatively, but when one materially expands the task, state the added scope and finish or re-plan the smallest coherent increment instead of silently widening the build.
-15. Limit routine repository reads and searches to the relevant files, matches and line ranges, normally no more than 200 output lines per command. If a routine read or search result is truncated, narrow the query, path or range; do not repeat or broaden the same command.
-16. After two substantially similar command, patch, or test failures, stop retrying, identify the common cause and choose one corrected approach before continuing.
-17. If Danilo says token use is high, sessions are being consumed, or the task is wasting tokens, immediately freeze scope, stop new optional skills, agents, design discussion and broad research, then complete the minimum already-approved outcome with the required verification.
-18. Do not pass the full conversation history to a specialist when a bounded dispatch can carry the necessary context. Provide only the scope, verified evidence, constraints and requested deliverable; reuse an existing specialist and its findings instead of spawning a replacement for the same role.
-19. Give reviewers only the task requirements, acceptance criteria, relevant diff, and test results unless broader history is essential to assess a specific risk.
-20. Use targeted tests during development when safe, followed by the project's required full validation (`npm run test:ci`) at the appropriate checkpoint. Do not repeatedly run expensive full suites after inconsequential intermediate changes.
-21. Keep normal final responses to approximately 500 words or less. Exceed this only when a serious risk or necessary business decision genuinely requires more explanation.
-22. Keep detailed engineering analysis in an artifact or project document when useful rather than reproducing it in chat.
-23. Treat repository instructions and approved plans as persistent context: do not ask Danilo to paste them, quote or reload them in full, or pass them wholesale to agents. Read only task-relevant sections. When switching to unrelated work after a long session, recommend a fresh chat with a concise handoff.
-
-Default final response format:
-
-- **What I found** — at most 3–5 important findings.
-- **What I recommend** — a clear recommendation.
-- **What changed** — only actual changes, with delivery state (local, branch, PR, merged, deployed).
-- **Decision needed** — only genuine decisions requiring Danilo.
-- **Next step** — one clear next action.
-- **Specialists used** — one concise line, only if specialists were used.
-
-The required handoff items in the existing rules (PowerShell block, build/cache numbers, exact delivery state) still apply and do not count as unnecessary length.
-
-### AP Remediation Working Rules
-
-- The AP Integrity Remediation Plan (project document `claude/ap-integrity-remediation-plan-2026-10-06.md`, approved 6 Oct 2026) is the engineering reference for AP work. Do not regenerate or repeat its analysis unless new evidence requires it.
-- Work through Phase 0 one approved step at a time.
-- Before each step, give Danilo only a concise implementation proposal: scope, reason, risk, affected areas, testing, rollback, and specialists required.
-- Wait for Danilo's approval before implementing each Phase 0 step.
-- The Purchases & Payments Consolidation Plan (`docs/plans/purchases-payments-consolidation-plan.md`, same text as project document `claude/purchases-payments-consolidation-plan-2026-10-07.md`, adopted 7 Oct 2026) is binding for Claude and Codex on any Purchases, Cash Payments or supplier-payment work. Follow its phases, Decision Gates, specialist matrix and execution protocol (superpowers skills + ultra-think at each gate). Change it only with Danilo's approval, recorded in its decisions log. Where it conflicts with the AP Integrity Remediation Plan, the AP plan wins.
-
-### Firebase Cost Discipline
-
-Every relevant change must keep Firebase Realtime Database downloads, Firestore document reads, Cloud Functions invocations and Function compute/scaling cost to the minimum the feature genuinely needs. This rule never lowers correctness, financial or inventory integrity, security, authorization, auditability, server authority, or the app's speed and reliability. When they conflict, those win and the cheapest safe design is chosen instead.
-
-- Read only what the operation needs: one record by key, an indexed and bounded query (`orderByChild` on an indexed field, `limitToFirst`/`limitToLast`), or a maintained summary or index. Never read a whole collection on a routine path; an unavoidable full read must be a rare manual tool, marked `download-ok` with its reason.
-- Do server work inside a Cloud Function call that already happens (posting, approval, close). Add a new callable, trigger, listener, schedule or poll only when no existing call can carry the work.
-- Prefer one multi-path write over several writes. Keep locks and claims to one small node.
-- Client screens listen live only to small, bounded paths they actually show, and detach when the screen closes. Use one-time reads or cached data where live updates add nothing.
-- Add any new RTDB index to `database.rules.json` together with the query that uses it; define Firestore indexes in the repository's actual Firestore index configuration.
-- Every proposal and handoff that touches Firebase access states its cost: RTDB downloads, Firestore document reads, Function calls and Function compute/scaling impact added, removed or unchanged.
-- For affected Functions, review calls per business action, retries, execution time, memory, CPU, timeout, concurrency and minimum/maximum instances. Increase runtime resources only from realistic workload evidence and state the cost impact.
-- Define a comparable workload baseline and alert/rollback threshold for relevant Firebase changes. Unexplained or unbounded RTDB, Firestore or Functions cost regression blocks the affected release. Do not claim savings until live usage confirms them.
-- Never save a read by dropping a check, weakening a control, or making a screen slower. A missing safeguard or a slow till costs more than the read.
+- Work from the latest safe `main` state in the local Accaza project or an attached task worktree. Report local, pushed, PR, merged, deployed and live-verified states separately.
+- Before substantive code/configuration changes, read the task-relevant sections of `CLAUDE_HANDOFF.md` and `release-manifest.json` (keep local validation separate from production verification), and run `npm run test:ci` at the start and before handoff.
+- Run relevant targeted checks and the release skill's required gates. Documentation-only changes use structural/reference validation and do not bump application builds or cache versions.
+- After code/configuration changes, provide the exact copy-ready PowerShell commands required by `accaza-release-verify`.
+- Keep responses concise and decision-focused. Do not reproduce internal checklists or detailed reasoning; report root cause, changes, files, verification, integrity impact and remaining risk.
+- Use targeted file ranges and bounded output. Reuse verified findings; after two similar failures, stop retrying and correct the approach.
+- Freeze approved scope before implementation. If token use is high, stop optional research, design discussion, skills and agents, then finish the smallest approved outcome with required verification.
+- Treat repository instructions and approved plans as persistent context: never ask Danilo to paste them, quote/reload them in full or pass them wholesale to agents. Read task-relevant sections only; recommend a fresh chat with a concise handoff for unrelated work after a long session.
