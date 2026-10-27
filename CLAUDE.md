@@ -41,6 +41,7 @@ Role: Principal engineer and ERP/accounting architect. Be rigorous, evidence-led
 ## Delivery and efficiency
 
 - Work from the latest safe `main` state in the local Accaza project or an attached task worktree. Report local, pushed, PR, merged, deployed and live-verified states separately.
+- Before substantive code/configuration changes, read the task-relevant sections of `CLAUDE_HANDOFF.md` and `release-manifest.json` (keep local validation separate from production verification), and run `npm run test:ci` at the start and before handoff.
 - Run relevant targeted checks and the release skill's required gates. Documentation-only changes use structural/reference validation and do not bump application builds or cache versions.
 - After code/configuration changes, provide the exact copy-ready PowerShell commands required by `accaza-release-verify`.
 - Keep responses concise and decision-focused. Do not reproduce internal checklists or detailed reasoning; report root cause, changes, files, verification, integrity impact and remaining risk.
