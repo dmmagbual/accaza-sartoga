@@ -63,6 +63,19 @@ assert(payoutDatedGrab.occurredAt===123456789,'payout settlement did not use the
 assert(rebuiltGrab.lines.some(x=>x.account==='asset:platform_receivable:grabfood'&&x.credit===125),'rebuilt payout did not clear the exact platform receivable');
 assert(rebuiltGrab.lines.some(x=>x.account==='asset:platform_clearing:grabfood'&&x.debit===100),'rebuilt payout lost actual clearing');
 assert(rebuiltGrab.lines.filter(x=>x.account.indexOf('expense:platform_variance:')===0).reduce((s,x)=>s+x.debit,0)===25,'rebuilt payout lost detailed variance allocations');
+const rebuiltGrabLoan=F.platformPayoutPosting({id:'GRAB-PAYOUT-LOAN',channel:'grabfood',expectedNet:125,actualPayout:100,loanRepayment:{amount:25,accountCode:'2300',accountName:'GrabFood Loan'},settledAt:1},{});
+balanced(rebuiltGrabLoan,'rebuilt GrabFood loan payout');
+assert(rebuiltGrabLoan.lines.some(x=>x.account==='coa:2300'&&x.debit===25),'GrabFood loan principal did not reduce the selected liability');
+assert(!rebuiltGrabLoan.lines.some(x=>x.account.indexOf('expense:')===0),'GrabFood loan principal was incorrectly posted as an expense');
+const rebuiltGrabLoanReversal=F.reverseMovement(Object.assign({id:'payout_GRAB-PAYOUT-LOAN'},rebuiltGrabLoan),'platform_payout_reversal','Reverse GrabFood loan payout');
+balanced(rebuiltGrabLoanReversal,'rebuilt GrabFood loan payout reversal');
+assert(rebuiltGrabLoanReversal.lines.some(x=>x.account==='coa:2300'&&x.credit===25),'GrabFood loan reversal did not restore the exact selected liability');
+for(const bad of [
+  {channel:'foodpanda',loanRepayment:{amount:25,accountCode:'2300'}},
+  {channel:'grabfood',loanRepayment:{amount:0,accountCode:'2300'}},
+  {channel:'grabfood',loanRepayment:{amount:-1,accountCode:'2300'}},
+  {channel:'grabfood',loanRepayment:{amount:25,accountCode:'2000'}}
+]){let refused=false;try{F.platformPayoutPosting(Object.assign({id:'BAD-LOAN',expectedNet:125,actualPayout:100},bad),{});}catch(error){refused=/Stored platform loan repayment is invalid/.test(String(error&&error.message||error));}assert(refused,'invalid stored platform loan repayment did not fail closed');}
 const grabSettlementReversal=F.reverseMovement(Object.assign({id:'payout_GRAB-PAYOUT-1'},grabSettlement),'platform_payout_reversal','Reverse Grab payout');
 balanced(grabSettlementReversal,'Grab settlement reversal');
 for(const account of ['expense:platform_variance:va_marketing_success','expense:platform_variance:va_ads'])assert(grabSettlementReversal.lines.some(x=>x.account===account&&x.credit>0),`Grab settlement reversal did not reverse ${account}`);

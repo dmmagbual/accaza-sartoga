@@ -3,7 +3,7 @@ import{printDailyReport,exportDailyXlsx}from'./daily-report-output.mjs?v=646';
 import{createOperatingYearWeekly}from'./weekly-sales.mjs?v=616';
 (function(){
 'use strict';
-var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={},inventoryBooksJournal={},payoutCashAccounts={};
+var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={},inventoryBooksJournal={},payoutCashAccounts={},payoutBooksChart={};
 var inventoryBooksLoaded=false,inventoryBooksJournalLoaded=false,inventoryBooksMonthlyLoaded=false,inventoryBooksMonthly={},inventoryBooksPastMonth={key:'',rows:null};
 var financialCloseState={},financialCloseLoading={};
 var svFrom=null,svTo=null,svExpand=null;
@@ -61,6 +61,7 @@ function init(){
   a.subscribe('posSettings',function(s){posSettingsMap=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.subscribe('platformPayouts',function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
   a.subscribe('cfAccounts',function(s){payoutCashAccounts=s.val()||{};if(isTab('payouts'))renderPayouts();});
+  a.subscribe('booksChart',function(s){payoutBooksChart=s.val()||{};if(isTab('payouts'))renderPayouts();});
   a.subscribe('platformVarAccounts',function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
 }
 // extend the POS tab switcher to also render our tabs

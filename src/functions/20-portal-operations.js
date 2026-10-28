@@ -336,6 +336,10 @@ function reversalApprovalFingerprint(action, sourceId, change) {
   const row = change || {};
   return crypto.createHash("sha256").update(JSON.stringify(["reversal-date:v1", financeText(action, 60), financeText(sourceId, 160), financeText(row.accountingDate, 10), Financial.money(row.amount).toFixed(2), financeText(row.reason, 500)])).digest("hex");
 }
+function platformPayoutApprovalFingerprint(sourceId, change) {
+  const row=change||{},allocations=row.allocations&&typeof row.allocations==="object"?row.allocations:{},loan=row.loanRepayment&&typeof row.loanRepayment==="object"?row.loanRepayment:{},allocationRows=Object.keys(allocations).sort().map((id)=>[financeText(id,160),Financial.money(allocations[id]).toFixed(2)]),orderIds=(Array.isArray(row.orderIds)?row.orderIds:[]).map((id)=>financeText(id,160)).filter(Boolean).sort();
+  return crypto.createHash("sha256").update(JSON.stringify(["platform-payout:v1",financeText(sourceId,160),financeText(row.channel,30),financeText(row.periodStart,10),financeText(row.periodEnd,10),Financial.money(row.actualPayout).toFixed(2),allocationRows,financeText(loan.accountCode,4),Financial.money(loan.amount).toFixed(2),orderIds,financeText(row.payoutDate,10),financeText(row.platformStatementReference,120),financeText(row.destinationAccountId,120),financeText(row.depositReference,120)])).digest("hex");
+}
 
 exports.createManagerApproval = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
@@ -346,8 +350,8 @@ exports.createManagerApproval = onCall(
     if (["correct_completed_order", "completed_order_cash_refund"].includes(action) && decoded.uid === requester.uid) throw new HttpsError("permission-denied", "Completed-order changes require approval from a different authorized manager account.");
     const sourceId = financeText(data.sourceId, 160); if (!sourceId) throw new HttpsError("invalid-argument", "Approval source is required."); const amount = data.amount == null ? null : Financial.money(data.amount), now = Date.now(), id = `approval_${crypto.randomBytes(12).toString("hex")}`;
     // A cash voucher correction approval binds the exact change (date, amount, category, payee ...).
-    const bindsVoucherChange = ["correct_petty_voucher","void_replace_legacy_petty_voucher"].includes(action), bindsReversalDate = ["void_petty_voucher","reverse_purchase","void","reverse_platform_payout"].includes(action), changeHash = bindsVoucherChange && data.change && typeof data.change === "object" ? voucherChangeFingerprint(sourceId, data.change, action) : bindsReversalDate && data.change && typeof data.change === "object" ? reversalApprovalFingerprint(action, sourceId, data.change) : "";
-    if ((bindsVoucherChange || bindsReversalDate) && !changeHash) throw new HttpsError("failed-precondition", "This approval screen is out of date. Refresh the portal and try the correction again.");
+    const bindsVoucherChange = ["correct_petty_voucher","void_replace_legacy_petty_voucher"].includes(action), bindsReversalDate = ["void_petty_voucher","reverse_purchase","void","reverse_platform_payout"].includes(action), bindsPlatformPayout=action==="settle_platform_payout", changeHash = bindsVoucherChange && data.change && typeof data.change === "object" ? voucherChangeFingerprint(sourceId, data.change, action) : bindsReversalDate && data.change && typeof data.change === "object" ? reversalApprovalFingerprint(action, sourceId, data.change) : bindsPlatformPayout&&data.change&&typeof data.change==="object"?platformPayoutApprovalFingerprint(sourceId,data.change):"";
+    if ((bindsVoucherChange || bindsReversalDate || bindsPlatformPayout) && !changeHash) throw new HttpsError("failed-precondition", "This approval screen is out of date. Refresh the portal and try the correction again.");
     await db.ref(`/financialApprovals/${id}`).set({action, sourceId, amount, reason: financeText(data.reason, 300), requestedBy: requester.uid, approvedBy: decoded.uid, approvedEmail: financeText(decoded.email, 160), approvedName: financeText(decoded.name, 160), approvedRole: managerRole, approvedAt: now, expiresAt: now + 5 * 60 * 1000, changeHash: changeHash || null, schemaVersion: 1});
     return {approvalId: id, approvedBy: decoded.email || managerRole, expiresAt: now + 5 * 60 * 1000};
   },

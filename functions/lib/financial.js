@@ -431,11 +431,13 @@ function platformPayoutPosting(payout, definitions) {
   const channel = safe(payout.channel).toLowerCase();
   if (channel !== "grabfood" && channel !== "foodpanda") throw new Error("Platform payout channel is invalid.");
   const expected = money(payout.expectedNet), actual = money(payout.actualPayout), allocations = payout.allocations || {}, meta = payout.allocationMeta || {}, refs = payout.allocationRefs || {};
+  const loanRepayment = payout.loanRepayment || null;
   const owingApplied = money(payout.owingApplied), owingCreated = money(payout.owing != null ? payout.owing : (actual < 0 ? -actual : 0));
   const lines = [];
   if (actual < 0) lines.push(line(`liability:platform_owing:${channel}`, 0, owingCreated, "Owing to platform (penalties exceeded payout)"));
   else {lines.push(line(`asset:platform_clearing:${channel}`, actual, 0, "Actual payout clearing"));if (owingApplied > 0) lines.push(line(`liability:platform_owing:${channel}`, owingApplied, 0, "Recover prior owing to platform"));}
   Object.keys(allocations).sort().forEach((id) => {const value=money(allocations[id]);if (!(value>0)) return;const def=meta[id]||definitions[id]||{},sourceRef=safe(def.sourceRef||refs[id]),name=safe(def.name||id),label=`${name}${sourceRef?` · ${sourceRef}`:""}`;if(def.type==="revenue")lines.push(line(`revenue:platform_variance:${id}`,0,value,label));else lines.push(line(`expense:platform_variance:${id}`,value,0,label));});
+  if (loanRepayment) {const amount=money(loanRepayment.amount),accountCode=safe(loanRepayment.accountCode);if(channel!=="grabfood"||!(amount>0)||!/^23\d{2}$/.test(accountCode))throw new Error("Stored platform loan repayment is invalid.");lines.push(line(`coa:${accountCode}`, amount, 0, `GrabFood loan principal repayment · ${accountCode} ${safe(loanRepayment.accountName)}`));}
   lines.push(line(`asset:platform_receivable:${channel}`, 0, expected, "Settle platform receivable"));
   return movement("platform_payout_settlement", "platformPayout", safe(payout.id), lines, {occurredAt:Number(payout.accountingOccurredAt||payout.settledAt||Date.now()),approvalId:safe(payout.approvalId),approvedBy:safe(payout.approvedBy),reconstructedFromPayoutRecord:payout.reconstructedFromPayoutRecord===true});
 }
