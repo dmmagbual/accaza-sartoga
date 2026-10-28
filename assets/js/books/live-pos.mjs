@@ -6,7 +6,7 @@ import {initializeAccazaAppCheck} from "../shared/firebase-app-check.mjs";
 import {accazaFirebaseConfig, markUatPage} from "../shared/firebase-env.mjs";
 import {startPortalPresence, runningBuild} from "../shared/portal-presence.mjs?v=152";
 import {startPortalIdle} from "../shared/portal-idle.mjs";
-import {installFinanceCallables} from "./finance-callables.mjs?v=160";
+import {installFinanceCallables} from "./finance-callables.mjs?v=163";
 let stopPresence=null,idleController=null,booksShift=null;
 function endPresence(signedOut){ const stop=stopPresence;stopPresence=null;return stop?stop({signedOut:signedOut===true}):Promise.resolve(); }
 function endIdle(){if(idleController){idleController.stop();idleController=null;}}
@@ -25,6 +25,7 @@ async function booksAccess(user){const G=window.BooksGate;try{const raw=(await g
   catch(e){return {allowed:false,reason:/permission/i.test(String(e&&(e.code||e.message)||""))?"not_staff":"unreachable"};}}
 if(typeof fns!=="undefined")window.__getSupplierAdvanceDetails=function(payload){return httpsCallable(fns,"getSupplierAdvanceDetails")(payload).then(function(r){return r.data;});};
 if(typeof fns!=="undefined")window.__manageSupplier=function(payload){return httpsCallable(fns,"manageSupplier")(payload).then(function(r){return r.data;});};
+if(typeof fns!=="undefined")window.__booksCashBalances=function(){return httpsCallable(fns,"getCurrentCashBalances")({}).then(function(r){return r.data;});};
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});
   window.__booksSignIn=(email,pw)=>{ signInWithEmailAndPassword(auth,email,pw).then(()=>window.App&&App.closeModal()).catch(e=>alert("Sign-in failed: "+e.message)); };

@@ -78,5 +78,25 @@ for(const node of ['/cashFlowMonthly','/cashFlowDaily','/cashFlowOpenings','/cas
 const page=fs.readFileSync(path.join(root,'src','books','app','30-statements-pages.js'),'utf8');
 for(const marker of ['Opening cash · before','Cash received from outside the business','Cash paid outside the business'])assert.ok(page.includes(marker),`missing cash-flow presentation marker: ${marker}`);
 assert.equal(page.includes('Banking actions · excluded from cash flow'),false,'Cash Flow must not show the Banking Actions card');
+assert.equal(page.includes('Cash accounts · all open for viewing and editing'),false,'Cash Flow must not repeat permanent account-opening setup');
+assert.equal(page.includes('Opening ${a.openingDate'),false,'Cash Flow account cards must not repeat legacy opening dates and amounts');
+assert.ok(page.includes('Closing balance · ${esc(CF_TO)}'),'Cash Flow account cards must identify the selected period closing balance');
+assert.ok(page.includes("App.go('settings')\">Manage cash accounts"),'Cash Flow must link to account management without displaying opening setup');
+const settings=fs.readFileSync(path.join(root,'src','books','app','40-subledgers.js'),'utf8');
+for(const marker of ['function cashAccountSettingsCard()','Original opening balances remain available for audit and correction','App.cashAccountEdit','App.bankAccountForm'])assert.ok(settings.includes(marker),`Finance Settings must own cash-account setup: ${marker}`);
+assert.ok(source.includes("if(!window.__booksCashBalances)return alert('Current cash balances are not ready."),'cash-account editing must fail closed when the authoritative balance summary is unavailable');
+assert.ok(source.includes("result.source!=='cashBalanceSummary'"),'cash-account editing must accept only the maintained cash-balance summary');
+assert.ok(live.includes('window.__booksCashBalances=function(){return httpsCallable(fns,"getCurrentCashBalances")({})'),'cash-account editing must fetch one authoritative summary only when Edit is clicked');
+
+const modal={innerHTML:''},preview={className:'',innerHTML:''},alerts=[];
+Object.assign(context,{esc:value=>String(value==null?'':value),peso:value=>'P'+Number(value||0).toFixed(2),alert:message=>alerts.push(String(message)),document:{getElementById(id){if(id==='modal')return modal;if(id==='modalBg')return {classList:{add(){}}};if(id==='cfa_open')return {value:'10050'};if(id==='cfa_preview')return preview;return {value:'',classList:{add(){}}};}}});
+context.App.closeModal=function(){context.__editClosed=true;};
+async function editWith(response){alerts.length=0;context.__editClosed=false;modal.innerHTML='';context.window.__booksCashBalances=()=>response instanceof Error?Promise.reject(response):Promise.resolve(response);await context.App.cashAccountEdit('security458');return {alerts:alerts.slice(),closed:context.__editClosed,opening:context.App._cashOpening};}
+let edit=await editWith({source:'cashBalanceSummary',balances:{security458:321.45}});
+assert.equal(edit.opening.current,321.45,'cash-account edit must use the authoritative account balance');
+assert.equal(edit.closed,false,'a valid cash balance must keep the edit modal open');
+for(const bad of [{source:'cashBalanceSummary',balances:{}},{source:'cashBalanceSummary',balances:{security458:'not-a-number'}},{source:'cashBalanceSummary',balances:{security458:null}},{source:'cashBalanceSummary',balances:{security458:''}},{source:'cashBalanceSummary',balances:{security458:true}},{source:'ledger',balances:{security458:321.45}},new Error('balance service unavailable')]){
+  edit=await editWith(bad);assert.equal(edit.closed,true,'invalid or unavailable cash balances must close the edit modal');assert.match(edit.alerts.at(-1)||'',/Could not load the current cash balance/,'invalid or unavailable cash balances must be visible to the user');
+}
 
 console.log('PASS: Cash Flow derives complete prior activity from the cash indexes, derives zero after a fully withdrawn Security Bank opening, reports external flows, excludes internal deposits, and reconciles.');
