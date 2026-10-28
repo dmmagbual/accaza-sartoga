@@ -13,7 +13,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
 // The flags live in src/functions/00-app-check-flags.js. That section must sort ahead of every
 // section that reads them: the bundle is a plain concatenation, so a const referenced by an
 // earlier onCall options object is still in the temporal dead zone and throws at load time.
-const staffFlagDecl=functionsSource.indexOf('const ENFORCE_APP_CHECK = String(process.env.ENFORCE_APP_CHECK || "false")');
+const staffFlagDecl=functionsSource.search(/const ENFORCE_APP_CHECK = String\(process\.env\.ENFORCE_APP_CHECK \|\| "(?:true|false)"\)/); // either committed default, so a one-line rollback stays one line
 if(staffFlagDecl<0)fail('App Check staff flag must be declared from its committed default in src/functions/00-app-check-flags.js');
 if(!functionsSource.includes('const ENFORCE_APP_CHECK_ORDERS = String(process.env.ENFORCE_APP_CHECK_ORDERS || "false")'))fail('App Check order flag must be declared from its own committed default, not derived from the staff flag');
 if(staffFlagDecl>functionsSource.indexOf('enforceAppCheck:'))fail('App Check flags must be declared before the first onCall options object reads them');
