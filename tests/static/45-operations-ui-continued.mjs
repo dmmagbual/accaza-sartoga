@@ -5,6 +5,7 @@ const {rulesRaw,functionsSource,booksBridgeSource,adminCoreItem,precache,swSourc
 const {offlineQueueSource,offlineServerSource,posSource,editItemSource,formDialogSource,registerSource,undepositedSource,telemetrySource,operationsSource,firebaseDeployWorkflow,swCacheVersion,analyticsSource,payoutAuditCheck,payoutQueueCheck,grabPosDeductionsCheck,platformReferenceCheck,orderAdminSource,orderStatusSource,catalogAdminSource,exceptionSource,workspaceShellSource,shiftRegisterSource}=context;
 const backofficeCss=fs.readFileSync(path.join(root,'assets','css','admin-backoffice.css'),'utf8');
 const adminOrdersSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
+const orderCardPartsSource=fs.readFileSync(path.join(root,'assets','js','admin','order-card-parts.mjs'),'utf8');
 const paymentVerificationSource=fs.readFileSync(path.join(root,'functions','lib','payment-verification.js'),'utf8');
 if(!adminOrdersSource.includes("Use POS → Online Orders to accept into shift")||!orderStatusSource.includes('Cashier verification and POS shift acceptance are required'))fail('Uncaptured website orders can bypass cashier verification or POS shift capture');
 const packagesSource=fs.readFileSync(path.join(root,'assets','js','admin','packages.js'),'utf8');
@@ -12,7 +13,7 @@ if(!adminHtml.includes('/assets/css/admin-backoffice.css')||!precache.includes('
 for(const marker of ['--bo-walnut','#adminWorkspaceHeader:before','.pz-tbl th','.badge-pending','prefers-reduced-motion'])if(!backofficeCss.includes(marker))fail(`Phase 7F visual-system marker missing: ${marker}`);
 for(const marker of ['.order-card-actions','.order-payment-summary','.order-payment-state.pending'])if(!backofficeCss.includes(marker))fail(`Release 7G order-card containment marker missing: ${marker}`);
 if(!adminSource.includes("ordersList.style.removeProperty('display')")||adminSource.includes("ordersList').style.display=archivePanelOpen?'none':'block'"))fail('Returning from the order archive must restore the responsive active-order grid');
-for(const marker of ['function orderItemsHtml(o)','order-item-list','order-item-qty','order-item-detail'])if(!adminOrdersSource.includes(marker)&&!backofficeCss.includes(marker))fail(`Active-order item-list marker missing: ${marker}`);
+for(const marker of ['function orderItemsHtml(o,escHtml)','order-item-list','order-item-qty','order-item-detail'])if(!orderCardPartsSource.includes(marker)&&!backofficeCss.includes(marker))fail(`Active-order item-list marker missing: ${marker}`);
 for(const marker of ['cashier_manager','manager_only','paymentVerificationPolicy'])if(!adminSource.includes(marker)||!(functionsSource+'\n'+paymentVerificationSource).includes(marker))fail(`Payment verification policy marker missing: ${marker}`);
 for(const marker of ['CASHIER_MANAGER','MANAGER_ONLY','directPaymentRows','paymentPolicy'])if(!paymentVerificationSource.includes(marker))fail(`Server payment verification authority marker missing: ${marker}`);
 if(adminSource.includes('Cashier Final Verification')||adminSource.includes('cashier_final'))fail('Unsafe cashier-final verification option must not be exposed');

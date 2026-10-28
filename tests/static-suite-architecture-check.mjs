@@ -174,6 +174,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // 26 Oct 2026 (Admin action-result clarity, Admin 715): the existing module-boundary guard accepts the
 // versioned admin-orders.mjs import so a deployed button fix cannot reuse a stale nested module.
 // Same boundary protection; guard count and executable checks stay unchanged.
-if(guardDigest!=='7d8d7674e0b644340b2a8577b8e41daa886b49389bee3a7f9b456ac17be65c68')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// 28 Oct 2026 (Admin release capacity, Admin 716): the active-order item-list guard now reads
+// order-card-parts.mjs, where orderItemsHtml moved unchanged (it takes escHtml as a parameter).
+// Same markers, same meaning; guard count and executable checks stay unchanged.
+if(guardDigest!=='326d10c429931eb3fcae74380f0263b9c0ee9fc539cec9929ed3fa5108dbdbaa')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
