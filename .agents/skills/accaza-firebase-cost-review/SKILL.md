@@ -5,7 +5,7 @@ description: Use when Accaza work affects Firebase RTDB or Firestore queries, li
 
 # Accaza Firebase cost review
 
-Apply the root Firebase Cost Discipline rules to the affected operation. Start with current call sites, the exact paths/fields consumed, their indexes, and the screen/job lifecycle. Use `accaza-pos-live-safety` for access, caching or server changes that can affect the till.
+Apply the cost discipline below to the affected operation. Start with current call sites, the exact paths/fields consumed, their indexes, and the screen/job lifecycle. Use `accaza-pos-live-safety` for access, caching or server changes that can affect the till.
 
 - Prefer a key lookup, indexed bounded query, maintained summary/index, or existing cached data. Historical screens need pagination/incremental reads without silently omitting old unpaid/unsettled records.
 - Reuse the server operation already required for posting, approval or close. Explain why any additional callable, trigger, schedule or poll is necessary.
