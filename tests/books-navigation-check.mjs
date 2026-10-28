@@ -7,6 +7,7 @@ const subledgers=fs.readFileSync('src/books/app/40-subledgers.js','utf8');
 const transactionSource=fs.readFileSync('src/books/app/50-controlled-transactions.js','utf8');
 const bundleTool=fs.readFileSync('tools/build-runtime-bundles.mjs','utf8');
 const offline=fs.readFileSync('sw.js','utf8');
+const booksBuild=JSON.parse(fs.readFileSync('release-manifest.json','utf8')).builds.books;
 
 const expected={
   overview:['dashboard','insights'],
@@ -33,12 +34,12 @@ if(!shell.includes('t=>t.group===activeGroup&&!t.hidden'))throw new Error('Finan
 if(!html.includes('id="bookGroups"')||!html.includes('id="tabs"'))throw new Error('Two-level Finance navigation containers are missing');
 if(!shell.includes("selected&&selected.settingsSection?PAGES.settings():PAGES[CURRENT]()"))throw new Error('Finance control screens are not routed through their existing pages');
 for(const route of ['transactions','fixedassets','purchases','receivables','payables','journal','coa','settings'])if(!shell.includes(`'${route}'`))throw new Error(`Controlled Finance Tools must load before the ${route} route renders`);
-if(!shell.includes('loadControlledTransactions()')||!shell.includes('window.__booksSubledgersReady')||!shell.includes('window.__booksControlledTransactionsReady')||!shell.includes('subledgers.js?v=162')||!shell.includes('controlled-transactions.js?v=162'))throw new Error('Controlled Finance Tools need cached, ordered, retryable lazy loaders');
+if(!shell.includes('loadControlledTransactions()')||!shell.includes('window.__booksSubledgersReady')||!shell.includes('window.__booksControlledTransactionsReady')||!shell.includes(`subledgers.js?v=${booksBuild}`)||!shell.includes(`controlled-transactions.js?v=${booksBuild}`))throw new Error('Controlled Finance Tools need cached, ordered, retryable lazy loaders');
 if(!bundleTool.includes("target:'assets/js/books/app.js',exclude:['40-subledgers.js','50-controlled-transactions.js','55-payable-batch.js']")||!bundleTool.includes("target:'assets/js/books/subledgers.js',include:['40-subledgers.js','55-payable-batch.js']")||!bundleTool.includes("target:'assets/js/books/controlled-transactions.js',include:['50-controlled-transactions.js']"))throw new Error('The Books startup bundle must exclude the subledger, payable-batch and controlled-transaction sections and build them separately');
 const deferredSubledgers=fs.readFileSync('assets/js/books/subledgers.js','utf8'),payablesRenderer=deferredSubledgers.indexOf("PAGES.payables = function(){ return subledgerPage('ap'); };"),batchDecorator=deferredSubledgers.indexOf('var oldPayables=PAGES.payables;');
 if(payablesRenderer<0||batchDecorator<=payablesRenderer||!deferredSubledgers.slice(batchDecorator).includes('Pay supplier bills'))throw new Error('The deferred subledger runtime must install the Payables renderer before decorating it with the batch-payment action');
 for(const marker of ['PAGES.transactions = function()','PAGES.fixedassets = function()','PAGES.purchases = function()','App._txnModal=function'])if(!transactionSource.includes(marker))throw new Error(`The deferred Finance Tools source is missing ${marker}`);
-for(const asset of ["'/assets/js/books/subledgers.js?v=162'","'/assets/js/books/controlled-transactions.js?v=162'"])if(!offline.includes(asset))throw new Error('Each deferred Finance Books bundle must remain available offline at its exact versioned URL: '+asset);
+for(const asset of [`'/assets/js/books/subledgers.js?v=${booksBuild}'`,`'/assets/js/books/controlled-transactions.js?v=${booksBuild}'`])if(!offline.includes(asset))throw new Error('Each deferred Finance Books bundle must remain available offline at its exact versioned URL: '+asset);
 if(!css.includes('.tabs-in{flex-wrap:wrap')||!css.includes('.book-groups{display:grid'))throw new Error('Finance navigation is not protected against hidden mobile tabs');
 for(const marker of ['App.showSupplierPayableLedger','payableSupplierDocs','App.showPayableTrace','payableRelatedEntries','Original payable → purchase invoice → journal → payment / reversal.','Related Finance Books transactions'])if(!subledgers.includes(marker))throw new Error(`Supplier payable drill-down is missing: ${marker}`);
 for(const marker of ['App.showSupplierAdvanceLedger','Supplier Advances · account 1115','__getSupplierAdvanceDetails','Original payments and allocations'])if(!subledgers.includes(marker))throw new Error(`Supplier advance drill-down is missing: ${marker}`);
