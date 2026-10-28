@@ -10,8 +10,8 @@ const end=source.indexOf('async function rebuildActiveOrders',start);
 if(start<0||end<0)fail('active-order projection helpers missing');
 const sandbox={Date,Intl,Object,OrderService,result:null};
 const pureHelpers=source.slice(start,end).replace(/\/\/ ---------------------------------------------------------------------------\r?\n\/\/ Release 5B:[\s\S]*?(?=function archivedOrderRecord)/,'');
-vm.runInNewContext(`${pureHelpers};result={activeOrderProjection,shouldProjectOrder,archivedOrderRecord,readyForAutoComplete,ACTIVE_ONLINE_TTL_MS,READY_AUTO_COMPLETE_MS};`,sandbox);
-const {activeOrderProjection,shouldProjectOrder,archivedOrderRecord,readyForAutoComplete,ACTIVE_ONLINE_TTL_MS,READY_AUTO_COMPLETE_MS}=sandbox.result;
+vm.runInNewContext(`${pureHelpers};result={activeOrderProjection,shouldProjectOrder,archivedOrderRecord,readyForAutoComplete,archivesWhenNotLive,ACTIVE_ONLINE_TTL_MS,READY_AUTO_COMPLETE_MS};`,sandbox);
+const {activeOrderProjection,shouldProjectOrder,archivedOrderRecord,readyForAutoComplete,archivesWhenNotLive,ACTIVE_ONLINE_TTL_MS,READY_AUTO_COMPLETE_MS}=sandbox.result;
 const now=2_000_000_000_000;
 
 if(!shouldProjectOrder({status:'Pending'},null,now))fail('Pending order must remain active');
@@ -30,6 +30,16 @@ if(shouldProjectOrder({status:'Completed',source:'pos',channel:'instore',shiftId
 if(shouldProjectOrder({status:'Completed',source:'pos',channel:'instore',shiftId:'S1',voided:true,service:{state:'queued'}},{id:'S2'},now))fail('Voided sale must leave the serving queue');
 if(!shouldProjectOrder({status:'Completed',source:'pos',shiftId:'S1',service:{state:'not_collected'}},{id:'S2'},now))fail('Unreviewed not-collected sale must remain active');
 if(shouldProjectOrder({status:'Completed',source:'pos',shiftId:'S1',service:{state:'not_collected',reviewedAt:1}},{id:'S2'},now))fail('Reviewed not-collected sale must leave active orders');
+// Re-keyed missed platform orders (29 Oct 2026) are back-office records: never live, and never archived the instant they are written.
+const rekey={status:'Completed',source:'pos',channel:'grabfood',settlementStatus:'unsettled',enteredVia:'payout-rekey',catchup:true};
+if(shouldProjectOrder(rekey,{id:'S1'},now))fail('Re-keyed platform order must not appear in active orders');
+if(!shouldProjectOrder({...rekey,paymentStatus:'pending'},null,now))fail('Re-key fields must never hide an order awaiting payment review');
+if(!shouldProjectOrder({...rekey,status:'Pending'},null,now))fail('Re-key fields must never hide an open order');
+if(archivesWhenNotLive(rekey))fail('Re-keyed platform order must wait for the posting-gated archive sweep');
+if(!shouldProjectOrder({...rekey,shiftId:'S1'},null,now))fail('An order with a shift is a till sale, not a re-key');
+if(!archivesWhenNotLive({status:'Completed',source:'pos',shiftId:'S1'}))fail('Resolved closed-shift till sale must still archive immediately');
+if(!archivesWhenNotLive({status:'Pending',source:'pos',shiftId:'S1',voided:true}))fail('Voided till sale must still archive immediately');
+if(archivesWhenNotLive({status:'Completed',source:'online'}))fail('Online orders follow their own retention');
 if(readyForAutoComplete({status:'Ready',channel:'online',statusUpdatedAt:now-READY_AUTO_COMPLETE_MS+1},now))fail('Fresh Ready online order completed too early');
 if(!readyForAutoComplete({status:'Ready',channel:'online',statusUpdatedAt:now-READY_AUTO_COMPLETE_MS},now))fail('Two-hour Ready online order did not become eligible');
 if(readyForAutoComplete({status:'Ready',channel:'instore',statusUpdatedAt:now-READY_AUTO_COMPLETE_MS},now))fail('In-store order entered online timeout flow');

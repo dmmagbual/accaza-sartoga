@@ -113,7 +113,8 @@ export function createFakeDatabase(initial, {rules} = {}) {
         keys.forEach((k) => write(`${base}/${k}`, values[k]));
       },
       async transaction(fn) {
-        const current = clone(at(path));
+        // The SDK hands the update function the same value a snapshot returns (arrays included).
+        const current = rtdbValue(clone(at(path)));
         const next = fn(current === null ? null : current);
         if (next === undefined) return {committed: false, snapshot: snapshot(key, at(path))};
         write(path, next);

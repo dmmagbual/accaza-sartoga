@@ -2303,6 +2303,26 @@ function orderArchiveFingerprint(value) {
   return crypto.createHash("sha256").update(JSON.stringify(stable(value || {}))).digest("hex");
 }
 
+// A re-keyed platform order has no shift by design. The order fields alone are not proof
+// (staff with order access can write /orders), so the exemption requires the used manager
+// approval that recordPlatformCatchup claimed, bound to this exact order. /financialApprovals
+// and /platformRefIndex are server-only.
+async function verifiedPlatformRekey(db, order) {
+  if (!isPlatformRekeyOrder(order)) return false;
+  let approvalId = "";
+  try { approvalId = financeKey(order.catchupApprovalId, "Privileged approval"); } catch (_error) { return false; }
+  const approval = (await db.ref(`/financialApprovals/${approvalId}`).get()).val();
+  if (!approval || approval.action !== "rekey_platform_order" || !approval.usedAt || String(approval.usedBy || "") !== `rekey_${approval.sourceId}`) return false;
+  // Re-keys since 29 Oct 2026 stamp the order they created on the approval.
+  if (approval.usedForOrderId) return approval.usedForOrderId === order.id;
+  // Earlier re-keys: the approved reference must be this order's, and the first-claim
+  // reference index must name this order.
+  const ref = String(order.platformRef || ""), key = platformRefKey(ref);
+  if (!key || String(approval.sourceId) !== ref) return false;
+  const index = (await db.ref(`/platformRefIndex/${order.channel}/${key}`).get()).val();
+  return !!index && index.orderId === order.id;
+}
+
 async function orderArchiveCheck(db, orderId, options = {}) {
   const orderSnap = await db.ref(`/orders/${orderId}`).get();
   if (!orderSnap.exists()) {
@@ -2320,7 +2340,7 @@ async function orderArchiveCheck(db, orderId, options = {}) {
     const shift = (await db.ref(`/shifts/${shiftId}`).get()).val() || null;
     if (!shift) return {ok: false, reason: "shift_missing"};
     if (shift.status !== "closed") return {ok: false, reason: "shift_open"};
-  } else if (order.source === "pos") {
+  } else if (order.source === "pos" && !(await verifiedPlatformRekey(db, order))) {
     return {ok: false, reason: "shift_missing"};
   }
   if (!ORDER_ARCHIVE_FINAL_STATUSES.includes(String(order.status || "")) && order.voided !== true) return {ok: false, reason: "not_final"};
@@ -6099,11 +6119,30 @@ function shouldProjectOrder(order, activeShift, now = Date.now()) {
   const status = String(order.status || "Pending");
   if (["Pending", "Confirmed", "Preparing", "Ready"].includes(status)) return true;
   if (["pending", "cashier_verified"].includes(order.paymentStatus)) return true;
+  // A missed platform order re-keyed from Payout Reconciliation is a back-office record:
+  // it was never on a till, so it has no shift, no serving state and no place in the live
+  // order list. Its unsettled receivable is worked from Payout Reconciliation, which reads
+  // live and archived orders alike. Checked after the open-status and payment-review rules
+  // so the re-key fields can never hide an order that still needs a person.
+  if (isPlatformRekeyOrder(order)) return false;
   if (["grabfood", "foodpanda"].includes(order.channel) && (order.settlementStatus || "unsettled") === "unsettled") return true;
   if (activeShift && order.shiftId && order.shiftId === activeShift.id) return true;
   const age = now - Number(order.timestamp || 0);
   if (order.source === "online" && age >= 0 && age <= ACTIVE_ONLINE_TTL_MS) return true;
   return false;
+}
+
+// Server-stamped by recordPlatformCatchup. Only shift-less Grab/FoodPanda orders qualify,
+// so a till sale (which always carries its shift) can never be treated as a re-key.
+function isPlatformRekeyOrder(order) {
+  return !!order && typeof order === "object" && order.source === "pos" && order.enteredVia === "payout-rekey" && order.catchup === true && !order.shiftId && ["grabfood", "foodpanda"].includes(String(order.channel || ""));
+}
+
+// Closed-shift POS sales leave /orders as soon as they stop being live. A re-keyed order is
+// excluded: its stock and Finance Books posting are still running when it is created, so it
+// stays in /orders until the posting-gated order archive sweep (or a manager) archives it.
+function archivesWhenNotLive(order) {
+  return !!order && order.source === "pos" && (["Completed", "Received"].includes(order.status) || !!order.voided) && !isPlatformRekeyOrder(order);
 }
 
 // ---------------------------------------------------------------------------
@@ -6173,7 +6212,7 @@ async function rebuildActiveOrders(db, force = false) {
     if (shouldProjectOrder(orders[id], activeShift, now)) {
       writes[`activeOrders/${id}`] = activeOrderProjection(orders[id]);
       kept++;
-    } else if (orders[id] && orders[id].source === "pos" && (["Completed", "Received"].includes(orders[id].status) || orders[id].voided)) {
+    } else if (archivesWhenNotLive(orders[id])) {
       writes[`archivedOrders/${id}`] = archivedOrderRecord(orders[id], now, "2c-migration");
       writes[`orders/${id}`] = null;
       writes[`activeOrders/${id}`] = null;
@@ -6654,7 +6693,7 @@ exports.syncActiveOrderProjection = onValueWritten(
     const activeShift = (await db.ref("/posActiveShift").get()).val() || null;
     if (shouldProjectOrder(order, activeShift)) {
       await db.ref(`/activeOrders/${orderId}`).set(activeOrderProjection(order));
-    } else if (order.source === "pos" && (["Completed", "Received"].includes(order.status) || order.voided)) {
+    } else if (archivesWhenNotLive(order)) {
       const now = Date.now();
       await db.ref().update({[`archivedOrders/${orderId}`]: archivedOrderRecord(order, now), [`activeOrders/${orderId}`]: null, [`orders/${orderId}`]: null});
     } else {
@@ -6674,7 +6713,7 @@ exports.pruneClosedShiftOrders = onValueWritten(
     const writes = {};
     snap.forEach((child) => {
       const order = child.val();
-      if (!shouldProjectOrder(order, after || null) && order && order.source === "pos") {
+      if (!shouldProjectOrder(order, after || null) && order && order.source === "pos" && !isPlatformRekeyOrder(order)) {
         const now = Date.now();
         writes[`archivedOrders/${child.key}`] = archivedOrderRecord(order, now);
         writes[`activeOrders/${child.key}`] = null;
@@ -8798,6 +8837,8 @@ exports.recordPlatformCatchup = onCall(
     const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {};
     const writes = Object.assign({}, approval.usedWrites, {
       [`orders/${oid}`]: order,
+      // Binds the approval to the order it created, so it cannot vouch for any other order.
+      [`financialApprovals/${approval.id}/usedForOrderId`]: oid,
       [`operationalAudit/${now}_rekey_${oid}`]: {action: "rekey_platform_order", sourceType: "order", sourceId: oid, platformRef: ref, channel, amount: gross, actorUid: actor.uid, actorRole: actor.role, approvalId: approval.id, reference, orderDate: dateStr, ts: now, schemaVersion: 1},
     });
     await db.ref().update(writes);

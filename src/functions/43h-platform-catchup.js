@@ -66,6 +66,8 @@ exports.recordPlatformCatchup = onCall(
     const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {};
     const writes = Object.assign({}, approval.usedWrites, {
       [`orders/${oid}`]: order,
+      // Binds the approval to the order it created, so it cannot vouch for any other order.
+      [`financialApprovals/${approval.id}/usedForOrderId`]: oid,
       [`operationalAudit/${now}_rekey_${oid}`]: {action: "rekey_platform_order", sourceType: "order", sourceId: oid, platformRef: ref, channel, amount: gross, actorUid: actor.uid, actorRole: actor.role, approvalId: approval.id, reference, orderDate: dateStr, ts: now, schemaVersion: 1},
     });
     await db.ref().update(writes);
