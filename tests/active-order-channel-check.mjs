@@ -24,4 +24,11 @@ if(color(css,pairs[0][1])===color(css,pairs[1][1]))fail('Online and GrabFood mus
 // Walk-in / GrabFood / FoodPanda are not website pick-ups; the Pick-up/Delivery badge is website-only.
 if(!src.includes("modeBadge=orderChannel(o)!=='online'?'':"))fail('Pick-up/Delivery badge must be limited to website orders');
 if(archiveOutcome({voided:true}).label!=='Voided'||archiveOutcome({total:100,refundAmount:100}).label!=='Refunded'||archiveOutcome({status:'Completed'}).label!=='Completed')fail('Archived order outcomes changed while moving display helpers');
+// 28 Oct 2026: payment badge, verification policy and item list moved unchanged to order-card-parts.mjs.
+globalThis.window={__posSettings:{payMethods:[{name:'BDO',verificationPolicy:'cashier_manager'}]}};
+const parts=await import('../assets/js/admin/order-card-parts.mjs'),esc=v=>String(v).replace(/</g,'&lt;'),policy=parts.verificationPolicy,badge=parts.paymentState;
+if(policy({payment:'Cash'})!==null||policy({payment:'GCash'})!=='cashier_manager'||policy({payment:'Bank Transfer'})!=='manager_only'||policy({payment:'BDO'})!=='cashier_manager'||policy({payments:[{method:'GrabFood'}]})!==null)fail('Payment verification policy changed while moving card parts');
+if(!badge({voided:true}).includes('Voided sale')||!badge({paymentStatus:'pending',payment:'Bank Transfer'}).includes('Awaiting manager verification')||!badge({paymentStatus:'pending',payment:'GCash'}).includes('Awaiting cashier verification')||!badge({paymentStatus:'confirmed',payment:'GCash'}).includes('Manager validated')||!badge({paymentStatus:'confirmed',payment:'Cash',status:'Completed'}).includes('Sale locked'))fail('Order payment badge changed while moving card parts');
+const items=parts.orderItemsHtml({source:'online',items:'Latte (Hot, Large) x2, <b>Muffin'},esc);
+if((items.match(/order-item-row/g)||[]).length!==2||!items.includes('2×')||items.includes('<b>')||!src.includes('orderItemsHtml(o,escHtml)'))fail('Active order item list changed while moving card parts');
 console.log('Active order channel check passed');
