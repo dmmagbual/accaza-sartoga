@@ -7,7 +7,7 @@
 
 ## 0. Where we are now
 - App Check is initialized through one shared helper on every active browser Firebase app. Admin/POS, Finance Books, manager-approval sign-in, the main customer app, Rewards, and the standalone order-availability reader all register reCAPTCHA Enterprise before using Authentication, Realtime Database, or Cloud Functions. This coverage repair is Admin **v641**, Customer **v92**, Books **v141**, cache **v629**; it is not production-active until merged and published.
-- Enforcement is **OFF** on every callable: both committed defaults in `src/functions/00-app-check-flags.js` are `"false"`. Missing or invalid tokens are **logged but not rejected** (monitor mode).
+- **Staff enforcement is ON from 28 Oct 2026** (Phase 2): `ENFORCE_APP_CHECK` defaults to `"true"` in `src/functions/00-app-check-flags.js`, so the 96 staff callables refuse calls without a valid token. `ENFORCE_APP_CHECK_ORDERS` stays `"false"`: the public order callables remain in monitor mode. Live from the moment the merge deploy completes. Count check on 28 Oct (built `functions/index.js`): the order flag covers three customer callables (`createOnlineOrder`, `confirmOrderReceived`, `createQrOrderTicket`), and eight callables hardcode `enforceAppCheck: false`: the five in Section 6 plus the baking callables `checkBakingMapping`, `postBatchCard` and `reverseBatchCard`, which are staff operations still in monitor mode.
 - The two flags are **independent**. `ENFORCE_APP_CHECK` gates the 96 staff callables; `ENFORCE_APP_CHECK_ORDERS` gates only the 2 public order callables (`createOnlineOrder`, `confirmOrderReceived`). Turning the staff flag on no longer turns the order flag on.
 - Every online order logs `appCheck: Boolean(request.app)` server-side, so token presence is observable without the console.
 - Deploy runs #411 and #412 both failed on a transient Cloud Functions API error with 176 of 177 functions already updated; #412 attempt 2 succeeded at 2026-09-30T15:13:42Z. Both deploy steps now retry once after 60 seconds, so a single straggler no longer fails a run. The earlier **2026-09-30 → 2026-10-08** gate was invalidated when the coverage audit found legitimate unverified Finance Books, manager-approval, and standalone order-availability clients. Start a fresh 7-day gate after v641/v92/v141/v629 is published.
@@ -59,6 +59,7 @@ Still owner-owned and worth one check in the GCP console: that site key `6LdQ6Hs
 Enforcement is gatekeeping only — no data migration, so rollback is just turning it back off:
 1. Set the `ENFORCE_APP_CHECK` default back to `"false"` in `src/functions/00-app-check-flags.js`, commit, merge. The CI deploy is the rollback; it takes effect the moment it completes.
 2. Confirm a POS sale and an admin sign-in succeed again.
+   Then disable the Cloud Monitoring policy "Accaza CRITICAL - Staff device refused by App Check". In monitor mode a missing token is not refused, so leaving it on would text you for calls that went through.
 3. Then diagnose which device or browser lacked a token before retrying. Check `window.__accazaAppCheckStatus`: the shared helper records initialization and token-exchange status per client surface while leaving the existing server-side `request.app` logging authoritative.
 
 If a deploy is needed in a hurry and CI is unavailable: `firebase deploy --only "functions" --project "accaza-sartoga"`. Never use `firebase deploy --only hosting` for this repository — there is no Hosting target.
@@ -82,3 +83,9 @@ Enforcement complements, and does not replace, the existing order defenses.
 
 ## 7. Definition of done
 After v641/v92/v141/v629 is published: 7 consecutive days of `appCheck: true` on every real `createOnlineOrder` log line, RTDB unverified traffic confirmed bursty rather than a steady drip, and a cold-cache test order, POS sale, Finance Books sign-in, and independent manager approval all passing → set the `ENFORCE_APP_CHECK` committed default to `"true"` → PR merged and Functions redeployed → POS sale, admin sign-in and Finance Books all pass → no legitimate rejections in the logs for 24h. Realtime Database stays unenforced and the order path stays in monitor. Record the date and the App Check metrics screenshot in the operations log.
+
+## 8. Operations log
+
+| Date | Change | Evidence |
+| --- | --- | --- |
+| 28 Oct 2026 | `ENFORCE_APP_CHECK` default set to `"true"` (staff surface). Orders and RTDB unchanged. New owner alert "Accaza CRITICAL - Staff device refused by App Check" (ops/monitoring/alert-policies.json). | Cloud Logging 18 to 28 Oct: 12,293 of 12,295 `Callable request verification passed` entries had `app: VALID`; 2 `MISSING` were `manageSupplier` development calls on 20 Oct. 7,807 `Staff App Check status` lines across all 5 staff accounts, 3 without a token (the same 2 plus 1 `recordClientTelemetry`, which is exempt). |

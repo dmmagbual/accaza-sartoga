@@ -216,7 +216,7 @@ Use `OPERATIONS_RELEASE_RUNBOOK.md`. Change the manifest to `production_verified
 
 - Production timing evidence for v173 is pending; local tests cannot prove real cashier-device speed.
 - The telemetry schema does not retain individual samples, device segmentation, or percentiles.
-- App Check enforcement remains intentionally cautious until production token monitoring is consistently clean; do not enable database-wide enforcement without admin initialization and testing.
+- App Check: staff callables enforce from 28 Oct 2026 (`ENFORCE_APP_CHECK` default `"true"`); the public order path (`ENFORCE_APP_CHECK_ORDERS`) stays in monitor mode and Realtime Database is never enforced. See `APP_CHECK_ENFORCEMENT_RUNBOOK.md` for rollback.
 - Some legacy authorized browser writes remain for ordinary operational nodes; protected inventory/financial authority is server-side, but future hardening can move more commands behind Functions.
 - The source still contains large native JavaScript modules, especially POS/register/analytics. They are lazy-loaded, but further splitting should be driven by measured regressions, not cosmetic architecture goals.
 - The workspace contains sensitive/private backup and business files. `.gitignore` protects them only if Git operations honor it; never use broad manual upload.

@@ -11,7 +11,7 @@ const built = read('functions/index.js'), retryGuard = read('functions/lib/retry
 const assurance = read('src/functions/05-production-assurance.js'), orders = read('src/functions/30-orders.js');
 const byName = Object.fromEntries(spec.policies.map((p) => [p.displayName, p]));
 
-assert.equal(spec.policies.length, 6, 'six owner alerts');
+assert.equal(spec.policies.length, 7, 'seven owner alerts');
 for (const p of spec.policies) {
   assert.match(p.displayName, /^Accaza CRITICAL - /);
   assert.ok(p.filter && p.doc && p.subject, `${p.displayName} needs a filter, instructions and an SMS subject`);
@@ -53,6 +53,19 @@ assert.ok(down.threshold >= 10 && down.alignmentPeriod === '300s' && down.durati
 const applier = read('tools/apply-monitoring-alerts.ps1');
 assert.ok(applier.includes('$def.kind -eq "metricThreshold"') && applier.includes('conditionThreshold') && applier.includes('notificationPrompts = @("OPENED", "CLOSED")'), 'the apply script must build a rate condition and announce recovery');
 for (const p of spec.policies.filter((x) => x.kind !== 'metricThreshold')) assert.ok(p.labelExtractors, `${p.displayName} is a log alert and needs label extractors`);
+
+// Staff device refused by App Check (28 Oct 2026): firebase-functions logs every callable's token
+// verification with this label; a signed-in caller with a MISSING/INVALID App Check token is refused
+// only where enforceAppCheck is true. Every callable that is exempt or on the monitor-mode order flag
+// must be excluded by service name, or the owner would be texted for calls that were never refused.
+const refused = byName['Accaza CRITICAL - Staff device refused by App Check'].filter;
+assert.match(refused, /firebase-log-type"="callable-request-verification"/);
+assert.match(refused, /verifications\.auth="VALID"/);
+const notEnforced = [...built.matchAll(/exports\.(\w+) = onCall\(\s*\{[^}]*enforceAppCheck: (?:false|ENFORCE_APP_CHECK_ORDERS)\b/g)].map((m) => m[1].toLowerCase());
+assert.ok(notEnforced.length >= 11, `expected the exempt and order callables, found ${notEnforced.length}`);
+for (const service of notEnforced) assert.ok(refused.includes(`"${service}"`), `App Check alert must exclude non-enforced callable ${service}`);
+const fnLibUrl = new URL('../functions/node_modules/firebase-functions/lib/common/providers/https.js', import.meta.url);
+if (fs.existsSync(fnLibUrl)) assert.ok(fs.readFileSync(fnLibUrl, 'utf8').includes('"firebase-log-type": "callable-request-verification"'), 'firebase-functions changed its verification log label; update the App Check alert filter');
 
 // No phone numbers or emails in the public repository.
 const ops = read('ops/monitoring/alert-policies.json') + read('tools/apply-monitoring-alerts.ps1');
