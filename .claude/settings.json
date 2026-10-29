@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm run test:quiet)",
+      "Bash(npm run test:ci:quiet)",
+      "Bash(node tools/quiet-run.mjs *)",
+      "Bash(node tests/*)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(gh pr merge *)",
+      "Bash(git reset --hard *)",
+      "Bash(git add -A *)",
+      "Bash(git add .)",
+      "Bash(firebase deploy *)",
+      "Bash(npx firebase deploy *)"
+    ],
+    "deny": [
+      "Bash(npm test)",
+      "Bash(npm run test:ci)",
+      "Read(./node_modules/**)",
+      "Read(./functions/node_modules/**)",
+      "Read(./dist/**)",
+      "Read(./test-results/**)",
+      "Read(./BACKUP FOLDER/**)",
+      "Read(./backup json/**)",
+      "Read(**/*backup*.json)",
+      "Read(./pictures/**)",
+      "Read(./video animation/**)",
+      "Read(.env)",
+      "Read(.env.*)"
+    ]
+  },
+  "env": {
+    "BASH_MAX_OUTPUT_LENGTH": "15000"
+  }
+}

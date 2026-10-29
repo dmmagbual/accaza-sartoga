@@ -55,6 +55,7 @@ for(const marker of ['Deployment truth','Authoritative file map','Firebase data 
   if(!handoff.includes(marker))fail(`Final handoff section missing: ${marker}`);
 }
 if(!entry.includes('CLAUDE_HANDOFF.md')||!entry.includes('release-manifest.json')||!entry.includes('npm run test:ci'))fail('CLAUDE.md does not route future sessions to authoritative state and validation');
+if(read('AGENTS.md').replace(/\r\n/g,'\n')!==entry.replace(/\r\n/g,'\n'))fail('AGENTS.md and CLAUDE.md must stay identical: Codex reads AGENTS.md, Claude reads CLAUDE.md');
 
 const pending=Object.entries(manifest.verification).filter(([,status])=>status==='pending').map(([name])=>name);
 if(manifest.status==='production_verified'&&pending.length)fail(`Manifest claims production verified with pending checks: ${pending.join(', ')}`);
