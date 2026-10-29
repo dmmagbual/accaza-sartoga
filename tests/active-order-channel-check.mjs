@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import {archiveOutcome} from '../assets/js/admin/order-display.mjs';
+import {orderArchiveBlock} from '../assets/js/admin/order-archive-eligibility.mjs';
 // Active Orders cards must identify their sales channel (In-store / Online / GrabFood / FoodPanda),
 // matching the POS Shift Orders tags, so staff can tell platform orders apart at a glance.
 const read=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8');
@@ -35,8 +36,7 @@ if((items.match(/order-item-row/g)||[]).length!==2||!items.includes('2×')||item
 // clean), and the reason must follow the server's archive and serving-queue rules.
 {
   const {createRequire}=await import('node:module'),Service=createRequire(import.meta.url)('../functions/lib/order-service.js');
-  const m=src.match(/export function orderArchiveBlock\(o,ctx\)\{[\s\S]*?\n\}\n/);if(!m)fail('orderArchiveBlock is missing from admin-orders.mjs');
-  const block=new Function(m[0].replace('export ','')+';return orderArchiveBlock;')();
+  const block=orderArchiveBlock;
   const mgr={role:'manager',shift:{id:'S9',status:'open',openAt:Date.UTC(2026,9,26,0,0)}},closedPos={id:'A1',source:'pos',channel:'instore',status:'Completed',shiftId:'S1',total:100,service:{state:'served'}};
   const reason=(o,ctx=mgr)=>block(o,ctx).reason;
   if(!block(closedPos,mgr).ok)fail('A served closed-shift sale must be archivable');
@@ -47,10 +47,11 @@ if((items.match(/order-item-row/g)||[]).length!==2||!items.includes('2×')||item
   if(!block({source:'pos',channel:'instore',status:'Pending',voided:true,shiftId:'S1'},mgr).ok)fail('Voided sales are final and archivable, as on the server');
   if(reason(Object.assign({},closedPos,{service:{state:'preparing'}}))!=='serving_queue')fail('Serving-queue orders must say they still need serving');
   if(reason(Object.assign({},closedPos,{service:{state:'not_collected'}}))!=='serving_queue'||!block(Object.assign({},closedPos,{service:{state:'not_collected',reviewedAt:1}}),mgr).ok)fail('Unreviewed not-collected orders wait for a manager review');
+  if(reason(Object.assign({},closedPos,{paymentStatus:'pending'}))!=='payment_review'||reason(Object.assign({},closedPos,{paymentStatus:'cashier_verified'}))!=='payment_review')fail('Unverified or cashier-only verified payments must remain active for review');
   if(reason({source:'pos',channel:'grabfood',status:'Completed',total:50})!=='shift_missing'||!block({source:'pos',channel:'grabfood',status:'Completed',enteredVia:'payout-rekey',catchup:true},mgr).ok)fail('Shift-less till orders are blocked unless they are payout re-keys');
   const fixtures=[closedPos,Object.assign({},closedPos,{service:{state:'queued'}}),Object.assign({},closedPos,{service:{state:'ready'},refundAmount:100}),Object.assign({},closedPos,{service:{state:'not_collected'}}),Object.assign({},closedPos,{service:{state:'not_collected',reviewedAt:5}}),Object.assign({},closedPos,{channel:'foodpanda',service:{state:'preparing'}}),Object.assign({},closedPos,{voided:true,service:{state:'queued'}}),{source:'online',status:'Completed',shiftId:'S1',posCaptured:true,service:{state:'ready'}},{source:'online',status:'Completed',service:{state:'not_collected'}},{source:'pos',status:'Rejected',shiftId:'S1',service:{state:'queued'}}];
   for(const o of fixtures)if((reason(o)==='serving_queue')!==Service.keepsOrderLive(o))fail('Archive reason and server serving-queue rule disagree on '+JSON.stringify(o));
-  if(src.includes('order-archive-note')||!src.includes('var block=o.archivePending?{ok:true}:orderArchiveBlock(o,deps.archiveContext());if(!block.ok||!(o.archivePending||deps.canArchiveOrder(o))){alert(')||!src.includes('res.removedStaleCopy')||!src.includes('if(res.changed)alert('))fail('Order cards stay clean; pressing Archive must explain a block and report already-archived or changed results');
+  if(!src.includes('from"./order-archive-eligibility.mjs"')||src.includes('order-archive-note')||!src.includes('var block=o.archivePending?{ok:true}:orderArchiveBlock(o,deps.archiveContext());if(!block.ok||!(o.archivePending||deps.canArchiveOrder(o))){alert(')||!src.includes('res.removedStaleCopy')||!src.includes('if(res.changed)alert('))fail('Order cards stay clean; pressing Archive must use the split eligibility policy and report already-archived or changed results');
   for(const k of ['current_shift','shift_open','shift_missing','not_final','serving_queue','posting_incomplete','too_recent'])if(!src.includes("add('"+k+"',"))fail('Bulk archive result must explain skipped reason '+k);
 }
 console.log('Active order channel check passed');
