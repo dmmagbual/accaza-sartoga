@@ -26,6 +26,27 @@ assert.throws(() => Link.chartChangeGuard({action: 'upsert', code: '1016', exist
 assert.deepEqual(Link.chartChangeGuard({action: 'upsert', code: '6100', existing: null, linkedAccountIds: []}), {});
 assert.equal(Link.chartChangeGuard({action: 'upsert', code: '1015', existing: {}, linkedAccountIds: ['m']}).forceType, 'Asset');
 
+// Oct 2026: every bank / e-wallet Books code has a Cash Flow account, and vice versa.
+const seedChart = {1010: {type: 'Asset', system: true, name: 'Other Bank Accounts'}, 1011: {type: 'Asset', system: true, name: 'Union Bank'}, 1020: {type: 'Asset', system: true, name: 'GCash / Maya Wallet'}, 1021: {type: 'Asset', system: true, name: 'FoodPanda GCash Wallet'}, 1040: {type: 'Asset', system: true, name: 'Revolving Fund'}};
+const liveAccounts = {u: {name: 'Union Bank'}, g: {name: 'G-Cash', type: 'ewallet'}};
+assert.deepEqual(Link.cashLedgerCoverage({chart: seedChart, accounts: liveAccounts, configured: {}}), {orphanCodes: ['1021'], sharedCodes: [], unlinkedAccounts: []}, '1021 is the only chart-only wallet; 1010 fallback and 1040 petty cash are not bank accounts');
+assert.deepEqual(Link.cashLedgerCoverage({chart: seedChart, accounts: Object.assign({m: {name: 'Maya', type: 'ewallet'}}, liveAccounts), configured: {}}).sharedCodes, [{code: '1020', accountIds: ['m', 'g']}], 'two wallets on one ledger code are reported');
+assert.deepEqual(Link.cashLedgerCoverage({chart: seedChart, accounts: {x: {name: 'BPI'}}, configured: {}}).unlinkedAccounts, [{accountId: 'x', code: '1010'}], 'an account landing on the 1010 fallback is reported');
+assert.deepEqual(Link.cashLedgerCoverage({chart: seedChart, accounts: Object.assign({f: {name: 'FP'}}, liveAccounts), configured: {f: '1021'}}).orphanCodes, [], 'the server-owned link covers the code');
+assert.deepEqual(Link.resolveCashAccountCodes({f: {name: 'Kina', booksCode: '4000'}}, {}), {f: '1010'}, 'a booksCode written on the client-writable row never becomes the ledger link');
+assert.deepEqual(Link.resolveCashAccountCodes({f: {name: 'Kina', booksCode: '1013'}}, {f: '1016'}), {f: '1016'}, 'the map wins over the row');
+assert.deepEqual(Link.cashLedgerCoverage({chart: seedChart, accounts: Object.assign({f: {name: 'FoodPanda GCash', active: false}}, liveAccounts), configured: {}}).orphanCodes, ['1021'], 'an inactive account does not cover its code');
+const seedPlan = (extra) => Link.plannedSeedCashAccounts(Object.assign({chart: seedChart, accounts: liveAccounts, configured: {}, monthlyNet: {}, monthlyReady: true}, extra));
+assert.deepEqual(seedPlan().planned.map((x) => [x.code, x.accountId, x.name, x.type]), [['1021', 'acc_books_1021', 'FoodPanda GCash Wallet', 'ewallet']]);
+assert.match(seedPlan({monthlyNet: {'2026-09': {1021: 150}}}).blocked[0].reason, /balance of 150\.00/, 'a code with its own balance is reported, never auto-linked');
+assert.match(seedPlan({accounts: Object.assign({f: {name: 'FoodPanda GCash', active: false}}, liveAccounts)}).blocked[0].reason, /inactive/, 'a deactivated account is not recreated');
+assert.match(seedPlan({chart: Object.assign({}, seedChart, {1021: {type: 'Asset', system: false, name: 'FP'}})}).blocked[0].reason, /Make bank account/, 'only seeded system codes are created automatically');
+const OpEx = require('../functions/lib/operational-exceptions.js');
+const coverageItems = OpEx.cashLedgerCoverageIssues(seedChart, {}, liveAccounts, 1);
+assert.deepEqual(coverageItems.map((x) => [x.id, x.severity, x.tab]), [['cash_coverage_code_1021', 'warning', 'cashflow']]);
+assert.match(coverageItems[0].title, /1021 FoodPanda GCash Wallet has no Cash Flow account/);
+assert.deepEqual(OpEx.cashLedgerCoverageIssues({}, {}, liveAccounts, 1), [], 'no chart, no guess');
+
 // ---- the real functions ----
 const OWNER = {auth: {uid: 'owner', token: {email: 'danilomagbual@gmail.com'}}};
 const call = (fn, data) => fn(Object.assign({}, OWNER, {data: Object.assign({openingDate: '2026-09-17'}, data)}));
@@ -89,7 +110,8 @@ const openingMove = await val('financialMovements/opening_adjust_bpi_c9');
 assert.ok(openingMove && openingMove.lines.some((l) => l.account === 'asset:cash_account:bpi' && Number(l.debit) === 900), 'opening balance posts to the bank account');
 
 // Older accounts get their current code written down, unchanged.
-await call(fx.manageBooksAccount, {action: 'initialize'});
+await db.ref('books/monthlyNet/2026-09/1013').set(75);
+const init = await call(fx.manageBooksAccount, {action: 'initialize'});
 assert.equal(await val('books/config/cashAccountMap/bdo'), '1012');
 assert.equal(await val('books/config/cashAccountMap/gcash'), '1020');
 
@@ -113,8 +135,26 @@ assert.equal((await val('cfAccounts/kina')).active, true);
 await call(fx.manageCashAccount, {action: 'upsert', commandId: 'c11', accountId: 'kina', name: 'Kina Bank PNG', type: 'bank', opening: 0});
 assert.equal((await val('cfAccounts/kina')).booksCode, '1016', 'editing keeps the link');
 
+// Opening Finance Books creates the Cash Flow account of every seeded bank / wallet code that lacks one.
+const fp = await val('cfAccounts/acc_books_1021');
+assert.equal(fp && fp.name, 'FoodPanda GCash Wallet', '1021 now has its Cash Flow account');
+assert.deepEqual([fp.type, fp.booksCode, fp.opening, fp.createdFrom], ['ewallet', '1021', 0, 'books_chart_seed']);
+assert.equal(await val('books/config/cashAccountMap/acc_books_1021'), '1021');
+assert.equal((await val('booksChart/1021')).bankAccountId, 'acc_books_1021');
+assert.equal(await val('cfAccounts/acc_books_1013'), null, 'a code holding a Books balance is not auto-linked');
+assert.ok(init.cashAccountsBlocked.some((x) => x.code === '1013' && /balance of 75\.00/.test(x.reason)), 'and the reason is returned');
+assert.ok(init.cashAccountsCreated.some((x) => x.code === '1021'));
+const again = await call(fx.manageBooksAccount, {action: 'initialize'});
+assert.equal(again.cashAccountsCreated.length, 0, 'idempotent: a second open creates nothing');
+await rejects(call(fx.manageCashAccount, {action: 'upsert', commandId: 'c12', accountId: 'fp2', name: 'FP Wallet 2', type: 'ewallet', booksCode: '1021', opening: 0}), /already linked/, '1021 cannot be linked twice');
+
 // ---- wiring ----
 const bundle = read('functions/index.js'), books = read('assets/js/books/app.js'), controlledBooks = read('assets/js/books/controlled-transactions.js'), live = (read('assets/js/books/live-pos.mjs')+read('assets/js/books/finance-callables.mjs'));
+for (const marker of ['ensureSeededCashAccounts(db, chart, cashAccounts,', 'cashLedgerCoverageIssues(input.booksChart, input.cashAccountMap, input.cfAccounts, now)', 'db.ref("/booksChart").get(),db.ref("/books/config/cashAccountMap").get()'])
+  assert.ok(bundle.includes(marker) || read('functions/lib/operational-exceptions.js').includes(marker), `coverage wiring missing: ${marker}`);
+const adminJs = read('assets/js/admin/analytics.js') + read('assets/js/admin/finance.js');
+assert.ok(adminJs.includes("String(x.booksCode||'')==='1021'"), 'FoodPanda payouts default to the 1021 wallet');
+assert.ok(!adminJs.includes("A().set(A().ref(A().db,'cfAccounts/'+uid('acc_'))") && !adminJs.includes('data-acctdel'), 'Admin no longer creates or deletes bank accounts outside Finance Books');
 for (const marker of ['BankLedgerLink.planCashAccountLink(', '`books/config/cashAccountMap/${id}`', 'cashAccountCodeClaims', 'BankLedgerLink.chartChangeGuard(', 'BankLedgerLink.accountsForCode(code, accounts, cashAccountMap)', 'BankLedgerLink.resolveCashAccountCodes(accounts,'])
   assert.ok(bundle.includes(marker), `server wiring missing: ${marker}`);
 for (const marker of ['App.bankAccountForm=', 'App.bankAccountCreate=', "onclick=\"App.bankAccountForm('')\">+ Add bank account", 'Make bank account', 'bankAccountsForCode(a.code)', "this.bankAccountForm('',code)"])
