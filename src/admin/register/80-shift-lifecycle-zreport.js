@@ -62,24 +62,31 @@ async function closeShift(){
     return;
   }
   var drawer=shift.drawer||{}; var exCash=computeZ(shift).expectedCash;
+  // Boxed rows: each denomination is one bordered band so the label, count and amount read as a single line.
+  var CC_BG='#faf6ef',CC_BD='#d9c9ae',CC_HL_BG='#fff1cf',CC_HL_BD='#c8a24a';
+  function ccCell(extra){return 'padding:0.28rem 0.55rem;background:'+CC_BG+';border-top:1px solid '+CC_BD+';border-bottom:1px solid '+CC_BD+';'+(extra||'');}
+  function ccFirst(extra){return ccCell('border-left:1px solid '+CC_BD+';border-radius:6px 0 0 6px;font-weight:700;'+(extra||''));}
+  function ccLast(extra){return ccCell('text-align:right;border-right:1px solid '+CC_BD+';border-radius:0 6px 6px 0;'+(extra||''));}
+  var CC_TABLE='<table style="width:100%;border-collapse:separate;border-spacing:0 3px;font-size:0.9rem;">';
   function renderBlind(){
     mask.innerHTML=box('<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Close shift — count the drawer</div>'
       +'<p class="pz-sub" style="margin-top:0.2rem;">Count the drawer and enter each denomination. Expected stays hidden until you reveal (blind count).</p>'
-      +'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr><th style="text-align:left;padding:0.2rem;">Denom</th><th style="text-align:right;padding:0.2rem;">Actual count</th></tr></thead><tbody>'
-      +DENOMS.map(function(d){return '<tr><td style="padding:0.15rem 0.2rem;">'+d.lbl+'</td><td style="text-align:right;padding:0.15rem 0.2rem;"><input type="number" min="0" step="1" data-cc="'+d.k+'" data-cv="'+d.v+'" placeholder="0" style="width:72px;text-align:right;border:1px solid #ccc;border-radius:4px;padding:0.1rem 0.3rem;"/></td></tr>';}).join('')
+      +'<div style="overflow-x:auto;">'+CC_TABLE+'<thead><tr><th style="text-align:left;padding:0.2rem 0.55rem;">Denom</th><th style="text-align:right;padding:0.2rem 0.55rem;">Actual count</th><th style="text-align:right;padding:0.2rem 0.55rem;">Amount</th></tr></thead><tbody>'
+      +DENOMS.map(function(d){return '<tr data-ccrow="'+d.k+'" style="cursor:text;"><td style="'+ccFirst()+'">'+d.lbl+'</td><td style="'+ccCell('text-align:right;')+'"><input type="number" inputmode="numeric" min="0" step="1" data-cc="'+d.k+'" data-cv="'+d.v+'" placeholder="0" aria-label="'+d.lbl+' count" style="width:80px;text-align:right;border:1px solid #bbb;border-radius:4px;padding:0.12rem 0.35rem;font-size:0.95rem;background:#fff;"/></td><td data-ccamt="'+d.k+'" style="'+ccLast('color:#777;min-width:88px;')+'">—</td></tr>';}).join('')
       +'</tbody></table></div>'
       +'<div style="text-align:right;font-weight:700;margin-top:0.5rem;">Counted: <span id="ccTotal">₱0.00</span></div>'
       +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cR">Confirm cash count</button><button class="pz-btn sec" id="cC">Cancel</button></div>');
-    function tot(){var t=0;mask.querySelectorAll('[data-cc]').forEach(function(i){t+=(Number(i.value)||0)*(Number(i.getAttribute('data-cv'))||0);});var el=mask.querySelector('#ccTotal');if(el)el.textContent=peso(t);}
-    mask.querySelectorAll('[data-cc]').forEach(function(i){i.oninput=tot;}); tot();
+    function tot(){var t=0;mask.querySelectorAll('[data-cc]').forEach(function(i){var q=Number(i.value)||0,amt=q*(Number(i.getAttribute('data-cv'))||0);t+=amt;var a=mask.querySelector('[data-ccamt="'+i.getAttribute('data-cc')+'"]');if(a){a.textContent=q?peso(amt):'—';a.style.color=q?'#3b2a1a':'#777';}});var el=mask.querySelector('#ccTotal');if(el)el.textContent=peso(t);}
+    function ccHighlight(tr,on){if(!tr)return;tr.querySelectorAll('td').forEach(function(td){td.style.background=on?CC_HL_BG:CC_BG;td.style.borderTopColor=on?CC_HL_BD:CC_BD;td.style.borderBottomColor=on?CC_HL_BD:CC_BD;if(td.style.borderLeftWidth)td.style.borderLeftColor=on?CC_HL_BD:CC_BD;if(td.style.borderRightWidth)td.style.borderRightColor=on?CC_HL_BD:CC_BD;});}
+    mask.querySelectorAll('[data-cc]').forEach(function(i){var tr=i.closest('tr');i.oninput=tot;i.onfocus=function(){ccHighlight(tr,true);};i.onblur=function(){ccHighlight(tr,false);};if(tr)tr.onclick=function(e){if(e.target!==i)i.focus();};}); tot();
     mask.querySelector('#cC').onclick=close;
     mask.querySelector('#cR').onclick=function(){var counts={},total=0;mask.querySelectorAll('[data-cc]').forEach(function(i){var q=Number(i.value)||0;if(q>0){counts[i.getAttribute('data-cc')]=q;total+=q*(Number(i.getAttribute('data-cv'))||0);}});renderReveal(counts,Math.round(total*100)/100);};
   }
   function renderReveal(counts,total){
     var totalOnly=reconcileTotalOnlyR();
     var vary=Math.round((total-exCash)*100)/100; var tolv=Number(toleranceCfg.cashPeso)||0; var withinTol=Math.abs(vary)<=tolv;
-    var denomTbl=totalOnly?'' : ('<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr><th style="text-align:left;padding:0.2rem;">Denom</th><th style="text-align:right;padding:0.2rem;">Actual</th><th style="text-align:right;padding:0.2rem;">Expected</th><th style="text-align:right;padding:0.2rem;">Var</th></tr></thead><tbody>'
-      +DENOMS.map(function(d){var act=Number(counts[d.k])||0;var exp=Number(drawer[d.k])||0;if(!act&&!exp)return '';var dv=act-exp;var col=dv?(dv<0?'#c0392b':'#8a6d1b'):'#155724';return '<tr><td style="padding:0.15rem 0.2rem;">'+d.lbl+'</td><td style="text-align:right;padding:0.15rem 0.2rem;">'+act+'</td><td style="text-align:right;padding:0.15rem 0.2rem;color:#555;">'+exp+'</td><td style="text-align:right;padding:0.15rem 0.2rem;font-weight:600;color:'+col+';">'+(dv>0?'+':'')+dv+'</td></tr>';}).join('')
+    var denomTbl=totalOnly?'' : ('<div style="overflow-x:auto;">'+CC_TABLE+'<thead><tr><th style="text-align:left;padding:0.2rem 0.55rem;">Denom</th><th style="text-align:right;padding:0.2rem 0.55rem;">Actual</th><th style="text-align:right;padding:0.2rem 0.55rem;">Expected</th><th style="text-align:right;padding:0.2rem 0.55rem;">Var</th></tr></thead><tbody>'
+      +DENOMS.map(function(d){var act=Number(counts[d.k])||0;var exp=Number(drawer[d.k])||0;if(!act&&!exp)return '';var dv=act-exp;var col=dv?(dv<0?'#c0392b':'#8a6d1b'):'#155724';return '<tr><td style="'+ccFirst()+'">'+d.lbl+'</td><td style="'+ccCell('text-align:right;')+'">'+act+'</td><td style="'+ccCell('text-align:right;color:#555;')+'">'+exp+'</td><td style="'+ccLast('font-weight:600;color:'+col+';')+'">'+(dv>0?'+':'')+dv+'</td></tr>';}).join('')
       +'</tbody></table><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">Per-denomination differences are normal (change-making, breaking bills, tips kept). Only the total below decides the shift.</div></div>');
     mask.innerHTML=box('<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Close shift — reconciliation</div>'
       +'<p class="pz-sub" style="margin-top:0.2rem;">Count confirmed &amp; locked. Review, then close. Privileged approval is needed to reopen and recount.</p>'
