@@ -1,0 +1,13 @@
+# Accaza: Codex token discipline (mirrors .claude/settings.json intent).
+# Project-scoped config loads only when this folder is trusted in ~/.codex/config.toml:
+#   [projects.'C:\AKALIKO\DMM\PERSONAL\CLAUDE\Projects\Accaza Coffee Shop']
+#   trust_level = "trusted"
+# Quality guard: reasoning effort, answer verbosity and tool-output limits are
+# deliberately left at your user/task settings so evidence is never truncated.
+# Savings come from concise reasoning summaries and fewer parallel agents.
+
+model_reasoning_summary = "concise"
+web_search = "cached"
+
+[agents]
+max_concurrent_threads_per_session = 2
