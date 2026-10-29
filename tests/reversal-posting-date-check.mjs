@@ -55,6 +55,18 @@ assert.match(salesServer, /financeDate\(data\.accountingDate\)!==originalDate\)t
   'The sale-void server must reject any other posting date.');
 assert.match(payoutUi, /title:'Reverse settled '[\s\S]*name:'accountingDate',label:'Posting date',type:'date'/,
   'Platform payout reversals must ask for the posting date.');
+assert.match(payoutUi, /function voidPayoutOrder\(orderId,o\)[\s\S]*total=Math\.round\(\(Number\(o\.total\)\|\|0\)\*100\)\/100,refunded=Math\.round\(\(Number\(o\.refundAmount\)\|\|0\)\*100\)\/100,amount=Math\.round\(Math\.max\(0,total-refunded\)\*100\)\/100[\s\S]*name:'accountingDate',label:'Posting date \(original sale date\)',type:'date',required:true,min:postingDate,max:postingDate,value:postingDate/,
+  'Platform order voids must show the original sale date and bind the remaining reversible order amount, not the payout gross display value.');
+assert.match(payoutUi, /saleTs=Number\(o\.completedAt\|\|o\.receivedAt\|\|o\.timestamp\)\|\|Date\.now\(\),postingDate=window\.AccazaDate\.key\(saleTs\)/,
+  'Platform order voids must derive the locked posting date from the same authoritative timestamp precedence as the server.');
+assert.match(payoutUi, /if\(!o\)\{alert\('The order details changed[\s\S]*return;\}[\s\S]*if\(!\(amount>0\)\)\{alert\('This order has no remaining amount to void[\s\S]*return;\}[\s\S]*managerApproval\('void'/,
+  'Platform order voids must fail closed before approval when the loaded order is missing or has no reversible balance.');
+assert.match(payoutUi, /managerApproval\('void',orderId,amount,v\.reason,\{change:change\}\)[\s\S]*processOrderAdjustment\(\{action:'void',orderId:orderId,accountingDate:v\.accountingDate/,
+  'Platform order void approval and execution must submit the same posting date, amount and reason.');
+assert.match(payoutUi, /voidPayoutOrder\(id,entry&&entry\.o\)/,
+  'Platform order voids must pass the authoritative loaded order snapshot into the approval dialog.');
+assert.doesNotMatch(payoutUi, /managerApproval\('void',orderId,Number\(gross\)/,
+  'Platform order voids must not approve against a gross display value that can differ from the remaining reversible order amount.');
 assert.match(payoutServer, /reversalDate=financeDate\(data\.accountingDate\)/,
   'The payout-reversal server must require and validate the selected date.');
 assert.match(booksShell, /Reverse journal[\s\S]*id="rev_date" type="date"/,
@@ -62,4 +74,4 @@ assert.match(booksShell, /Reverse journal[\s\S]*id="rev_date" type="date"/,
 assert.match(payablesUi, /title:'Reverse payable'[\s\S]*name:'accountingDate',label:'Posting date',type:'date'/,
   'Admin payable reversals must ask for the posting date.');
 
-console.log('PASS: Cash Payment and Purchase void/reversal flows require one explicit, server-validated accounting date, and Cash Payments provide a controlled historical date repair.');
+console.log('PASS: Cash Payment, Purchase, completed-sale and Platform Payout void/reversal flows require the correct server-bound accounting date.');
