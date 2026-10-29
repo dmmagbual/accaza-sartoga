@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 724,
+    "admin": 725,
     "books": 164,
     "customer": 101,
-    "serviceWorkerCache": 726
+    "serviceWorkerCache": 727
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
