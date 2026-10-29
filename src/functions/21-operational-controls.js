@@ -90,7 +90,13 @@ async function orderArchiveCheck(db, orderId, options = {}) {
     if (["pending", "cashier_verified"].includes(String(order.paymentStatus || ""))) return {ok: false, reason: "payment_review"};
     if (order.inventoryReversalRequested === true && order.inventoryReversed !== true) return {ok: false, reason: "inventory_reversal"};
     const channel = String(order.channel || "").toLowerCase().replace(/[^a-z0-9]/g, ""), platformUnsettled = ["grabfood", "foodpanda"].includes(channel) && (order.settlementStatus || "unsettled") === "unsettled";
-    if (shouldProjectOrder(order, null)) return {ok: false, reason: platformUnsettled ? "platform_unsettled" : "still_live"};
+    // Danilo-approved manual cleanup (29 Oct 2026): an unsettled platform receivable
+    // may move to the archive because Payout Reconciliation reads both authoritative
+    // nodes. The stored order keeps settlementStatus=unsettled; only this temporary
+    // eligibility copy suppresses the live-projection reason. Scheduled sweeps do not
+    // set the option and remain conservative.
+    const projectionOrder = options.allowPlatformUnsettled && platformUnsettled ? Object.assign({}, order, {channel, settlementStatus: "settled"}) : order;
+    if (shouldProjectOrder(projectionOrder, null)) return {ok: false, reason: platformUnsettled ? "platform_unsettled" : "still_live"};
     const settledAt = Number(order.completedAt || order.receivedAt || order.timestamp || 0);
     if (!settledAt || Date.now() - settledAt < ORDER_ARCHIVE_SWEEP_GRACE_MS) return {ok: false, reason: "too_recent"};
     if (String(order.status || "") !== "Rejected" || order.voided === true) {
@@ -174,7 +180,7 @@ async function archiveOrderNow(db, order, actor, source, expectedFingerprint) {
   }, undefined, false);
   await db.ref().update({
     [`activeOrders/${orderId}`]: null,
-    [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("archive_order", "order", orderId, actor, {previousStatus: order.status || "", archiveAttemptId: attemptId, recoveredStaleClaim}),
+    [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("archive_order", "order", orderId, actor, {previousStatus: order.status || "", archiveAttemptId: attemptId, recoveredStaleClaim, archiveSource: source, shiftId: order.shiftId || null, channel: order.channel || null, paymentStatus: order.paymentStatus || null, settlementStatus: order.settlementStatus || null}),
   });
   return {orderId, archivedAt: now};
 }
@@ -193,16 +199,21 @@ async function archiveEligibleOrdersNow(db, actor) {
   keys.sort();
   const previousCursor = String(stateSnap.val() && stateSnap.val().cursor || ""), from = previousCursor ? keys.findIndex((key) => key > previousCursor) : 0;
   const candidates = keys.slice(from === -1 ? 0 : from).slice(0, ORDER_ARCHIVE_MANUAL_SCAN_LIMIT);
-  const summary = {live: keys.length, scanned: 0, archived: 0, currentShiftId: excludeShiftId || null, skipped: {}};
+  const summary = {live: keys.length, scanned: 0, archived: 0, archivedPlatformUnsettled: 0, archivedManagerValidated: 0, currentShiftId: excludeShiftId || null, policy: "previous_shift_manager_validated_or_platform_unsettled", skipped: {}};
   for (const orderId of candidates) {
     if (summary.archived >= ORDER_ARCHIVE_MANUAL_ARCHIVE_LIMIT) break;
     summary.scanned++;
     try {
-      const check = await orderArchiveCheck(db, orderId, {strict: true, excludeShiftId});
+      const check = await orderArchiveCheck(db, orderId, {strict: true, excludeShiftId, allowPlatformUnsettled: true});
       if (!check.ok) { summary.skipped[check.reason] = (summary.skipped[check.reason] || 0) + 1; continue; }
       const result = await archiveOrderNow(db, check.order, actor, "manual-bulk-server", check.fingerprint);
       if (result.changed) summary.skipped.changed = (summary.skipped.changed || 0) + 1;
-      else if (!result.duplicate) summary.archived++;
+      else if (!result.duplicate) {
+        summary.archived++;
+        const channel = String(check.order.channel || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (["grabfood", "foodpanda"].includes(channel) && (check.order.settlementStatus || "unsettled") === "unsettled") summary.archivedPlatformUnsettled++;
+        if (["manager_validated", "confirmed"].includes(String(check.order.paymentStatus || ""))) summary.archivedManagerValidated++;
+      }
     } catch (error) {
       summary.skipped.error = (summary.skipped.error || 0) + 1;
       logger.warn("Manual order archive skipped an order", {orderId, error: String(error && error.message || error)});
