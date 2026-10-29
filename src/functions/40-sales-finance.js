@@ -392,7 +392,7 @@ async function findOrder(db, orderId) {
   if (!snap.exists()) throw new HttpsError("not-found", "Order not found.");
   return {id, node, order: Object.assign({id}, snap.val() || {})};
 }
-async function postOrderFinancial(db, order, accounts, actor, taxSettings, options = {}) {
+async function postOrderFinancial(db, order, accounts, actor, taxSettings) {
   const effectiveStatus = order && order.status === "Archived" ? order.prevStatus : order && order.status;
   // A sale is a sale (Danilo, 29 Oct 2026): it posts when captured, verified or not. An unverified
   // electronic payment is debited to 1060 and listed in the Payments Awaiting Verification queue.
@@ -403,14 +403,17 @@ async function postOrderFinancial(db, order, accounts, actor, taxSettings, optio
   const tax = Financial.effectiveTaxFor(taxSettings, occurredAt);
   const movement = Financial.orderPosting(order, accounts || {}, tax);
   if (order.paymentApprovalId) {movement.approvalId = order.paymentApprovalId; movement.approvedBy = financeText(order.paymentApprovedBy, 160);}
-  movement.occurredAt = Number(options.occurredAt) || occurredAt;
-  if (options.originalSaleDate) movement.originalSaleDate = financeText(options.originalSaleDate, 10);
+  // A sale whose month is already closed posts today and keeps its sale date (owner rule: late
+  // postings go to the current open month, like a Xero/QuickBooks entry dated in an open period).
+  const saleMonthOpen = await periodOpenFor(db, occurredAt);
+  movement.occurredAt = saleMonthOpen ? occurredAt : Date.now();
+  if (!saleMonthOpen) movement.originalSaleDate = financeDateFromTimestamp(occurredAt);
   movement.actorName = order.onDuty || order.staff || "POS";
   const date = financeDateFromTimestamp(movement.occurredAt);
   const writes = {};
   (movement.cashEntries || []).forEach((entry) => { entry.date = date; entry.party = order.name || "Walk-in"; entry.ref = order.id; entry.auto = true; writes[`cfLedger/${entry.id}`] = cashLedgerRecord(entry, `sale_${order.id}`, movement, actor); });
   const clearing = Financial.verificationClearing(movement);
-  if (clearing > 0) writes[`paymentVerificationQueue/${financeKey(order.id, "Order ID")}`] = paymentVerificationQueueRow(order, clearing, `sale_${order.id}`, movement.occurredAt);
+  if (clearing > 0) writes[`paymentVerificationQueue/${financeKey(order.id, "Order ID")}`] = paymentVerificationQueueRow(order, clearing, `sale_${order.id}`, occurredAt);
   return commitFinancial(db, `sale_${order.id}`, movement, actor, writes);
 }
 function addOrderCashWrites(writes, movement, movementId, order, actor) {
@@ -435,7 +438,9 @@ async function fullOrderVoidMovement(db, order, accounts, settlementPayments, ta
   if (!movement) return null;
   const remaining = Financial.money(Math.max(0, Financial.money(order.total) - Financial.money(order.refundAmount)));
   const settlement = Financial.reversalPosting(order, remaining, "void", accounts || {}, settlementPayments, Financial.effectiveTaxFor(taxSettings, Number(order.completedAt || order.receivedAt || order.timestamp || Date.now())));
-  movement.cashEntries = settlement.cashEntries || [];
+  // An unverified e-payment never reached the bank, so its void moves no cash: the reversal lines
+  // credit 1060 (netted from the sale) and there is no Cash Flow outflow.
+  movement.cashEntries = Financial.paymentAwaitingVerification(order) ? (settlement.cashEntries || []).filter((entry) => /cash/i.test(String(entry.method || ""))) : (settlement.cashEntries || []);
   movement.settlementPayments = settlement.settlementPayments || [];
   movement.warnings = settlement.warnings || [];
   return movement;
@@ -453,6 +458,8 @@ exports.onOrderFinancialPosting = onValueWritten(
     if (!OrderFinancialTrigger.requiresFinancialPosting(before, order)) return;
     const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const taxSettings = (await db.ref("/taxSettings").get()).val() || {}; const actor = {uid: "server", role: "server"};
     await postOrderFinancial(db, order, accounts, actor, taxSettings);
+    // Only sales that were ever unverified can hold money in 1060; cash and confirmed sales skip the reads.
+    if (before.paymentStatus === "pending" || order.paymentStatus === "pending") await settleVerifiedPayment(db, order.id, actor);
     await postPreCompletionCashRefund(db, order, actor);
     const beforeRefund = Financial.money(before.refundAmount), afterRefund = Financial.money(order.refundAmount);
     if (afterRefund > beforeRefund) {

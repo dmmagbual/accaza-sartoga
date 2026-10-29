@@ -55,4 +55,9 @@ console.log('PASS: Accaza AI provider failures and backup answers surface in the
   if (q.length !== 2) throw new Error('only payments older than 24 hours alert');
   if (q.find((x) => x.id === 'payment_unverified_POS-D').severity !== 'warning' || q.find((x) => x.id === 'payment_unverified_POS-W').severity !== 'critical') throw new Error('a payment unverified for 7 days must escalate');
 }
+{
+  const ok = buildOperationalExceptions({paymentVerificationQueue: {a: {orderId: 'A', amount: 560, saleAt: now}}, booksMonthlyNet: {'2026-08': {'1060': 560}}}, now).exceptions.some((x) => x.category === 'payment_verification_mismatch');
+  const bad = buildOperationalExceptions({paymentVerificationQueue: {}, booksMonthlyNet: {'2026-08': {'1060': 560}}}, now).exceptions.some((x) => x.category === 'payment_verification_mismatch');
+  if (ok || !bad) throw new Error('1060 must reconcile to the open verification queue');
+}
 console.log('Payment verification alerts passed');

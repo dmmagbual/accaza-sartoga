@@ -7198,7 +7198,7 @@ async function findOrder(db, orderId) {
   if (!snap.exists()) throw new HttpsError("not-found", "Order not found.");
   return {id, node, order: Object.assign({id}, snap.val() || {})};
 }
-async function postOrderFinancial(db, order, accounts, actor, taxSettings, options = {}) {
+async function postOrderFinancial(db, order, accounts, actor, taxSettings) {
   const effectiveStatus = order && order.status === "Archived" ? order.prevStatus : order && order.status;
   // A sale is a sale (Danilo, 29 Oct 2026): it posts when captured, verified or not. An unverified
   // electronic payment is debited to 1060 and listed in the Payments Awaiting Verification queue.
@@ -7209,14 +7209,17 @@ async function postOrderFinancial(db, order, accounts, actor, taxSettings, optio
   const tax = Financial.effectiveTaxFor(taxSettings, occurredAt);
   const movement = Financial.orderPosting(order, accounts || {}, tax);
   if (order.paymentApprovalId) {movement.approvalId = order.paymentApprovalId; movement.approvedBy = financeText(order.paymentApprovedBy, 160);}
-  movement.occurredAt = Number(options.occurredAt) || occurredAt;
-  if (options.originalSaleDate) movement.originalSaleDate = financeText(options.originalSaleDate, 10);
+  // A sale whose month is already closed posts today and keeps its sale date (owner rule: late
+  // postings go to the current open month, like a Xero/QuickBooks entry dated in an open period).
+  const saleMonthOpen = await periodOpenFor(db, occurredAt);
+  movement.occurredAt = saleMonthOpen ? occurredAt : Date.now();
+  if (!saleMonthOpen) movement.originalSaleDate = financeDateFromTimestamp(occurredAt);
   movement.actorName = order.onDuty || order.staff || "POS";
   const date = financeDateFromTimestamp(movement.occurredAt);
   const writes = {};
   (movement.cashEntries || []).forEach((entry) => { entry.date = date; entry.party = order.name || "Walk-in"; entry.ref = order.id; entry.auto = true; writes[`cfLedger/${entry.id}`] = cashLedgerRecord(entry, `sale_${order.id}`, movement, actor); });
   const clearing = Financial.verificationClearing(movement);
-  if (clearing > 0) writes[`paymentVerificationQueue/${financeKey(order.id, "Order ID")}`] = paymentVerificationQueueRow(order, clearing, `sale_${order.id}`, movement.occurredAt);
+  if (clearing > 0) writes[`paymentVerificationQueue/${financeKey(order.id, "Order ID")}`] = paymentVerificationQueueRow(order, clearing, `sale_${order.id}`, occurredAt);
   return commitFinancial(db, `sale_${order.id}`, movement, actor, writes);
 }
 function addOrderCashWrites(writes, movement, movementId, order, actor) {
@@ -7241,7 +7244,9 @@ async function fullOrderVoidMovement(db, order, accounts, settlementPayments, ta
   if (!movement) return null;
   const remaining = Financial.money(Math.max(0, Financial.money(order.total) - Financial.money(order.refundAmount)));
   const settlement = Financial.reversalPosting(order, remaining, "void", accounts || {}, settlementPayments, Financial.effectiveTaxFor(taxSettings, Number(order.completedAt || order.receivedAt || order.timestamp || Date.now())));
-  movement.cashEntries = settlement.cashEntries || [];
+  // An unverified e-payment never reached the bank, so its void moves no cash: the reversal lines
+  // credit 1060 (netted from the sale) and there is no Cash Flow outflow.
+  movement.cashEntries = Financial.paymentAwaitingVerification(order) ? (settlement.cashEntries || []).filter((entry) => /cash/i.test(String(entry.method || ""))) : (settlement.cashEntries || []);
   movement.settlementPayments = settlement.settlementPayments || [];
   movement.warnings = settlement.warnings || [];
   return movement;
@@ -7259,6 +7264,8 @@ exports.onOrderFinancialPosting = onValueWritten(
     if (!OrderFinancialTrigger.requiresFinancialPosting(before, order)) return;
     const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const taxSettings = (await db.ref("/taxSettings").get()).val() || {}; const actor = {uid: "server", role: "server"};
     await postOrderFinancial(db, order, accounts, actor, taxSettings);
+    // Only sales that were ever unverified can hold money in 1060; cash and confirmed sales skip the reads.
+    if (before.paymentStatus === "pending" || order.paymentStatus === "pending") await settleVerifiedPayment(db, order.id, actor);
     await postPreCompletionCashRefund(db, order, actor);
     const beforeRefund = Financial.money(before.refundAmount), afterRefund = Financial.money(order.refundAmount);
     if (afterRefund > beforeRefund) {
@@ -8736,9 +8743,10 @@ exports.processOrderAdjustment = onCall(
       const writes = {[`${found.node}/${o.id}`]: verified, [`activeOrders/${o.id}`]: activeOrderProjection(verified), [`operationalAudit/${now}_cashier_verify_${o.id}`]: {action: "cashier_verify_payment", sourceType: "order", sourceId: o.id, amount: verified.cashierVerifiedAmount, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}};
       if (verified.ownerUid) writes[`customerOrders/${verified.ownerUid}/${o.id}/status`] = nextStatus;
       // A sale already posted with this payment in 1060 moves it to the bank now.
-      const verificationPlan = await preparePaymentVerification(db, o, data);
+      const receivingAccountId = await verifiedReceivingAccount(db, data), verifierCheck = await paymentVerifierCheck(db, o, actor.uid, actor.role);
+      verified.paymentReceivingAccountId = receivingAccountId || null; verified.paymentSelfCheck = verifierCheck.selfCheck;
       await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {}, posted = await postOrderFinancial(db, verified, accounts, {uid: "server", role: "server"}, taxSettings);
-      await commitPaymentVerification(db, found.node, verified, verificationPlan, actor, {verifierUid: actor.uid, verifierRole: actor.role, verifierName: actor.name || actor.role});
+      await settleVerifiedPayment(db, o.id, actor);
       return {verified: true, status: nextStatus, paymentStatus: "cashier_verified", financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
     }
     if (data.action === "manager_validate_payment") {
@@ -8748,16 +8756,16 @@ exports.processOrderAdjustment = onCall(
       if (verificationPolicy === PaymentVerification.CASHIER_MANAGER && o.paymentStatus !== "cashier_verified") throw new HttpsError("failed-precondition", "Cashier verification is required before manager validation.");
       if (verificationPolicy === PaymentVerification.MANAGER_ONLY && !["pending", "cashier_verified"].includes(o.paymentStatus)) throw new HttpsError("failed-precondition", "This payment is not awaiting manager verification.");
       if (direct.some((row) => !financeText(row.ref, 120))) throw new HttpsError("invalid-argument", "Every direct electronic payment requires a transaction reference.");
-      const verificationPlan = await preparePaymentVerification(db, o, data), pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
+      const receivingAccountId = await verifiedReceivingAccount(db, data), pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
       const verifierCheck = await paymentVerifierCheck(db, o, pendingApproval.approvedBy, pendingApproval.approvedRole);
       const approval = await claimManagerApproval(db, data, "validate_payment", o.id, Financial.money(o.total), `validate_${o.id}`), now = Date.now(), approvedBy = approval.record.approvedEmail || approval.record.approvedRole, website = o.source === "online" || o.channel === "online", nextStatus = website && String(o.status || "Pending") === "Pending" ? "Confirmed" : String(o.status || "Pending");
-      const validated = Object.assign({}, o, {payments, paymentStatus: "manager_validated", paymentVerificationPolicy: verificationPolicy, managerValidatedAt: now, managerValidatedBy: approval.record.approvedBy, managerValidatedRole: approval.record.approvedRole, managerValidatedName: approvedBy, paymentApprovalId: approval.id, status: nextStatus});
+      const validated = Object.assign({}, o, {paymentReceivingAccountId: receivingAccountId || null, paymentSelfCheck: verifierCheck.selfCheck, payments, paymentStatus: "manager_validated", paymentVerificationPolicy: verificationPolicy, managerValidatedAt: now, managerValidatedBy: approval.record.approvedBy, managerValidatedRole: approval.record.approvedRole, managerValidatedName: approvedBy, paymentApprovalId: approval.id, status: nextStatus});
       if (nextStatus !== o.status) { validated.statusUpdatedAt = now; validated.statusUpdatedBy = actor.uid; }
       const activeShift = (await db.ref("/posActiveShift").get()).val() || null;
       const writes = Object.assign({}, approval.usedWrites, {[`${found.node}/${o.id}`]: validated, [`activeOrders/${o.id}`]: shouldProjectOrder(validated, activeShift, now) ? activeOrderProjection(validated) : null, [`operationalAudit/${now}_manager_validate_${o.id}`]: {action: "manager_validate_payment", sourceType: "order", sourceId: o.id, actorUid: actor.uid, actorRole: actor.role, approvedBy: approval.record.approvedBy, approvedRole: approval.record.approvedRole, approvalId: approval.id, ts: now, schemaVersion: 1}});
       if (validated.ownerUid) writes[`customerOrders/${validated.ownerUid}/${o.id}/status`] = nextStatus;
       await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {}, posted = await postOrderFinancial(db, validated, accounts, {uid: "server", role: "server"}, taxSettings);
-      await commitPaymentVerification(db, found.node, validated, verificationPlan, actor, {verifierUid: approval.record.approvedBy, verifierRole: approval.record.approvedRole, verifierName: approvedBy, approvalId: approval.id, selfCheck: verifierCheck.selfCheck});
+      await settleVerifiedPayment(db, o.id, actor);
       return {validated: true, paymentStatus: "manager_validated", approvedBy, financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
     }
     if (data.action === "payment_not_received") {
@@ -8767,10 +8775,15 @@ exports.processOrderAdjustment = onCall(
       const pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
       const verifierCheck = await paymentVerifierCheck(db, o, pendingApproval.approvedBy, pendingApproval.approvedRole);
       const approval = await claimManagerApproval(db, data, "payment_not_received", o.id, clearing, `not_received_${o.id}`), approvedBy = approval.record.approvedEmail || approval.record.approvedRole;
-      const result = await commitUnpaidSale(db, found.node, o, clearing, reason, actor, {verifierUid: approval.record.approvedBy, verifierRole: approval.record.approvedRole, verifierName: approvedBy, approvalId: approval.id, selfCheck: verifierCheck.selfCheck});
+      const result = await commitUnpaidSale(db, found.node, o, clearing, reason, actor, {verifierUid: approval.record.approvedBy, verifierRole: approval.record.approvedRole, verifierName: approvedBy, approvalId: approval.id, selfCheck: verifierCheck.selfCheck, usedWrites: approval.usedWrites});
       return {orderId: o.id, notReceived: true, amount: clearing, duplicate: result && result.duplicate === true, approvedBy};
     }
     if (data.action === "recognize_unverified_sale") return recognizeUnverifiedSale(db, found, actor);
+    if (data.action === "settle_verified_payment") {
+      if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only managers may finish a payment verification.");
+      const settled = await settleVerifiedPayment(db, o.id, actor);
+      return {orderId: o.id, settled: !!settled && !settled.duplicate, duplicate: !!(settled && settled.duplicate), nothingToSettle: !settled};
+    }
     if (data.action === "complete_order_item_correction") {
       const requestId=correctionRequestKey(data.requestId),commandRef=db.ref(`/orderCorrectionCommands/${requestId}`),existingCommand=(await commandRef.get()).val();
       if(existingCommand&&existingCommand.status==="posted"){if(existingCommand.orderId!==o.id)throw new HttpsError("already-exists","This correction request belongs to another order.");return{duplicate:true,correctionId:existingCommand.correctionId,refundAmount:Number(existingCommand.refundAmount)||0,correctedOrderTotal:Number(existingCommand.correctedOrderTotal)||0};}
@@ -9856,7 +9869,7 @@ async function paymentVerifierCheck(db, order, verifierUid, verifierRole) {
   const uid = String(verifierUid || ""), role = String(verifierRole || "").toLowerCase();
   if (!uid) throw new HttpsError("failed-precondition", "The verifying manager could not be identified.");
   const involved = new Set([order.syncedByUid, order.cashierUid, order.createdByUid, order.staffUid].filter(Boolean).map(String));
-  if (order.shiftId) {
+  if (order.shiftId && order.source === "pos") {
     const shiftId = financeKey(order.shiftId, "Shift ID");
     const [crew, owner] = await Promise.all([db.ref(`/shiftCrews/${shiftId}`).get(), db.ref(`/shifts/${shiftId}/accountUid`).get()]);
     Object.keys(crew.val() || {}).forEach((key) => involved.add(String(key)));
@@ -9866,38 +9879,45 @@ async function paymentVerifierCheck(db, order, verifierUid, verifierRole) {
   if (self && !PAYMENT_VERIFY_EXEMPT_ROLES.has(role)) throw new HttpsError("permission-denied", "The person who took this sale (its cashier or shift crew) cannot verify or reject its payment. Ask another manager or a super admin.");
   return {selfCheck: self};
 }
-// Everything a verification needs is checked before any order or ledger write.
-async function preparePaymentVerification(db, order, data) {
-  const id = financeKey(order.id, "Order ID"), sale = (await db.ref(`/financialMovements/sale_${id}`).get()).val();
-  const clearing = Financial.verificationClearing(sale);
+// "Received into" (like a Xero/QuickBooks deposit account): optional, must be an active cash account.
+async function verifiedReceivingAccount(db, data) {
+  const chosen = financeText(data && data.receivingAccountId, 160);
+  if (!chosen) return "";
+  const account = (await db.ref(`/cfAccounts/${financeKey(chosen, "Receiving account")}`).get()).val();
+  if (!account || account.active === false) throw new HttpsError("invalid-argument", "Choose an active bank or e-wallet account the money was received into.");
+  return chosen;
+}
+// One idempotent step (QuickBooks bank deposit): whenever a sale's payment is verified and its
+// money still sits in 1060, post Dr bank / Cr 1060 on the sale date (today if that month is
+// closed). Run by the verify actions and by the posting trigger, so neither the order in which
+// they finish nor a failed write can leave a verified payment stuck in 1060.
+const VERIFIED_PAYMENT_STATUSES = new Set(["cashier_verified", "manager_validated", "confirmed"]);
+async function settleVerifiedPayment(db, orderId, actor) {
+  const id = financeKey(orderId, "Order ID");
+  let found; try { found = await findOrder(db, id); } catch (error) { return null; }
+  const order = found.order;
+  if (order.voided === true || !VERIFIED_PAYMENT_STATUSES.has(String(order.paymentStatus || ""))) return null;
+  const sale = (await db.ref(`/financialMovements/sale_${id}`).get()).val(), clearing = Financial.verificationClearing(sale);
   if (!(clearing > 0)) return null;
   if ((await db.ref(`/financialMovements/payver_${id}`).limitToFirst(1).get()).exists()) return {duplicate: true};
-  // "Received into" (like a Xero/QuickBooks deposit account): optional, must be an active cash account.
-  const chosen = financeText(data && data.receivingAccountId, 160);
-  if (chosen) {const account = (await db.ref(`/cfAccounts/${financeKey(chosen, "Receiving account")}`).get()).val(); if (!account || account.active === false) throw new HttpsError("invalid-argument", "Choose an active bank or e-wallet account the money was received into.");}
-  return {id, clearing, accountId: chosen || "", saleAt: Number(sale.occurredAt || order.completedAt || order.timestamp || Date.now())};
+  const accounts = (await db.ref("/cfAccounts").get()).val() || {}, saleAt = Number(sale.occurredAt || order.completedAt || order.timestamp || Date.now());
+  const movement = Financial.verificationPosting(order, accounts, {clearing, accountId: financeText(order.paymentReceivingAccountId, 160)});
+  const open = await periodOpenFor(db, saleAt), now = Date.now();
+  movement.occurredAt = open ? saleAt : now; if (!open) movement.originalSaleDate = financeDateFromTimestamp(saleAt);
+  movement.reference = financeText(paymentDirectRows(order).map((row) => row.ref).filter(Boolean).join(", "), 160);
+  movement.actorName = financeText(order.managerValidatedName || order.cashierVerifiedRole || actor.role, 160);
+  if (order.paymentApprovalId) movement.approvalId = financeText(order.paymentApprovalId, 160);
+  const movementId = `payver_${id}`, writes = {[`paymentVerificationQueue/${id}`]: null};
+  addOrderCashWrites(writes, movement, movementId, order, actor);
+  writes[`${found.node}/${id}/paymentVerification`] = {amount: clearing, receivingAccountId: financeText(order.paymentReceivingAccountId, 160) || null, movementId, verifiedAt: now, verifiedBy: financeText(order.managerValidatedBy || order.cashierVerifiedBy, 160), selfCheck: order.paymentSelfCheck === true};
+  writes[`operationalAudit/${now}_payment_verified_${id}`] = operationalAuditRecord("verify_payment_posting", "order", id, actor, {movementId, amount: clearing, selfCheck: order.paymentSelfCheck === true, approvalId: order.paymentApprovalId || null});
+  return commitFinancial(db, movementId, movement, actor, writes);
 }
 function paymentNotReceivedReason(data) {
   const code = financeText(data && data.reasonCode, 40), note = financeText(data && data.note, 300);
   if (!PAYMENT_NOT_RECEIVED_REASONS[code]) throw new HttpsError("invalid-argument", "Choose why the payment was not received.");
   if (code === "other" && !note) throw new HttpsError("invalid-argument", "Describe why the payment was not received.");
   return {code, label: PAYMENT_NOT_RECEIVED_REASONS[code], note};
-}
-async function commitPaymentVerification(db, node, order, plan, actor, meta) {
-  if (!plan || plan.duplicate) return plan || null;
-  const accounts = (await db.ref("/cfAccounts").get()).val() || {}, id = plan.id;
-  const movement = Financial.verificationPosting(order, accounts, {clearing: plan.clearing, accountId: plan.accountId});
-  const open = await periodOpenFor(db, plan.saleAt), now = Date.now();
-  movement.occurredAt = open ? plan.saleAt : now; if (!open) movement.originalSaleDate = financeDateFromTimestamp(plan.saleAt);
-  movement.reference = financeText(paymentDirectRows(order).map((row) => row.ref).filter(Boolean).join(", "), 160);
-  movement.actorName = financeText(meta.verifierName || actor.role, 160);
-  if (meta.approvalId) {movement.approvalId = meta.approvalId; movement.approvedBy = financeText(meta.verifierName, 160);}
-  const movementId = `payver_${id}`, writes = {};
-  addOrderCashWrites(writes, movement, movementId, order, actor);
-  writes[`${node}/${id}/paymentVerification`] = {amount: plan.clearing, receivingAccountId: plan.accountId || null, movementId, verifiedAt: now, verifiedBy: financeText(meta.verifierUid, 160), verifiedRole: financeText(meta.verifierRole, 40), selfCheck: meta.selfCheck === true, approvalId: meta.approvalId || null};
-  writes[`paymentVerificationQueue/${id}`] = null;
-  writes[`operationalAudit/${now}_payment_verified_${id}`] = operationalAuditRecord("verify_payment_posting", "order", id, actor, {movementId, amount: plan.clearing, selfCheck: meta.selfCheck === true, approvalId: meta.approvalId || null});
-  return commitFinancial(db, movementId, movement, actor, writes);
 }
 // Payment not received: reverse the sale (dated like a void: the sale date when that month is open,
 // otherwise today) and move its cost to 6120. Stock stays out.
@@ -9916,7 +9936,7 @@ async function commitUnpaidSale(db, node, order, amount, reason, actor, meta) {
   movement.actorName = financeText(meta.verifierName || actor.role, 160);
   if (meta.approvalId) {movement.approvalId = meta.approvalId; movement.approvedBy = financeText(meta.verifierName, 160);}
   const unpaidSale = {amount: Financial.money(amount), reasonCode: reason.code, reason: reason.label, note: reason.note || "", movementId, recordedAt: now, recordedBy: financeText(meta.verifierUid, 160), recordedRole: financeText(meta.verifierRole, 40), approvalId: meta.approvalId || null, costMovedToLoss: movement.costMovedToLoss, selfCheck: meta.selfCheck === true};
-  const writes = {[`${node}/${id}/unpaidSale`]: unpaidSale, [`paymentVerificationQueue/${id}`]: null,
+  const writes = {...(meta.usedWrites || {}), [`${node}/${id}/unpaidSale`]: unpaidSale, [`paymentVerificationQueue/${id}`]: null,
     [`operationalAudit/${now}_payment_not_received_${id}`]: operationalAuditRecord("payment_not_received", "order", id, actor, {movementId, amount: unpaidSale.amount, reasonCode: reason.code, approvalId: meta.approvalId || null, selfCheck: meta.selfCheck === true})};
   writes[`${node}/${id}/paymentStatus`] = "not_received";
   return commitFinancial(db, movementId, movement, actor, writes);
@@ -9931,7 +9951,7 @@ async function recognizeUnverifiedSale(db, found, actor) {
   if ((await db.ref(`/financialMovements/sale_${id}`).limitToFirst(1).get()).exists()) return {orderId: id, duplicate: true};
   const saleAt = Number(o.completedAt || o.receivedAt || o.timestamp || Date.now()), open = await periodOpenFor(db, saleAt);
   const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {};
-  const posted = await postOrderFinancial(db, o, accounts, actor, taxSettings, open ? {} : {occurredAt: Date.now(), originalSaleDate: financeDateFromTimestamp(saleAt)});
+  const posted = await postOrderFinancial(db, o, accounts, actor, taxSettings);
   const now = Date.now(), writes = {[`operationalAudit/${now}_recognize_unverified_sale_${id}`]: operationalAuditRecord("recognize_unverified_sale", "order", id, actor, {node: found.node, saleDate: financeDateFromTimestamp(saleAt), postedOn: open ? "sale_date" : "today"})};
   if (found.node === "archivedOrders") writes[`archivedOrders/${id}/salesRecognizedAt`] = now;
   await db.ref().update(writes);

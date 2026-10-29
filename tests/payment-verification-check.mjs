@@ -25,8 +25,11 @@ const db = createFakeDatabase({
   financialApprovals: {
     AP_VAL: approval('validate_payment', 'POS-V1', 560), AP_SELF: approval('validate_payment', 'POS-S1', 560, 'crew_uid'),
     AP_SA: approval('validate_payment', 'POS-S1', 560, 'crew_uid', 'superadmin'), AP_NR: approval('payment_not_received', 'POS-N1', 560),
+    AP_EARLY: approval('validate_payment', 'POS-E1', 560), AP_SPLIT: approval('payment_not_received', 'POS-SP1', 360),
   },
-  orders: {'POS-V1': sale('POS-V1'), 'POS-S1': sale('POS-S1'), 'POS-N1': sale('POS-N1'), 'POS-AR1': sale('POS-AR1')},
+  orders: {'POS-V1': sale('POS-V1'), 'POS-S1': sale('POS-S1'), 'POS-N1': sale('POS-N1'), 'POS-AR1': sale('POS-AR1'), 'POS-VD1': sale('POS-VD1', {completedAt: NOW - 3600000, timestamp: NOW - 3600000}), 'POS-E1': sale('POS-E1'),
+    'POS-R1': sale('POS-R1', {paymentStatus: 'manager_validated'}), 'POS-SP1': sale('POS-SP1', {payment: 'Split', payments: [{method: 'Cash', amount: 200}, {method: 'Bank Transfer', amount: 360, ref: 'BT-9'}]}),
+    'POS-C1': sale('POS-C1', {payment: 'GCash', payments: [{method: 'GCash', amount: 560, ref: 'GC-1'}]})},
   archivedOrders: {
     'POS-AUG1': Object.assign(sale('POS-AUG1', {completedAt: Date.parse('2026-08-15T11:00:00+08:00'), timestamp: Date.parse('2026-08-15T11:00:00+08:00')}), {status: 'Archived', prevStatus: 'Completed', archivedAt: Date.parse('2026-08-20T00:00:00+08:00')}),
   },
@@ -38,7 +41,7 @@ const trigger = async (id) => { const order = await read(`orders/${id}`); await 
 const lines = (mv, account) => (mv && mv.lines || []).filter((l) => l.account === account).reduce((s, l) => Financial.money(s + Number(l.debit || 0) - Number(l.credit || 0)), 0);
 
 // 1. Captured -> posted: revenue on the sale date, the unverified payment in 1060, no bank, no Cash Flow.
-for (const id of ['POS-V1', 'POS-S1', 'POS-N1']) await trigger(id);
+for (const id of ['POS-V1', 'POS-S1', 'POS-N1', 'POS-VD1', 'POS-SP1', 'POS-C1']) await trigger(id);
 const s1 = await read('financialMovements/sale_POS-V1');
 assert.ok(s1, 'an unverified POS sale posts when captured');
 assert.equal(lines(s1, 'asset:payment_verification'), 560, 'the unverified payment is debited to 1060');
@@ -107,7 +110,40 @@ assert.ok(await read('paymentVerificationQueue/POS-AUG1'), 'the August payment j
 assert.ok(await read('archivedOrders/POS-AUG1/salesRecognizedAt'), 'monthly history is refreshed');
 assert.equal((await fx.processOrderAdjustment(req({action: 'recognize_unverified_sale', orderId: 'POS-AUG1'}))).duplicate, true, 'posting twice is a no-op');
 
-// 8. Library: VAT is reversed with the unpaid sale.
+// 8. Review cases.
+// 8a. Voiding an unverified sale reverses 1060 and moves no bank cash.
+// (Both void paths build the reversal with fullOrderVoidMovement; the trigger path is exercised here.)
+const voided = {...(await read('orders/POS-VD1')), voided: true, voidedAt: NOW};
+await db.ref('orders/POS-VD1').set(voided);
+await fx.onOrderFinancialPosting({params: {orderId: 'POS-VD1'}, data: {before: {val: () => ({...voided, voided: false})}, after: {val: () => voided}}});
+const voidMv = await read('financialMovements/void_POS-VD1');
+assert.equal(lines(await read('financialMovements/sale_POS-VD1'), 'asset:payment_verification') + lines(voidMv, 'asset:payment_verification'), 0, 'the void credits 1060');
+assert.equal(lines(voidMv, 'asset:cash_account:bdo'), 0, 'the void never touches the bank');
+assert.equal(Object.values(await read('cfLedger') || {}).filter((r) => r.ref === 'POS-VD1').length, 0, 'no Cash Flow outflow for money that never arrived');
+assert.equal(await read('paymentVerificationQueue/POS-VD1'), null);
+// 8b. Verified before the sale posted: the trigger posts the sale to 1060 and settles it in the same run.
+await fx.processOrderAdjustment(req({action: 'manager_validate_payment', orderId: 'POS-E1', approvalId: 'AP_EARLY'}));
+assert.equal(lines(await read('financialMovements/sale_POS-E1'), 'asset:payment_verification'), 0, 'verified first: the sale posts straight to the bank');
+const staleE1 = sale('POS-E1'); await fx.onOrderFinancialPosting({params: {orderId: 'POS-E1'}, data: {before: {val: () => null}, after: {val: () => staleE1}}});
+assert.equal(await read('financialMovements/payver_POS-E1'), null, 'a stale trigger run does not post a second receipt');
+// 8c. A verified sale left in 1060 (failed write) is settled by the next trigger run.
+await db.ref('financialMovements/sale_POS-R1').set(Financial.orderPosting(sale('POS-R1'), {bdo: {feedMethods: ['Bank Transfer']}}, null));
+await fx.onOrderFinancialPosting({params: {orderId: 'POS-R1'}, data: {before: {val: () => sale('POS-R1')}, after: {val: () => sale('POS-R1', {paymentStatus: 'manager_validated'})}}});
+assert.equal(lines(await read('financialMovements/payver_POS-R1'), 'asset:payment_verification'), -560, 'the settlement step clears a stuck 1060 balance');
+// 8c-2. The manual "finish verification" retry is the same idempotent step.
+assert.equal((await fx.processOrderAdjustment(req({action: 'settle_verified_payment', orderId: 'POS-R1'}))).duplicate, true, 'retrying a finished verification posts nothing');
+// 8d. The till login cannot verify its own sale on the cashier path either.
+await assert.rejects(fx.processOrderAdjustment(req({action: 'cashier_verify_payment', orderId: 'POS-C1', reference: 'GC-1'}, 'till_uid')), /cannot verify or reject its payment/);
+// 8e. Split cash + e-payment not received: only the e-payment share is reversed, with its share of cost.
+await fx.processOrderAdjustment(req({action: 'payment_not_received', orderId: 'POS-SP1', approvalId: 'AP_SPLIT', reasonCode: 'no_transfer_found'}));
+const sp = await read('financialMovements/unpaid_POS-SP1');
+assert.equal(lines(sp, 'asset:payment_verification'), -360);
+assert.equal(lines(sp, 'revenue:sales_reversal'), 360, 'the cash 200 stays a sale');
+assert.equal(lines(sp, 'expense:unpaid_sales_loss'), Financial.money(200 * 360 / 560), 'cost moved to loss matches the unpaid share');
+assert.equal(Sales.amounts(await read('orders/POS-SP1')).net, 200, 'Admin keeps the cash 200 as a sale');
+assert.ok((await read('financialApprovals/AP_SPLIT')).usedAt, 'the approval is marked used');
+
+// 9. Library: VAT is reversed with the unpaid sale.
 const vatSale = Financial.orderPosting(sale('VAT1', {total: 112, subtotal: 112, payments: [{method: 'GCash', amount: 112}]}), {}, {mode: 'vat', rate: 12, inclusive: true});
 assert.equal(lines(vatSale, 'asset:payment_verification'), 112);
 const vatUnpaid = Financial.unpaidSalePosting(sale('VAT1', {total: 112, subtotal: 112}), 112, {mode: 'vat', rate: 12, inclusive: true}, []);

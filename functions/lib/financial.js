@@ -237,13 +237,15 @@ function verificationPosting(order, accounts, options) {
 }
 // Payment not received (QuickBooks/Xero credit note + stock write-off): reverse the sale's revenue and
 // tax exactly like a refund, credit 1060 instead of cash, and move the sale's cost from COGS to
-// 6120 Unpaid Sales Loss (the goods left; stock stays deducted).
+// 6120 Unpaid Sales Loss (the goods left; stock stays deducted). On a split cash + e-payment sale only
+// the unpaid share is reversed, matching Admin's recognized share.
 function unpaidSalePosting(order, amount, tax, cogsLines) {
   order = order || {}; const value = money(amount); if (!(value > 0)) throw new Error("Unpaid amount must be positive.");
   const base = reversalPosting(order, value, "refund", {}, [{method: "Cash", amount: value}], tax);
   const lines = base.lines.map((entry) => entry.account === "asset:register_cash" ? line(PAYMENT_VERIFICATION_ACCOUNT, 0, money(entry.credit), "Payment not received") : Object.assign({}, entry, {label: String(entry.label || "").replace(/Sales refund/g, "Unpaid sale")}));
+  const share = money(order.total) > 0 ? Math.min(1, value / money(order.total)) : 1;
   let cost = 0;
-  (cogsLines || []).forEach((entry) => {const debit = money(entry && entry.debit), account = safe(entry && entry.account); if (debit > 0 && (/^coa:5\d{3}$/.test(account) || /^cogs:[a-z_]+$/.test(account))) {lines.push(line(account, 0, debit, "Unpaid sale cost moved to loss")); cost = money(cost + debit);}});
+  (cogsLines || []).forEach((entry) => {const debit = money(money(entry && entry.debit) * share), account = safe(entry && entry.account); if (debit > 0 && (/^coa:5\d{3}$/.test(account) || /^cogs:[a-z_]+$/.test(account))) {lines.push(line(account, 0, debit, "Unpaid sale cost moved to loss")); cost = money(cost + debit);}});
   if (cost > 0) lines.push(line(UNPAID_SALES_LOSS_ACCOUNT, cost, 0, "Cost of goods given without payment"));
   assertBalanced(lines);
   return {type: "order_unpaid", sourceType: "order", sourceId: safe(order.id), channel: base.channel, amount: totals(lines).debit, lines, cashEntries: [], warnings: base.warnings || [], tax: base.tax, unpaidAmount: value, costMovedToLoss: cost};

@@ -649,6 +649,8 @@ function payVerifyAccountField(o){var ids=Object.keys(cashAccountsMap||{}).filte
 // Verify: manager-only payments are validated with an approval; others take the cashier check first.
 async function payVerifyRun(id,row,done){
   var a=A(),o=await payVerifyLoadOrder(id);if(!o){alert('Order '+id+' was not found.');return;}
+  // Already verified but still in 1060 (an interrupted posting): finish it with the same idempotent step.
+  if(['cashier_verified','manager_validated','confirmed'].indexOf(o.paymentStatus)>=0){try{await a.processOrderAdjustment({action:'settle_verified_payment',orderId:id});alert('Verification finished: the payment moved to the bank.');}catch(e){alert('Could not finish: '+String(e&&e.message||e));}if(done)done();return;}
   if(o.paymentStatus!=='pending'){alert('This payment is no longer awaiting verification (status: '+(o.paymentStatus||'none')+').');if(done)done();return;}
   var managerOnly=verificationPolicyForOrder(o)==='manager_only',accountField=payVerifyAccountField(o),refs=directRows(o).map(function(p){return p.ref||'';}).filter(Boolean).join(', ');
   var fields=(managerOnly?[]:[{name:'reference',label:'Transaction reference',value:refs,required:true,maxLength:120}]).concat(accountField).concat([{name:'confirmed',label:'I found '+peso(row?row.amount:o.total)+' in the actual receiving account (not just a customer screenshot)',type:'checkbox',required:true}]);

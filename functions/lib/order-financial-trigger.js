@@ -21,6 +21,8 @@ function requiresFinancialPosting(before, after) {
   before = before || {};
   after = after || {};
   if (postableSale(after) && !postableSale(before)) return true;
+  // A verified payment moves from 1060 to the bank through the idempotent settlement step.
+  if (postableSale(after) && before.paymentStatus === "pending" && after.paymentStatus && !["pending", "not_received"].includes(after.paymentStatus)) return true;
   if (preCompletionRefundAmount(after) !== preCompletionRefundAmount(before)) return true;
   if (money(after.refundAmount) > money(before.refundAmount)) return true;
   return after.voided === true && before.voided !== true;
