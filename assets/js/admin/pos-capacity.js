@@ -1,5 +1,5 @@
 (function(global){
   'use strict';
   global.AccazaPosCapacity=Object.freeze({bytes:562903,warning:585000,limit:600000,reserve:50000,envelope:650000});
-  global.AccazaReleaseCapacity=Object.freeze({"total":43,"healthy":42,"warnRoom":0.025,"files":[{"file":"assets/js/admin/admin-orders.mjs","bytes":15943,"ceiling":16200,"pct":98.4,"state":"warn"}]});
+  global.AccazaReleaseCapacity=Object.freeze({"total":44,"healthy":44,"warnRoom":0.025,"files":[]});
 })(window);
