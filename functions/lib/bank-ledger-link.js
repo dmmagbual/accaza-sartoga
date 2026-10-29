@@ -24,6 +24,7 @@ function isBankLedgerCode(code) {
 function validCode(code) { return /^\d{4}$/.test(String(code || "")); }
 
 // Explicit link first, then the legacy name rule (unchanged for older accounts).
+// booksCode on /cfAccounts is display only: that node is client-writable, the map is not.
 function resolveCashAccountCodes(accounts, configured) {
   const out = {}, links = configured || {};
   Object.keys(accounts || {}).forEach((id) => {
@@ -97,4 +98,45 @@ function chartChangeGuard({action, code, existing, linkedAccountIds}) {
   return {};
 }
 
-module.exports = {LinkError, isBankLedgerCode, resolveCashAccountCodes, accountsForCode, nextBankLedgerCode, ledgerBalance, planCashAccountLink, chartChangeGuard, CODE_RANGES};
+// Books codes in the bank range that are not a bank or wallet money can land in.
+// 1010 "Other Bank Accounts" is the legacy name-rule fallback bucket, not an account.
+const NON_ACCOUNT_BANK_CODES = new Set(["1010"]);
+function ledgerAccountKind(code) { const n = Number(code); return n >= 1020 && n <= 1029 ? "ewallet" : "bank"; }
+const live = (account) => !!account && account.active !== false;
+
+// Oct 2026 rule: every active bank / e-wallet Books code has exactly one active Cash Flow
+// account, and every active Cash Flow account posts to one active bank / e-wallet code.
+// Incident: 1021 FoodPanda GCash Wallet was seeded into the chart only, so no payout screen could select it.
+function cashLedgerCoverage({chart, accounts, configured}) {
+  const resolved = resolveCashAccountCodes(accounts, configured), byCode = {};
+  Object.keys(resolved).forEach((id) => { if (live(accounts[id])) (byCode[resolved[id]] = byCode[resolved[id]] || []).push(id); });
+  const orphanCodes = Object.keys(chart || {}).sort().filter((code) => {
+    const row = chart[code] || {};
+    return isBankLedgerCode(code) && !NON_ACCOUNT_BANK_CODES.has(code) && row.active !== false && row.type === "Asset" && !(byCode[code] || []).length;
+  });
+  const sharedCodes = Object.keys(byCode).sort().filter((code) => byCode[code].length > 1).map((code) => ({code, accountIds: byCode[code]}));
+  const unlinkedAccounts = Object.keys(resolved).filter((id) => {
+    const code = resolved[id], row = chart && chart[code];
+    return live(accounts[id]) && (!row || row.active === false || row.type !== "Asset" || !isBankLedgerCode(code) || NON_ACCOUNT_BANK_CODES.has(code));
+  }).map((id) => ({accountId: id, code: resolved[id]}));
+  return {orphanCodes, sharedCodes, unlinkedAccounts};
+}
+
+// Chart-seeded system codes (1020, 1021, ...) never pass through "+ Add bank account", so the
+// seed must create their Cash Flow account. A code whose account was deactivated is left for a
+// person to decide (reported, not recreated); either way nothing is linked while the code holds a balance.
+function plannedSeedCashAccounts({chart, accounts, configured, monthlyNet, monthlyReady}) {
+  const planned = [], blocked = [], all = resolveCashAccountCodes(accounts, configured);
+  cashLedgerCoverage({chart, accounts, configured}).orphanCodes.forEach((code) => {
+    const row = chart[code] || {};
+    if (row.system !== true) { blocked.push({code, reason: `Finance Books ${code} ${row.name || ""} has no active Cash Flow account. Use "Make bank account" in Finance Books, or deactivate the code.`}); return; }
+    if (Object.keys(all).some((id) => all[id] === code)) { blocked.push({code, reason: `The Cash Flow account for Finance Books ${code} ${row.name || ""} is inactive. Reactivate it in Finance Books.`}); return; }
+    const accountId = `acc_books_${code}`;
+    try { planCashAccountLink({accountId, existing: null, name: row.name, kind: ledgerAccountKind(code), requestedCode: code, accounts, configured, chart, monthlyNet, monthlyReady}); }
+    catch (error) { if (!(error instanceof LinkError)) throw error; blocked.push({code, reason: error.message}); return; }
+    planned.push({code, accountId, name: String(row.name || code).slice(0, 100), type: ledgerAccountKind(code), openedAt: Number(row.createdAt) || 0});
+  });
+  return {planned, blocked};
+}
+
+module.exports = {NON_ACCOUNT_BANK_CODES, ledgerAccountKind, cashLedgerCoverage, plannedSeedCashAccounts, LinkError, isBankLedgerCode, resolveCashAccountCodes, accountsForCode, nextBankLedgerCode, ledgerBalance, planCashAccountLink, chartChangeGuard, CODE_RANGES};

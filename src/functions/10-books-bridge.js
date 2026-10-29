@@ -549,6 +549,37 @@ exports.manageCashAccount = onCall(
   },
 );
 
+// Seeded bank / e-wallet codes get their Cash Flow account here (Oct 2026): codes such as
+// 1021 FoodPanda GCash Wallet come from the chart seed, never from "+ Add bank account", so no
+// payment screen could select them. Idempotent: one fixed account id per code, the code claim
+// blocks a parallel "+ Add bank account", and the row is created only when absent. Opening is
+// zero and is only created when the code has no Books balance, so nothing is counted twice.
+async function ensureSeededCashAccounts(db, chart, cashAccounts, configured, actor) {
+  const accounts = Object.assign({}, cashAccounts || {}), created = [];
+  if (!BankLedgerLink.cashLedgerCoverage({chart, accounts, configured}).orphanCodes.length) return {created, blocked: []};
+  const [monthlyNet, monthlyReady] = await Promise.all([
+    /* download-ok: bounded monthly ledger totals (one row per month), read only while a seeded bank code has no Cash Flow account */db.ref("/books/monthlyNet").get().then((x) => x.val() || {}),
+    db.ref("/books/monthlyNetMeta").get().then((x) => x.exists()),
+  ]);
+  const plan = BankLedgerLink.plannedSeedCashAccounts({chart, accounts, configured, monthlyNet, monthlyReady});
+  for (const row of plan.planned) try {
+    const now = Date.now(), code = row.code, id = row.accountId, key = row.name.trim().toLowerCase();
+    if (Object.keys(accounts).some((other) => String(accounts[other] && accounts[other].name || "").trim().toLowerCase() === key)) { plan.blocked.push({code, reason: `A Cash Flow account named ${row.name} already exists but does not post to Finance Books ${code}.`}); continue; }
+    const claim = await db.ref(`/books/config/cashAccountCodeClaims/${code}`).transaction((current) => !current || current.accountId === id || (!accounts[current.accountId] && now - Number(current.claimedAt || 0) > 120000) ? {accountId: id, claimedAt: current && current.accountId === id ? current.claimedAt : now} : undefined, undefined, false);
+    if (!claim.committed) { plan.blocked.push({code, reason: `Finance Books ${code} is being linked to another bank account. Refresh and try again.`}); continue; }
+    const openingDate = BooksBridge.businessDate(row.openedAt || now), record = {name: row.name, type: row.type, number: "", opening: 0, openingDate, feedMethods: [], booksCode: code, order: Object.keys(accounts).length, ts: now, updatedAt: now, updatedBy: actor.uid, createdFrom: "books_chart_seed"};
+    // The claim makes the code exclusive to this fixed id, so the account, its server-owned link, the
+    // chart marker and the audit land in one atomic write (a crash cannot leave a half-linked account).
+    // The audit key is fixed per code, so two Finance Books tabs opening at once record it once.
+    if ((await db.ref(`/cfAccounts/${id}`).get()).exists()) continue;
+    accounts[id] = record;
+    await db.ref().update({[`cfAccounts/${id}`]: record, [`books/config/cashAccountMap/${id}`]: code, [`booksChart/${code}/bankAccountId`]: id, [`booksChart/${code}/sensitive`]: true, [`booksChart/${code}/updatedAt`]: now,
+      [`operationalAudit/${Number(row.openedAt) || now}_cash_account_${id}`]: {action: "bank_account_create_from_chart_seed", sourceType: "cashAccount", sourceId: id, booksCode: code, booksChartCreated: false, oldOpening: 0, opening: 0, adjustment: 0, openingDate, reason: "Seeded bank / e-wallet Books code had no Cash Flow account", actorUid: actor.uid, actorRole: actor.role || "", ts: now, schemaVersion: 1}});
+    created.push({code, accountId: id, name: row.name});
+  } catch (error) { logger.error("seeded cash account not created", {code: row.code, error: String(error)}); plan.blocked.push({code: row.code, reason: "The Cash Flow account could not be created. Reopen Finance Books to retry."}); }
+  return {created, blocked: plan.blocked};
+}
+
 // Platform (Grab/FoodPanda) order-number uniqueness. Every platform reference
 // may be used ONCE. This trigger keeps an authoritative index the POS reads at
 // entry to block a re-key, and records any duplicate that still slips through

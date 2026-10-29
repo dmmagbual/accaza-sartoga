@@ -4,6 +4,7 @@ const {MAX_FAILED_EVENTS_PER_DAY} = require("./retry-guard");
 const {replicaRepairFor} = require("./dead-letter-resolution");
 const OrderService = require("./order-service");
 const Financial = require("./financial");
+const BankLedgerLink = require("./bank-ledger-link");
 
 const TERMINAL = new Set(["Completed", "Received", "Rejected", "Archived"]);
 const FINALIZED = new Set(["Completed", "Received"]);
@@ -168,6 +169,21 @@ function paymentRoutingIssues(payMethods, cfAccounts, now, paymentSettings) {
   return out;
 }
 
+// Every bank / e-wallet Books code must be selectable as a Cash Flow account and every Cash Flow
+// account must post to its own Books code (Oct 2026, after 1021 FoodPanda GCash Wallet was chart-only).
+function cashLedgerCoverageIssues(booksChart, cashAccountMap, cfAccounts, now) {
+  const chart = booksChart || {}, accounts = cfAccounts || {}, out = [];
+  if (!Object.keys(chart).length) return out;
+  const coverage = BankLedgerLink.cashLedgerCoverage({chart, accounts, configured: cashAccountMap || {}}), label = (code) => `${code} ${String(chart[code] && chart[code].name || "").trim()}`.trim(), name = (id) => String(accounts[id] && accounts[id].name || id);
+  coverage.orphanCodes.forEach((code) => out.push(item("cash_account_coverage", "warning", `cash_coverage_code_${code}`, `Finance Books ${label(code)} has no Cash Flow account`,
+    `No payment, payout or deposit screen can select this ${BankLedgerLink.ledgerAccountKind(code) === "ewallet" ? "e-wallet" : "bank"}. ${chart[code] && chart[code].system === true ? "Open Finance Books: it creates the Cash Flow account automatically when the code has no balance and no deactivated account; otherwise reactivate the account or clear the balance first." : "Use Make bank account in Finance Books, or deactivate the code."}`, now, "cashflow")));
+  coverage.sharedCodes.forEach((row) => out.push(item("cash_account_coverage", "critical", `cash_coverage_shared_${row.code}`, `${row.accountIds.length} Cash Flow accounts post to Finance Books ${label(row.code)}`,
+    `${row.accountIds.map(name).join(", ")} share one ledger account, so their balances cannot be reconciled separately. Give each bank or wallet its own Books code.`, now, "cashflow")));
+  coverage.unlinkedAccounts.forEach((row) => out.push(item("cash_account_coverage", "critical", `cash_coverage_account_${row.accountId}`, `Cash Flow account ${name(row.accountId)} has no active bank Books code`,
+    `It resolves to Finance Books ${row.code || "nothing"}, which is not an active bank or e-wallet account. Money received into it does not reach a reconcilable bank balance. Re-save it in Finance Books → Cash Flow.`, now, "cashflow")));
+  return out;
+}
+
 function buildOperationalExceptions(input, now = Date.now()) {
   const exceptions = [], active = rows(input.activeOrders), orders = rows(input.orders);
   const financial = input.financialMovements || {},inventoryEvidence=input.inventoryMovementEvidence||{}, offline = rows(input.offlinePosSync), custody = rows(input.cashCustody);
@@ -197,6 +213,7 @@ function buildOperationalExceptions(input, now = Date.now()) {
     if (Math.abs(bal) > clearingThreshold) exceptions.push(item("clearing_residual", "warning", `clearing_${code}`, `${name} (${code}) has not cleared to zero`, `Books General Ledger shows a ${bal > 0 ? "debit" : "credit"} residual of PHP ${Math.abs(bal).toFixed(2)} in ${code} ${name}. This clearing/suspense account must settle to zero \u2014 review and clear the pending posting in Finance Books.`, now, "cashflow"));
   });
   paymentRoutingIssues(input.payMethods, input.cfAccounts, now, input.paymentSettings).forEach((x) => exceptions.push(x));
+  cashLedgerCoverageIssues(input.booksChart, input.cashAccountMap, input.cfAccounts, now).forEach((x) => exceptions.push(x));
   // Shift crew safeguards: a POS sale the server refused is money in the drawer with no
   // sale behind it until management recovers or dismisses it; a handed-over shift has no
   // final Z report until management reconciles it.
@@ -238,4 +255,4 @@ function buildOperationalExceptions(input, now = Date.now()) {
   const rank = {critical: 0, warning: 1};exceptions.sort((a, b) => (rank[a.severity] - rank[b.severity]) || (b.at - a.at));
   return {generatedAt: now, scanned: {activeOrders: active.length, recentOrders: orders.length, offlineSyncs: offline.length, custodyRecords: custody.length}, counts: {critical: exceptions.filter((x) => x.severity === "critical").length, warning: exceptions.filter((x) => x.severity === "warning").length, total: exceptions.length}, exceptions: exceptions.slice(0, 100)};
 }
-module.exports = {buildOperationalExceptions, DEAD_LETTER_WINDOW_MS, CLEARING_ACCOUNTS, CLEARING_RESIDUAL_THRESHOLD, clearingBalancesFromJournal, clearingBalancesFromMonthlyNet, paymentRoutingIssues};
+module.exports = {buildOperationalExceptions, DEAD_LETTER_WINDOW_MS, CLEARING_ACCOUNTS, CLEARING_RESIDUAL_THRESHOLD, clearingBalancesFromJournal, clearingBalancesFromMonthlyNet, paymentRoutingIssues, cashLedgerCoverageIssues};
