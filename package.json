@@ -145,7 +145,7 @@
     "test:supplier-advance-posting-guard": "node tests/supplier-advance-posting-guard-check.mjs",
     "test:cash-account-posting-guard": "node tests/cash-account-posting-guard-check.mjs",
     "test:books-cashflow-repair-action": "node tests/books-cashflow-repair-action-check.mjs",
-    "test:platform-catchup-items": "node tests/platform-catchup-items-check.mjs && node tests/platform-rekey-lifecycle-check.mjs",
+    "test:platform-catchup-items": "node tests/platform-catchup-items-check.mjs && node tests/platform-rekey-lifecycle-check.mjs && node tests/payment-verification-check.mjs",
     "test:serving-queue": "node tests/serving-queue-check.mjs && node tests/serving-queue-runtime-check.mjs",
     "test:order-financial-trigger": "node tests/order-financial-trigger-check.mjs",
     "test:cash-balance-unavailable": "node tests/cash-balance-unavailable-check.mjs"

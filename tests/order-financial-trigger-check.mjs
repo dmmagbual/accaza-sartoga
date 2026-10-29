@@ -8,7 +8,10 @@ const finalOrder = {status: 'Completed', paymentStatus: 'confirmed', total: 245,
 
 assert.equal(Trigger.requiresFinancialPosting({}, finalOrder), true, 'a newly completed paid order must post its sale');
 assert.equal(Trigger.requiresFinancialPosting({status: 'Preparing', paymentStatus: 'confirmed'}, finalOrder), true, 'a completed status transition must post its sale');
-assert.equal(Trigger.requiresFinancialPosting({status: 'Completed', paymentStatus: 'pending'}, finalOrder), true, 'payment confirmation of a completed order must post its sale');
+// 29 Oct 2026 (Danilo: a sale is a sale): the sale posts when captured; verification moves the money through its own command.
+assert.equal(Trigger.requiresFinancialPosting({}, {...finalOrder, paymentStatus: 'pending'}), true, 'an unverified completed sale must post when captured');
+assert.equal(Trigger.requiresFinancialPosting({status: 'Completed', paymentStatus: 'pending'}, finalOrder), true, 'verifying a posted sale runs the idempotent settlement step (Dr bank / Cr 1060)');
+assert.equal(Trigger.requiresFinancialPosting({status: 'Completed', paymentStatus: 'pending'}, {...finalOrder, paymentStatus: 'not_received'}), false, 'not received is posted by its own command');
 assert.equal(Trigger.requiresFinancialPosting(finalOrder, {...finalOrder, inventoryDeducted: true, service: {state: 'served'}}), false, 'operational-only order writes must not start Finance work');
 assert.equal(Trigger.requiresFinancialPosting(finalOrder, {...finalOrder, preCompletionCashRefund: {amount: 25}}), true, 'a pre-completion cash refund must post');
 assert.equal(Trigger.requiresFinancialPosting({...finalOrder, preCompletionCashRefund: {amount: 25}}, {...finalOrder, preCompletionCashRefund: {amount: 25}}), false, 'an unchanged pre-completion refund must not re-run Finance');

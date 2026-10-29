@@ -151,6 +151,7 @@ export const BUNDLE_BUDGETS=Object.freeze({
   'assets/js/admin/accaza-ai-manager.js':8500, // 16 Oct 2026 split from accaza-ai.js (Operations Manual editor, Log issue); reviewed 8,004
   'assets/js/admin/packages.js':17500, // reviewed 16,576
   'assets/js/admin/admin-orders.mjs':16200, // reviewed 15,300 (29 Oct 2026): archive-blocked reasons on order cards and full bulk-archive skip labels
+  'assets/js/shared/sales-authority.js':11500, // reviewed 10,1xx (29 Oct 2026): shared sale recognition now counts unverified sales and the unpaid-sale reversal
   'assets/js/admin/order-card-parts.mjs':4200, // reviewed 3,595; payment badge, verification policy, item list
   'assets/js/admin/order-display.mjs':1700, // reviewed 1,359; shared channel labels and archive outcomes
   'assets/js/admin/uncosted-sales.js':13600, // reviewed 12,896

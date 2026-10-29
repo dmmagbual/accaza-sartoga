@@ -44,6 +44,9 @@ window.__posVoid=function(oid){voidSale(oid);};window.__posRefund=function(oid){
 function verifyPayment(oid){
   var o=ordersMap[oid];if(!o){alert('Order not found in the active list. If it was archived, restore it first to verify.');return;}
   if(o.paymentStatus!=='pending'){alert('This sale is not pending cashier verification.');return;}
+  // One verification form everywhere (29 Oct 2026): amount received and statement date move the
+  // payment from 1060 Payments Awaiting Verification to the bank.
+  payVerifyRun(oid,null,function(){if(typeof renderOps==='function')renderOps();});return;
   if(verificationPolicyForOrder(o)==='manager_only'){validatePayment(oid);return;}
   var rows=directRows(o),existing=rows.map(function(p){return p.ref||'';}).filter(Boolean).join(', '),a=A();if(!a.processOrderAdjustment){alert('Payment verification service is not available. Refresh the portal.');return;}
   F().run({title:'Cashier payment verification',subtitle:oid+' · '+peso(o.total)+' · '+(o.payment||''),submitLabel:'Verify payment',busyLabel:'Recording verification…',fields:[{name:'reference',label:'Transaction reference',value:existing,required:true,maxLength:120,help:'Match this against the actual read-only GCash, Maya, or bank transaction history.'},{name:'confirmed',label:'I found this successful payment in the actual receiving account',type:'checkbox',required:true,help:'A customer screenshot by itself is not sufficient.'}]},function(v){return a.processOrderAdjustment({action:'cashier_verify_payment',orderId:oid,reference:v.reference});}).then(function(){if(window.__posLog)window.__posLog('cashier-verify-payment',oid,peso(o.total)+' · '+(o.payment||''));}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0&&String((e&&e.message)||e).indexOf('cancelled')<0)alert('Payment confirmation failed: '+((e&&e.message)||e));});

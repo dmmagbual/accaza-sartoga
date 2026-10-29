@@ -409,7 +409,7 @@ exports.unlinkLoyaltyFromDevice = onCall(
 // ---------------------------------------------------------------------------
 function loyaltyOrderCanEarn(order) {
   const effectiveStatus = order.status === "Archived" ? order.prevStatus : order.status;
-  return ["Completed", "Received"].includes(String(effectiveStatus || "")) && order.paymentStatus !== "pending" && order.voided !== true && String(order.channel || "instore").toLowerCase() === "instore" && !!order.loyaltyMemberId;
+  return ["Completed", "Received"].includes(String(effectiveStatus || "")) && !["pending", "not_received"].includes(String(order.paymentStatus || "")) && !order.unpaidSale && order.voided !== true && String(order.channel || "instore").toLowerCase() === "instore" && !!order.loyaltyMemberId;
 }
 
 async function postLoyaltyEarning(db, order) {

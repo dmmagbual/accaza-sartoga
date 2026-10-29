@@ -3,7 +3,7 @@ function renderOps(){
   var root=document.getElementById('opsRoot');if(!root)return;
   var html='<div class="pz-h">🧾 Register Ops</div><p class="pz-sub">Shift control, cash reconciliation, voids &amp; refunds — all logged. Super Admin, Admin, or Manager accounts approve controlled actions.</p>';
   html+=pendingPanel();
-  if(['owner','superadmin','admin','manager'].indexOf(String((window.__accazaAuthz||{}).role))>=0)html+='<button class="pz-btn sec" id="opsHandovers">Review pending shift handovers</button> <button class="pz-btn sec" id="opsSaleRecovery">Sales needing recovery</button>';
+  if(['owner','superadmin','admin','manager'].indexOf(String((window.__accazaAuthz||{}).role))>=0)html+='<button class="pz-btn sec" id="opsPayVerify">Payments awaiting verification</button> <button class="pz-btn sec" id="opsHandovers">Review pending shift handovers</button> <button class="pz-btn sec" id="opsSaleRecovery">Sales needing recovery</button>';
   // SHIFT
   html+='<div class="pz-card" style="margin-bottom:1rem;">';
   if(activeShift){
@@ -39,6 +39,7 @@ function renderOps(){
   root.innerHTML=html;
   // wire
   var handovers=document.getElementById('opsHandovers');if(handovers)handovers.onclick=reviewShiftHandovers;
+  var payVerify=document.getElementById('opsPayVerify');if(payVerify)payVerify.onclick=openPaymentVerificationQueue;
   var saleRecovery=document.getElementById('opsSaleRecovery');if(saleRecovery)saleRecovery.onclick=reviewRefusedSales;
   wireCrewPanel(root);
   root.querySelectorAll('[data-verify]').forEach(function(b){b.onclick=function(){window.__posVerify(b.getAttribute('data-verify'));};});

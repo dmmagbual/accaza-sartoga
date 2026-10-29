@@ -127,7 +127,8 @@ function unmappedOrderPayments(order, accounts) {
   order = order || {};
   const status = order.status === "Archived" ? order.prevStatus : order.status;
   const channel = safe(order.channel).toLowerCase();
-  if (order.voided || !["Completed", "Received"].includes(status) || order.paymentStatus === "pending" || ["grabfood", "foodpanda"].includes(channel)) return [];
+  // An unverified payment has no bank yet; its mapping is checked when it is verified.
+  if (order.voided || !["Completed", "Received"].includes(status) || paymentAwaitingVerification(order) || ["grabfood", "foodpanda"].includes(channel)) return [];
   return paymentRows(order).filter((payment) => payment.method.toLowerCase() !== "cash" && !accountForPayment(payment, accounts || {}));
 }
 // BIR tax split. The server derives the effective tax from /taxSettings with an
@@ -202,6 +203,53 @@ function orderOutputVat(order, tax) {
   const saleVat = taxSplit(money(Math.max(0, base - exempt)), tax).taxAmount;
   return money(Math.max(0, money(saleVat - exemptRefundVat(order, refund, tax))));
 }
+const PAYMENT_VERIFICATION_ACCOUNT = "asset:payment_verification";
+const UNPAID_SALES_LOSS_ACCOUNT = "expense:unpaid_sales_loss";
+function paymentAwaitingVerification(order) { return !!order && order.paymentStatus === "pending"; }
+// Recognized sale: completed or received and not voided, whatever the payment status (Danilo,
+// 29 Oct 2026). Payment verification decides where the money sits, never whether the sale exists.
+function recognizedSale(order) {
+  const status = order && order.status === "Archived" ? order.prevStatus : order && order.status;
+  return !!order && order.voided !== true && ["Completed", "Received"].includes(String(status || ""));
+}
+// Amount of a sale (in charged-total terms) reversed because its payment was never received.
+function unpaidAmount(order) { return money(order && order.unpaidSale && order.unpaidSale.amount); }
+function verificationClearing(movementRecord) {
+  return money(((movementRecord && movementRecord.lines) || []).reduce((sum, entry) => sum + (safe(entry.account) === PAYMENT_VERIFICATION_ACCOUNT ? money(entry.debit) - money(entry.credit) : 0), 0));
+}
+// Verification (QuickBooks "Bank Deposit" from Undeposited Funds): Dr the receiving bank, Cr 1060,
+// for the recorded amount. Like a Xero/QuickBooks deposit, the verifier may choose the account the
+// money actually landed in (options.accountId); otherwise the payment's mapped account is used.
+// Any small difference is an ordinary Cash Over/Short entry, not posting logic.
+function verificationPosting(order, accounts, options) {
+  order = order || {}; options = options || {}; const id = safe(order.id); if (!id) throw new Error("Order ID is required.");
+  const clearing = money(options.clearing); if (!(clearing > 0)) throw new Error("This sale has no payment awaiting verification.");
+  const lines = [], cashEntries = [], warnings = [];
+  paymentRows(order).filter((row) => row.method.toLowerCase() !== "cash").forEach((payment, index) => {
+    const chosen = safe(options.accountId), accountId = chosen && accounts && accounts[chosen] ? chosen : accountForPayment(payment, accounts || {});
+    lines.push(line(accountId ? `asset:cash_account:${accountId}` : `asset:unmapped_payment:${payment.method.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, money(payment.amount), 0, `${payment.method} verified${payment.ref ? ` · ${safe(payment.ref)}` : ""}`));
+    if (accountId) {const slug = payment.method.replace(/[^A-Za-z0-9]/g, "") || String(index); cashEntries.push({id: `cfver_${id}_${slug}`, accountId, dir: "in", amount: money(payment.amount), category: `Sale · ${payment.method} (verified)`, method: payment.method});}
+    else warnings.push(`No cash-flow account mapping for ${payment.method}.`);
+  });
+  lines.push(line(PAYMENT_VERIFICATION_ACCOUNT, 0, clearing, "Payment verified"));
+  assertBalanced(lines);
+  return {type: "payment_verification", sourceType: "order", sourceId: id, channel: safe(order.channel || "instore").toLowerCase(), amount: clearing, lines, cashEntries, warnings};
+}
+// Payment not received (QuickBooks/Xero credit note + stock write-off): reverse the sale's revenue and
+// tax exactly like a refund, credit 1060 instead of cash, and move the sale's cost from COGS to
+// 6120 Unpaid Sales Loss (the goods left; stock stays deducted). On a split cash + e-payment sale only
+// the unpaid share is reversed, matching Admin's recognized share.
+function unpaidSalePosting(order, amount, tax, cogsLines) {
+  order = order || {}; const value = money(amount); if (!(value > 0)) throw new Error("Unpaid amount must be positive.");
+  const base = reversalPosting(order, value, "refund", {}, [{method: "Cash", amount: value}], tax);
+  const lines = base.lines.map((entry) => entry.account === "asset:register_cash" ? line(PAYMENT_VERIFICATION_ACCOUNT, 0, money(entry.credit), "Payment not received") : Object.assign({}, entry, {label: String(entry.label || "").replace(/Sales refund/g, "Unpaid sale")}));
+  const share = money(order.total) > 0 ? Math.min(1, value / money(order.total)) : 1;
+  let cost = 0;
+  (cogsLines || []).forEach((entry) => {const debit = money(money(entry && entry.debit) * share), account = safe(entry && entry.account); if (debit > 0 && (/^coa:5\d{3}$/.test(account) || /^cogs:[a-z_]+$/.test(account))) {lines.push(line(account, 0, debit, "Unpaid sale cost moved to loss")); cost = money(cost + debit);}});
+  if (cost > 0) lines.push(line(UNPAID_SALES_LOSS_ACCOUNT, cost, 0, "Cost of goods given without payment"));
+  assertBalanced(lines);
+  return {type: "order_unpaid", sourceType: "order", sourceId: safe(order.id), channel: base.channel, amount: totals(lines).debit, lines, cashEntries: [], warnings: base.warnings || [], tax: base.tax, unpaidAmount: value, costMovedToLoss: cost};
+}
 function orderPosting(order, accounts, tax) {
   order = order || {}; const id = safe(order.id); if (!id) throw new Error("Order ID is required.");
   const channel = safe(order.channel || "instore").toLowerCase();
@@ -245,8 +293,13 @@ function orderPosting(order, accounts, tax) {
   } else {
     const payments = paymentRows(order), total = money(order.total), discount = money(order.discount), loyaltyDiscount = money(order.loyaltyDiscount), prepaidRefund = money(order.preCompletionCashRefund && order.preCompletionCashRefund.amount);
     const gross = money(order.subtotal != null ? order.subtotal : total + discount + loyaltyDiscount);
+    // Danilo, 29 Oct 2026: a sale is a sale. A POS sale posts when it is captured; an electronic
+    // payment a manager has not verified yet waits in 1060 Payments Awaiting Verification and
+    // reaches the bank (and Cash Flow) only when it is verified.
+    const unverified = paymentAwaitingVerification(order);
     payments.forEach((payment, index) => {
       const isCash = payment.method.toLowerCase() === "cash";
+      if (!isCash && unverified) { lines.push(line(PAYMENT_VERIFICATION_ACCOUNT, payment.amount, 0, `${payment.method} awaiting verification`)); return; }
       const accountId = isCash ? "" : accountForPayment(payment, accounts);
       const asset = isCash ? "asset:register_cash" : (accountId ? `asset:cash_account:${accountId}` : `asset:unmapped_payment:${payment.method.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`);
       lines.push(line(asset, payment.amount, 0, payment.method));
@@ -381,7 +434,7 @@ function orderNetSales(order, tax) {
   const channel=safe(order.channel).toLowerCase(),platform=channel==="grabfood"||channel==="foodpanda";
   const gross = money(platform&&order.grossPlatform!=null?order.grossPlatform:(order.subtotal != null ? order.subtotal : order.total));
   const discount=platform?(order.netSalesPlatform!=null?money(Math.max(0,gross-money(order.netSalesPlatform))):money(order.platformDiscount)):money(money(order.discount)+money(order.loyaltyDiscount));
-  const refund = money(order.refundAmount);
+  const refund = money(money(order.refundAmount) + unpaidAmount(order));
   let net = money(gross - discount - refund);
   if (tax && tax.mode === "vat") {
     // Inclusive: revenue is credited net of VAT, so net sales exclude the remaining
@@ -481,4 +534,4 @@ function payableSettledAmount(row) {
 }
 function payableHasSettlement(row) { return !!row && (row.status === "paid" || payableSettledAmount(row) > 0.009); }
 
-module.exports = {payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, methodKey, line, totals, assertBalanced, accountForMethod,accountForPayment,receivingAccountForMethodFallback,receivingAccountForCustomerChoice,receivingAccountForRow,accountNumber,accountForNumber,customerPaymentRow,CUSTOMER_PAYMENT_ROWS,METHOD_FOR_CUSTOMER_ROW,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};
+module.exports = {PAYMENT_VERIFICATION_ACCOUNT, UNPAID_SALES_LOSS_ACCOUNT, paymentAwaitingVerification, recognizedSale, unpaidAmount, verificationClearing, verificationPosting, unpaidSalePosting, payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, methodKey, line, totals, assertBalanced, accountForMethod,accountForPayment,receivingAccountForMethodFallback,receivingAccountForCustomerChoice,receivingAccountForRow,accountNumber,accountForNumber,customerPaymentRow,CUSTOMER_PAYMENT_ROWS,METHOD_FOR_CUSTOMER_ROW,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};

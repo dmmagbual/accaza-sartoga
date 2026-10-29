@@ -9,7 +9,8 @@ function assert(ok,message){if(!ok)throw new Error(message);}
 assert(S.qualifies({status:'Completed',paymentStatus:'confirmed'}),'confirmed completed sale was excluded');
 assert(S.qualifies({source:'online',channel:'online',status:'Completed',paymentStatus:'confirmed'}),'confirmed online sale was excluded');
 assert(S.qualifies({status:'Archived',prevStatus:'Received',paymentStatus:'confirmed'}),'archived received sale was excluded');
-assert(!S.qualifies({source:'pos',status:'Completed',paymentStatus:'pending'}),'pending POS sale was recognized');
+// 29 Oct 2026 (Danilo: a sale is a sale)
+assert(S.qualifies({source:'pos',status:'Completed',paymentStatus:'pending'}),'an unverified completed POS sale must count');assert(!S.qualifies({source:'pos',status:'Completed',paymentStatus:'pending',voided:true}),'a voided sale never counts');assert(S.amounts({source:'pos',status:'Completed',subtotal:560,total:560,unpaidSale:{amount:560}}).net===0,'a sale reversed as not received nets to zero');
 assert(!S.qualifies({source:'pos',status:'Completed',paymentStatus:'confirmed',voided:true}),'voided POS sale was recognized');
 assert(!S.qualifies({source:'pos',status:'Cancelled',paymentStatus:'confirmed'}),'cancelled POS sale was recognized');
 const values=S.amounts({subtotal:1000,discount:125,refundAmount:25,total:875});
