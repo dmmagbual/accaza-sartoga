@@ -55,6 +55,7 @@ exports.ensureFinancialLedger = onCall(
   },
 );
 
+function missingLinkMap(writes) { const out = {}; Object.keys(writes || {}).forEach((path) => { out[path.split("/").pop()] = writes[path]; }); return out; }
 exports.manageBooksAccount = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => observeFinancialOperation(request, "manageBooksAccount", async () => {
@@ -71,7 +72,8 @@ exports.manageBooksAccount = onCall(
       if (Object.keys(missingLinks).length) await db.ref().update(missingLinks);
       const meta = await db.ref("/books/monthlyNetMeta").get();
       if (!meta.exists()) await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
-      return {chart: chart, managerEmail: actor.email};
+      const seeded = await ensureSeededCashAccounts(db, chart, cashAccounts, Object.assign({}, cashAccountMap, missingLinkMap(missingLinks)), actor);
+      return {chart: chart, managerEmail: actor.email, cashAccountsCreated: seeded.created, cashAccountsBlocked: seeded.blocked};
     }
     const now = Date.now();
     function cleanAccount(input){const code=financeText(input&&input.code,4);if(!/^\d{4}$/.test(code))throw new HttpsError("invalid-argument","Account code must be exactly four digits.");const name=financeText(input&&input.name,100);const type=financeText(input&&input.type,12);if(!name)throw new HttpsError("invalid-argument","Account name is required.");if(!BOOKS_TYPES.includes(type))throw new HttpsError("invalid-argument","Account type must be one of: "+BOOKS_TYPES.join(", ")+".");return {code:code,name:name,type:type,note:financeText(input&&input.note,160)};}

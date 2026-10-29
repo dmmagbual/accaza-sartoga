@@ -845,6 +845,37 @@ exports.manageCashAccount = onCall(
   },
 );
 
+// Seeded bank / e-wallet codes get their Cash Flow account here (Oct 2026): codes such as
+// 1021 FoodPanda GCash Wallet come from the chart seed, never from "+ Add bank account", so no
+// payment screen could select them. Idempotent: one fixed account id per code, the code claim
+// blocks a parallel "+ Add bank account", and the row is created only when absent. Opening is
+// zero and is only created when the code has no Books balance, so nothing is counted twice.
+async function ensureSeededCashAccounts(db, chart, cashAccounts, configured, actor) {
+  const accounts = Object.assign({}, cashAccounts || {}), created = [];
+  if (!BankLedgerLink.cashLedgerCoverage({chart, accounts, configured}).orphanCodes.length) return {created, blocked: []};
+  const [monthlyNet, monthlyReady] = await Promise.all([
+    /* download-ok: bounded monthly ledger totals (one row per month), read only while a seeded bank code has no Cash Flow account */db.ref("/books/monthlyNet").get().then((x) => x.val() || {}),
+    db.ref("/books/monthlyNetMeta").get().then((x) => x.exists()),
+  ]);
+  const plan = BankLedgerLink.plannedSeedCashAccounts({chart, accounts, configured, monthlyNet, monthlyReady});
+  for (const row of plan.planned) try {
+    const now = Date.now(), code = row.code, id = row.accountId, key = row.name.trim().toLowerCase();
+    if (Object.keys(accounts).some((other) => String(accounts[other] && accounts[other].name || "").trim().toLowerCase() === key)) { plan.blocked.push({code, reason: `A Cash Flow account named ${row.name} already exists but does not post to Finance Books ${code}.`}); continue; }
+    const claim = await db.ref(`/books/config/cashAccountCodeClaims/${code}`).transaction((current) => !current || current.accountId === id || (!accounts[current.accountId] && now - Number(current.claimedAt || 0) > 120000) ? {accountId: id, claimedAt: current && current.accountId === id ? current.claimedAt : now} : undefined, undefined, false);
+    if (!claim.committed) { plan.blocked.push({code, reason: `Finance Books ${code} is being linked to another bank account. Refresh and try again.`}); continue; }
+    const openingDate = BooksBridge.businessDate(row.openedAt || now), record = {name: row.name, type: row.type, number: "", opening: 0, openingDate, feedMethods: [], booksCode: code, order: Object.keys(accounts).length, ts: now, updatedAt: now, updatedBy: actor.uid, createdFrom: "books_chart_seed"};
+    // The claim makes the code exclusive to this fixed id, so the account, its server-owned link, the
+    // chart marker and the audit land in one atomic write (a crash cannot leave a half-linked account).
+    // The audit key is fixed per code, so two Finance Books tabs opening at once record it once.
+    if ((await db.ref(`/cfAccounts/${id}`).get()).exists()) continue;
+    accounts[id] = record;
+    await db.ref().update({[`cfAccounts/${id}`]: record, [`books/config/cashAccountMap/${id}`]: code, [`booksChart/${code}/bankAccountId`]: id, [`booksChart/${code}/sensitive`]: true, [`booksChart/${code}/updatedAt`]: now,
+      [`operationalAudit/${Number(row.openedAt) || now}_cash_account_${id}`]: {action: "bank_account_create_from_chart_seed", sourceType: "cashAccount", sourceId: id, booksCode: code, booksChartCreated: false, oldOpening: 0, opening: 0, adjustment: 0, openingDate, reason: "Seeded bank / e-wallet Books code had no Cash Flow account", actorUid: actor.uid, actorRole: actor.role || "", ts: now, schemaVersion: 1}});
+    created.push({code, accountId: id, name: row.name});
+  } catch (error) { logger.error("seeded cash account not created", {code: row.code, error: String(error)}); plan.blocked.push({code: row.code, reason: "The Cash Flow account could not be created. Reopen Finance Books to retry."}); }
+  return {created, blocked: plan.blocked};
+}
+
 // Platform (Grab/FoodPanda) order-number uniqueness. Every platform reference
 // may be used ONCE. This trigger keeps an authoritative index the POS reads at
 // entry to block a re-key, and records any duplicate that still slips through
@@ -1359,7 +1390,7 @@ exports.getOperationalExceptions = onCall(
 
 async function scanOperationalExceptions(db, now) {
     const days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
-    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, paymentSettingsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, uncostedSnap, closeFollowUpSnap, aiHealthTodaySnap, aiHealthYesterdaySnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref("/payment").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),db.ref("/uncostedSales").orderByChild("status").equalTo("open").limitToFirst(200).get(),db.ref("/shiftCloseFollowUps").orderByChild("state").equalTo("open").limitToFirst(50).get(),db.ref(`/accazaAiProviderHealth/${days[0]}`).get(),db.ref(`/accazaAiProviderHealth/${days[1]}`).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, paymentSettingsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, uncostedSnap, closeFollowUpSnap, aiHealthTodaySnap, aiHealthYesterdaySnap, booksChartSnap, cashAccountMapSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref("/payment").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),db.ref("/uncostedSales").orderByChild("status").equalTo("open").limitToFirst(200).get(),db.ref("/shiftCloseFollowUps").orderByChild("state").equalTo("open").limitToFirst(50).get(),db.ref(`/accazaAiProviderHealth/${days[0]}`).get(),db.ref(`/accazaAiProviderHealth/${days[1]}`).get(),/* download-ok: bounded chart of accounts (about 90 rows) for the bank-account coverage check */db.ref("/booksChart").get(),db.ref("/books/config/cashAccountMap").get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
     let booksMonthlyNet = booksMonthlyNetSnap.val() || {};
     if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
@@ -1367,7 +1398,7 @@ async function scanOperationalExceptions(db, now) {
     const deadLetters = deadLetterSnap.val() || {};
     await repairHistoricalReplicaDeadLetters(db, deadLetters, now);
     await verifyOpenDeadLetters(db, deadLetters, now);
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
+    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, booksChart: booksChartSnap.val() || {}, cashAccountMap: cashAccountMapSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
 }
 
 
@@ -9788,6 +9819,7 @@ exports.ensureFinancialLedger = onCall(
   },
 );
 
+function missingLinkMap(writes) { const out = {}; Object.keys(writes || {}).forEach((path) => { out[path.split("/").pop()] = writes[path]; }); return out; }
 exports.manageBooksAccount = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => observeFinancialOperation(request, "manageBooksAccount", async () => {
@@ -9804,7 +9836,8 @@ exports.manageBooksAccount = onCall(
       if (Object.keys(missingLinks).length) await db.ref().update(missingLinks);
       const meta = await db.ref("/books/monthlyNetMeta").get();
       if (!meta.exists()) await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
-      return {chart: chart, managerEmail: actor.email};
+      const seeded = await ensureSeededCashAccounts(db, chart, cashAccounts, Object.assign({}, cashAccountMap, missingLinkMap(missingLinks)), actor);
+      return {chart: chart, managerEmail: actor.email, cashAccountsCreated: seeded.created, cashAccountsBlocked: seeded.blocked};
     }
     const now = Date.now();
     function cleanAccount(input){const code=financeText(input&&input.code,4);if(!/^\d{4}$/.test(code))throw new HttpsError("invalid-argument","Account code must be exactly four digits.");const name=financeText(input&&input.name,100);const type=financeText(input&&input.type,12);if(!name)throw new HttpsError("invalid-argument","Account name is required.");if(!BOOKS_TYPES.includes(type))throw new HttpsError("invalid-argument","Account type must be one of: "+BOOKS_TYPES.join(", ")+".");return {code:code,name:name,type:type,note:financeText(input&&input.note,160)};}
