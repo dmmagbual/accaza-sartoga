@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root=path.resolve(import.meta.dirname,'..');
-const ui=fs.readFileSync(path.join(root,'src','admin','analytics','40-platform-payout-reconciliation.js'),'utf8');
+const ui=fs.readFileSync(path.join(root,'src','admin','analytics','40-platform-payout-reconciliation.js'),'utf8')+'\n'+fs.readFileSync(path.join(root,'assets','js','admin','payout-audit.mjs'),'utf8');
 const server=fs.readFileSync(path.join(root,'src','functions','43d-platform-settlement.js'),'utf8');
 const reversal=fs.readFileSync(path.join(root,'src','functions','43e-platform-reversal.js'),'utf8');
 const approval=fs.readFileSync(path.join(root,'src','functions','20-portal-operations.js'),'utf8');
