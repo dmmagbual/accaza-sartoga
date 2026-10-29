@@ -2,12 +2,11 @@
 # Project-scoped config loads only when this folder is trusted in ~/.codex/config.toml:
 #   [projects.'C:\AKALIKO\DMM\PERSONAL\CLAUDE\Projects\Accaza Coffee Shop']
 #   trust_level = "trusted"
-# Reasoning effort is deliberately left per task: finance work needs it.
-# Savings come from shorter answers, smaller tool echo and fewer parallel agents.
+# Quality guard: reasoning effort, answer verbosity and tool-output limits are
+# deliberately left at your user/task settings so evidence is never truncated.
+# Savings come from concise reasoning summaries and fewer parallel agents.
 
 model_reasoning_summary = "concise"
-model_verbosity = "low"
-tool_output_token_limit = 8000
 web_search = "cached"
 
 [agents]

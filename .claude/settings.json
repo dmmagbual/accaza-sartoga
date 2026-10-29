@@ -17,25 +17,21 @@
       "Bash(git add -A *)",
       "Bash(git add .)",
       "Bash(firebase deploy *)",
-      "Bash(npx firebase deploy *)"
-    ],
-    "deny": [
-      "Bash(npm test)",
-      "Bash(npm run test:ci)",
+      "Bash(npx firebase deploy *)",
       "Read(./node_modules/**)",
       "Read(./functions/node_modules/**)",
       "Read(./dist/**)",
-      "Read(./test-results/**)",
       "Read(./BACKUP FOLDER/**)",
       "Read(./backup json/**)",
       "Read(**/*backup*.json)",
       "Read(./pictures/**)",
-      "Read(./video animation/**)",
+      "Read(./video animation/**)"
+    ],
+    "deny": [
+      "Bash(npm test)",
+      "Bash(npm run test:ci)",
       "Read(.env)",
       "Read(.env.*)"
     ]
-  },
-  "env": {
-    "BASH_MAX_OUTPUT_LENGTH": "15000"
   }
 }
