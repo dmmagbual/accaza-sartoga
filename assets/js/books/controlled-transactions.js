@@ -179,15 +179,6 @@ App.reactivateAccount=function(code){
   var self=this;
   window.__manageBooksAccount({action:'reactivate',code:code}).then(function(){ self.closeModal(); }).catch(function(e){ alert("Could not reactivate: "+(e&&e.message||e)); });
 };
-App.applyServerChart=function(){
-  var map=window.__booksChart; if(!map||typeof map!=='object')return;
-  var list=Object.keys(map).map(function(code){var a=map[code]||{};return {code:String(a.code||code),name:a.name||('? '+code),type:a.type||'Expense',note:a.note||'',active:a.active!==false,system:a.system===true};});
-  if(!list.length)return;
-  list.sort(function(x,y){return String(x.code).localeCompare(String(y.code));});
-  DB.accounts=list; window.__booksChartLive=true;
-  try{save();}catch(_e){}
-  if(this.render)this.render();
-};
 App.importLocalChart=function(){
   if(!window.__booksChartManager) return alert("Only the finance owners can import accounts.");
   var raw; try{ raw=JSON.parse(localStorage.getItem(STORE_KEY)||"{}"); }catch(_e){ raw={}; }

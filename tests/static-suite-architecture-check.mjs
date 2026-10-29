@@ -183,6 +183,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // completed sale counts whatever its payment status, and a payment marked not received reverses like a
 // refund (refund=number(order.refundAmount)+unpaid(order)) -- instead of the old pending exclusion.
 // Same guard, same count; guard count and executable checks stay unchanged.
-if(guardDigest!=='91cbf4915c0e18f16d5192e8677f33d37d862d01c6204abc2e999356b256f940')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// 30 Oct 2026 (Finance Books live chart, Books 164): the same Admin-cache guard now pins the deferred
+// Finance bundles at v164. The chart applier moved back into app.js (tests/books-live-chart-check.mjs);
+// the protected delivery boundary and guard count are unchanged.
+if(guardDigest!=='ed5a15f207b1fd09fd24170dea2cb1b9973268a0bda33504a5763cf2c2875c2c')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
