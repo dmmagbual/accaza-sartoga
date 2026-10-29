@@ -62,7 +62,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   cashAccountMap = cashAccountMap || {};
   const exact = {
     "asset:register_cash": "1000", "asset:register_float": "1005", "asset:cash_awaiting_deposit": "1001", "asset:petty_cash": "1040",
-    "asset:withholding_tax": "1260", "asset:input_vat": "1250", "asset:cash_shortage_pending": "1190", "liability:cash_overage_pending": "2100", "revenue:sales_reversal": "4910",
+    "asset:payment_verification": "1060", "expense:unpaid_sales_loss": "6120", "asset:withholding_tax": "1260", "asset:input_vat": "1250", "asset:cash_shortage_pending": "1190", "liability:cash_overage_pending": "2100", "revenue:sales_reversal": "4910",
     // A cash overage is a liability under investigation, never automatic income.
     // Older Finance movements used the revenue-shaped key; keep the immutable
     // source record but translate it to the overage control account on rebuild.
@@ -131,7 +131,7 @@ function cashCodeForAccount(account) {
 
 function isSaleMovement(mv) {
   const t = String(mv && mv.type || "");
-  return mv && (mv.sourceType === "order" || t === "order_sale" || t === "order_void" || t === "order_refund");
+  return mv && (mv.sourceType === "order" || t === "order_sale" || t === "order_void" || t === "order_refund" || t === "order_unpaid");
 }
 
 function fullyVoidedSourceIds(movements) {
@@ -340,7 +340,8 @@ function cogsReversalMovement(order, orderId, inventory, categories){
 
 function recognizedOrderForCogs(order){
   order=order||{};var status=order.status==='Archived'?order.prevStatus:order.status;
-  return order.voided!==true&&order.paymentStatus!=='pending'&&(status==='Completed'||status==='Received');
+  // Recognized whatever the payment status (Danilo, 29 Oct 2026): unverified payments sit in 1060.
+  return order.voided!==true&&(status==='Completed'||status==='Received');
 }
 
 /* Straight-line monthly depreciation and net book value (shared by server + register UI). */

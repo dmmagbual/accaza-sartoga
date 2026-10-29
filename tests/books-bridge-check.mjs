@@ -88,7 +88,8 @@ ok(B.includeInRecognizedBooks({type:'order_refund',sourceType:'order',sourceId:'
 const authorityOrders={B:{status:'Completed',paymentStatus:'confirmed'},P:{status:'Completed',paymentStatus:'pending'},V:{status:'Completed',paymentStatus:'confirmed'}};
 ok(B.includeInAuthoritativeBooks({type:'order_sale',sourceType:'order',sourceId:'B'},voidSources,authorityOrders),'qualified Admin sale was excluded from authoritative Books');
 ok(!B.includeInAuthoritativeBooks({type:'order_sale',sourceType:'order',sourceId:'ORPHAN'},voidSources,authorityOrders),'orphan Finance sale was recognized without an Admin order');
-ok(!B.includeInAuthoritativeBooks({type:'order_sale',sourceType:'order',sourceId:'P'},voidSources,authorityOrders),'pending Admin order was recognized as a sale');
+// 29 Oct 2026 (Danilo: a sale is a sale): the unverified sale is recognized in Books exactly as Admin counts it.
+ok(B.includeInAuthoritativeBooks({type:'order_sale',sourceType:'order',sourceId:'P'},voidSources,authorityOrders),'an unverified Admin sale must be recognized in Books');
 ok(B.includeInAuthoritativeBooks({type:'platform_payout_deposit',sourceType:'payout',sourceId:'PAY1'},voidSources,authorityOrders),'non-sale Finance adjustment was excluded');
 ok(B.mapAccount('expense:platform_variance:va_refund','grabfood',{}).code==='6085','platform refund deduction polluted customer sales returns');
 ok(B.mapAccount('revenue:platform_variance:va_refund_recovery','grabfood',{}).code==='4990','platform refund recovery polluted recognized net sales');
@@ -171,7 +172,7 @@ ok(B.applyDaily(n, cm, {})===undefined, "cogs movement idempotent (re-fire abort
 ok(B.recognizedOrderForCogs({status:'Completed',paymentStatus:'confirmed'})===true,'completed confirmed order qualifies for COGS');
 ok(B.recognizedOrderForCogs({status:'Archived',prevStatus:'Received',paymentStatus:'cashier_verified'})===true,'archived received order qualifies for COGS');
 ok(B.recognizedOrderForCogs({status:'Archived',prevStatus:'Completed',paymentStatus:'confirmed',voided:true})===false,'voided order COGS is excluded');
-ok(B.recognizedOrderForCogs({status:'Completed',paymentStatus:'pending'})===false,'pending-payment order COGS is excluded');
+ok(B.recognizedOrderForCogs({status:'Completed',paymentStatus:'pending'})===true,'an unverified sale carries its COGS (29 Oct 2026 (Danilo: a sale is a sale))');ok(B.recognizedOrderForCogs({status:'Completed',paymentStatus:'pending',voided:true})===false,'a voided sale carries no COGS');
 
 // 7) Fixed assets: account mappings + straight-line depreciation math
 ok(B.mapAccount("asset:fixed_asset:equipment","instore",{}).code==="1500", "fixed_asset:equipment -> 1500");

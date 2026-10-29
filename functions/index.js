@@ -1398,7 +1398,8 @@ async function scanOperationalExceptions(db, now) {
     const deadLetters = deadLetterSnap.val() || {};
     await repairHistoricalReplicaDeadLetters(db, deadLetters, now);
     await verifyOpenDeadLetters(db, deadLetters, now);
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, booksChart: booksChartSnap.val() || {}, cashAccountMap: cashAccountMapSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
+    const paymentQueueSnap = await db.ref("/paymentVerificationQueue").limitToFirst(300).get();
+    return OperationalExceptions.buildOperationalExceptions({paymentVerificationQueue: paymentQueueSnap.val() || {}, activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, booksChart: booksChartSnap.val() || {}, cashAccountMap: cashAccountMapSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
 }
 
 
@@ -1618,7 +1619,7 @@ exports.acceptOnlineOrder = onCall(
 );
 
 const MANAGER_APPROVAL_ACTIONS = new Set([
-  "validate_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count", "reopen_discrepancy",
+  "validate_payment", "payment_not_received", "refund", "void", "settle_platform_payout", "reopen_cash_count", "reopen_discrepancy",
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher", "correct_petty_voucher", "void_replace_legacy_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "fixed_float_exception", "reverse_purchase",
   "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement", "set_undeposited_opening_balance", "retire_revolving_fund",
@@ -2319,7 +2320,7 @@ const ORDER_ARCHIVE_REFUSAL = {
   shift_open: "Orders cannot be archived while their shift is open.",
   not_final: "Only completed, received, rejected, or voided orders can be archived.",
   serving_queue: "This order is still in the serving queue. Mark it served or not collected first.",
-  payment_review: "This order is still awaiting manager payment validation.",
+  payment_review: "Verify this payment first: a manager has not validated this e-payment yet.",
   inventory_reversal: "This order is still waiting for its inventory reversal.",
   platform_unsettled: "This platform receivable is still unsettled.",
   posting_incomplete: "The order is still posting to inventory or Finance Books.",
@@ -2376,6 +2377,8 @@ async function orderArchiveCheck(db, orderId, options = {}) {
   }
   if (!ORDER_ARCHIVE_FINAL_STATUSES.includes(String(order.status || "")) && order.voided !== true) return {ok: false, reason: "not_final"};
   if (OrderService.keepsOrderLive(order)) return {ok: false, reason: "serving_queue"};
+  // Unverified e-payments stay in the verification queue (manual and automatic archive alike).
+  if (["pending", "cashier_verified"].includes(String(order.paymentStatus || ""))) return {ok: false, reason: "payment_review"};
   if (options.strict) {
     // Reuse the live-projection rule instead of a second guess: an order the
     // register or the manager validation queue still shows - an electronic
@@ -2384,7 +2387,6 @@ async function orderArchiveCheck(db, orderId, options = {}) {
     // shift is closed. Its own shift is already proven closed above, so the
     // active-shift clause of that rule cannot apply here.
     if (order.correctionPending || (storedOrder.archivePending && !staleArchiveClaim)) return {ok: false, reason: "still_live"};
-    if (["pending", "cashier_verified"].includes(String(order.paymentStatus || ""))) return {ok: false, reason: "payment_review"};
     if (order.inventoryReversalRequested === true && order.inventoryReversed !== true) return {ok: false, reason: "inventory_reversal"};
     const channel = String(order.channel || "").toLowerCase().replace(/[^a-z0-9]/g, ""), platformUnsettled = ["grabfood", "foodpanda"].includes(channel) && (order.settlementStatus || "unsettled") === "unsettled";
     // Danilo-approved manual cleanup (29 Oct 2026): an unsettled platform receivable
@@ -5112,7 +5114,7 @@ exports.unlinkLoyaltyFromDevice = onCall(
 // ---------------------------------------------------------------------------
 function loyaltyOrderCanEarn(order) {
   const effectiveStatus = order.status === "Archived" ? order.prevStatus : order.status;
-  return ["Completed", "Received"].includes(String(effectiveStatus || "")) && order.paymentStatus !== "pending" && order.voided !== true && String(order.channel || "instore").toLowerCase() === "instore" && !!order.loyaltyMemberId;
+  return ["Completed", "Received"].includes(String(effectiveStatus || "")) && !["pending", "not_received"].includes(String(order.paymentStatus || "")) && !order.unpaidSale && order.voided !== true && String(order.channel || "instore").toLowerCase() === "instore" && !!order.loyaltyMemberId;
 }
 
 async function postLoyaltyEarning(db, order) {
@@ -6895,6 +6897,7 @@ const CONTROL_ACCOUNT_RULES = {
   "1020":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},
   "1021":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},
   "1050":{postingRule:"open",correctionMessage:"Use Finance > Platform Payouts"},
+  "1060":{postingRule:"blocked",correctionMessage:"Payments Awaiting Verification is posted only by POS sales and payment verification. Use Admin > Register > Payments awaiting verification to verify a payment or record it as not received."},
   "1100":{postingRule:"blocked",correctionMessage:"Receivable control accounts must be corrected from Receivables or the related sale so the customer or platform subledger remains linked."},
   "1110":{postingRule:"blocked",correctionMessage:"Receivable control accounts must be corrected from Receivables or the related sale so the customer or platform subledger remains linked."},
   "1115":{postingRule:"blocked",correctionMessage:"Supplier Advances is system-controlled. Record or correct the payment in Admin > Cash Payments, then allocate it in Admin > Purchases so the supplier balance, inventory, and Finance Books remain linked."},
@@ -6924,12 +6927,12 @@ const CONTROL_ACCOUNT_RULES = {
 };
 const CONTROL_ACCOUNT_CODES = Object.keys(CONTROL_ACCOUNT_RULES);
 const BOOKS_CHART_SEED_ROWS = [
-  ["1000","Cash on Hand","Asset"],["1005","Register Cash Float","Asset","Fixed imprest tied to POS Settings"],["1010","Other Bank Accounts","Asset"],["1011","Union Bank","Asset"],["1012","BDO","Asset"],["1013","Security Bank - 4538","Asset"],["1014","Security Bank - 4389","Asset"],["1020","GCash / Maya Wallet","Asset"],["1021","FoodPanda GCash Wallet","Asset","Dedicated FoodPanda payout destination"],["1030","Undeposited Collection","Asset","Cash awaiting bank deposit"],["1040","Revolving Fund","Asset"],["1050","Platform Payouts in Transit","Asset","Settled platform payouts awaiting bank deposit"],["1100","Accounts Receivable - Platforms","Asset","Grab/Panda settlements owed to us"],["1110","Other Receivables","Asset"],["1115","Supplier Advances","Asset","Unallocated supplier payments; controlled by Cash Payments and Purchases"],["1120","Staff Advances","Asset","Amounts advanced to staff pending liquidation or return"],["1190","Cash Shortage Under Review","Asset","Pending manager reconciliation"],["1200","Inventory - Coffee & Beans","Asset"],["1210","Inventory - Milk & Dairy","Asset"],["1220","Inventory - Syrups & Flavors","Asset"],["1230","Inventory - Cups & Packaging","Asset"],["1240","Inventory - Food & Pastries","Asset"],["1250","Input VAT (creditable)","Asset","Used when VAT-registered"],["1260","Creditable Withholding Tax","Asset","CWT withheld by platforms/customers"],["1270","Inventory - Operating & Cleaning Supplies","Asset"],["1280","Inventory - Office Supplies","Asset"],["1290","Inventory Receiving Clearing","Asset","Received inventory awaiting complete posting"],["1500","Equipment","Asset","Espresso machine, grinders"],["1510","Furniture & Fixtures","Asset"],["1590","Accumulated Depreciation","Asset","Contra-asset (credit balance)"],["1900","Suspense","Asset","Unmapped POS accounts land here for review"],
+  ["1000","Cash on Hand","Asset"],["1005","Register Cash Float","Asset","Fixed imprest tied to POS Settings"],["1010","Other Bank Accounts","Asset"],["1011","Union Bank","Asset"],["1012","BDO","Asset"],["1013","Security Bank - 4538","Asset"],["1014","Security Bank - 4389","Asset"],["1020","GCash / Maya Wallet","Asset"],["1021","FoodPanda GCash Wallet","Asset","Dedicated FoodPanda payout destination"],["1030","Undeposited Collection","Asset","Cash awaiting bank deposit"],["1040","Revolving Fund","Asset"],["1050","Platform Payouts in Transit","Asset","Settled platform payouts awaiting bank deposit"],["1060","Payments Awaiting Verification","Asset","POS e-payments recorded at sale, waiting for manager verification (not cash)"],["1100","Accounts Receivable - Platforms","Asset","Grab/Panda settlements owed to us"],["1110","Other Receivables","Asset"],["1115","Supplier Advances","Asset","Unallocated supplier payments; controlled by Cash Payments and Purchases"],["1120","Staff Advances","Asset","Amounts advanced to staff pending liquidation or return"],["1190","Cash Shortage Under Review","Asset","Pending manager reconciliation"],["1200","Inventory - Coffee & Beans","Asset"],["1210","Inventory - Milk & Dairy","Asset"],["1220","Inventory - Syrups & Flavors","Asset"],["1230","Inventory - Cups & Packaging","Asset"],["1240","Inventory - Food & Pastries","Asset"],["1250","Input VAT (creditable)","Asset","Used when VAT-registered"],["1260","Creditable Withholding Tax","Asset","CWT withheld by platforms/customers"],["1270","Inventory - Operating & Cleaning Supplies","Asset"],["1280","Inventory - Office Supplies","Asset"],["1290","Inventory Receiving Clearing","Asset","Received inventory awaiting complete posting"],["1500","Equipment","Asset","Espresso machine, grinders"],["1510","Furniture & Fixtures","Asset"],["1590","Accumulated Depreciation","Asset","Contra-asset (credit balance)"],["1900","Suspense","Asset","Unmapped POS accounts land here for review"],
   ["2000","Accounts Payable - Suppliers","Liability"],["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2030","Customer Change / Refund Payable","Liability","Customer-related cash overages awaiting refund"],["2050","Due to Owner / Partners","Liability","Personally funded business costs awaiting reimbursement"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Cash Overage Under Review","Liability","Pending manager reconciliation"],["2120","Accrued Salaries","Liability"],["2200","Taxes Payable","Liability"],["2210","Output VAT Payable","Liability","Used when VAT-registered"],["2220","Percentage Tax Payable","Liability","Non-VAT percentage tax on gross receipts"],["2230","Withholding Tax Payable","Liability","EWT withheld from payments"],["2300","Loans Payable","Liability"],["2310","Loan 2","Liability"],["2320","Loan 3","Liability"],
   ["3000","Owner's Capital","Equity"],["3050","Cash Float Clearing","Equity","POS shift float source"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],["3900","Retained Earnings","Equity"],
   ["4000","Sales - In-store","Income"],["4010","Sales - Online (own)","Income"],["4020","Sales - GrabFood","Income"],["4030","Sales - FoodPanda","Income"],["4900","Discounts & Comps","Income","Contra-income (debit balance)"],["4910","Sales Returns & Refunds","Income","Existing void and refund adjustments"],["4920","Loyalty Discounts","Income","Contra-income (debit balance) - Red/Yellow Stamps reward redemptions, kept separate from 4900 so loyalty spend is separately reportable"],["4990","Other Income","Income"],
   ["5000","COGS - Coffee & Beans","COGS"],["5010","COGS - Milk & Dairy","COGS"],["5020","COGS - Syrups & Flavors","COGS"],["5030","COGS - Food & Pastries","COGS"],["5040","COGS - Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],["5905","Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],
-  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6079","Staff Advance Write-offs","Expense","Uncollectible staff advances written off through the liquidation workflow"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6086","Percentage Tax","Expense","Non-VAT percentage tax on gross receipts"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Over / Short","Expense","Net register variance: overages credit, shortages debit. P&L shows a net credit as other income and a net debit as other expense."]
+  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6079","Staff Advance Write-offs","Expense","Uncollectible staff advances written off through the liquidation workflow"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6086","Percentage Tax","Expense","Non-VAT percentage tax on gross receipts"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Over / Short","Expense","Net register variance: overages credit, shortages debit. P&L shows a net credit as other income and a net debit as other expense."],["6120","Unpaid Sales Loss","Expense","Cost of goods given when a POS e-payment was never received"]
 ].map(function(row){if(row[0]==="1000")return ["1000","Cash on Hand - Cash in Register","Asset"];if(row[0]==="1030")return ["1001","Cash on Hand - Undeposited Collection","Asset","Cash awaiting bank deposit; controlled by cash custody"];return row;});
 function booksChartSeed(){const out={};BOOKS_CHART_SEED_ROWS.forEach(function(r){const control=CONTROL_ACCOUNT_RULES[r[0]]||{};out[r[0]]=Object.assign({code:r[0],name:r[1],type:r[2],note:r[3]||"",active:true,system:true,sensitive:SENSITIVE_BOOKS_CODES.has(r[0]),postingRule:"open",correctionMessage:""},control);});return out;}
 async function ensureBooksChart(db) {
@@ -7195,20 +7198,25 @@ async function findOrder(db, orderId) {
   if (!snap.exists()) throw new HttpsError("not-found", "Order not found.");
   return {id, node, order: Object.assign({id}, snap.val() || {})};
 }
-async function postOrderFinancial(db, order, accounts, actor, taxSettings) {
+async function postOrderFinancial(db, order, accounts, actor, taxSettings, options = {}) {
   const effectiveStatus = order && order.status === "Archived" ? order.prevStatus : order && order.status;
-  if (!order || !order.id || order.paymentStatus === "pending" || !["Completed", "Received"].includes(String(effectiveStatus || ""))) return {skipped: true};
+  // A sale is a sale (Danilo, 29 Oct 2026): it posts when captured, verified or not. An unverified
+  // electronic payment is debited to 1060 and listed in the Payments Awaiting Verification queue.
+  if (!order || !order.id || !["Completed", "Received"].includes(String(effectiveStatus || ""))) return {skipped: true};
   const occurredAt = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now());
   // Effective-date wall: tax comes from /taxSettings and applies only to sales
   // completed at/after effectiveAt. History is never recomputed.
   const tax = Financial.effectiveTaxFor(taxSettings, occurredAt);
   const movement = Financial.orderPosting(order, accounts || {}, tax);
   if (order.paymentApprovalId) {movement.approvalId = order.paymentApprovalId; movement.approvedBy = financeText(order.paymentApprovedBy, 160);}
-  movement.occurredAt = occurredAt;
+  movement.occurredAt = Number(options.occurredAt) || occurredAt;
+  if (options.originalSaleDate) movement.originalSaleDate = financeText(options.originalSaleDate, 10);
   movement.actorName = order.onDuty || order.staff || "POS";
   const date = financeDateFromTimestamp(movement.occurredAt);
   const writes = {};
   (movement.cashEntries || []).forEach((entry) => { entry.date = date; entry.party = order.name || "Walk-in"; entry.ref = order.id; entry.auto = true; writes[`cfLedger/${entry.id}`] = cashLedgerRecord(entry, `sale_${order.id}`, movement, actor); });
+  const clearing = Financial.verificationClearing(movement);
+  if (clearing > 0) writes[`paymentVerificationQueue/${financeKey(order.id, "Order ID")}`] = paymentVerificationQueueRow(order, clearing, `sale_${order.id}`, movement.occurredAt);
   return commitFinancial(db, `sale_${order.id}`, movement, actor, writes);
 }
 function addOrderCashWrites(writes, movement, movementId, order, actor) {
@@ -7260,7 +7268,7 @@ exports.onOrderFinancialPosting = onValueWritten(
     }
     if (order.voided === true && before.voided !== true) {
       const remaining = Financial.money(Math.max(0, Financial.money(order.total) - afterRefund));
-      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = (order.voidAccountingDate && Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`)) || Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
+      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = (order.voidAccountingDate && Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`)) || Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {[`paymentVerificationQueue/${financeKey(order.id, "Order ID")}`]: null}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
     }
   },
 );
@@ -8727,7 +8735,10 @@ exports.processOrderAdjustment = onCall(
       if (nextStatus !== o.status) { verified.statusUpdatedAt = now; verified.statusUpdatedBy = actor.uid; }
       const writes = {[`${found.node}/${o.id}`]: verified, [`activeOrders/${o.id}`]: activeOrderProjection(verified), [`operationalAudit/${now}_cashier_verify_${o.id}`]: {action: "cashier_verify_payment", sourceType: "order", sourceId: o.id, amount: verified.cashierVerifiedAmount, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}};
       if (verified.ownerUid) writes[`customerOrders/${verified.ownerUid}/${o.id}/status`] = nextStatus;
+      // A sale already posted with this payment in 1060 moves it to the bank now.
+      const verificationPlan = await preparePaymentVerification(db, o, data);
       await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {}, posted = await postOrderFinancial(db, verified, accounts, {uid: "server", role: "server"}, taxSettings);
+      await commitPaymentVerification(db, found.node, verified, verificationPlan, actor, {verifierUid: actor.uid, verifierRole: actor.role, verifierName: actor.name || actor.role});
       return {verified: true, status: nextStatus, paymentStatus: "cashier_verified", financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
     }
     if (data.action === "manager_validate_payment") {
@@ -8737,14 +8748,29 @@ exports.processOrderAdjustment = onCall(
       if (verificationPolicy === PaymentVerification.CASHIER_MANAGER && o.paymentStatus !== "cashier_verified") throw new HttpsError("failed-precondition", "Cashier verification is required before manager validation.");
       if (verificationPolicy === PaymentVerification.MANAGER_ONLY && !["pending", "cashier_verified"].includes(o.paymentStatus)) throw new HttpsError("failed-precondition", "This payment is not awaiting manager verification.");
       if (direct.some((row) => !financeText(row.ref, 120))) throw new HttpsError("invalid-argument", "Every direct electronic payment requires a transaction reference.");
+      const verificationPlan = await preparePaymentVerification(db, o, data), pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
+      const verifierCheck = await paymentVerifierCheck(db, o, pendingApproval.approvedBy, pendingApproval.approvedRole);
       const approval = await claimManagerApproval(db, data, "validate_payment", o.id, Financial.money(o.total), `validate_${o.id}`), now = Date.now(), approvedBy = approval.record.approvedEmail || approval.record.approvedRole, website = o.source === "online" || o.channel === "online", nextStatus = website && String(o.status || "Pending") === "Pending" ? "Confirmed" : String(o.status || "Pending");
       const validated = Object.assign({}, o, {payments, paymentStatus: "manager_validated", paymentVerificationPolicy: verificationPolicy, managerValidatedAt: now, managerValidatedBy: approval.record.approvedBy, managerValidatedRole: approval.record.approvedRole, managerValidatedName: approvedBy, paymentApprovalId: approval.id, status: nextStatus});
       if (nextStatus !== o.status) { validated.statusUpdatedAt = now; validated.statusUpdatedBy = actor.uid; }
       const activeShift = (await db.ref("/posActiveShift").get()).val() || null;
       const writes = Object.assign({}, approval.usedWrites, {[`${found.node}/${o.id}`]: validated, [`activeOrders/${o.id}`]: shouldProjectOrder(validated, activeShift, now) ? activeOrderProjection(validated) : null, [`operationalAudit/${now}_manager_validate_${o.id}`]: {action: "manager_validate_payment", sourceType: "order", sourceId: o.id, actorUid: actor.uid, actorRole: actor.role, approvedBy: approval.record.approvedBy, approvedRole: approval.record.approvedRole, approvalId: approval.id, ts: now, schemaVersion: 1}});
       if (validated.ownerUid) writes[`customerOrders/${validated.ownerUid}/${o.id}/status`] = nextStatus;
-      await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {}, posted = await postOrderFinancial(db, validated, accounts, {uid: "server", role: "server"}, taxSettings); return {validated: true, paymentStatus: "manager_validated", approvedBy, financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
+      await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {}, posted = await postOrderFinancial(db, validated, accounts, {uid: "server", role: "server"}, taxSettings);
+      await commitPaymentVerification(db, found.node, validated, verificationPlan, actor, {verifierUid: approval.record.approvedBy, verifierRole: approval.record.approvedRole, verifierName: approvedBy, approvalId: approval.id, selfCheck: verifierCheck.selfCheck});
+      return {validated: true, paymentStatus: "manager_validated", approvedBy, financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
     }
+    if (data.action === "payment_not_received") {
+      if (!Financial.recognizedSale(o) || !Financial.paymentAwaitingVerification(o)) throw new HttpsError("failed-precondition", "Only a completed sale whose payment is still awaiting verification can be recorded as not received.");
+      const reason = paymentNotReceivedReason(data), sale = (await db.ref(`/financialMovements/sale_${financeKey(o.id, "Order ID")}`).get()).val(), clearing = Financial.verificationClearing(sale);
+      if (!(clearing > 0)) throw new HttpsError("failed-precondition", "This sale has no payment waiting in Payments Awaiting Verification. Post it to Finance Books first.");
+      const pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
+      const verifierCheck = await paymentVerifierCheck(db, o, pendingApproval.approvedBy, pendingApproval.approvedRole);
+      const approval = await claimManagerApproval(db, data, "payment_not_received", o.id, clearing, `not_received_${o.id}`), approvedBy = approval.record.approvedEmail || approval.record.approvedRole;
+      const result = await commitUnpaidSale(db, found.node, o, clearing, reason, actor, {verifierUid: approval.record.approvedBy, verifierRole: approval.record.approvedRole, verifierName: approvedBy, approvalId: approval.id, selfCheck: verifierCheck.selfCheck});
+      return {orderId: o.id, notReceived: true, amount: clearing, duplicate: result && result.duplicate === true, approvedBy};
+    }
+    if (data.action === "recognize_unverified_sale") return recognizeUnverifiedSale(db, found, actor);
     if (data.action === "complete_order_item_correction") {
       const requestId=correctionRequestKey(data.requestId),commandRef=db.ref(`/orderCorrectionCommands/${requestId}`),existingCommand=(await commandRef.get()).val();
       if(existingCommand&&existingCommand.status==="posted"){if(existingCommand.orderId!==o.id)throw new HttpsError("already-exists","This correction request belongs to another order.");return{duplicate:true,correctionId:existingCommand.correctionId,refundAmount:Number(existingCommand.refundAmount)||0,correctedOrderTotal:Number(existingCommand.correctedOrderTotal)||0};}
@@ -8796,6 +8822,8 @@ exports.processOrderAdjustment = onCall(
       await supersedeUncostedSale(db,o.id,uncostedVariant);if(correctedUncosted.length)await registerUncostedSale(db,o.id,Object.assign({},o,{completedAt:now}),correctedUncosted,uncostedVariant);
       return{duplicate:false,correctionId,refundAmount:refund,correctedOrderTotal:correctedTotal,movementId:movement?movementId:""};
     }
+    if (o.unpaidSale && ["refund", "void", "cash_order_change_refund"].includes(data.action)) throw new HttpsError("failed-precondition", "This sale was already reversed because its payment was not received.");
+    if (Financial.paymentAwaitingVerification(o) && ["refund", "cash_order_change_refund"].includes(data.action)) throw new HttpsError("failed-precondition", "Verify this payment first. A sale whose e-payment has not been verified cannot be refunded — verify it, or record it as not received.");
     const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "Reason is required."); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {}; await postOrderFinancial(db, o, accounts, {uid: "server", role: "server"}, taxSettings);
     const now = Date.now(), writes = {}, saleTax = Financial.effectiveTaxFor(taxSettings, Number(o.completedAt||o.receivedAt||o.timestamp||Date.now())); let movementId, movement;
     if (data.action === "cash_order_change_refund") {
@@ -8833,6 +8861,7 @@ exports.processOrderAdjustment = onCall(
     else if (data.action === "refund") { const delta = Financial.money(data.amount), already = Financial.money(o.refundAmount), max = Financial.money(o.total); if (!(delta > 0) || already + delta > max + 0.009) throw new HttpsError("invalid-argument", "Refund exceeds the refundable amount."); const cumulative = Financial.money(already + delta), original = (Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior = o.refundPayments || {}, tender = Array.isArray(data.refundPayments)?data.refundPayments.map((row) => ({method:financeText(row.method,60),amount:Financial.money(row.amount)})).filter((row) => row.method&&row.amount>0):[]; if (String(o.channel||"instore").toLowerCase() === "instore") {if (Math.abs(tender.reduce((s,row)=>Financial.money(s+row.amount),0)-delta)>0.009) throw new HttpsError("invalid-argument","Refund tender allocations must equal the refund amount."); const allowed={}; original.forEach((row)=>{allowed[row.method]=Financial.money((allowed[row.method]||0)+Financial.money(row.amount));}); tender.forEach((row)=>{if (!allowed[row.method] || Financial.money((prior[row.method]||0)+row.amount)>allowed[row.method]+0.009) throw new HttpsError("invalid-argument",`Refund through ${row.method} exceeds the original payment.`);});} movementId = `refund_${o.id}_${Math.round(cumulative * 100)}`; const approval = await claimManagerApproval(db, data, "refund", o.id, delta, movementId); movement = Financial.reversalPosting(o, delta, "refund", accounts, tender, saleTax); Object.assign(writes, approval.usedWrites); const nextRefundPayments=Object.assign({},prior);tender.forEach((row)=>{nextRefundPayments[row.method]=Financial.money((nextRefundPayments[row.method]||0)+row.amount);}); writes[`${found.node}/${o.id}/refundAmount`] = cumulative; writes[`${found.node}/${o.id}/refundPayments`] = nextRefundPayments; writes[`${found.node}/${o.id}/refundHistory/${movementId}`] = {amount:delta,payments:tender,reason,at:now,by:actor.uid,approvalId:approval.id,approvedBy:approval.record.approvedEmail||approval.record.approvedRole}; writes[`${found.node}/${o.id}/refundReason`] = reason; writes[`${found.node}/${o.id}/refundedAt`] = now; writes[`${found.node}/${o.id}/refundedBy`] = actor.uid; writes[`${found.node}/${o.id}/refunded`] = true; }
     else if (data.action === "void") { if (o.voided) throw new HttpsError("already-exists", "Order is already voided."); const value = Financial.money(Math.max(0, Financial.money(o.total) - Financial.money(o.refundAmount))),originalDate=financeDateFromTimestamp(o.completedAt||o.receivedAt||o.timestamp||now),voidDate=originalDate; if (!(value > 0)) throw new HttpsError("failed-precondition", "Nothing remains to void.");if(data.accountingDate!=null&&data.accountingDate!==""&&financeDate(data.accountingDate)!==originalDate)throw new HttpsError("invalid-argument",`A void posts on the original sale date (${originalDate}) so Finance Books and Admin agree. Refresh the page and void again.`);const earlierDay=originalDate!==financeDateFromTimestamp(now);if(String(o.channel||"instore").toLowerCase()==="instore"&&earlierDay)throw new HttpsError("failed-precondition",`This in-store sale is from ${originalDate}. Its cash was counted in that day's shift, so use Refund instead of Void.`);data.accountingDate=voidDate;{const period=AccountingPeriods.periodForDate(voidDate);if(AccountingPeriods.isClosed((await db.ref(`/accountingPeriods/${period}`).get()).val()))throw new HttpsError("failed-precondition",`${period} is closed, so this sale cannot be voided on its sale date (${originalDate}). Use Refund instead; a refund posts today.`);}await assertAccountingPeriodOpen(db,voidDate,"voiding this completed sale"); movementId = `void_${o.id}`; const approval = await claimManagerApproval(db, data, "void", o.id, value, movementId, null, reversalApprovalFingerprint("void",o.id,{accountingDate:voidDate,amount:value,reason})), original=(Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior=o.refundPayments||{}, tender=[]; if (String(o.channel||"instore").toLowerCase()==="instore") {let rem=value; original.forEach((row)=>{const available=Financial.money(Math.max(0,Financial.money(row.amount)-Financial.money(prior[row.method]))),use=Financial.money(Math.min(rem,available));if(use>0){tender.push({method:row.method,amount:use});rem=Financial.money(rem-use);}});if(rem>0.009)throw new HttpsError("failed-precondition","Original payment allocation cannot support the void reversal.");} movement = await fullOrderVoidMovement(db, o, accounts, tender, taxSettings); if (!movement) throw new HttpsError("failed-precondition", "The void has no remaining financial balance to reverse."); if (earlierDay && (movement.lines||[]).some((line)=>/^asset:(register_cash|cash)/.test(String(line&&line.account||"")))) throw new HttpsError("failed-precondition", `This sale is from ${originalDate} and voiding it would return money today, so use Refund instead of Void.`); Object.assign(writes, approval.usedWrites); writes[`${found.node}/${o.id}/voided`] = true; writes[`${found.node}/${o.id}/voidPayments`] = tender; writes[`${found.node}/${o.id}/voidApprovalId`] = approval.id; writes[`${found.node}/${o.id}/voidApprovedBy`] = approval.record.approvedEmail||approval.record.approvedRole; writes[`${found.node}/${o.id}/voidReason`] = reason; writes[`${found.node}/${o.id}/voidedAt`] = now; writes[`${found.node}/${o.id}/voidAccountingDate`] = voidDate; writes[`${found.node}/${o.id}/voidedBy`] = actor.uid; }
     else throw new HttpsError("invalid-argument", "Adjustment action is invalid.");
+    if (data.action === "void") writes[`paymentVerificationQueue/${o.id}`] = null;
     if (data.restock === true) {writes[`${found.node}/${o.id}/inventoryReversalRequested`] = true; writes[`${found.node}/${o.id}/inventoryReversalReason`] = reason;}
     movement.occurredAt = data.action === "void" ? (Date.parse(`${financeDate(data.accountingDate)}T00:00:00+08:00`) || now) : now; movement.actorName = actor.role; if (data.approvalId) movement.approvalId=financeText(data.approvalId,160); addOrderCashWrites(writes, movement, movementId, o, actor); const committed = await commitFinancial(db, movementId, movement, actor, writes); return {movementId, duplicate: committed.duplicate, amount:movement.amount, correctedOrderTotal:movement.correctedOrderTotal, refundShiftId:movement.refundShiftId};
   },
@@ -9787,6 +9816,126 @@ async function redatePurchase(db, actor, invoiceId, invoice, data, reason, now) 
     await releasePurchaseReversalCloseLocks(closeClaims);
     for (const set of payableClaims) await set.release();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Payments awaiting verification (Danilo, 29 Oct 2026). A sale is a sale: a POS sale posts to
+// Finance Books when it is captured, and an electronic payment a manager has not verified yet
+// is debited to 1060 Payments Awaiting Verification instead of the bank. Each such sale has one
+// row in /paymentVerificationQueue (live or archived orders alike) until a manager either
+// verifies it (Dr bank, Cr 1060 on the sale date) or records it as not received (the sale is
+// reversed like a credit note and its cost moves to 6120 Unpaid Sales Loss).
+// ---------------------------------------------------------------------------
+const PAYMENT_VERIFY_EXEMPT_ROLES = new Set(["superadmin", "owner"]);
+const PAYMENT_NOT_RECEIVED_REASONS = {
+  no_transfer_found: "No matching transfer in the receiving account",
+  fake_proof: "Payment proof was not genuine",
+  customer_left: "Customer left without completing payment",
+  other: "Other (see note)",
+};
+function paymentDirectRows(order) {
+  const rows = Array.isArray(order && order.payments) && order.payments.length ? order.payments : [{method: order && order.payment, amount: order && order.total}];
+  return rows.filter((row) => String(row && row.method || "").toLowerCase() !== "cash");
+}
+function paymentVerificationQueueRow(order, clearing, movementId, occurredAt) {
+  const direct = paymentDirectRows(order), saleAt = Number(occurredAt || order.completedAt || order.receivedAt || order.timestamp || Date.now());
+  return {
+    orderId: String(order.id), amount: Financial.money(clearing), total: Financial.money(order.total), saleAt, saleDate: financeDateFromTimestamp(saleAt),
+    customer: financeText(order.name || "Walk-in", 120), staff: financeText(order.staff || order.onDuty || "", 120), shiftId: financeText(order.shiftId || "", 160) || null,
+    channel: financeText(String(order.channel || "instore").toLowerCase(), 40), methods: direct.map((row) => financeText(row.method, 40)).filter(Boolean).join(", "),
+    references: direct.map((row) => financeText(row.ref, 120)).filter(Boolean).join(", "), movementId, createdAt: Date.now(), schemaVersion: 1,
+  };
+}
+async function periodOpenFor(db, at) {
+  try { await assertAccountingPeriodOpen(db, at, "posting"); return true; } catch (error) { if (error && error.code === "failed-precondition") return false; throw error; }
+}
+// Separation of duties (Danilo, 29 Oct 2026): whoever took the sale - its cashier, the till login or
+// anyone on that shift's crew - cannot verify or reject its payment. A super admin (or the owner)
+// always can; that self-check is flagged in the audit trail.
+async function paymentVerifierCheck(db, order, verifierUid, verifierRole) {
+  const uid = String(verifierUid || ""), role = String(verifierRole || "").toLowerCase();
+  if (!uid) throw new HttpsError("failed-precondition", "The verifying manager could not be identified.");
+  const involved = new Set([order.syncedByUid, order.cashierUid, order.createdByUid, order.staffUid].filter(Boolean).map(String));
+  if (order.shiftId) {
+    const shiftId = financeKey(order.shiftId, "Shift ID");
+    const [crew, owner] = await Promise.all([db.ref(`/shiftCrews/${shiftId}`).get(), db.ref(`/shifts/${shiftId}/accountUid`).get()]);
+    Object.keys(crew.val() || {}).forEach((key) => involved.add(String(key)));
+    if (owner.val()) involved.add(String(owner.val()));
+  }
+  const self = involved.has(uid);
+  if (self && !PAYMENT_VERIFY_EXEMPT_ROLES.has(role)) throw new HttpsError("permission-denied", "The person who took this sale (its cashier or shift crew) cannot verify or reject its payment. Ask another manager or a super admin.");
+  return {selfCheck: self};
+}
+// Everything a verification needs is checked before any order or ledger write.
+async function preparePaymentVerification(db, order, data) {
+  const id = financeKey(order.id, "Order ID"), sale = (await db.ref(`/financialMovements/sale_${id}`).get()).val();
+  const clearing = Financial.verificationClearing(sale);
+  if (!(clearing > 0)) return null;
+  if ((await db.ref(`/financialMovements/payver_${id}`).limitToFirst(1).get()).exists()) return {duplicate: true};
+  // "Received into" (like a Xero/QuickBooks deposit account): optional, must be an active cash account.
+  const chosen = financeText(data && data.receivingAccountId, 160);
+  if (chosen) {const account = (await db.ref(`/cfAccounts/${financeKey(chosen, "Receiving account")}`).get()).val(); if (!account || account.active === false) throw new HttpsError("invalid-argument", "Choose an active bank or e-wallet account the money was received into.");}
+  return {id, clearing, accountId: chosen || "", saleAt: Number(sale.occurredAt || order.completedAt || order.timestamp || Date.now())};
+}
+function paymentNotReceivedReason(data) {
+  const code = financeText(data && data.reasonCode, 40), note = financeText(data && data.note, 300);
+  if (!PAYMENT_NOT_RECEIVED_REASONS[code]) throw new HttpsError("invalid-argument", "Choose why the payment was not received.");
+  if (code === "other" && !note) throw new HttpsError("invalid-argument", "Describe why the payment was not received.");
+  return {code, label: PAYMENT_NOT_RECEIVED_REASONS[code], note};
+}
+async function commitPaymentVerification(db, node, order, plan, actor, meta) {
+  if (!plan || plan.duplicate) return plan || null;
+  const accounts = (await db.ref("/cfAccounts").get()).val() || {}, id = plan.id;
+  const movement = Financial.verificationPosting(order, accounts, {clearing: plan.clearing, accountId: plan.accountId});
+  const open = await periodOpenFor(db, plan.saleAt), now = Date.now();
+  movement.occurredAt = open ? plan.saleAt : now; if (!open) movement.originalSaleDate = financeDateFromTimestamp(plan.saleAt);
+  movement.reference = financeText(paymentDirectRows(order).map((row) => row.ref).filter(Boolean).join(", "), 160);
+  movement.actorName = financeText(meta.verifierName || actor.role, 160);
+  if (meta.approvalId) {movement.approvalId = meta.approvalId; movement.approvedBy = financeText(meta.verifierName, 160);}
+  const movementId = `payver_${id}`, writes = {};
+  addOrderCashWrites(writes, movement, movementId, order, actor);
+  writes[`${node}/${id}/paymentVerification`] = {amount: plan.clearing, receivingAccountId: plan.accountId || null, movementId, verifiedAt: now, verifiedBy: financeText(meta.verifierUid, 160), verifiedRole: financeText(meta.verifierRole, 40), selfCheck: meta.selfCheck === true, approvalId: meta.approvalId || null};
+  writes[`paymentVerificationQueue/${id}`] = null;
+  writes[`operationalAudit/${now}_payment_verified_${id}`] = operationalAuditRecord("verify_payment_posting", "order", id, actor, {movementId, amount: plan.clearing, selfCheck: meta.selfCheck === true, approvalId: meta.approvalId || null});
+  return commitFinancial(db, movementId, movement, actor, writes);
+}
+// Payment not received: reverse the sale (dated like a void: the sale date when that month is open,
+// otherwise today) and move its cost to 6120. Stock stays out.
+async function commitUnpaidSale(db, node, order, amount, reason, actor, meta) {
+  const id = financeKey(order.id, "Order ID"), movementId = `unpaid_${id}`;
+  if ((await db.ref(`/financialMovements/${movementId}`).limitToFirst(1).get()).exists()) return {duplicate: true};
+  const sale = (await db.ref(`/financialMovements/sale_${id}`).get()).val();
+  if (!sale) throw new HttpsError("failed-precondition", "This sale has not been posted to Finance Books yet. Post it first.");
+  const saleAt = Number(sale.occurredAt || order.completedAt || order.timestamp || Date.now());
+  const [taxSettingsSnap, categoriesSnap] = await Promise.all([db.ref("/taxSettings").get(), db.ref("/posSettings/invCategories").get()]);
+  const cogs = await readCatalogKeyed(db, ["inventory"], (maps) => BooksBridge.cogsMovement(order, id, maps.inventory, categoriesSnap.val() || {}));
+  const movement = Financial.unpaidSalePosting(order, amount, Financial.effectiveTaxFor(taxSettingsSnap.val() || {}, saleAt), cogs && cogs.lines);
+  const open = await periodOpenFor(db, saleAt), now = Date.now();
+  movement.occurredAt = open ? saleAt : now; if (!open) movement.originalSaleDate = financeDateFromTimestamp(saleAt);
+  movement.reason = financeText(`${reason.label}${reason.note ? ` — ${reason.note}` : ""}`, 400);
+  movement.actorName = financeText(meta.verifierName || actor.role, 160);
+  if (meta.approvalId) {movement.approvalId = meta.approvalId; movement.approvedBy = financeText(meta.verifierName, 160);}
+  const unpaidSale = {amount: Financial.money(amount), reasonCode: reason.code, reason: reason.label, note: reason.note || "", movementId, recordedAt: now, recordedBy: financeText(meta.verifierUid, 160), recordedRole: financeText(meta.verifierRole, 40), approvalId: meta.approvalId || null, costMovedToLoss: movement.costMovedToLoss, selfCheck: meta.selfCheck === true};
+  const writes = {[`${node}/${id}/unpaidSale`]: unpaidSale, [`paymentVerificationQueue/${id}`]: null,
+    [`operationalAudit/${now}_payment_not_received_${id}`]: operationalAuditRecord("payment_not_received", "order", id, actor, {movementId, amount: unpaidSale.amount, reasonCode: reason.code, approvalId: meta.approvalId || null, selfCheck: meta.selfCheck === true})};
+  writes[`${node}/${id}/paymentStatus`] = "not_received";
+  return commitFinancial(db, movementId, movement, actor, writes);
+}
+// Catch-up for completed sales left unposted while their payment was unverified (12 sales,
+// 15-19 Aug 2026). Posts on the sale date when that month is open, otherwise today with the
+// original date kept on the movement; archived orders are touched so monthly history includes them.
+async function recognizeUnverifiedSale(db, found, actor) {
+  const o = found.order, id = financeKey(o.id, "Order ID");
+  if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only managers may post unverified sales to Finance Books.");
+  if (!Financial.recognizedSale(o) || !Financial.paymentAwaitingVerification(o)) throw new HttpsError("failed-precondition", "Only completed sales with an unverified payment are posted here.");
+  if ((await db.ref(`/financialMovements/sale_${id}`).limitToFirst(1).get()).exists()) return {orderId: id, duplicate: true};
+  const saleAt = Number(o.completedAt || o.receivedAt || o.timestamp || Date.now()), open = await periodOpenFor(db, saleAt);
+  const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {};
+  const posted = await postOrderFinancial(db, o, accounts, actor, taxSettings, open ? {} : {occurredAt: Date.now(), originalSaleDate: financeDateFromTimestamp(saleAt)});
+  const now = Date.now(), writes = {[`operationalAudit/${now}_recognize_unverified_sale_${id}`]: operationalAuditRecord("recognize_unverified_sale", "order", id, actor, {node: found.node, saleDate: financeDateFromTimestamp(saleAt), postedOn: open ? "sale_date" : "today"})};
+  if (found.node === "archivedOrders") writes[`archivedOrders/${id}/salesRecognizedAt`] = now;
+  await db.ref().update(writes);
+  return {orderId: id, posted: !posted.skipped, duplicate: posted.duplicate === true, postedOn: open ? "sale_date" : "today"};
 }
 
 exports.ensureFinancialLedger = onCall(

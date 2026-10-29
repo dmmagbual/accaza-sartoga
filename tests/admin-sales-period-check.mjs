@@ -98,6 +98,7 @@ const authority=sandbox.window.AccazaSales;
 const overview=mergeOverviewOrders([],Object.values(data.orders),Object.values(data.archivedOrders)).filter(o=>authority.qualifies(o)&&authority.stamp(o)>=p.startAt&&authority.stamp(o)<=p.endAt);
 const ids=rows=>Array.from(rows,o=>o.id).sort();assert.deepEqual(ids(history.map(x=>x.o)),ids(overview));assert.deepEqual(ids(analytics.map(x=>x.o)),ids(overview));
 const net=overview.reduce((n,o)=>n+authority.amounts(o).net,0);assert.equal(analytics.reduce((n,o)=>n+o.net,0),net);assert.equal(history.reduce((n,x)=>n+authority.amounts(x.o).net,0),net);
-assert(!overview.some(o=>o.id==='voidCopy'||o.id==='outside'||o.id==='pending'));assert(overview.some(o=>o.id==='refunded'));
+assert(!overview.some(o=>o.id==='voidCopy'||o.id==='outside'));// 29 Oct 2026 (Danilo: a sale is a sale): a completed sale counts before its e-payment is verified.
+assert(overview.some(o=>o.id==='pending'),'an unverified completed sale counts in Admin');assert(overview.some(o=>o.id==='refunded'));
 assert(!fs.readFileSync('src/admin/analytics/00-bootstrap-subscriptions.js','utf8').includes('completedAt:Date.now()'),'Opening Analytics must never alter completion dates');
 console.log('PASS: current-month rollover, validation, Apply feedback, bounded numeric sales-date queries, scoped period movements, race protection, and identical three-view sales totals.');

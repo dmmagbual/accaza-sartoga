@@ -44,6 +44,9 @@ window.__posVoid=function(oid){voidSale(oid);};window.__posRefund=function(oid){
 function verifyPayment(oid){
   var o=ordersMap[oid];if(!o){alert('Order not found in the active list. If it was archived, restore it first to verify.');return;}
   if(o.paymentStatus!=='pending'){alert('This sale is not pending cashier verification.');return;}
+  // One verification form everywhere (29 Oct 2026): amount received and statement date move the
+  // payment from 1060 Payments Awaiting Verification to the bank.
+  payVerifyRun(oid,null,function(){if(typeof renderOps==='function')renderOps();});return;
   if(verificationPolicyForOrder(o)==='manager_only'){validatePayment(oid);return;}
   var rows=directRows(o),existing=rows.map(function(p){return p.ref||'';}).filter(Boolean).join(', '),a=A();if(!a.processOrderAdjustment){alert('Payment verification service is not available. Refresh the portal.');return;}
   F().run({title:'Cashier payment verification',subtitle:oid+' · '+peso(o.total)+' · '+(o.payment||''),submitLabel:'Verify payment',busyLabel:'Recording verification…',fields:[{name:'reference',label:'Transaction reference',value:existing,required:true,maxLength:120,help:'Match this against the actual read-only GCash, Maya, or bank transaction history.'},{name:'confirmed',label:'I found this successful payment in the actual receiving account',type:'checkbox',required:true,help:'A customer screenshot by itself is not sufficient.'}]},function(v){return a.processOrderAdjustment({action:'cashier_verify_payment',orderId:oid,reference:v.reference});}).then(function(){if(window.__posLog)window.__posLog('cashier-verify-payment',oid,peso(o.total)+' · '+(o.payment||''));}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0&&String((e&&e.message)||e).indexOf('cancelled')<0)alert('Payment confirmation failed: '+((e&&e.message)||e));});
@@ -631,12 +634,60 @@ function pendingPanel(){
   h+='</div>';
   return h;
 }
+// Payments awaiting verification (Danilo, 29 Oct 2026). Every POS sale is already in Finance Books;
+// an unverified e-payment waits in 1060 until a manager verifies it against the actual receiving
+// account (money moves to the bank on the sale date) or records it as not received (the sale is
+// reversed like a credit note and its cost moves to 6120 Unpaid Sales Loss). Works for live and
+// archived orders: the server keeps one /paymentVerificationQueue row per open payment.
+var PAY_NOT_RECEIVED_REASONS=[{value:'no_transfer_found',label:'No matching transfer in the receiving account'},{value:'fake_proof',label:'Payment proof was not genuine'},{value:'customer_left',label:'Customer left without completing payment'},{value:'other',label:'Other (describe in the note)'}];
+function payVerifyIsManager(){return['owner','superadmin','admin','manager'].indexOf(String((window.__accazaAuthz||{}).role||'').toLowerCase())>=0;}
+function payVerifyAge(at){var d=Math.floor((Date.now()-(Number(at)||0))/86400000);return d<=0?'today':d===1?'1 day':d+' days';}
+async function payVerifyLoadOrder(id){var a=A(),live=await a.get(a.ref(a.db,'orders/'+id));if(live.exists())return Object.assign({id:id},live.val());var arch=await a.get(a.ref(a.db,'archivedOrders/'+id));return arch.exists()?Object.assign({id:id},arch.val()):null;}
+// "Received into" choice, like a Xero/QuickBooks deposit: active bank/e-wallet accounts, defaulting
+// to the account the payment method is mapped to.
+function payVerifyAccountField(o){var ids=Object.keys(cashAccountsMap||{}).filter(function(id){var x=cashAccountsMap[id];return x&&x.active!==false&&String(x.type||'').toLowerCase()!=='cash';});if(!ids.length)return[];var row=directRows(o)[0]||{},method=String(row.method||'').toLowerCase(),mapped=row.receivingAccountId&&cashAccountsMap[row.receivingAccountId]?row.receivingAccountId:ids.find(function(id){return(cashAccountsMap[id].feedMethods||[]).some(function(m){return String(m).toLowerCase()===method;});})||'';return[{name:'receivingAccountId',label:'Received into',type:'select',value:mapped,options:[{value:'',label:'Mapped account for '+(row.method||'this payment')}].concat(ids.sort().map(function(id){return{value:id,label:cashAccountsMap[id].name||id};}))}];}
+// Verify: manager-only payments are validated with an approval; others take the cashier check first.
+async function payVerifyRun(id,row,done){
+  var a=A(),o=await payVerifyLoadOrder(id);if(!o){alert('Order '+id+' was not found.');return;}
+  if(o.paymentStatus!=='pending'){alert('This payment is no longer awaiting verification (status: '+(o.paymentStatus||'none')+').');if(done)done();return;}
+  var managerOnly=verificationPolicyForOrder(o)==='manager_only',accountField=payVerifyAccountField(o),refs=directRows(o).map(function(p){return p.ref||'';}).filter(Boolean).join(', ');
+  var fields=(managerOnly?[]:[{name:'reference',label:'Transaction reference',value:refs,required:true,maxLength:120}]).concat(accountField).concat([{name:'confirmed',label:'I found '+peso(row?row.amount:o.total)+' in the actual receiving account (not just a customer screenshot)',type:'checkbox',required:true}]);
+  return F().run({title:managerOnly?'Manager payment validation':'Verify payment',subtitle:id+' · '+peso(o.total)+' · '+(o.payment||''),submitLabel:'Verify payment',busyLabel:'Verifying…',fields:fields},function(v){
+    var payload={orderId:id,receivingAccountId:v.receivingAccountId||''};
+    if(!managerOnly)return a.processOrderAdjustment(Object.assign({action:'cashier_verify_payment',reference:v.reference},payload));
+    return a.managerApproval('validate_payment',id,Number(o.total)||0,'Verify e-payment against the receiving account').then(function(ap){return a.processOrderAdjustment(Object.assign({action:'manager_validate_payment',approvalId:ap.approvalId},payload));});
+  }).then(function(r){if(r===null||r===undefined)return;var out=(r&&r.data)||r||{};alert('Payment verified and moved to the bank.');if(done)done();}).catch(function(e){if(String(e&&e.message||e).indexOf('cancel')<0)alert('Could not verify: '+String(e&&e.message||e));});
+}
+async function payNotReceivedRun(id,row,done){
+  var a=A();if(!payVerifyIsManager()){alert('Only a manager can record a payment as not received.');return;}
+  return F().run({title:'Payment not received',subtitle:id+' · '+peso(row.amount)+' awaiting verification',submitLabel:'Reverse the unpaid sale',busyLabel:'Recording…',fields:[{name:'reasonCode',label:'Why',type:'select',required:true,options:PAY_NOT_RECEIVED_REASONS},{name:'note',label:'What was checked',type:'textarea',maxLength:300,required:true,help:'For example: the account and statement date range searched.'},{name:'confirmed',label:'The sale stays recorded, its revenue and tax for '+peso(row.amount)+' are reversed, and the stock cost moves to Unpaid Sales Loss.',type:'checkbox',required:true}]},function(v){
+    return a.managerApproval('payment_not_received',id,Number(row.amount)||0,'Payment not received: '+v.reasonCode).then(function(ap){return a.processOrderAdjustment({action:'payment_not_received',orderId:id,approvalId:ap.approvalId,reasonCode:v.reasonCode,note:v.note});});
+  }).then(function(r){if(r===null||r===undefined)return;alert('Recorded as not received. The unpaid sale was reversed in Finance Books.');if(done)done();}).catch(function(e){if(String(e&&e.message||e).indexOf('cancel')<0)alert('Could not record: '+String(e&&e.message||e));});
+}
+async function openPaymentVerificationQueue(){
+  var a=A(),m=document.createElement('div');m.className='pz-mask show';m.innerHTML='<div class="pz-modal" style="max-width:760px;"><h3>Payments awaiting verification</h3><p class="pz-sub">Every sale is already in Finance Books. These e-payments sit in 1060 Payments Awaiting Verification until a manager verifies them against the actual receiving account, or records them as not received.</p><div data-content>Loading…</div><button class="pz-btn sec" data-close>Close</button></div>';document.body.appendChild(m);m.querySelector('[data-close]').onclick=function(){m.remove();};var content=m.querySelector('[data-content]');
+  async function load(){
+    content.textContent='Loading…';
+    var q=(await a.get(a.query(a.ref(a.db,'paymentVerificationQueue'),a.limitToLast(300)))).val()||{},rows=Object.keys(q).map(function(k){return Object.assign({orderId:k},q[k]);}).sort(function(x,y){return(x.saleAt||0)-(y.saleAt||0);});
+    // Completed unverified sales that never reached Finance Books (before this rule): post them first.
+    var unposted=[];for(var node of ['orders','archivedOrders']){var snap=await a.get(a.query(a.ref(a.db,node),a.orderByChild('paymentStatus'),a.equalTo('pending'),a.limitToLast(200)));var v=snap.val()||{};Object.keys(v).forEach(function(id){var o=v[id]||{},st=o.status==='Archived'?o.prevStatus:o.status;if(!q[id]&&!o.voided&&(st==='Completed'||st==='Received'))unposted.push(Object.assign({id:id,node:node},o));});}
+    var total=rows.reduce(function(s,r){return s+(Number(r.amount)||0);},0),h='<p><b>'+rows.length+'</b> open · <b>'+peso(total)+'</b> in 1060</p>';
+    h+=rows.length?rows.map(function(r){var old=Date.now()-(Number(r.saleAt)||0)>=86400000;return'<div style="border-top:1px solid #eee;padding:.45rem 0;display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;align-items:center;"><div><b>'+esc(r.orderId)+'</b> · '+peso(r.amount)+' · '+esc(r.methods||'')+(r.references?' · ref '+esc(r.references):'')+'<div style="font-size:.76rem;color:'+(old?'#b3261e':'var(--tl)')+';">'+esc(r.saleDate||'')+' · '+esc(r.customer||'')+(r.staff?' · '+esc(r.staff):'')+' · waiting '+payVerifyAge(r.saleAt)+'</div></div><div><button class="pz-btn ok" data-verify="'+esc(r.orderId)+'">Verify</button> '+(payVerifyIsManager()?'<button class="pz-btn warn" data-unpaid="'+esc(r.orderId)+'">Not received</button>':'')+'</div></div>';}).join(''):'<p class="pz-sub">Nothing is awaiting verification.</p>';
+    if(unposted.length)h+='<h4 style="margin-top:1rem;">Completed sales not yet in Finance Books ('+unposted.length+' · '+peso(unposted.reduce(function(s,o){return s+(Number(o.total)||0);},0))+')</h4><p class="pz-sub">Recorded before every sale posted at capture. Posting adds the sale on its sale date (today if that month is closed) with the payment in 1060; then verify it or record it as not received.</p>'+unposted.map(function(o){return'<div style="border-top:1px solid #eee;padding:.4rem 0;display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;"><span><b>'+esc(o.id)+'</b> · '+peso(o.total)+' · '+esc(o.payment||'')+' · '+esc(new Date(Number(o.completedAt||o.timestamp)||0).toLocaleDateString('en-PH',{timeZone:'Asia/Manila'}))+(o.node==='archivedOrders'?' · archived':'')+'</span>'+(payVerifyIsManager()?'<button class="pz-btn sec" data-post="'+esc(o.id)+'">Post to Finance Books</button>':'')+'</div>';}).join('');
+    content.innerHTML=h;
+    content.querySelectorAll('[data-verify]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-verify');payVerifyRun(id,q[id],load);};});
+    content.querySelectorAll('[data-unpaid]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-unpaid');payNotReceivedRun(id,Object.assign({orderId:id},q[id]),load);};});
+    content.querySelectorAll('[data-post]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-post');if(!confirm('Post sale '+id+' to Finance Books? The payment goes to 1060 Payments Awaiting Verification.'))return;b.disabled=true;a.processOrderAdjustment({action:'recognize_unverified_sale',orderId:id}).then(function(){return load();}).catch(function(e){b.disabled=false;alert('Could not post: '+String(e&&e.message||e));});};});
+  }
+  load().catch(function(e){content.textContent='Could not load payments: '+String(e&&e.message||e);});
+}
+window.openPaymentVerificationQueue=openPaymentVerificationQueue;
 
 function renderOps(){
   var root=document.getElementById('opsRoot');if(!root)return;
   var html='<div class="pz-h">🧾 Register Ops</div><p class="pz-sub">Shift control, cash reconciliation, voids &amp; refunds — all logged. Super Admin, Admin, or Manager accounts approve controlled actions.</p>';
   html+=pendingPanel();
-  if(['owner','superadmin','admin','manager'].indexOf(String((window.__accazaAuthz||{}).role))>=0)html+='<button class="pz-btn sec" id="opsHandovers">Review pending shift handovers</button> <button class="pz-btn sec" id="opsSaleRecovery">Sales needing recovery</button>';
+  if(['owner','superadmin','admin','manager'].indexOf(String((window.__accazaAuthz||{}).role))>=0)html+='<button class="pz-btn sec" id="opsPayVerify">Payments awaiting verification</button> <button class="pz-btn sec" id="opsHandovers">Review pending shift handovers</button> <button class="pz-btn sec" id="opsSaleRecovery">Sales needing recovery</button>';
   // SHIFT
   html+='<div class="pz-card" style="margin-bottom:1rem;">';
   if(activeShift){
@@ -672,6 +723,7 @@ function renderOps(){
   root.innerHTML=html;
   // wire
   var handovers=document.getElementById('opsHandovers');if(handovers)handovers.onclick=reviewShiftHandovers;
+  var payVerify=document.getElementById('opsPayVerify');if(payVerify)payVerify.onclick=openPaymentVerificationQueue;
   var saleRecovery=document.getElementById('opsSaleRecovery');if(saleRecovery)saleRecovery.onclick=reviewRefusedSales;
   wireCrewPanel(root);
   root.querySelectorAll('[data-verify]').forEach(function(b){b.onclick=function(){window.__posVerify(b.getAttribute('data-verify'));};});

@@ -21,11 +21,12 @@ const sales=[
   {id:'sizes-online',status:'Completed',paymentStatus:'confirmed',completedAt:inside,subtotal:220,total:220,lineItems:[{itemKey:'spanish',name:'Spanish Latte',size:'M',qty:1,unitTotal:220}]}
 ];
 const ranking=buildDrinkRanking(sales,data,day);
-if(ranking.totalUnits!==7)throw new Error('Full ranking total does not equal the completed Sales History drink quantities for the date.');
-if(ranking.orderCount!==5)throw new Error('Full ranking did not count the exact completed Sales History orders containing drinks.');
+// 29 Oct 2026 (Danilo: a sale is a sale): the unverified completed sale (5 espresso) counts.
+if(ranking.totalUnits!==12)throw new Error('Full ranking total does not equal the completed Sales History drink quantities for the date.');
+if(ranking.orderCount!==6)throw new Error('Full ranking did not count the exact completed Sales History orders containing drinks.');
 if(ranking.items.length!==4)throw new Error('Full ranking included food, zero-sale menu items, pending/voided sales, or the wrong date.');
 const byKey=Object.fromEntries(ranking.items.map((item)=>[item.key,item]));
-if(byKey.espresso.units!==2||Math.round(byKey.espresso.revenue)!==200)throw new Error('Completed drink quantity or revenue was calculated incorrectly.');
+if(byKey.espresso.units!==7||Math.round(byKey.espresso.revenue)!==700)throw new Error('Completed drink quantity or revenue was calculated incorrectly.');
 if(byKey.latte.units!==1||Math.round(byKey.latte.revenue)!==100)throw new Error('Partial refunds were not allocated to net revenue correctly.');
 if(byKey.mocha.units!==1||Math.round(byKey.mocha.revenue)!==0)throw new Error('A completed fully refunded sale changed item units even though the refund has no item-level quantity.');
 // A drink ranks once per menu item, never once per size and never once per name spelling.

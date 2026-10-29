@@ -90,7 +90,8 @@ async function scanOperationalExceptions(db, now) {
     const deadLetters = deadLetterSnap.val() || {};
     await repairHistoricalReplicaDeadLetters(db, deadLetters, now);
     await verifyOpenDeadLetters(db, deadLetters, now);
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, booksChart: booksChartSnap.val() || {}, cashAccountMap: cashAccountMapSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
+    const paymentQueueSnap = await db.ref("/paymentVerificationQueue").limitToFirst(300).get();
+    return OperationalExceptions.buildOperationalExceptions({paymentVerificationQueue: paymentQueueSnap.val() || {}, activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, booksChart: booksChartSnap.val() || {}, cashAccountMap: cashAccountMapSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
 }
 
 
@@ -310,7 +311,7 @@ exports.acceptOnlineOrder = onCall(
 );
 
 const MANAGER_APPROVAL_ACTIONS = new Set([
-  "validate_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count", "reopen_discrepancy",
+  "validate_payment", "payment_not_received", "refund", "void", "settle_platform_payout", "reopen_cash_count", "reopen_discrepancy",
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher", "correct_petty_voucher", "void_replace_legacy_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "fixed_float_exception", "reverse_purchase",
   "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement", "set_undeposited_opening_balance", "retire_revolving_fund",

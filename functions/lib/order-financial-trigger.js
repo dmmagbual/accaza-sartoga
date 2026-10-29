@@ -8,7 +8,9 @@ function money(value) { return Math.round((Number(value) || 0) * 100) / 100; }
 
 function postableSale(order) {
   const status = order && order.status === "Archived" ? order.prevStatus : order && order.status;
-  return Boolean(order && order.paymentStatus !== "pending" && ["Completed", "Received"].includes(String(status || "")));
+  // A sale is a sale (Danilo, 29 Oct 2026): it posts when completed, verified or not. An unverified
+  // electronic payment posts to 1060 Payments Awaiting Verification instead of the bank.
+  return Boolean(order && ["Completed", "Received"].includes(String(status || "")));
 }
 
 function preCompletionRefundAmount(order) {

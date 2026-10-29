@@ -14,8 +14,10 @@ const result=buildOperationalExceptions({
 const cats=result.exceptions.map(x=>x.category);
 for(const expected of ['stuck_order','offline_sync','inventory_gap','inventory_marker_gap','financial_gap','payment_proof'])if(!cats.includes(expected))throw new Error('missing exception '+expected);
 if(cats.includes('client_error'))throw new Error('generic client telemetry must stay in technical diagnostics');
-if(result.counts.critical!==4||result.counts.warning!==2)throw new Error('severity counts are incorrect');
-if(result.exceptions.find(x=>x.id==='marker').severity!=='warning')throw new Error('existing inventory movement evidence was still classified as a critical stock gap');
+// 29 Oct 2026 (Danilo: a sale is a sale): an unverified completed sale must have its sale posting too, so 'marker' is now a critical financial gap.
+if(result.counts.critical!==5||result.counts.warning!==2)throw new Error('severity counts are incorrect');
+if(!result.exceptions.some(x=>x.category==='financial_gap'&&x.id==='marker'))throw new Error('an unverified completed sale without its sale posting must be flagged');
+if(result.exceptions.find(x=>x.id==='marker'&&x.category==='inventory_marker_gap').severity!=='warning')throw new Error('existing inventory movement evidence was still classified as a critical stock gap');
 if(result.exceptions.some(x=>x.category==='cash_custody'))throw new Error('normal undeposited cash was incorrectly classified as an operational exception');
 if(cats.includes('fresh')||result.exceptions.some(x=>x.id==='done'||x.id==='new'||x.id==='good'))throw new Error('healthy records produced false exceptions');
 if(result.exceptions.some(x=>JSON.stringify(x).includes('customer')))throw new Error('exception response leaked customer content');
@@ -42,3 +44,15 @@ if(ai.length!==2||!failed||failed.severity!=='critical'||!/2 questions/.test(fai
 if(!backup||backup.severity!=='warning'||!/4 times/.test(backup.title)||!/ollama 3/.test(backup.detail))throw new Error('backup AI answers must raise one warning with per-provider counts');
 if(buildOperationalExceptions({aiProviderHealth:{'2026-09-25':{failedQuestions:0,backupAnswers:{}}}},now).exceptions.some(x=>x.category==='ai_provider'))throw new Error('a clean AI day must raise nothing');
 console.log('PASS: Accaza AI provider failures and backup answers surface in the Exception Center.');}
+
+// 29 Oct 2026: payments awaiting verification alert after 24 hours and escalate after 7 days.
+{
+  const q = buildOperationalExceptions({paymentVerificationQueue: {
+    fresh: {orderId: 'POS-F', amount: 100, methods: 'GCash', saleAt: now - 2 * hour},
+    day2: {orderId: 'POS-D', amount: 200, methods: 'Bank Transfer', saleAt: now - 2 * day},
+    week: {orderId: 'POS-W', amount: 300, methods: 'GCash', saleAt: now - 8 * day},
+  }}, now).exceptions.filter((x) => x.category === 'payment_unverified');
+  if (q.length !== 2) throw new Error('only payments older than 24 hours alert');
+  if (q.find((x) => x.id === 'payment_unverified_POS-D').severity !== 'warning' || q.find((x) => x.id === 'payment_unverified_POS-W').severity !== 'critical') throw new Error('a payment unverified for 7 days must escalate');
+}
+console.log('Payment verification alerts passed');

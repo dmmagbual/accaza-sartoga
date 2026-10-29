@@ -2,8 +2,13 @@
   'use strict';
   function number(value){return Number(value)||0;}
   function status(order){return order&&order.status==='Archived'?(order.prevStatus||''):String(order&&order.status||'');}
-  function qualifies(order){return !!order&&!order.voided&&order.paymentStatus!=='pending'&&(status(order)==='Completed'||status(order)==='Received');}
-  function amounts(order){order=order||{};var channel=String(order.channel||'').toLowerCase(),platform=channel==='grabfood'||channel==='foodpanda',gross=number(platform&&order.grossPlatform!=null?order.grossPlatform:(order.subtotal!=null?order.subtotal:order.total)),platformDiscount=order.netSalesPlatform!=null?Math.max(0,gross-number(order.netSalesPlatform)):number(order.platformDiscount),discount=platform?platformDiscount:(number(order.discount)+number(order.loyaltyDiscount)),refund=number(order.refundAmount);return{gross:gross,discount:discount,refund:refund,net:Math.max(0,gross-discount-refund)};}
+  // A sale is a sale (Danilo, 29 Oct 2026): recognized when completed or received and not voided,
+  // whatever the payment status. Finance posts it at capture; an unverified payment waits in 1060.
+  function qualifies(order){return !!order&&!order.voided&&(status(order)==='Completed'||status(order)==='Received');}
+  // Share of a sale reversed because its payment was never received (counts like a refund).
+  function unpaid(order){return number(order&&order.unpaidSale&&order.unpaidSale.amount);}
+  function recognizedShare(order){var total=number(order&&order.total),u=unpaid(order);return u>0&&total>0?Math.max(0,1-u/total):1;}
+  function amounts(order){order=order||{};var channel=String(order.channel||'').toLowerCase(),platform=channel==='grabfood'||channel==='foodpanda',gross=number(platform&&order.grossPlatform!=null?order.grossPlatform:(order.subtotal!=null?order.subtotal:order.total)),platformDiscount=order.netSalesPlatform!=null?Math.max(0,gross-number(order.netSalesPlatform)):number(order.platformDiscount),discount=platform?platformDiscount:(number(order.discount)+number(order.loyaltyDiscount)),refund=number(order.refundAmount)+unpaid(order);return{gross:gross,discount:discount,refund:refund,net:Math.max(0,gross-discount-refund)};}
   function stamp(order){return number(order&&order.completedAt)||number(order&&order.receivedAt)||number(order&&order.timestamp)||Date.parse(order&&order.date)||number(order&&order.archivedAt)||0;}
   var SIZE_SUFFIX=/\s*\((?:S|M|L)\)\s*$/i;
   function text(value){return typeof value==='string'?value.trim():'';}
@@ -148,5 +153,5 @@
     var cut=name.lastIndexOf(' \u00b7 ');
     return cut>0?name.slice(0,cut).trim()||name:name;
   }
-  global.AccazaSales=Object.freeze({status:status,qualifies:qualifies,amounts:amounts,stamp:stamp,isDrinkLine:isDrinkLine,paymentKey:paymentKey,paymentAccount:paymentAccount,drinkKey:drinkKey,drinkLabel:drinkLabel});
+  global.AccazaSales=Object.freeze({status:status,qualifies:qualifies,amounts:amounts,unpaid:unpaid,recognizedShare:recognizedShare,stamp:stamp,isDrinkLine:isDrinkLine,paymentKey:paymentKey,paymentAccount:paymentAccount,drinkKey:drinkKey,drinkLabel:drinkLabel});
 })(window);

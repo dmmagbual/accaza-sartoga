@@ -141,14 +141,17 @@ function reportingItems(order, netCents, grossCents) {
 
 function reportingContribution(order) {
   const status = effectiveStatus(order), stamp = salesAt(order);
-  if (!order || order.voided === true || order.paymentStatus === "pending" ||
+  // Recognized whatever the payment status (Danilo, 29 Oct 2026); a payment marked not received
+  // reverses its share like a refund and moves that share of cost out of the margin.
+  if (!order || order.voided === true ||
     !["Completed", "Received"].includes(status) || !stamp) return null;
   const channel = String(order.channel || "").toLowerCase(), platform = ["grabfood", "foodpanda"].includes(channel);
   const gross = Number(platform && order.grossPlatform != null ? order.grossPlatform :
     (order.subtotal != null ? order.subtotal : order.total)) || 0;
   const platformDiscount = order.netSalesPlatform != null ? Math.max(0, gross - (Number(order.netSalesPlatform) || 0)) :
     (Number(order.platformDiscount) || 0);
-  const discount = platform ? platformDiscount : ((Number(order.discount) || 0) + (Number(order.loyaltyDiscount) || 0)), refund = Number(order.refundAmount) || 0;
+  const discount = platform ? platformDiscount : ((Number(order.discount) || 0) + (Number(order.loyaltyDiscount) || 0)), unpaid = Number(order.unpaidSale && order.unpaidSale.amount) || 0, refund = (Number(order.refundAmount) || 0) + unpaid;
+  const recognizedShare = unpaid > 0 && (Number(order.total) || 0) > 0 ? Math.max(0, 1 - unpaid / Number(order.total)) : 1;
   const grossCents = Math.round(gross * 100), discountCents = Math.round(discount * 100), refundCents = Math.round(refund * 100);
   const netCents = Math.max(0, grossCents - discountCents - refundCents);
   const cashier = reportingCashier(order);
@@ -158,7 +161,7 @@ function reportingContribution(order) {
     channel: reportingChannel(order), day: reportingDay(stamp), hour: reportingHour(stamp), weekday: reportingWeekday(stamp),
     cashierKey: cashier.key, cashierName: cashier.name,
     // A manager's later cost correction for lines sold without a recipe is part of the sale's cost.
-    cogsCents: Math.max(0, Math.round(((Number(order.correctedCogsSnapshot != null ? order.correctedCogsSnapshot : order.cogsSnapshot) || 0) + (Number(order.costCorrectionTotal) || 0)) * 100)),
+    cogsCents: Math.max(0, Math.round(((Number(order.correctedCogsSnapshot != null ? order.correctedCogsSnapshot : order.cogsSnapshot) || 0) + (Number(order.costCorrectionTotal) || 0)) * recognizedShare * 100)),
     payments: reportingPaymentEntries(order, netCents, grossCents), items: reportingItems(order, netCents, grossCents), schemaVersion: 3,
   };
   contribution.checksum = checksum(contribution);
@@ -218,7 +221,7 @@ function salesLedgerSummary(input) {
     [input.saleMovementId || "", input.saleMovement],
     [input.refundMovementId || "", input.refundMovement],
     [input.voidMovementId || "", input.voidMovement],
-  ]).filter((row) => row[0] && row[1] && (row[1].sourceType === "order" || ["order_sale", "order_void", "order_refund"].includes(String(row[1].type || ""))));
+  ]).filter((row) => row[0] && row[1] && (row[1].sourceType === "order" || ["order_sale", "order_void", "order_refund", "order_unpaid"].includes(String(row[1].type || ""))));
   let grossCents = 0, discountCents = 0, reversalCents = 0, occurredAt = 0, channel = "";
   rows.forEach(([id, movement]) => {
     const stamp = Number(movement.occurredAt || movement.postedAt || 0);
@@ -272,7 +275,7 @@ function legacyInventoryEvidence(orderId, rawMovements) {
 
 function assessEvidence(input) {
   const order = input.order || {}, status = effectiveStatus(order);
-  const finalSale = ["Completed", "Received"].includes(status) && order.paymentStatus !== "pending";
+  const finalSale = ["Completed", "Received"].includes(status);
   const financialRequired = finalSale;
   const refundCents = Math.round((Number(order.refundAmount) || 0) * 100);
   const remainingCents = Math.max(0, Math.round((Number(order.total) || 0) * 100) - refundCents);
