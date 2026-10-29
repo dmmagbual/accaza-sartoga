@@ -41,6 +41,20 @@ App.syncBooks=function(btn){
   }).catch(function(e){alert("Books sync stopped: "+((e&&e.message)||e)+" Safe to retry.");btn.disabled=false;btn.textContent=old;});
 };
 
+/* The live /booksChart listener (live-pos.mjs) calls this from startup and on every chart change,
+   so it must stay in the always-loaded app bundle. On 8 Oct 2026 it moved into the lazy
+   controlled-transactions bundle; the listener found nothing to call and every server-only account
+   (1060, 1130, loans 2315-2340, 6005...) dropped out of the chart and the reports. Fixed in Books 164. */
+App.applyServerChart=function(){
+  var map=window.__booksChart; if(!map||typeof map!=='object')return;
+  var list=Object.keys(map).map(function(code){var a=map[code]||{};return {code:String(a.code||code),name:a.name||('? '+code),type:a.type||'Expense',note:a.note||'',active:a.active!==false,system:a.system===true};});
+  if(!list.length)return;
+  list.sort(function(x,y){return String(x.code).localeCompare(String(y.code));});
+  DB.accounts=list; window.__booksChartLive=true;
+  try{save();}catch(_e){}
+  if(this.render)this.render();
+};
+
 window.App = App; // expose for the live-POS reader module below
 // If the Firebase SDK can't load at all (opened offline / from a file), downgrade the pill.
 setTimeout(function(){ var el=document.getElementById('liveStatus'); if(el && /Connecting/.test(el.textContent) && !window.__booksAuthReady){ el.textContent='● Offline (local only)'; el.className='live-pill off';window.__booksLiveLoading=false;if(window.App&&App.render)App.render(); } },5000);

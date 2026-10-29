@@ -309,7 +309,7 @@ const App = {
     if(window.__booksSubledgersReady&&window.__booksControlledTransactionsReady)return Promise.resolve();
     if(this._controlledTransactionsPromise)return this._controlledTransactionsPromise;
     const self=this,load=function(id,src,ready,message){if(ready())return Promise.resolve();return new Promise(function(resolve,reject){var script=document.getElementById(id);if(script)script.remove();script=document.createElement('script');script.id=id;script.src=src;script.onload=function(){if(!ready()){script.remove();return reject(new Error(message+' did not initialize.'));}resolve();};script.onerror=function(){script.remove();reject(new Error('Could not load '+message+'.'));};document.head.appendChild(script);});};
-    this._controlledTransactionsPromise=load('booksSubledgers','assets/js/books/subledgers.js?v=163',function(){return typeof PAGES.receivables==='function'&&typeof PAGES.payables==='function'&&typeof App.showPayableTrace==='function';},'Finance Books subledgers').then(function(){window.__booksSubledgersReady=true;return load('booksControlledTransactions','assets/js/books/controlled-transactions.js?v=163',function(){return typeof PAGES.transactions==='function'&&typeof App.txnPay==='function';},'Finance Books transaction tools');}).then(function(){window.__booksControlledTransactionsReady=true;self._controlledTransactionsPromise=null;}).catch(function(error){self._controlledTransactionsPromise=null;throw error;});return this._controlledTransactionsPromise;
+    this._controlledTransactionsPromise=load('booksSubledgers','assets/js/books/subledgers.js?v=164',function(){return typeof PAGES.receivables==='function'&&typeof PAGES.payables==='function'&&typeof App.showPayableTrace==='function';},'Finance Books subledgers').then(function(){window.__booksSubledgersReady=true;return load('booksControlledTransactions','assets/js/books/controlled-transactions.js?v=164',function(){return typeof PAGES.transactions==='function'&&typeof App.txnPay==='function';},'Finance Books transaction tools');}).then(function(){window.__booksControlledTransactionsReady=true;self._controlledTransactionsPromise=null;}).catch(function(error){self._controlledTransactionsPromise=null;throw error;});return this._controlledTransactionsPromise;
   },
   retryControlledTransactions(){this._controlledTransactionsPromise=null;this.render();},
   reportFilter(){var selected=TABS.find(t=>t.id===CURRENT);if(!selected||selected.group==='controls')return'';var p=window.AccazaReportPeriod.get();if(CURRENT==='bs')return '<div class="report-filter as-of"><label>As of<input id="periodAsOf" type="date" value="'+esc(p.to)+'" max="'+todayStr()+'"/></label><button type="button" onclick="App.applyAsOf()">Apply</button><button type="button" onclick="App.resetCurrentMonth()">Today</button></div>';return '<div class="report-filter"><label>From<input id="periodFrom" type="date" value="'+esc(p.from)+'" max="'+todayStr()+'"/></label><label>To<input id="periodTo" type="date" value="'+esc(p.to)+'" max="'+todayStr()+'"/></label><label>Month<input id="periodMonth" type="month" value="'+esc(p.mode==='custom'?'':(p.endMonth||p.to.slice(0,7)))+'" max="'+todayStr().slice(0,7)+'" onchange="App.applyReportMonth()"/></label><button type="button" onclick="App.applyDateRange()">Apply</button><button type="button" onclick="App.resetCurrentMonth()">Current month</button></div>';},
@@ -890,6 +890,20 @@ App.syncBooks=function(btn){
     alert("Sales reconciled and Books rebuilt. Orders and records checked: "+r.ordersScanned+" · new Finance postings: "+r.financePosted+" · orphaned sales corrected: "+r.orphanReversed+" · existing postings: "+r.financeDuplicates+" · Finance movements: "+r.movements+" · authoritative net sales: "+peso(r.netSales)+" · COGS posted: "+r.cogsPosted+" · COGS awaiting review: "+r.missingCogs+" · review items: "+r.reviewItems);
     btn.disabled=false;btn.textContent=old;
   }).catch(function(e){alert("Books sync stopped: "+((e&&e.message)||e)+" Safe to retry.");btn.disabled=false;btn.textContent=old;});
+};
+
+/* The live /booksChart listener (live-pos.mjs) calls this from startup and on every chart change,
+   so it must stay in the always-loaded app bundle. On 8 Oct 2026 it moved into the lazy
+   controlled-transactions bundle; the listener found nothing to call and every server-only account
+   (1060, 1130, loans 2315-2340, 6005...) dropped out of the chart and the reports. Fixed in Books 164. */
+App.applyServerChart=function(){
+  var map=window.__booksChart; if(!map||typeof map!=='object')return;
+  var list=Object.keys(map).map(function(code){var a=map[code]||{};return {code:String(a.code||code),name:a.name||('? '+code),type:a.type||'Expense',note:a.note||'',active:a.active!==false,system:a.system===true};});
+  if(!list.length)return;
+  list.sort(function(x,y){return String(x.code).localeCompare(String(y.code));});
+  DB.accounts=list; window.__booksChartLive=true;
+  try{save();}catch(_e){}
+  if(this.render)this.render();
 };
 
 window.App = App; // expose for the live-POS reader module below
