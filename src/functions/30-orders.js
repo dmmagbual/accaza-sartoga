@@ -25,11 +25,30 @@ function shouldProjectOrder(order, activeShift, now = Date.now()) {
   const status = String(order.status || "Pending");
   if (["Pending", "Confirmed", "Preparing", "Ready"].includes(status)) return true;
   if (["pending", "cashier_verified"].includes(order.paymentStatus)) return true;
+  // A missed platform order re-keyed from Payout Reconciliation is a back-office record:
+  // it was never on a till, so it has no shift, no serving state and no place in the live
+  // order list. Its unsettled receivable is worked from Payout Reconciliation, which reads
+  // live and archived orders alike. Checked after the open-status and payment-review rules
+  // so the re-key fields can never hide an order that still needs a person.
+  if (isPlatformRekeyOrder(order)) return false;
   if (["grabfood", "foodpanda"].includes(order.channel) && (order.settlementStatus || "unsettled") === "unsettled") return true;
   if (activeShift && order.shiftId && order.shiftId === activeShift.id) return true;
   const age = now - Number(order.timestamp || 0);
   if (order.source === "online" && age >= 0 && age <= ACTIVE_ONLINE_TTL_MS) return true;
   return false;
+}
+
+// Server-stamped by recordPlatformCatchup. Only shift-less Grab/FoodPanda orders qualify,
+// so a till sale (which always carries its shift) can never be treated as a re-key.
+function isPlatformRekeyOrder(order) {
+  return !!order && typeof order === "object" && order.source === "pos" && order.enteredVia === "payout-rekey" && order.catchup === true && !order.shiftId && ["grabfood", "foodpanda"].includes(String(order.channel || ""));
+}
+
+// Closed-shift POS sales leave /orders as soon as they stop being live. A re-keyed order is
+// excluded: its stock and Finance Books posting are still running when it is created, so it
+// stays in /orders until the posting-gated order archive sweep (or a manager) archives it.
+function archivesWhenNotLive(order) {
+  return !!order && order.source === "pos" && (["Completed", "Received"].includes(order.status) || !!order.voided) && !isPlatformRekeyOrder(order);
 }
 
 // ---------------------------------------------------------------------------
@@ -99,7 +118,7 @@ async function rebuildActiveOrders(db, force = false) {
     if (shouldProjectOrder(orders[id], activeShift, now)) {
       writes[`activeOrders/${id}`] = activeOrderProjection(orders[id]);
       kept++;
-    } else if (orders[id] && orders[id].source === "pos" && (["Completed", "Received"].includes(orders[id].status) || orders[id].voided)) {
+    } else if (archivesWhenNotLive(orders[id])) {
       writes[`archivedOrders/${id}`] = archivedOrderRecord(orders[id], now, "2c-migration");
       writes[`orders/${id}`] = null;
       writes[`activeOrders/${id}`] = null;
@@ -580,7 +599,7 @@ exports.syncActiveOrderProjection = onValueWritten(
     const activeShift = (await db.ref("/posActiveShift").get()).val() || null;
     if (shouldProjectOrder(order, activeShift)) {
       await db.ref(`/activeOrders/${orderId}`).set(activeOrderProjection(order));
-    } else if (order.source === "pos" && (["Completed", "Received"].includes(order.status) || order.voided)) {
+    } else if (archivesWhenNotLive(order)) {
       const now = Date.now();
       await db.ref().update({[`archivedOrders/${orderId}`]: archivedOrderRecord(order, now), [`activeOrders/${orderId}`]: null, [`orders/${orderId}`]: null});
     } else {
@@ -600,7 +619,7 @@ exports.pruneClosedShiftOrders = onValueWritten(
     const writes = {};
     snap.forEach((child) => {
       const order = child.val();
-      if (!shouldProjectOrder(order, after || null) && order && order.source === "pos") {
+      if (!shouldProjectOrder(order, after || null) && order && order.source === "pos" && !isPlatformRekeyOrder(order)) {
         const now = Date.now();
         writes[`archivedOrders/${child.key}`] = archivedOrderRecord(order, now);
         writes[`activeOrders/${child.key}`] = null;

@@ -37,6 +37,26 @@ function orderArchiveFingerprint(value) {
   return crypto.createHash("sha256").update(JSON.stringify(stable(value || {}))).digest("hex");
 }
 
+// A re-keyed platform order has no shift by design. The order fields alone are not proof
+// (staff with order access can write /orders), so the exemption requires the used manager
+// approval that recordPlatformCatchup claimed, bound to this exact order. /financialApprovals
+// and /platformRefIndex are server-only.
+async function verifiedPlatformRekey(db, order) {
+  if (!isPlatformRekeyOrder(order)) return false;
+  let approvalId = "";
+  try { approvalId = financeKey(order.catchupApprovalId, "Privileged approval"); } catch (_error) { return false; }
+  const approval = (await db.ref(`/financialApprovals/${approvalId}`).get()).val();
+  if (!approval || approval.action !== "rekey_platform_order" || !approval.usedAt || String(approval.usedBy || "") !== `rekey_${approval.sourceId}`) return false;
+  // Re-keys since 29 Oct 2026 stamp the order they created on the approval.
+  if (approval.usedForOrderId) return approval.usedForOrderId === order.id;
+  // Earlier re-keys: the approved reference must be this order's, and the first-claim
+  // reference index must name this order.
+  const ref = String(order.platformRef || ""), key = platformRefKey(ref);
+  if (!key || String(approval.sourceId) !== ref) return false;
+  const index = (await db.ref(`/platformRefIndex/${order.channel}/${key}`).get()).val();
+  return !!index && index.orderId === order.id;
+}
+
 async function orderArchiveCheck(db, orderId, options = {}) {
   const orderSnap = await db.ref(`/orders/${orderId}`).get();
   if (!orderSnap.exists()) {
@@ -54,7 +74,7 @@ async function orderArchiveCheck(db, orderId, options = {}) {
     const shift = (await db.ref(`/shifts/${shiftId}`).get()).val() || null;
     if (!shift) return {ok: false, reason: "shift_missing"};
     if (shift.status !== "closed") return {ok: false, reason: "shift_open"};
-  } else if (order.source === "pos") {
+  } else if (order.source === "pos" && !(await verifiedPlatformRekey(db, order))) {
     return {ok: false, reason: "shift_missing"};
   }
   if (!ORDER_ARCHIVE_FINAL_STATUSES.includes(String(order.status || "")) && order.voided !== true) return {ok: false, reason: "not_final"};
