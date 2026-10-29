@@ -586,6 +586,22 @@ exports.ensureActiveOrders = onCall(
   },
 );
 
+// Archive pressed on an order that is already archived (manageOrderArchive). The archive record
+// is the authority: once it is final and the order has left /orders, a live copy left behind by
+// a late projection run is removed and audited instead of the press silently doing nothing.
+async function removeStaleActiveOrderCopy(db, orderId, actor) {
+  const [archived, archivePending, liveOrder, liveCopy] = await Promise.all([db.ref(`/archivedOrders/${orderId}`).limitToFirst(1).get(), db.ref(`/archivedOrders/${orderId}/archivePending`).get(), db.ref(`/orders/${orderId}`).limitToFirst(1).get(), db.ref(`/activeOrders/${orderId}`).limitToFirst(1).get()]);
+  if (archivePending.val() === true) return {orderId, duplicate: true, pending: true};
+  if (!archived.exists() || liveOrder.exists() || !liveCopy.exists()) return {orderId, duplicate: true};
+  const now = Date.now();
+  await db.ref().update({
+    [`activeOrders/${orderId}`]: null,
+    [`operationalAudit/${now}_${orderId}_stale_live_copy`]: operationalAuditRecord("remove_stale_active_order", "order", orderId, actor, {reason: "already_archived"}),
+  });
+  logger.warn("Stale active order copy removed", {orderId, source: "manual_archive"});
+  return {orderId, duplicate: true, removedStaleCopy: true};
+}
+
 exports.syncActiveOrderProjection = onValueWritten(
   {ref: "/orders/{orderId}", region: ORDER_REGION},
   async (event) => {
@@ -599,7 +615,17 @@ exports.syncActiveOrderProjection = onValueWritten(
     const activeShift = (await db.ref("/posActiveShift").get()).val() || null;
     if (shouldProjectOrder(order, activeShift)) {
       await db.ref(`/activeOrders/${orderId}`).set(activeOrderProjection(order));
-    } else if (archivesWhenNotLive(order)) {
+      // Trigger runs can finish out of order. Archiving writes the claim and then deletes the
+      // order, so a late run for the claim write used to re-create the live copy after the
+      // archive had removed it (29 Oct 2026: five archived orders stuck on Orders). Re-check
+      // with a one-child read and drop the copy when the order is already gone.
+      if (!(await db.ref(`/orders/${orderId}`).limitToFirst(1).get()).exists()) {
+        await db.ref(`/activeOrders/${orderId}`).remove();
+        logger.warn("Stale active order copy removed", {orderId, source: "projection_trigger"});
+      }
+    } else if (archivesWhenNotLive(order) && !order.archivePending) {
+      // A manual archive owns an order carrying its claim; a late run for the claim write must
+      // not overwrite the finished, attributed archive record with this stale copy.
       const now = Date.now();
       await db.ref().update({[`archivedOrders/${orderId}`]: archivedOrderRecord(order, now), [`activeOrders/${orderId}`]: null, [`orders/${orderId}`]: null});
     } else {

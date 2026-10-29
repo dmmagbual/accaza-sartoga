@@ -252,7 +252,7 @@ exports.manageOrderArchive = onCall(
       const activeShift = (await db.ref("/posActiveShift").get()).val() || {};
       const check = await orderArchiveCheck(db, orderId, {excludeShiftId: String(activeShift.id || "")});
       if (!check.ok) {
-        if (check.reason === "already_archived") return {orderId, duplicate: true};
+        if (check.reason === "already_archived") return removeStaleActiveOrderCopy(db, orderId, actor);
         if (check.error) throw check.error;
         throw new HttpsError(check.reason === "not_found" ? "not-found" : "failed-precondition", ORDER_ARCHIVE_REFUSAL[check.reason] || "This order cannot be archived.");
       }

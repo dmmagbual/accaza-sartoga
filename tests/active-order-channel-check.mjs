@@ -31,8 +31,8 @@ if(policy({payment:'Cash'})!==null||policy({payment:'GCash'})!=='cashier_manager
 if(!badge({voided:true}).includes('Voided sale')||!badge({paymentStatus:'pending',payment:'Bank Transfer'}).includes('Awaiting manager verification')||!badge({paymentStatus:'pending',payment:'GCash'}).includes('Awaiting cashier verification')||!badge({paymentStatus:'confirmed',payment:'GCash'}).includes('Manager validated')||!badge({paymentStatus:'confirmed',payment:'Cash',status:'Completed'}).includes('Sale locked'))fail('Order payment badge changed while moving card parts');
 const items=parts.orderItemsHtml({source:'online',items:'Latte (Hot, Large) x2, <b>Muffin'},esc);
 if((items.match(/order-item-row/g)||[]).length!==2||!items.includes('2×')||items.includes('<b>')||!src.includes('orderItemsHtml(o,escHtml)'))fail('Active order item list changed while moving card parts');
-// 29 Oct 2026: an order that cannot be archived must say why on its card instead of silently
-// hiding the button, and the reason must follow the server's archive and serving-queue rules.
+// 29 Oct 2026: an order that cannot be archived must say why when Archive is pressed (cards stay
+// clean), and the reason must follow the server's archive and serving-queue rules.
 {
   const {createRequire}=await import('node:module'),Service=createRequire(import.meta.url)('../functions/lib/order-service.js');
   const m=src.match(/export function orderArchiveBlock\(o,ctx\)\{[\s\S]*?\n\}\n/);if(!m)fail('orderArchiveBlock is missing from admin-orders.mjs');
@@ -50,7 +50,7 @@ if((items.match(/order-item-row/g)||[]).length!==2||!items.includes('2×')||item
   if(reason({source:'pos',channel:'grabfood',status:'Completed',total:50})!=='shift_missing'||!block({source:'pos',channel:'grabfood',status:'Completed',enteredVia:'payout-rekey',catchup:true},mgr).ok)fail('Shift-less till orders are blocked unless they are payout re-keys');
   const fixtures=[closedPos,Object.assign({},closedPos,{service:{state:'queued'}}),Object.assign({},closedPos,{service:{state:'ready'},refundAmount:100}),Object.assign({},closedPos,{service:{state:'not_collected'}}),Object.assign({},closedPos,{service:{state:'not_collected',reviewedAt:5}}),Object.assign({},closedPos,{channel:'foodpanda',service:{state:'preparing'}}),Object.assign({},closedPos,{voided:true,service:{state:'queued'}}),{source:'online',status:'Completed',shiftId:'S1',posCaptured:true,service:{state:'ready'}},{source:'online',status:'Completed',service:{state:'not_collected'}},{source:'pos',status:'Rejected',shiftId:'S1',service:{state:'queued'}}];
   for(const o of fixtures)if((reason(o)==='serving_queue')!==Service.keepsOrderLive(o))fail('Archive reason and server serving-queue rule disagree on '+JSON.stringify(o));
-  if(!src.includes("canArchive=archiveBlock.ok&&deps.canArchiveOrder(o)")||!src.includes('+proofHtml+archiveNote+'))fail('Order card must gate Archive on both checks and show the blocked reason');
+  if(src.includes('order-archive-note')||!src.includes('var block=o.archivePending?{ok:true}:orderArchiveBlock(o,deps.archiveContext());if(!block.ok||!(o.archivePending||deps.canArchiveOrder(o))){alert(')||!src.includes('res.removedStaleCopy')||!src.includes('if(res.changed)alert('))fail('Order cards stay clean; pressing Archive must explain a block and report already-archived or changed results');
   for(const k of ['current_shift','shift_open','shift_missing','not_final','serving_queue','posting_incomplete','too_recent'])if(!src.includes("add('"+k+"',"))fail('Bulk archive result must explain skipped reason '+k);
 }
 console.log('Active order channel check passed');
