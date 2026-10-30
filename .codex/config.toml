@@ -8,6 +8,54 @@
 
 model_reasoning_summary = "concise"
 web_search = "cached"
+tool_output_token_limit = 6000
+project_doc_max_bytes = 12000
 
 [agents]
 max_concurrent_threads_per_session = 2
+
+# Accaza's normal engineering path needs repository, GitHub, Firebase and
+# bounded browser access. Keep artifact/office/UI plugins opt-in for the rare
+# task that explicitly needs them; their skills and tool schemas otherwise add
+# context to every coding turn.
+[plugins."visualize@openai-bundled"]
+enabled = false
+
+[plugins."documents@openai-primary-runtime"]
+enabled = false
+
+[plugins."pdf@openai-primary-runtime"]
+enabled = false
+
+[plugins."spreadsheets@openai-primary-runtime"]
+enabled = false
+
+[plugins."presentations@openai-primary-runtime"]
+enabled = false
+
+[plugins."template-creator@openai-primary-runtime"]
+enabled = false
+
+[plugins."human-resources@claude-cowork"]
+enabled = false
+
+[plugins."product-management@claude-cowork"]
+enabled = false
+
+[plugins."productivity@claude-cowork"]
+enabled = false
+
+[plugins."unified-computer-use@openai-bundled"]
+enabled = false
+
+[plugins."chrome@openai-bundled"]
+enabled = false
+
+[plugins."computer-use@openai-bundled"]
+enabled = false
+
+[mcp_servers.taste_skill]
+enabled = false
+
+[mcp_servers.node_repl]
+enabled = false
