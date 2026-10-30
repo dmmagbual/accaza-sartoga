@@ -15,7 +15,7 @@ let preOrderShiftTransactions=0,coldTransactions=0;
 const db={ref(p=''){return {get:async()=>snap(read(p)),child:k=>db.ref(p+'/'+k),update:async updates=>{for(const [k,v]of Object.entries(updates))write(p+'/'+k,v);},transaction:async fn=>{if(p==='/shifts/SH-TEST'&&!read('/orders/POS-TEST'))preOrderShiftTransactions++;coldTransactions++;/* Admin SDK: the first callback sees the cold local cache (null); undefined aborts without asking the server. */let v=fn(null);if(v===undefined)return {committed:false,snapshot:snap(null)};const actual=read(p);if(actual!=null){v=fn(copy(actual));if(v===undefined)return {committed:false,snapshot:snap(actual)};}write(p,v);return {committed:true,snapshot:snap(v)};},orderByChild(){return this;},equalTo(){return this;},limitToFirst(){return this;},endAt(){return this;},limitToLast(){return this;}};}};
 class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
 let locked=false,postingOutstanding=[];
-const ctx={exports:{},require:()=>H,onCall:(_o,fn)=>fn,ORDER_REGION:'test',ENFORCE_APP_CHECK:false,getDatabase:()=>db,requirePortalPermission:async(_db,r)=>r.actor,HttpsError,posAssuranceKey:x=>x,financeText:(x,n)=>String(x||'').slice(0,n),financeDateFromTimestamp:()=> '2026-09-22',OfflineSync,textField:x=>String(x),money:Financial.money,listFromFirebase:x=>x,activeOrderProjection:x=>x,availableCashOnHandAboveFloat:async()=>({available:99999}),calculateOrderInventoryPlan:async()=>({}),shiftOrdersForAssurance:async(_db,id)=>Object.fromEntries(Object.entries(state.orders||{}).filter(([,o])=>o.shiftId===id)),assurancePostingState:async()=>({saleCount:Object.keys(state.orders||{}).length,inventoryOutstanding:postingOutstanding.slice(),financeOutstanding:[]}),setTimeout,HANDOVER_AUTO_FINALIZE_DELAYS_MS:[1,1],onSchedule:(_o,fn)=>fn,onValueWritten:(_o,fn)=>fn,logger:{info(){},warn(){}},assertAccountingPeriodOpen:async()=>{if(locked)throw new Error('Period locked');},Date,Buffer};
+const ctx={exports:{},require:()=>H,onCall:(_o,fn)=>fn,ORDER_REGION:'test',ENFORCE_APP_CHECK:false,getDatabase:()=>db,requirePortalPermission:async(_db,r)=>r.actor,HttpsError,posAssuranceKey:x=>x,financeText:(x,n)=>String(x||'').slice(0,n),financeDateFromTimestamp:()=> '2026-09-22',OfflineSync,Financial,textField:x=>String(x),money:Financial.money,listFromFirebase:x=>x,activeOrderProjection:x=>x,availableCashOnHandAboveFloat:async()=>({available:99999}),calculateOrderInventoryPlan:async()=>({}),shiftOrdersForAssurance:async(_db,id)=>Object.fromEntries(Object.entries(state.orders||{}).filter(([,o])=>o.shiftId===id)),assurancePostingState:async()=>({saleCount:Object.keys(state.orders||{}).length,inventoryOutstanding:postingOutstanding.slice(),financeOutstanding:[]}),setTimeout,HANDOVER_AUTO_FINALIZE_DELAYS_MS:[1,1],onSchedule:(_o,fn)=>fn,onValueWritten:(_o,fn)=>fn,logger:{info(){},warn(){}},assertAccountingPeriodOpen:async()=>{if(locked)throw new Error('Period locked');},Date,Buffer};
 vm.createContext(ctx);vm.runInContext(fs.readFileSync(new URL('../src/functions/25b-shift-handover.js',import.meta.url),'utf8'),ctx);
 const call=(data,actor={uid:'cashier',role:'staff'})=>ctx.exports.manageShiftHandover({data,actor});
 const shift={id:'SH-TEST',status:'open',staff:'Cashier',accountUid:'cashier',openAt:1000,openingFloat:100,drawer:{b100:1}};
@@ -85,7 +85,7 @@ assert.equal(mixed.byMethod.Cash,50);assert.equal(mixed.byMethodAccount['Bank Tr
 // 24 Sep 2026 (Alex, SH-945869): the till's second close check failed on the device although
 // nothing was outstanding. A handover with no retained sale now closes with a Z report when the
 // server holds the same evidence a normal close needs, and records why the till check failed.
-const alex={uid:'alex',role:'staff'},openShift=(id)=>{const row={id,status:'open',staff:'Alex',accountUid:'alex',openAt:5000,openingFloat:100,drawer:{b100:1}};write(`/shifts/${id}`,row);write('/posActiveShift',row);return row;};
+const alex={uid:'alex',role:'staff'},openShift=(id)=>{const row={id,status:'open',staff:'Alex',accountUid:'alex',openAt:5000,openingFloat:100,floatMode:'fixed',configuredFloat:100,drawer:{b100:1}};write(`/shifts/${id}`,row);write('/posActiveShift',row);return row;};
 openShift('SH-CLEAN');
 write('/orders/POS-CLEAN',{shiftId:'SH-CLEAN',status:'Completed',channel:'instore',total:25,subtotal:25,payments:[{method:'Cash',amount:25}],timestamp:6000,inventoryDeducted:true});
 // The submitting tablet's own stale report is superseded by its sealed (empty) queue.
@@ -101,6 +101,24 @@ assert.equal(read('/shiftSyncGates/SH-CLEAN/finalizingAt'),0,'sync gate released
 const again=await call({shiftId:'SH-CLEAN',deviceId:'tablet',closeCount:{b100:9},rows:[]},alex);
 assert.equal(again.alreadyResolved,true);assert.equal(again.zReport.net,25,'a lost response is retried into the same Z report');assert.equal(read('/shifts/SH-CLEAN/countedCash'),125);
 assert.equal((await call({action:'reconcile',shiftId:'SH-CLEAN',reason:'Checked',devicesChecked:true},manager)).duplicate,true);
+// Management closing another cashier's shift must attest that denominations cover the whole
+// drawer, including the retained float. This prevents a sales-only count from silently becoming
+// a fixed-float shortage, while a genuine short drawer remains possible with explicit evidence.
+openShift('SH-MANAGER-COUNT');
+write('/posSettings/fixedFloat',200);
+await assert.rejects(call({shiftId:'SH-MANAGER-COUNT',deviceId:'manager-tablet',closeCount:{b50:1},rows:[]},manager),/recount the whole drawer/);
+assert.equal(read('/shiftHandovers/SH-MANAGER-COUNT'),undefined,'a rejected management count creates no handover record');
+const managerCountBase={scope:'whole_drawer_including_float',countedCash:50,retainedFloat:100,confirmed:true,reason:'Cashier left before shift close; management recounted every denomination.'};
+await assert.rejects(call({shiftId:'SH-MANAGER-COUNT',deviceId:'manager-tablet',closeCount:{b50:1},rows:[],managerCashAttestation:managerCountBase},manager),/Confirm the shortfall explicitly/);
+const managerCount=await call({shiftId:'SH-MANAGER-COUNT',deviceId:'manager-tablet',closeCount:{b50:1},rows:[],managerCashAttestation:{...managerCountBase,shortfallConfirmed:true}},manager);
+assert.equal(managerCount.resolved,true);assert.equal(read('/shiftHandovers/SH-MANAGER-COUNT/managerCashAttestation/floatShortfall'),50);assert.equal(read('/shiftHandovers/SH-MANAGER-COUNT/managerCashAttestation/attestedBy'),'manager');
+assert.equal(read('/shiftHandovers/SH-MANAGER-COUNT/cash/retainedFloat'),100,'handover uses the float frozen when the shift opened, not a later POS setting');
+assert.equal(read('/operationalAudit/handover_SH-MANAGER-COUNT/managerCashAttested'),true);assert.match(read('/operationalAudit/handover_SH-MANAGER-COUNT/managerCashCountReason'),/management recounted/);
+write('/posSettings/fixedFloat',100);
+const openingCountShift={id:'SH-OPENING-COUNT',status:'open',staff:'Alex',accountUid:'alex',openAt:5000,openingFloat:100,floatMode:'opening-count',drawer:{b100:1}};write('/shifts/SH-OPENING-COUNT',openingCountShift);write('/posActiveShift',openingCountShift);write('/posSettings/fixedFloat',200);
+const openingCountClose=await call({shiftId:'SH-OPENING-COUNT',deviceId:'tablet',closeCount:{b100:1,b50:1},rows:[]},alex);
+assert.equal(openingCountClose.cash.retainedFloat,100,'an opening-count shift keeps its opening float after fixed-float settings change');assert.equal(openingCountClose.cash.cashToSettle,50);
+write('/posSettings/fixedFloat',100);
 // Another device still holding sales: stays pending for a manager, with the reason shown.
 openShift('SH-BUSY');write('/posDeviceHealth/SH-BUSY',{other:{deviceId:'other',shiftId:'SH-BUSY',outstanding:2}});
 const busy=await call({shiftId:'SH-BUSY',deviceId:'tablet',closeCount:{b100:1},rows:[],closeCheckError:'[connection] offline'},alex);

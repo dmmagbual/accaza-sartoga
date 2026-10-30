@@ -45,6 +45,8 @@ async function inspectShiftCloseQueue(){
 var pendingServiceReview=null;
 async function closeShift(){
   if(!activeShift)return;var shift=activeShift;
+  var closeAuthz=window.__accazaAuthz||{},managementClosingAnotherShift=['owner','superadmin','admin','manager'].indexOf(String(closeAuthz.role))>=0&&(!shift.accountUid||shift.accountUid!==closeAuthz.uid);
+  if(managementClosingAnotherShift){openHandoverCount(shift,new Error('Management-assisted close: recount the entire drawer, including the retained float, and attest the count.'));return;}
   try{await continuityReadyForClose();}catch(error){openHandoverCount(shift,error);return;}
   pendingServiceReview=null;
   try{if(typeof window.__serveQueueCloseReview==='function'){var review=await window.__serveQueueCloseReview(shift);if(review&&review.cancelled)return;pendingServiceReview=review?JSON.parse(JSON.stringify(review)):null;}}catch(_reviewError){pendingServiceReview=null;}
