@@ -23,7 +23,8 @@ function storage() {
 }
 function cacheKey(period) { return CACHE_PREFIX + periodKey(period); }
 function validSaved(value) {
-  return !!(value && (value.version === 1 || value.version === 2) && value.rows && typeof value.rows === 'object');
+  // v3 = newest-first cursors; v1/v2 ascending cursors are refetched.
+  return !!(value && value.version === 3 && value.rows && typeof value.rows === 'object');
 }
 function readCache(period) {
   try {
@@ -32,7 +33,7 @@ function readCache(period) {
   } catch (_) { return null; }
 }
 function savedValue(entry, scope) {
-  return {version:2,scope:scope||'',period:entry.period,rows:entry.rows,cursor:entry.cursor||null,hasMore:entry.hasMore===true,
+  return {version:3,scope:scope||'',period:entry.period,rows:entry.rows,cursor:entry.cursor||null,hasMore:entry.hasMore===true,
     sequence:Number.isSafeInteger(entry.syncedSequence)?entry.syncedSequence:null,epoch:Number(entry.epoch)||0,updatedAt:Number(entry.updatedAt)||Date.now()};
 }
 function writeCache(value) {
@@ -118,7 +119,8 @@ export function createHistoricalPeriodStore(ops) {
   function emit(entry) { for (const listener of entry.listeners) listener.data({...entry.rows},{hasMore:entry.hasMore===true,cached:entry.cached===true,stale:entry.stale===true,updatedAt:Number(entry.updatedAt)||0}); }
   function fail(error) { for (const entry of ranges.values()) for (const listener of entry.listeners) listener.error(error); }
   function save(entry) {
-    if (!entry.rows) return;
+    // Never save an ascending (pre-deploy server) cursor.
+    if (!entry.rows || (entry.hasMore === true && entry.direction !== 'desc')) return;
     const owner = scope(), value = savedValue(entry, owner);
     writeCache(value);
     // Without a signed-in owner the copy stays tab-only: a shared device must
@@ -126,9 +128,16 @@ export function createHistoricalPeriodStore(ops) {
     if (owner && persistent && typeof persistent.put === 'function') Promise.resolve(persistent.put(persistKey(entry.period), value)).catch(() => {});
   }
   function adopt(entry, saved) {
-    entry.rows = saved.rows; entry.cursor = saved.cursor || null; entry.hasMore = saved.hasMore === true;
+    entry.rows = saved.rows; entry.cursor = saved.cursor || null; entry.hasMore = saved.hasMore === true; entry.direction = 'desc';
     entry.syncedSequence = Number.isSafeInteger(Number(saved.sequence)) && Number(saved.sequence) > 0 ? Number(saved.sequence) : null;
     entry.epoch = Number(saved.epoch) || 0; entry.cached = true; entry.stale = true; entry.updatedAt = Number(saved.updatedAt) || 0;
+  }
+  // Newest first. A cursor only resumes in its own order: if the server's order changed, restart.
+  async function readPage(entry, cursor) {
+    const ask = c => ops.read({mode:'period', purpose:'admin_period_report', direction:'desc', ...entry.period, cursor:c, limit:100}), dir = x => x && x.direction === 'desc' ? 'desc' : 'asc';
+    let result = await ask(cursor), restarted = false;
+    if (cursor && entry.direction && entry.direction !== dir(result)) { result = await ask(null); restarted = true; }
+    entry.direction = dir(result); return {result, restarted};
   }
   async function load(entry, refresh = false) {
     if (entry.pending) return entry.pending;
@@ -141,15 +150,15 @@ export function createHistoricalPeriodStore(ops) {
         // A partially paged covering range cannot stand in for this range:
         // obtain this range's own first page instead of mislabelling it complete.
         if (covering.hasMore === true) {
-          const result = await ops.read({mode:'period', purpose:'admin_period_report', ...entry.period, cursor, limit:100});
-          Object.assign(rows, result.orders || {}); entry.cursor = result.cursor || cursor; entry.hasMore = result.hasMore === true;
+          const {result, restarted} = await readPage(entry, cursor); if (restarted) rows = {};
+          Object.assign(rows, result.orders || {}); entry.cursor = result.cursor || (restarted ? null : cursor); entry.hasMore = result.hasMore === true;
         } else {
           rows = Object.fromEntries(Object.entries(coveredRows).filter(([,row]) => inside(row,entry.period)));
           entry.hasMore = false; entry.cursor = null;
         }
       } else {
-        const result = await ops.read({mode:'period', purpose:'admin_period_report', ...entry.period, cursor, limit:100});
-        Object.assign(rows, result.orders || {}); entry.cursor = result.cursor || cursor; entry.hasMore = result.hasMore === true;
+        const {result, restarted} = await readPage(entry, cursor); if (restarted) rows = {};
+        Object.assign(rows, result.orders || {}); entry.cursor = result.cursor || (restarted ? null : cursor); entry.hasMore = result.hasMore === true;
       }
       if (epochAtStart !== generation) return rows;
       // Changes published while this page was in flight are re-applied by the

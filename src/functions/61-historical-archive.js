@@ -237,21 +237,23 @@ async function historicalPeriodPage(db, firestore, data, limit, salesAtReady) {
   if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || end - start > 400 * 86400000) {
     throw new HttpsError("invalid-argument", "Choose a valid historical period of 400 days or less.");
   }
+  // Newest-first is opt-in so admin clients cached before it keep their ascending cursors.
+  const direction = data.direction === "desc" ? "desc" : "asc";
   if (salesAtReady) {
     const cursor = historicalReadCursor(data.cursor);
     let query = firestore.collection(HistoricalArchive.COLLECTION)
       .where("salesAt", ">=", start).where("salesAt", "<=", end)
-      .orderBy("salesAt", "asc").orderBy(FieldPath.documentId(), "asc");
+      .orderBy("salesAt", direction).orderBy(FieldPath.documentId(), direction);
     if (cursor) query = query.startAfter(cursor.value, cursor.id);
     const snapshot = await query.limit(limit + 1).get(), documents = snapshot.docs.slice(0, limit), last = documents[documents.length - 1];
-    return {documents, cursor:last ? {value:Number(last.get("salesAt")) || 0, id:last.id} : cursor, hasMore:snapshot.size > limit};
+    return {documents, direction, cursor:last ? {value:Number(last.get("salesAt")) || 0, id:last.id} : cursor, hasMore:snapshot.size > limit};
   }
   const incoming = data.cursor && typeof data.cursor === "object" ? data.cursor : {}, nextCursor = {};
   const pages = await Promise.all(["completedAt", "receivedAt", "timestamp"].map(async (field) => {
     const cursor = historicalReadCursor(incoming[field]);
     let query = firestore.collection(HistoricalArchive.COLLECTION)
       .where(`order.${field}`, ">=", start).where(`order.${field}`, "<=", end)
-      .orderBy(`order.${field}`, "asc").orderBy(FieldPath.documentId(), "asc");
+      .orderBy(`order.${field}`, direction).orderBy(FieldPath.documentId(), direction);
     if (cursor) query = query.startAfter(cursor.value, cursor.id);
     const snapshot = await query.limit(limit + 1).get(), documents = snapshot.docs.slice(0, limit), last = documents[documents.length - 1];
     if (last) nextCursor[field] = {value: Number(last.get(`order.${field}`)) || 0, id: last.id};
@@ -262,7 +264,7 @@ async function historicalPeriodPage(db, firestore, data, limit, salesAtReady) {
     const order = (snapshot.data() || {}).order || {}, stamp = HistoricalArchive.salesAt(order);
     return stamp >= start && stamp <= end;
   });
-  return {documents, cursor: nextCursor, hasMore: pages.some((page) => page.hasMore)};
+  return {documents, direction, cursor: nextCursor, hasMore: pages.some((page) => page.hasMore)};
 }
 
 async function historicalLatestPage(db, firestore, data, limit) {
@@ -512,6 +514,8 @@ exports.readHistoricalOrders = onCall(
     if (typeof logger !== "undefined") logger.info("Historical Firestore read", {mode, purpose, requested:limit, returned:Object.keys(hydrated.rows).length, hasMore:page.hasMore, firestore:hydrated.firestore, rtdbFallback:hydrated.rtdbFallback});
     return {
       orders: hydrated.rows, cursor: page.cursor || null, hasMore: page.hasMore,
+      // Echoed so a client never files an old ascending cursor as newest-first.
+      ...(page.direction ? {direction: page.direction} : {}),
       source: {firestore: hydrated.firestore, rtdbFallback: hydrated.rtdbFallback, unverified: hydrated.unverified},
       deletionEnabled: false,
     };
