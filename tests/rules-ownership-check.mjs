@@ -9,8 +9,8 @@ const env=await initializeTestEnvironment({projectId,database:{rules}});
 try{
   await env.withSecurityRulesDisabled(async(context)=>{
     await set(ref(context.database()),{
-      admins:{owner:true,manager:'manager',staff:'staff',cashier:'staff',kitchen:'kitchen'},
-      adminPerms:{staff:{orders:true,pos:true,possettings:true,discrepancy:true,petty:true,availability:true},cashier:{pos:true},kitchen:{orders:true}},
+      admins:{owner:true,manager:'manager',staff:'staff',cashier:'staff',kitchen:'kitchen',disabled:{role:'disabled',active:false,disabled:true}},
+      adminPerms:{staff:{orders:true,pos:true,possettings:true,discrepancy:true,petty:true,availability:true},cashier:{pos:true},kitchen:{orders:true},disabled:{pos:true,registerOps:true}},
       menuItems:{latte:{name:'Latte',cat:'coffee',priceS:100}},
       channelPrices:{grabfood:{latte:{S:130}}},
       availability:{Latte:true},
@@ -57,11 +57,14 @@ try{
   const staff=env.authenticatedContext('staff').database();
   const cashier=env.authenticatedContext('cashier').database();
   const kitchen=env.authenticatedContext('kitchen').database();
+  const disabled=env.authenticatedContext('disabled').database();
   const guest=env.unauthenticatedContext().database();
-  await assertSucceeds(set(ref(cashier,'shifts/rule-open'),{id:'rule-open',status:'open'}));
   await env.withSecurityRulesDisabled(async c=>{
+    await set(ref(c.database(),'shifts/rule-open'),{id:'rule-open',status:'open',accountUid:'cashier'});
     await set(ref(c.database(),'shiftHandovers/rule-open'),{state:'pending'});
   });
+  await assertFails(set(ref(cashier,'shifts/browser-created'),{id:'browser-created',status:'open',accountUid:'cashier'}));
+  await assertFails(set(ref(cashier,'posActiveShift'),{id:'browser-created',status:'open',accountUid:'cashier'}));
   await assertFails(set(ref(cashier,'shifts/rule-open'),null));
   await assertFails(update(ref(owner,'shifts/rule-open'),{status:'closed'}));
   await assertFails(set(ref(owner,'shifts'),null));
@@ -69,11 +72,30 @@ try{
   await assertFails(set(ref(owner,'pendingShiftHandovers/rule-open'),{at:1}));
   // Shift crew (Sep 2026): the shift owner is fixed once set, and crew membership plus
   // refused-sale evidence are server-only, so a browser cannot grant itself till access.
-  await assertSucceeds(set(ref(cashier,'shifts/rule-crew'),{id:'rule-crew',status:'open',accountUid:'cashier',staff:'Cashier'}));
+  await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database()),{'shifts/rule-crew':{id:'rule-crew',status:'open',accountUid:'cashier',staff:'Cashier'},posActiveShift:{id:'rule-crew',status:'open',accountUid:'cashier',staff:'Cashier'}});});
   await assertSucceeds(update(ref(cashier,'shifts/rule-crew'),{drawer:{b100:1}}));
+  await assertSucceeds(update(ref(staff,'shifts/rule-crew'),{drawer:{b100:1,b50:1}}));
+  await assertSucceeds(update(ref(staff,'posActiveShift'),{drawer:{b100:1,b50:1}}));
+  await assertFails(update(ref(staff,'shifts/rule-crew'),{openCount:{b100:9}}));
+  await assertFails(update(ref(staff,'posActiveShift'),{openCount:{b100:9}}));
+  await assertFails(update(ref(owner,'shifts/rule-crew'),{status:'closed'}));
+  await assertFails(update(ref(owner,'shifts/rule-crew'),{status:'handover_pending'}));
+  await assertFails(set(ref(owner,'shifts/rule-crew'),null));
+  await assertFails(update(ref(owner,'posActiveShift'),{status:'closed'}));
+  await assertFails(update(ref(owner,'posActiveShift'),{id:'rule-taken'}));
+  await assertFails(update(ref(owner,'posActiveShift'),{accountUid:'owner'}));
+  await assertFails(set(ref(owner,'posActiveShift'),null));
+  await assertFails(update(ref(disabled,'shifts/rule-crew'),{drawer:{b100:9}}));
+  await env.withSecurityRulesDisabled(async c=>{await set(ref(c.database(),'sessionControl/users/staff'),{at:Date.now()+60000});});
+  await assertFails(update(ref(staff,'shifts/rule-crew'),{drawer:{b100:9}}));
   await assertSucceeds(set(ref(cashier,'shifts/rule-crew'),{id:'rule-crew',status:'open',accountUid:'cashier',staff:'Cashier',drawer:{b100:2}}));
+  await assertSucceeds(update(ref(cashier),{'shifts/rule-crew/status':'closed',posActiveShift:null}));
+  await assertFails(update(ref(cashier,'shifts/rule-crew'),{status:'open'}));
   await assertFails(update(ref(cashier,'shifts/rule-crew'),{accountUid:'staff'}));
   await assertFails(update(ref(owner,'shifts/rule-crew'),{accountUid:null}));
+  await env.withSecurityRulesDisabled(async c=>{await set(ref(c.database(),'shifts/rule-legacy-ownerless'),{id:'rule-legacy-ownerless',status:'open',openAt:1,openingFloat:100});});
+  await assertFails(update(ref(owner,'shifts/rule-legacy-ownerless'),{accountUid:'owner'}));
+  await assertFails(update(ref(owner,'shifts/rule-legacy-ownerless'),{status:'closed'}));
   await assertFails(set(ref(staff,'shifts/rule-crew'),{id:'rule-crew',status:'open',staff:'Cashier'}));
   for(const db of [owner,manager,staff,cashier]){
     await assertFails(set(ref(db,'shiftCrews/rule-crew/staff'),{uid:'staff',sessions:{1:{joinedAt:1}}}));

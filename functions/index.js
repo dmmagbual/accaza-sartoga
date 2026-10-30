@@ -4551,20 +4551,29 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
       const active=(await db.ref('/posActiveShift').get()).val();
       if(!active||active.id!==id||shift.status!=='open')throw new HttpsError('failed-precondition','This shift is no longer active.');
       const at=Date.now(),deviceId=posAssuranceKey(data.deviceId,'Device ID');
-      let cash,commands;try{cash=ShiftHandover.cashSnapshot(shift,data.closeCount,(await db.ref('/posSettings/fixedFloat').get()).val());commands=ShiftHandover.sealCommands(data.rows||[],shift,at);}catch(e){throw new HttpsError('invalid-argument',e.message);}
+      const frozenFloat=shift.floatMode==='fixed'&&shift.configuredFloat!=null?Number(shift.configuredFloat):shift.floatMode==='opening-count'?Number(shift.openingFloat||0):(await db.ref('/posSettings/fixedFloat').get()).val();
+      let cash,commands;try{cash=ShiftHandover.cashSnapshot(shift,data.closeCount,frozenFloat);commands=ShiftHandover.sealCommands(data.rows||[],shift,at);}catch(e){throw new HttpsError('invalid-argument',e.message);}
+      const managerAssisted=manager&&shift.accountUid!==actor.uid;
+      let managerCashAttestation=null;
+      if(managerAssisted){
+        const attestation=data.managerCashAttestation||{},reason=financeText(attestation.reason,300);
+        if(attestation.scope!=='whole_drawer_including_float'||attestation.confirmed!==true||Financial.money(attestation.countedCash)!==Financial.money(cash.countedCash)||Financial.money(attestation.retainedFloat)!==Financial.money(cash.retainedFloat)||reason.length<12)throw new HttpsError('failed-precondition','Management must recount the whole drawer, including the retained float, and record why another cashier\'s shift is being closed.');
+        if(cash.floatShortfall>.009&&attestation.shortfallConfirmed!==true)throw new HttpsError('failed-precondition',`The full drawer count is ${cash.floatShortfall.toFixed(2)} below the required float. Confirm the shortfall explicitly or recount before closing.`);
+        managerCashAttestation={scope:'whole_drawer_including_float',countedCash:cash.countedCash,retainedFloat:cash.retainedFloat,floatShortfall:cash.floatShortfall,confirmed:true,shortfallConfirmed:cash.floatShortfall>.009,reason,attestedAt:at,attestedBy:actor.uid,schemaVersion:1};
+      }
       const devices=(await db.ref(`/posDeviceHealth/${id}`).get()).val()||{};
       // The submitting device's fresh queue is captured with the handover. Old reports
       // from other devices remain explicit recovery tasks, never silently discarded.
       devices[deviceId]={deviceId,reportedBy:actor.uid,outstanding:Object.keys(commands).length,lastContactAt:at};
       const closeCheckError=financeText(data.closeCheckError,300);
-      const record={state:'pending',shiftId:id,staff:shift.staff||'',ownerUid:shift.accountUid||actor.uid,at,by:actor.uid,deviceId,cash,commands,devices,schemaVersion:1};if(closeCheckError)record.closeCheckError=closeCheckError;
+      const record={state:'pending',shiftId:id,staff:shift.staff||'',ownerUid:shift.accountUid||actor.uid,at,by:actor.uid,deviceId,cash,commands,devices,schemaVersion:1};if(closeCheckError)record.closeCheckError=closeCheckError;if(managerCashAttestation)record.managerCashAttestation=managerCashAttestation;
       const claim=await href.transaction(current=>current||record,undefined,false);handover=claim.snapshot.val();
     }
     if(handover.state==='resolved'){const closed=(await sref.get()).val()||{};return {shiftId:id,alreadyResolved:true,resolved:true,cash:handover.cash,zReport:closed.zReport||null,shift:handoverShiftSummary(closed,handover)};}
     // A retry after a lost response must preserve the first cash count and must never
     // clear an incoming cashier's shift. Saving evidence precedes releasing the till.
     await sref.transaction(row=>row&&row.status!=='closed'?{...row,status:'handover_pending',handoverAt:handover.at,closeAt:handover.at,...handover.cash,reconciliationStatus:'pending',handoverId:id}:row,undefined,false);
-    await db.ref().update({[`pendingShiftHandovers/${id}`]:{staff:handover.staff,at:handover.at,cash:handover.cash},[`operationalAudit/handover_${id}`]:{action:'cashier_shift_handover',sourceType:'shift',sourceId:id,actorUid:handover.by,ts:handover.at,countedCash:handover.cash.countedCash,cashToSettle:handover.cash.cashToSettle,closeCheckError:handover.closeCheckError||''},[`ownerDailySummaries/${financeDateFromTimestamp(handover.at)}/${id}`]:{shiftId:id,staff:handover.staff,closedAt:handover.at,status:'handover_pending',controlTotals:handover.cash}});
+    await db.ref().update({[`pendingShiftHandovers/${id}`]:{staff:handover.staff,at:handover.at,cash:handover.cash},[`operationalAudit/handover_${id}`]:{action:'cashier_shift_handover',sourceType:'shift',sourceId:id,actorUid:handover.by,ts:handover.at,countedCash:handover.cash.countedCash,cashToSettle:handover.cash.cashToSettle,closeCheckError:handover.closeCheckError||'',managerCashAttested:!!handover.managerCashAttestation,managerCashCountReason:financeText(handover.managerCashAttestation&&handover.managerCashAttestation.reason,300)},[`ownerDailySummaries/${financeDateFromTimestamp(handover.at)}/${id}`]:{shiftId:id,staff:handover.staff,closedAt:handover.at,status:'handover_pending',controlTotals:handover.cash}});
     await db.ref('/posActiveShift').transaction(row=>row&&row.id===id?null:row,undefined,false);
     await OfflineSync.endShiftCrew(db,id,handover.at,handover.by,'shift_handover');
     const pendingSales=Object.keys(handover.commands||{}).length;
