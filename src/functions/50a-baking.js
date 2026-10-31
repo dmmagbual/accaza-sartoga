@@ -124,7 +124,7 @@ async function bakingValidateProduct(db, productId, product) {
 }
 
 exports.checkBakingMapping = onCall(
-  { region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 60, memory: "256MiB" },
+  { region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB" },
   async (request) => {
     const db = getDatabase();
     const actor = await requirePortalUser(db, request);
@@ -145,7 +145,7 @@ exports.checkBakingMapping = onCall(
 );
 
 exports.postBatchCard = onCall(
-  { region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 120, memory: "256MiB" },
+  { region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "256MiB" },
   async (request) => {
     const db = getDatabase();
     const actor = await requirePortalUser(db, request);
@@ -332,7 +332,7 @@ exports.postBatchCard = onCall(
 );
 
 exports.reverseBatchCard = onCall(
-  { region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 120, memory: "256MiB" },
+  { region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "256MiB" },
   async (request) => {
     const db = getDatabase();
     const actor = await requirePortalUser(db, request);

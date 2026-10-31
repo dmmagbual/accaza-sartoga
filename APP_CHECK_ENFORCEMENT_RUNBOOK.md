@@ -7,7 +7,7 @@
 
 ## 0. Where we are now
 - App Check is initialized through one shared helper on every active browser Firebase app. Admin/POS, Finance Books, manager-approval sign-in, the main customer app, Rewards, and the standalone order-availability reader all register reCAPTCHA Enterprise before using Authentication, Realtime Database, or Cloud Functions. This coverage repair is Admin **v641**, Customer **v92**, Books **v141**, cache **v629**; it is not production-active until merged and published.
-- **Staff enforcement is ON from 28 Oct 2026** (Phase 2): `ENFORCE_APP_CHECK` defaults to `"true"` in `src/functions/00-app-check-flags.js`, so the 96 staff callables refuse calls without a valid token. `ENFORCE_APP_CHECK_ORDERS` stays `"false"`: the public order callables remain in monitor mode. Live from the moment the merge deploy completes. Count check on 28 Oct (built `functions/index.js`): the order flag covers three customer callables (`createOnlineOrder`, `confirmOrderReceived`, `createQrOrderTicket`), and eight callables hardcode `enforceAppCheck: false`: the five in Section 6 plus the baking callables `checkBakingMapping`, `postBatchCard` and `reverseBatchCard`, which are staff operations still in monitor mode.
+- **Staff enforcement is ON from 28 Oct 2026** (Phase 2): `ENFORCE_APP_CHECK` defaults to `"true"` in `src/functions/00-app-check-flags.js`, so every staff callable except telemetry refuses calls without a valid token. `ENFORCE_APP_CHECK_ORDERS` stays `"false"`: the public order callables remain in monitor mode. Live from the moment the merge deploy completes. From 31 Oct the order flag covers three customer callables (`createOnlineOrder`, `confirmOrderReceived`, `createQrOrderTicket`), and only `recordClientTelemetry` hardcodes `enforceAppCheck: false` (Section 6).
 - The two flags are **independent**. `ENFORCE_APP_CHECK` gates the 96 staff callables; `ENFORCE_APP_CHECK_ORDERS` gates only the 2 public order callables (`createOnlineOrder`, `confirmOrderReceived`). Turning the staff flag on no longer turns the order flag on.
 - Every online order logs `appCheck: Boolean(request.app)` server-side, so token presence is observable without the console.
 - Deploy runs #411 and #412 both failed on a transient Cloud Functions API error with 176 of 177 functions already updated; #412 attempt 2 succeeded at 2026-09-30T15:13:42Z. Both deploy steps now retry once after 60 seconds, so a single straggler no longer fails a run. The earlier **2026-09-30 → 2026-10-08** gate was invalidated when the coverage audit found legitimate unverified Finance Books, manager-approval, and standalone order-availability clients. Start a fresh 7-day gate after v641/v92/v141/v629 is published.
@@ -65,17 +65,9 @@ Enforcement is gatekeeping only — no data migration, so rollback is just turni
 If a deploy is needed in a hurry and CI is unavailable: `firebase deploy --only "functions" --project "accaza-sartoga"`. Never use `firebase deploy --only hosting` for this repository — there is no Hosting target.
 
 ## 6. What is never enforced, and why
-Five callables hardcode `enforceAppCheck: false`, so neither flag reaches them. All five are still gated by portal identity and role — they are exempt from *device attestation*, not from authorization:
+Since 31 Oct 2026 only `recordClientTelemetry` hardcodes `enforceAppCheck: false`. It keeps `requirePortalUser`, and it stays exempt permanently: it is the diagnostic that reports a staff client without a token, so enforcing it would blind the signal this runbook depends on. `tests/monitoring-alerts-check.mjs` fails if any other callable hardcodes `false`.
 
-| Callable | Authorization it does have |
-| --- | --- |
-| `recordClientTelemetry` | `requirePortalUser` |
-| `getPaymentProof` | `requirePortalUser`, then an order lookup by id |
-| `ensureActiveOrders` | `requirePortalUser`, plus an owner/superadmin/admin/manager gate on `force` |
-| `postInventoryMovements` | `requirePortalUser`, per-movement-type `adminPerms` check, and server-only movement types rejected outright |
-| `ensureInventoryLedger` | `requirePortalPermission(["inventory"])`, plus an initialization-marker and `force` role gate |
-
-**This is a gap to decide on later, not a reason to relax.** Flipping `ENFORCE_APP_CHECK` covers 96 of the 103 callables; these five stay in monitor mode regardless. `recordClientTelemetry` should probably stay exempt permanently — it is the diagnostic that tells you a staff client has no token, and enforcing it would blind the very signal Phase 1 depends on. The other four are ordinary staff operations and could follow the staff flag once Phase 2 has been stable for a few weeks. That is a separate PR; this runbook does not authorize it.
+The seven callables that used to be exempt now follow `ENFORCE_APP_CHECK`: `getPaymentProof`, `ensureActiveOrders`, `postInventoryMovements`, `ensureInventoryLedger`, `checkBakingMapping`, `postBatchCard` and `reverseBatchCard`. Their exemption was historical, not deliberate (August code written before App Check, then copied by the baking callables on 14 Oct). Since 1 Oct, 1,413 of their 1,418 signed-in calls carried a valid token; the 5 without one were `ensureActiveOrders` calls from 1 to 9 Oct, before the shared initialization fix reached every till.
 
 Keep the `String(process.env.X || "false")` coercion. A `defineBoolean` parameter object is truthy at runtime and would enforce App Check even when the flag reads false — `tests/static/30-server-release.mjs` fails the build if that pattern returns.
 
@@ -89,3 +81,4 @@ After v641/v92/v141/v629 is published: 7 consecutive days of `appCheck: true` on
 | Date | Change | Evidence |
 | --- | --- | --- |
 | 28 Oct 2026 | `ENFORCE_APP_CHECK` default set to `"true"` (staff surface). Orders and RTDB unchanged. New owner alert "Accaza CRITICAL - Staff device refused by App Check" (ops/monitoring/alert-policies.json). | Cloud Logging 18 to 28 Oct: 12,293 of 12,295 `Callable request verification passed` entries had `app: VALID`; 2 `MISSING` were `manageSupplier` development calls on 20 Oct. 7,807 `Staff App Check status` lines across all 5 staff accounts, 3 without a token (the same 2 plus 1 `recordClientTelemetry`, which is exempt). |
+| 31 Oct 2026 | The seven former exemptions follow `ENFORCE_APP_CHECK`; only telemetry stays exempt. The alert stops excluding them. | Cloud Logging 1 to 31 Oct: 1,413 of 1,418 signed-in calls to those seven had `app: VALID`; the 5 `MISSING` were `ensureActiveOrders`, latest 9 Oct. Since staff enforcement went live on 28 Oct, 4,591 of 4,594 staff calls were valid, and the 3 exceptions had a valid App Check token but no staff login, so no call was refused by App Check. |

@@ -436,7 +436,7 @@ async function traceStockAdjustment(db, row) {
 }
 
 exports.postInventoryMovements = onCall(
-  {region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 120, memory: "256MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
     const movements = listFromFirebase(request.data && request.data.movements);
@@ -459,7 +459,7 @@ exports.postInventoryMovements = onCall(
 );
 
 exports.ensureInventoryLedger = onCall(
-  {region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 300, memory: "512MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 300, memory: "512MiB"},
   async (request) => {
     const db = getDatabase();
     const actor = await requirePortalPermission(db, request, ["inventory"]);

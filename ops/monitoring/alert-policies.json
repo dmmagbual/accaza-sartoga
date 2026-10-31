@@ -73,7 +73,7 @@
     {
       "displayName": "Accaza CRITICAL - Staff device refused by App Check",
       "severity": "CRITICAL",
-      "filter": "labels.\"firebase-log-type\"=\"callable-request-verification\" AND jsonPayload.verifications.auth=\"VALID\" AND (jsonPayload.verifications.app=\"MISSING\" OR jsonPayload.verifications.app=\"INVALID\") AND NOT resource.labels.service_name=(\"recordclienttelemetry\" OR \"getpaymentproof\" OR \"ensureactiveorders\" OR \"postinventorymovements\" OR \"ensureinventoryledger\" OR \"checkbakingmapping\" OR \"postbatchcard\" OR \"reversebatchcard\" OR \"createonlineorder\" OR \"confirmorderreceived\" OR \"createqrorderticket\")",
+      "filter": "labels.\"firebase-log-type\"=\"callable-request-verification\" AND jsonPayload.verifications.auth=\"VALID\" AND (jsonPayload.verifications.app=\"MISSING\" OR jsonPayload.verifications.app=\"INVALID\") AND NOT resource.labels.service_name=(\"recordclienttelemetry\" OR \"createonlineorder\" OR \"confirmorderreceived\" OR \"createqrorderticket\")",
       "labelExtractors": {
         "function": "EXTRACT(resource.labels.service_name)",
         "app": "EXTRACT(jsonPayload.verifications.app)"
