@@ -206,18 +206,8 @@ function renderPayMethods(){
 }
 
 /* ---------- Discrepancy helpers that must stay EAGER ---------- */
-/* AP: register bundle split, step 1 (13 Oct 2026).
-   The always-on subscription in 00-bootstrap-payment-controls.js runs on every register tab:
-     a.subscribe('discrepancies', function(s){ discMap=s.val()||{}; updateDiscBadge(); if(isTab('discrepancy'))renderDiscrepancies(); });
-   updateDiscBadge() therefore has to exist without the discrepancies screen being open, and it needs
-   discList() -> isHiddenLegacyDiscrepancy() -> discrepancyDate() -> window.AccazaDate. Those functions,
-   plus the number formatter dnum() they share with the rest of the register screens, live here.
-
-   NOTE 13 Oct 2026: a companion script was tried and REVERTED. The whole register bundle is wrapped in
-   an IIFE (function(){ ... })(); at the head and tail, so everything inside it is private to that
-   wrapper and a separately loaded script cannot see these functions -- the discrepancies screen failed
-   with "discList is not defined". Any future split of this bundle has to expose what the companion
-   needs on window, or move the code without crossing the wrapper. */
+/* Always-on discrepancy subscriptions need these helpers inside the register IIFE.
+   A companion split must expose an explicit window API; see the reverted split plan. */
 function dnum(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
 function discrepancyDate(d){return String(d&&d.date||window.AccazaDate.key(d&&((d.ts||d.closedAt||d.createdAt)||Date.now()))).slice(0,10);}
 function isRetainedLegacyDiscrepancy(d){return discrepancyDate(d)==='2026-08-30'&&d&&d.kind==='cash'&&Number(d.variance)<0&&Math.abs(Math.abs(Number(d.variance))-120)<.005;}
@@ -226,10 +216,7 @@ function discList(openOnly){var arr=Object.keys(discMap).map(function(k){return 
 function updateDiscBadge(){var n=discList(true).length;var b=document.getElementById('discBadge');if(b){b.textContent=n;b.style.display=n?'inline-block':'none';}}
 
 /* ---------- Discrepancy Log (Feature D) ---------- */
-/* The helpers the always-on badge path needs (dnum, discrepancyDate, isRetainedLegacyDiscrepancy,
-   isHiddenLegacyDiscrepancy, discList, updateDiscBadge) now live in 29-discrepancy-eager.js so this
-   render code can become a lazily loaded companion without breaking the badge on other tabs.
-   discrepancyOutcome stays here because only renderDiscrepancies uses it. */
+/* Eager badge helpers live in 29-discrepancy-eager.js. */
 function discrepancyOutcome(d){
   if(d.kind==='inventory'){
     /* The stock adjustment IS the treatment: it moved the stock and posted its Finance offset, so the
@@ -269,9 +256,7 @@ function reviewDiscrepancy(id){
   if(d.kind==='cash'){cashDifferenceCase(id,d);return;}
   resolveInventoryDiscrepancies([id]);
 }
-/* Inventory flags are already treated by the stock adjustment that raised them. This links each open
-   flag to that adjustment and to the Admin who made it, with one approval for the whole batch, and
-   posts nothing: the adjustment's reason and Finance offset were the treatment. */
+/* Link inventory flags to their existing adjustment; do not post a second journal. */
 function resolveInventoryDiscrepancies(ids){
   var a=A();if(!a.reviewDiscrepancy||!a.managerApproval){alert('The discrepancy service is not available. Refresh the portal.');return;}
   var open=(ids||[]).filter(function(k){var d=discMap[k];return d&&d.kind==='inventory'&&d.status!=='reviewed';});
@@ -997,12 +982,7 @@ function changeStaffPin(id){
 }
 
 /* ══════════ COMPANY INFORMATION (registered business identity) ══════════ */
-/* One single home for the registered business facts. The TIN, branch code and
-   business structure typed here are stamped into taxSettings when a tax category
-   is activated (Tax Compliance tab), so every receipt prints the registered
-   identity BIR requires (RR 18-2012). Owner-only changes, audited server-side by
-   setCompanyInfo; a TIN saved in the old tax card pre-fills automatically so the
-   owner never retypes identity facts they already entered. */
+/* Owner-only registered business identity, audited by setCompanyInfo and reused by taxSettings. */
 function renderCompanyInfo(){
   var root=document.getElementById('companyInfoRoot');if(!root)return;
   root.innerHTML='<div id="companyInfoBox"></div>';
@@ -1109,11 +1089,7 @@ function renderTaxCompliance(){
 }
 
 /* ══════════ BIR TAX CARD (VAT / Percentage tax) ══════════ */
-/* Labels mirror the server-side canonical checklist in src/functions/20c-tax-settings.js —
-   activation is blocked client-side with the same message, and the server re-checks every id.
-   The registered identity (TIN, branch code, business structure) is typed once in the
-   Company Information tab; the server stamps it into taxSettings at activation, so receipts
-   and online orders keep printing exactly as they do today. */
+/* Mirrors the server checklist; the server rechecks every id and stamps the registered identity. */
 var TAX_REQ_META={
   cas_1905_filed:{label:'BIR Form 1905 filed to register this POS system with your RDO',help:'RR 7-2024: the POS itself must be registered before Accaza receipts can serve as official invoices.'},
   pos_reports_audit:{label:'This POS can produce sales and audit reports on demand',help:'BIR officers may require daily and periodic sales reports from the register at any time.'},
@@ -1245,10 +1221,7 @@ function saveTaxSettings(state){
 }
 
 /* ══════════ BIR QUARTERLY RETURNS (2550Q / 2551Q / annual 1701-1702 export) ══════════ */
-/* One-click preparation from the Tax Compliance tab. Figures come from reconciled
-   Financial Close summaries and purchase input VAT through the prepareQuarterlyTaxReturn
-   Cloud Function — no raw order data is re-read here. /taxReturns history is fetched
-   once when the tab opens (single read, no listener). */
+/* Uses reconciled close summaries and purchase input VAT; history is read once on tab open. */
 var QUARTER_DUE={1:'25 April',2:'25 July',3:'25 October',4:'25 January'};
 var QUARTER_LABEL={1:'Q1 (Jan - Mar)',2:'Q2 (Apr - Jun)',3:'Q3 (Jul - Sep)',4:'Q4 (Oct - Dec)'};
 var QUARTER_END={1:'-03-31',2:'-06-30',3:'-09-30',4:'-12-31'};

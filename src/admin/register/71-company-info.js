@@ -1,11 +1,6 @@
 
 /* ══════════ COMPANY INFORMATION (registered business identity) ══════════ */
-/* One single home for the registered business facts. The TIN, branch code and
-   business structure typed here are stamped into taxSettings when a tax category
-   is activated (Tax Compliance tab), so every receipt prints the registered
-   identity BIR requires (RR 18-2012). Owner-only changes, audited server-side by
-   setCompanyInfo; a TIN saved in the old tax card pre-fills automatically so the
-   owner never retypes identity facts they already entered. */
+/* Owner-only registered business identity, audited by setCompanyInfo and reused by taxSettings. */
 function renderCompanyInfo(){
   var root=document.getElementById('companyInfoRoot');if(!root)return;
   root.innerHTML='<div id="companyInfoBox"></div>';
