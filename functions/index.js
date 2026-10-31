@@ -30,9 +30,28 @@ const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp, getApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
-const {getFirestore, FieldPath, FieldValue} = require("firebase-admin/firestore");
-const {getMessaging} = require("firebase-admin/messaging");
-const {getStorage} = require("firebase-admin/storage");
+// Cold-start cost control (31 Oct 2026): Firestore, Messaging and Storage add roughly half of the
+// module load time every function instance pays on start-up, and Cloud Run bills that time. Only
+// the historical archive, Accaza AI, payment-proof and notification functions use them, so each
+// SDK loads on first use. Call sites are unchanged: getFirestore(), FieldPath.documentId(), etc.
+function lazyAdminModule(name) {
+  let loaded = null;
+  return () => loaded || (loaded = require(name));
+}
+function lazyAdminClass(load, key) {
+  return new Proxy({}, {get(_target, prop) {
+    const cls = load()[key], value = cls[prop];
+    return typeof value === "function" ? value.bind(cls) : value;
+  }});
+}
+const firestoreModule = lazyAdminModule("firebase-admin/firestore");
+const messagingModule = lazyAdminModule("firebase-admin/messaging");
+const storageModule = lazyAdminModule("firebase-admin/storage");
+const getFirestore = (...args) => firestoreModule().getFirestore(...args);
+const FieldPath = lazyAdminClass(firestoreModule, "FieldPath");
+const FieldValue = lazyAdminClass(firestoreModule, "FieldValue");
+const getMessaging = (...args) => messagingModule().getMessaging(...args);
+const getStorage = (...args) => storageModule().getStorage(...args);
 const logger = require("firebase-functions/logger");
 const crypto = require("node:crypto");
 const {AsyncLocalStorage} = require("node:async_hooks");
@@ -782,17 +801,21 @@ exports.syncRegisterCashFloat = onValueWritten(
   },
 );
 
-exports.syncActiveRegisterCashFloat = onValueWritten(
-  {ref: "/posActiveShift", region: "asia-southeast1"},
-  async (event) => {
-    const db = getDatabase(), at = Date.now();
-    const settings = await readPosSettings(db, ["fixedFloat"]);
-    const before = resolveRegisterFloat(settings, event.data.before.val()), after = resolveRegisterFloat(settings, event.data.after.val());
-    // A new shift with the same float amount changes nothing in the books.
-    if (Math.abs(before.amount - after.amount) < 0.005) return;
-    await postRegisterFloatTarget(db, await liveRegisterFloat(db), at, "register_float_synced");
-  },
-);
+// Active-shift float sync, run by onPosActiveShiftWritten (src/functions/30-orders.js).
+// resolveRegisterFloat only reads retainedFloat/openingFloat from the shift and the same
+// fixedFloat setting for both sides, so an unchanged shift float cannot change the amount and
+// the settings read is skipped. A new shift with the same float changes nothing in the books.
+function activeShiftFloatRaw(shift) {
+  shift = shift || {};
+  return Financial.money(shift.retainedFloat != null ? shift.retainedFloat : shift.openingFloat);
+}
+async function syncActiveRegisterCashFloat(db, beforeShift, afterShift, at) {
+  if (Math.abs(activeShiftFloatRaw(beforeShift) - activeShiftFloatRaw(afterShift)) < 0.005) return;
+  const settings = await readPosSettings(db, ["fixedFloat"]);
+  const before = resolveRegisterFloat(settings, beforeShift), after = resolveRegisterFloat(settings, afterShift);
+  if (Math.abs(before.amount - after.amount) < 0.005) return;
+  await postRegisterFloatTarget(db, await liveRegisterFloat(db), at, "register_float_synced");
+}
 
 // Finance / Books owns cash-account maintenance. Opening changes are posted as
 // append-only adjustments so later activity and the audit trail are preserved.
@@ -6781,36 +6804,57 @@ exports.syncActiveOrderProjection = onValueWritten(
   },
 );
 
-exports.pruneClosedShiftOrders = onValueWritten(
-  {ref: "/posActiveShift", region: ORDER_REGION},
-  async (event) => {
-    const before = event.data.before.val();
-    const after = event.data.after.val();
-    if (!before || !before.id || (after && after.id === before.id)) return;
-    const db = getDatabase();
-    const snap = await db.ref("/orders").orderByChild("shiftId").equalTo(before.id).get();
-    const writes = {};
-    snap.forEach((child) => {
-      const order = child.val();
-      if (!shouldProjectOrder(order, after || null) && order && order.source === "pos" && !isPlatformRekeyOrder(order)) {
-        const now = Date.now();
-        writes[`archivedOrders/${child.key}`] = archivedOrderRecord(order, now);
-        writes[`activeOrders/${child.key}`] = null;
-        writes[`orders/${child.key}`] = null;
-      }
-    });
-    if (Object.keys(writes).length) await db.ref().update(writes);
-  },
-);
+// Closed-shift cleanup: archive the previous shift's finished POS orders once the active shift
+// changes. Same-shift writes do nothing and cost no read.
+async function pruneClosedShiftOrders(db, before, after) {
+  if (!before || !before.id || (after && after.id === before.id)) return;
+  const snap = await db.ref("/orders").orderByChild("shiftId").equalTo(before.id).get();
+  const writes = {};
+  snap.forEach((child) => {
+    const order = child.val();
+    if (!shouldProjectOrder(order, after || null) && order && order.source === "pos" && !isPlatformRekeyOrder(order)) {
+      const now = Date.now();
+      writes[`archivedOrders/${child.key}`] = archivedOrderRecord(order, now);
+      writes[`activeOrders/${child.key}`] = null;
+      writes[`orders/${child.key}`] = null;
+    }
+  });
+  if (Object.keys(writes).length) await db.ref().update(writes);
+}
 
 // Publish only the customer-safe availability bit. Cashier and shift details
-// remain protected under /posActiveShift.
-exports.syncPublicOrderStatus = onValueWritten(
+// remain protected under /posActiveShift. Every open customer page listens to
+// /publicOrderStatus, so it is rewritten only when the bit differs from what is
+// published (a tiny read), which also repairs any earlier missed update, or when
+// updatedAt is older than 12 hours, so System Health's 36-hour freshness check
+// (functions/lib/production-validation.js) still sees a current projection.
+const PUBLIC_ORDER_STATUS_REFRESH_MS = 12 * 3600000;
+async function syncPublicOrderStatus(db, after) {
+  const acceptingOrders = !!(after && after.status !== "closed"), now = Date.now();
+  const ref = db.ref("/publicOrderStatus"), current = (await ref.get()).val();
+  const fresh = current && now - Number(current.updatedAt || 0) < PUBLIC_ORDER_STATUS_REFRESH_MS;
+  if (fresh && current.acceptingOrders === acceptingOrders) return;
+  await ref.set({acceptingOrders, updatedAt: now});
+}
+
+// One trigger for every /posActiveShift write (31 Oct 2026 Cloud Functions cost trim). It
+// replaces syncActiveRegisterCashFloat, pruneClosedShiftOrders and syncPublicOrderStatus, which
+// each started their own instance on every shift write. The three parts are unchanged and stay
+// independent: each runs whatever the others do, and any failure is still reported.
+exports.onPosActiveShiftWritten = onValueWritten(
   {ref: "/posActiveShift", region: ORDER_REGION},
   async (event) => {
-    const shift = event.data.after.exists() ? (event.data.after.val() || {}) : null;
-    const acceptingOrders = !!(shift && shift.status !== "closed");
-    await getDatabase().ref("/publicOrderStatus").set({acceptingOrders, updatedAt: Date.now()});
+    const db = getDatabase(), at = Date.now();
+    const before = event.data.before.val(), after = event.data.after.exists() ? (event.data.after.val() || {}) : null;
+    const parts = [
+      ["publicOrderStatus", syncPublicOrderStatus(db, after)],
+      ["registerFloat", syncActiveRegisterCashFloat(db, before, after, at)],
+      ["closedShiftCleanup", pruneClosedShiftOrders(db, before, event.data.after.val())],
+    ];
+    const results = await Promise.allSettled(parts.map((part) => part[1]));
+    const failed = results.map((result, i) => ({part: parts[i][0], result})).filter((row) => row.result.status === "rejected");
+    failed.forEach((row) => logger.error("onPosActiveShiftWritten part failed", {part: row.part, error: String(row.result.reason && row.result.reason.message || row.result.reason)}));
+    if (failed.length) throw failed[0].result.reason;
   },
 );
 

@@ -140,9 +140,14 @@ jobs:
       # the full-copy backup is deployed first, so the old incremental backup never runs without its markers. Each retired trigger
       # still present is then deleted by exact name and region in small batches (the normal deploy
       # below runs without --force and stops on functions that are missing from the source).
+      # 31 Oct 2026: the three /posActiveShift triggers (syncActiveRegisterCashFloat,
+      # pruneClosedShiftOrders, syncPublicOrderStatus) are retired the same way. Their merged
+      # replacement onPosActiveShiftWritten is deployed (and given two minutes to activate) before
+      # they are deleted, so shift writes are never unhandled; a brief overlap is safe (float posting is claim-guarded and converges to the
+      # live float, the status write is idempotent, and cleanup removes the orders it archives).
       - name: Retire cost-trimmed triggers
         run: |
-          retired_triggers="onOrderLoyaltyEarning,onOrderDragonQuestProgress,markBackupDirtyArchivedOrders,markBackupDirtyInventoryMovements,markBackupDirtyOrderInventoryPlans,markBackupDirtyFinancialMovements,markBackupDirtyCashBalanceApplied,markBackupDirtyBooksJournal,markBackupDirtyShifts,markBackupDirtyOperationalAudit,markBackupDirtyFinancialCommandClaims,markBackupDirtyInventoryAccounting,markBackupDirtyFinancialApprovals,markBackupDirtyActivityLog,markBackupDirtyCfLedger,markBackupDirtyPettyCashReceipts,markBackupDirtyStockReceipts,markBackupDirtyPurchaseInvoices,markBackupDirtyPlatformPayouts,markBackupDirtyInternalUsage,markBackupDirtyInventoryAdjustments,markBackupDirtyPettyCashVouchers,markBackupDirtyPettyCashReplenishments,markBackupDirtyReceivables,markBackupDirtyPayables,markBackupDirtySuppliers,markBackupDirtyInventorySku,markBackupDirtyAppCustomers,markBackupDirtyReviews,markBackupDirtyFeedbacks,markBackupDirtyPackages,markBackupDirtyLoyaltyLedger,markBackupDirtyLoyaltyRewards,markBackupDirtyDragonQuestLedger,markBackupDirtyDragonQuestOrderIndex,markBackupDirtyArchivedQrTickets"
+          retired_triggers="onOrderLoyaltyEarning,onOrderDragonQuestProgress,markBackupDirtyArchivedOrders,markBackupDirtyInventoryMovements,markBackupDirtyOrderInventoryPlans,markBackupDirtyFinancialMovements,markBackupDirtyCashBalanceApplied,markBackupDirtyBooksJournal,markBackupDirtyShifts,markBackupDirtyOperationalAudit,markBackupDirtyFinancialCommandClaims,markBackupDirtyInventoryAccounting,markBackupDirtyFinancialApprovals,markBackupDirtyActivityLog,markBackupDirtyCfLedger,markBackupDirtyPettyCashReceipts,markBackupDirtyStockReceipts,markBackupDirtyPurchaseInvoices,markBackupDirtyPlatformPayouts,markBackupDirtyInternalUsage,markBackupDirtyInventoryAdjustments,markBackupDirtyPettyCashVouchers,markBackupDirtyPettyCashReplenishments,markBackupDirtyReceivables,markBackupDirtyPayables,markBackupDirtySuppliers,markBackupDirtyInventorySku,markBackupDirtyAppCustomers,markBackupDirtyReviews,markBackupDirtyFeedbacks,markBackupDirtyPackages,markBackupDirtyLoyaltyLedger,markBackupDirtyLoyaltyRewards,markBackupDirtyDragonQuestLedger,markBackupDirtyDragonQuestOrderIndex,markBackupDirtyArchivedQrTickets,syncActiveRegisterCashFloat,pruneClosedShiftOrders,syncPublicOrderStatus"
           deployed_list_json="$(mktemp)"
           trap 'rm -f "$deployed_list_json"' EXIT
           firebase functions:list --project accaza-sartoga --json > "$deployed_list_json"
@@ -150,7 +155,10 @@ jobs:
           if [ -z "$present" ]; then
             echo "All cost-trimmed triggers are already absent; continuing."
           else
-            firebase deploy --only functions:backupDatabaseDaily,functions:runDatabaseBackupNow --project accaza-sartoga --non-interactive
+            firebase deploy --only functions:backupDatabaseDaily,functions:runDatabaseBackupNow,functions:onPosActiveShiftWritten --project accaza-sartoga --non-interactive
+            # A new database trigger can take about two minutes to become active; wait so no shift
+            # write falls between the replacement going live and the old triggers being deleted.
+            sleep 120
             read -r -a present_names <<< "$present"
             for ((i=0; i<${#present_names[@]}; i+=6)); do
               firebase functions:delete "${present_names[@]:i:6}" --region asia-southeast1 --project accaza-sartoga --force --non-interactive

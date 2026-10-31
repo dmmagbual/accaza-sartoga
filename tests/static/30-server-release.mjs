@@ -26,7 +26,7 @@ if(!functionsSource.includes('pricingVersion: "server-v1"'))fail('server pricing
 if(!functionsSource.includes('ownerUid: uid'))fail('server order owner stamp missing');
 if(!functionsSource.includes('exports.confirmOrderReceived = onCall'))fail('confirmOrderReceived callable missing');
 if(!functionsSource.includes('exports.autoCompleteReadyOnlineOrders = onSchedule')||!functionsSource.includes('READY_AUTO_COMPLETE_MS = 2 * 60 * 60 * 1000')||!functionsSource.includes('completionReason: "ready_timeout"'))fail('Two-hour Ready-order fallback is incomplete');
-if(!functionsSource.includes('const {getStorage} = require("firebase-admin/storage")'))fail('server Storage integration missing');
+if(!functionsSource.includes('const storageModule = lazyAdminModule("firebase-admin/storage");')||!functionsSource.includes('const getStorage = (...args) => storageModule().getStorage(...args);'))fail('server Storage integration missing');
 if(!functionsSource.includes('exports.getPaymentProof = onCall'))fail('authorized on-demand proof retrieval callable missing');
 if(!functionsSource.includes('order.proofPath = proofPath'))fail('orders do not store the compact proof path');
 const createOrderFn=section(functionsSource,'exports.createOnlineOrder = onCall','exports.getPaymentProof = onCall');
@@ -35,8 +35,8 @@ if(!adminSource.includes("'getPaymentProof'")||!adminSource.includes('getPayment
 if(!functionsSource.includes('enforceOrderRateLimit'))fail('online order rate limit missing');
 if(!functionsSource.includes('exports.ensureActiveOrders = onCall'))fail('active-order migration callable missing');
 if(!functionsSource.includes('exports.syncActiveOrderProjection = onValueWritten'))fail('active-order synchronization trigger missing');
-if(!functionsSource.includes('exports.pruneClosedShiftOrders = onValueWritten'))fail('closed-shift projection cleanup trigger missing');
-if(!functionsSource.includes('exports.syncPublicOrderStatus = onValueWritten')||!functionsSource.includes('ref("/publicOrderStatus").set({acceptingOrders'))fail('public order availability projection missing');
+if(!functionsSource.includes('exports.onPosActiveShiftWritten = onValueWritten')||!functionsSource.includes('async function pruneClosedShiftOrders(db, before, after)')||!functionsSource.includes('pruneClosedShiftOrders(db, before, event.data.after.val())'))fail('closed-shift projection cleanup trigger missing');
+if(!functionsSource.includes('async function syncPublicOrderStatus(db, after)')||!functionsSource.includes('syncPublicOrderStatus(db, after)]')||!functionsSource.includes('const ref = db.ref("/publicOrderStatus"), current = (await ref.get()).val();')||!functionsSource.includes('await ref.set({acceptingOrders, updatedAt: now});'))fail('public order availability projection missing');
 if(!customerSource.includes("ref(db,'publicOrderStatus')")||!customerSource.includes("OPEN FOR ONLINE ORDERS")||!customerHtml.includes('id="orderServiceStatus"'))fail('customer online-order status banner missing');
 if(!customerSource.includes('orderStatusGreenBlink 1.15s step-end infinite')||!customerSource.includes('orderStatusRedBlink 1.15s step-end infinite'))fail('customer order status dots are not configured to blink');
 if(!customerSource.includes("'Checking order availability…':'Online Orders Closed'")||!customerHtml.includes('disabled aria-disabled="true">Checking order availability'))fail('Place Order is not safely disabled while online ordering is closed or unknown');
