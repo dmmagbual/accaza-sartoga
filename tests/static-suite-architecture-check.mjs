@@ -189,6 +189,10 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // 30 Oct 2026 (management-assisted shift close, Admin 725): the existing fixed-float/Z-report guard
 // now also pins the whole-drawer attestation and below-float confirmation. Same guard, stronger meaning;
 // guard count stays at 577 and executable checks stay at 33.
-if(guardDigest!=='f31ef8fca72c4fe8c29f5b63db1b1675eafb1b7f0cacbbb247b52d996a237f6d')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// 31 Oct 2026 (Cloud Functions cold-start cost trim): three existing server-release guards now pin the
+// lazy Storage loader and the merged onPosActiveShiftWritten trigger (closed-shift cleanup and the
+// read-compare public order status), and the register-float guard pins the merged float sync. Same
+// guards, same meaning; guard count stays at 577 and executable checks stay at 33.
+if(guardDigest!=='277c7617ce435c51da35e1d9870d2a0e9ccf2d83642a8fb36e05d1a2f910bc2c')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

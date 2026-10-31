@@ -634,35 +634,56 @@ exports.syncActiveOrderProjection = onValueWritten(
   },
 );
 
-exports.pruneClosedShiftOrders = onValueWritten(
-  {ref: "/posActiveShift", region: ORDER_REGION},
-  async (event) => {
-    const before = event.data.before.val();
-    const after = event.data.after.val();
-    if (!before || !before.id || (after && after.id === before.id)) return;
-    const db = getDatabase();
-    const snap = await db.ref("/orders").orderByChild("shiftId").equalTo(before.id).get();
-    const writes = {};
-    snap.forEach((child) => {
-      const order = child.val();
-      if (!shouldProjectOrder(order, after || null) && order && order.source === "pos" && !isPlatformRekeyOrder(order)) {
-        const now = Date.now();
-        writes[`archivedOrders/${child.key}`] = archivedOrderRecord(order, now);
-        writes[`activeOrders/${child.key}`] = null;
-        writes[`orders/${child.key}`] = null;
-      }
-    });
-    if (Object.keys(writes).length) await db.ref().update(writes);
-  },
-);
+// Closed-shift cleanup: archive the previous shift's finished POS orders once the active shift
+// changes. Same-shift writes do nothing and cost no read.
+async function pruneClosedShiftOrders(db, before, after) {
+  if (!before || !before.id || (after && after.id === before.id)) return;
+  const snap = await db.ref("/orders").orderByChild("shiftId").equalTo(before.id).get();
+  const writes = {};
+  snap.forEach((child) => {
+    const order = child.val();
+    if (!shouldProjectOrder(order, after || null) && order && order.source === "pos" && !isPlatformRekeyOrder(order)) {
+      const now = Date.now();
+      writes[`archivedOrders/${child.key}`] = archivedOrderRecord(order, now);
+      writes[`activeOrders/${child.key}`] = null;
+      writes[`orders/${child.key}`] = null;
+    }
+  });
+  if (Object.keys(writes).length) await db.ref().update(writes);
+}
 
 // Publish only the customer-safe availability bit. Cashier and shift details
-// remain protected under /posActiveShift.
-exports.syncPublicOrderStatus = onValueWritten(
+// remain protected under /posActiveShift. Every open customer page listens to
+// /publicOrderStatus, so it is rewritten only when the bit differs from what is
+// published (a tiny read), which also repairs any earlier missed update, or when
+// updatedAt is older than 12 hours, so System Health's 36-hour freshness check
+// (functions/lib/production-validation.js) still sees a current projection.
+const PUBLIC_ORDER_STATUS_REFRESH_MS = 12 * 3600000;
+async function syncPublicOrderStatus(db, after) {
+  const acceptingOrders = !!(after && after.status !== "closed"), now = Date.now();
+  const ref = db.ref("/publicOrderStatus"), current = (await ref.get()).val();
+  const fresh = current && now - Number(current.updatedAt || 0) < PUBLIC_ORDER_STATUS_REFRESH_MS;
+  if (fresh && current.acceptingOrders === acceptingOrders) return;
+  await ref.set({acceptingOrders, updatedAt: now});
+}
+
+// One trigger for every /posActiveShift write (31 Oct 2026 Cloud Functions cost trim). It
+// replaces syncActiveRegisterCashFloat, pruneClosedShiftOrders and syncPublicOrderStatus, which
+// each started their own instance on every shift write. The three parts are unchanged and stay
+// independent: each runs whatever the others do, and any failure is still reported.
+exports.onPosActiveShiftWritten = onValueWritten(
   {ref: "/posActiveShift", region: ORDER_REGION},
   async (event) => {
-    const shift = event.data.after.exists() ? (event.data.after.val() || {}) : null;
-    const acceptingOrders = !!(shift && shift.status !== "closed");
-    await getDatabase().ref("/publicOrderStatus").set({acceptingOrders, updatedAt: Date.now()});
+    const db = getDatabase(), at = Date.now();
+    const before = event.data.before.val(), after = event.data.after.exists() ? (event.data.after.val() || {}) : null;
+    const parts = [
+      ["publicOrderStatus", syncPublicOrderStatus(db, after)],
+      ["registerFloat", syncActiveRegisterCashFloat(db, before, after, at)],
+      ["closedShiftCleanup", pruneClosedShiftOrders(db, before, event.data.after.val())],
+    ];
+    const results = await Promise.allSettled(parts.map((part) => part[1]));
+    const failed = results.map((result, i) => ({part: parts[i][0], result})).filter((row) => row.result.status === "rejected");
+    failed.forEach((row) => logger.error("onPosActiveShiftWritten part failed", {part: row.part, error: String(row.result.reason && row.result.reason.message || row.result.reason)}));
+    if (failed.length) throw failed[0].result.reason;
   },
 );

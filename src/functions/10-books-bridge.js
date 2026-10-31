@@ -486,17 +486,21 @@ exports.syncRegisterCashFloat = onValueWritten(
   },
 );
 
-exports.syncActiveRegisterCashFloat = onValueWritten(
-  {ref: "/posActiveShift", region: "asia-southeast1"},
-  async (event) => {
-    const db = getDatabase(), at = Date.now();
-    const settings = await readPosSettings(db, ["fixedFloat"]);
-    const before = resolveRegisterFloat(settings, event.data.before.val()), after = resolveRegisterFloat(settings, event.data.after.val());
-    // A new shift with the same float amount changes nothing in the books.
-    if (Math.abs(before.amount - after.amount) < 0.005) return;
-    await postRegisterFloatTarget(db, await liveRegisterFloat(db), at, "register_float_synced");
-  },
-);
+// Active-shift float sync, run by onPosActiveShiftWritten (src/functions/30-orders.js).
+// resolveRegisterFloat only reads retainedFloat/openingFloat from the shift and the same
+// fixedFloat setting for both sides, so an unchanged shift float cannot change the amount and
+// the settings read is skipped. A new shift with the same float changes nothing in the books.
+function activeShiftFloatRaw(shift) {
+  shift = shift || {};
+  return Financial.money(shift.retainedFloat != null ? shift.retainedFloat : shift.openingFloat);
+}
+async function syncActiveRegisterCashFloat(db, beforeShift, afterShift, at) {
+  if (Math.abs(activeShiftFloatRaw(beforeShift) - activeShiftFloatRaw(afterShift)) < 0.005) return;
+  const settings = await readPosSettings(db, ["fixedFloat"]);
+  const before = resolveRegisterFloat(settings, beforeShift), after = resolveRegisterFloat(settings, afterShift);
+  if (Math.abs(before.amount - after.amount) < 0.005) return;
+  await postRegisterFloatTarget(db, await liveRegisterFloat(db), at, "register_float_synced");
+}
 
 // Finance / Books owns cash-account maintenance. Opening changes are posted as
 // append-only adjustments so later activity and the audit trail are preserved.

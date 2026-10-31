@@ -176,11 +176,12 @@ The exact export list is machine-checked from `release-manifest.json`. Major gro
 
 - Customer ordering/proofs: `createOnlineOrder`, `confirmOrderReceived`, `getPaymentProof`, `notifyOnComplete`.
 - Order operations: `updateOrderStatus` with stale-state, transition, idempotency, projection, and audit controls.
-- Active data: `ensureActiveOrders`, `syncActiveOrderProjection`, `pruneClosedShiftOrders`.
+- Active data: `ensureActiveOrders`, `syncActiveOrderProjection`, `onPosActiveShiftWritten` (the one `/posActiveShift` trigger: public order status, register float sync and closed-shift order cleanup, merged 31 Oct 2026 from three triggers).
 - Inventory/costing: `validateRecipeDefinition`, `postInventoryMovements`, `ensureInventoryLedger`, `onOrderFinalize`, `onOrderInventoryReversal`.
 - Finance: order/shift/petty triggers plus financial command, payout, adjustment, backfill, chart, and audit callables.
 - Controls/retention: approvals, archive, discrepancy, petty decision, and activity retention callables.
 - Reliability/monitoring: `syncOfflinePosSale`, `recordClientTelemetry`.
+- Cold-start cost (31 Oct 2026): Cloud Run bills instance start-up, which was ~75% of billed function time. `firebase-admin` Firestore, Messaging and Storage load on first use through `lazyAdminModule` in `src/functions/00-bootstrap-notifications.js`; never `require` them at top level again (`tests/functions-cold-start-check.mjs`). Prefer one trigger per hot path over several triggers on the same path.
 
 ## Deployment procedure
 

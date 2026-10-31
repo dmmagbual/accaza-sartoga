@@ -12,9 +12,28 @@ const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp, getApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
-const {getFirestore, FieldPath, FieldValue} = require("firebase-admin/firestore");
-const {getMessaging} = require("firebase-admin/messaging");
-const {getStorage} = require("firebase-admin/storage");
+// Cold-start cost control (31 Oct 2026): Firestore, Messaging and Storage add roughly half of the
+// module load time every function instance pays on start-up, and Cloud Run bills that time. Only
+// the historical archive, Accaza AI, payment-proof and notification functions use them, so each
+// SDK loads on first use. Call sites are unchanged: getFirestore(), FieldPath.documentId(), etc.
+function lazyAdminModule(name) {
+  let loaded = null;
+  return () => loaded || (loaded = require(name));
+}
+function lazyAdminClass(load, key) {
+  return new Proxy({}, {get(_target, prop) {
+    const cls = load()[key], value = cls[prop];
+    return typeof value === "function" ? value.bind(cls) : value;
+  }});
+}
+const firestoreModule = lazyAdminModule("firebase-admin/firestore");
+const messagingModule = lazyAdminModule("firebase-admin/messaging");
+const storageModule = lazyAdminModule("firebase-admin/storage");
+const getFirestore = (...args) => firestoreModule().getFirestore(...args);
+const FieldPath = lazyAdminClass(firestoreModule, "FieldPath");
+const FieldValue = lazyAdminClass(firestoreModule, "FieldValue");
+const getMessaging = (...args) => messagingModule().getMessaging(...args);
+const getStorage = (...args) => storageModule().getStorage(...args);
 const logger = require("firebase-functions/logger");
 const crypto = require("node:crypto");
 const {AsyncLocalStorage} = require("node:async_hooks");
