@@ -242,11 +242,13 @@ async function askOpenAiCompatibleAccazaAgent(label,url,key,model,question,facts
 }
 // Management analysis: trusted tool-capable providers can read records; bounded fact-pack
 // fallbacks can still answer without receiving record-tool access.
-// Order: Gemini -> Cloudflare -> Groq -> direct Qwen. Groq and Qwen answer only from the bounded
+// Order: Gemini -> Cloudflare -> Groq -> direct Qwen -> OpenRouter (record tools, last; Danilo
+// accepted 31 Oct 2026 that free OpenRouter endpoints may log or train on records). Groq and Qwen answer only from the bounded
 // FACT PACK, never with record-tool access.
 function accazaAiAgentProviders(question,facts,history,ctx,now){return[
   {name:"gemini",maxMs:45000,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now)},
   {name:"cloudflare",maxMs:30000,enabled:accazaAiCloudflareEnabled,ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("Cloudflare",accazaAiCloudflareUrl(),accazaAiCloudflareKey(),ACCAZA_AI_CLOUDFLARE_MODEL,question,facts,history,timeoutMs,ctx,now,ACCAZA_AI_CLOUDFLARE_OPTIONS)},
   {name:"groq",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiGroqKey()),ask:timeoutMs=>askGroqAccazaAi(question,facts,history,timeoutMs)},
   {name:"qwen",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiQwenKey()),ask:timeoutMs=>askQwenAccazaAi(question,facts,history,timeoutMs)},
+  {name:"openrouter",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiOpenRouterKey()),ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("OpenRouter",ACCAZA_AI_OPENROUTER_URL,accazaAiOpenRouterKey(),ACCAZA_AI_OPENROUTER_MODEL,question,facts,history,timeoutMs,ctx,now,ACCAZA_AI_OPENROUTER_OPTIONS)},
 ];}

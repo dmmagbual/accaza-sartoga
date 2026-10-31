@@ -34,6 +34,14 @@ const ACCAZA_AI_QWEN_URL = "https://ws-5wwwur6him8gw48x.ap-southeast-1.maas.aliy
 const ACCAZA_AI_QWEN_MODEL = "qwen3.8-flash";
 const ACCAZA_AI_QWEN_OPTIONS = {maxTokens:1200};
 function accazaAiQwenKey(){return accazaAiApiKey(QWEN_API_KEY.value());}
+// OpenRouter free models (Danilo 31 Oct 2026): LAST backup in General chat, analysis and record
+// reading, after Qwen. Danilo accepted that free OpenRouter endpoints may log or train on what is
+// sent, records included. Free tier is 20 requests/minute and 50/day (1,000/day after a one-off
+// USD 10 credit). `models` lets OpenRouter route to the next free model when one is busy.
+const ACCAZA_AI_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const ACCAZA_AI_OPENROUTER_MODEL = "google/gemma-4-31b-it:free";
+const ACCAZA_AI_OPENROUTER_OPTIONS = {maxTokens:1500,forceFirstTool:true,body:{models:["google/gemma-4-31b-it:free","nvidia/nemotron-3.5-super-vl:free","nvidia/nemotron-3-ultra-550b-a55b:free"]}};
+function accazaAiOpenRouterKey(){return accazaAiApiKey(OPENROUTER_API_KEY.value());}
 async function accazaAiFetchJson(providerLabel,url,init,timeoutMs){
   const controller=new AbortController(),limit=Math.max(1000,Number(timeoutMs)||ACCAZA_AI_CLOUD_TIMEOUT_MS),timer=setTimeout(()=>controller.abort(),limit);
   try{const response=await fetch(url,Object.assign({},init,{signal:controller.signal}));const body=await response.json().catch(()=>({}));return{response,body};}
@@ -101,7 +109,7 @@ async function askGeminiWebChat(question,history,timeoutMs){
   return{answer:accazaAiProseAnswer(body&&body.candidates&&body.candidates[0]&&body.candidates[0].content&&body.candidates[0].content.parts&&body.candidates[0].content.parts.map(part=>part.text||"").join("\n")),sources:[]};
 }
 function accazaAiApiKey(value){return String(value||"").replace(/[^\x21-\x7E]/g,"");}
-// Generic OpenAI-compatible provider (Groq, Cloudflare, Qwen) for General chat and fact-pack analysis.
+// Generic OpenAI-compatible provider (Groq, Cloudflare, Qwen, OpenRouter) for General chat and fact-pack analysis.
 async function askOpenAiCompatibleChat(label,url,key,model,messages,temperature,timeoutMs,options){
   if(!key)throw new HttpsError("failed-precondition",`The ${label} backup is not configured.`);
   const opts=options||{},{response,body}=await accazaAiFetchJson(label,url,{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify(Object.assign({model,messages,temperature,max_tokens:opts.maxTokens||900,stream:false},opts.body||{}))},timeoutMs);
@@ -124,6 +132,14 @@ async function askCloudflareGeneralChat(question,history,timeoutMs){
   const messages=[{role:"system",content:ACCAZA_AI_GENERAL_CHAT_INSTRUCTION},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}];
   return{answer:await askOpenAiCompatibleChat("Cloudflare",accazaAiCloudflareUrl(),accazaAiCloudflareKey(),ACCAZA_AI_CLOUDFLARE_MODEL,messages,0.35,timeoutMs,ACCAZA_AI_CLOUDFLARE_OPTIONS),sources:[]};
 }
+async function askOpenRouterGeneralChat(question,history,timeoutMs){
+  const messages=[{role:"system",content:ACCAZA_AI_GENERAL_CHAT_INSTRUCTION},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}];
+  return{answer:await askOpenAiCompatibleChat("OpenRouter",ACCAZA_AI_OPENROUTER_URL,accazaAiOpenRouterKey(),ACCAZA_AI_OPENROUTER_MODEL,messages,0.35,timeoutMs,ACCAZA_AI_OPENROUTER_OPTIONS),sources:[]};
+}
+async function askOpenRouterAccazaAi(question,facts,history,timeoutMs){
+  const messages=[{role:"system",content:ACCAZA_AI_ANALYSIS_SYSTEM},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}];
+  return askOpenAiCompatibleChat("OpenRouter",ACCAZA_AI_OPENROUTER_URL,accazaAiOpenRouterKey(),ACCAZA_AI_OPENROUTER_MODEL,messages,0.15,timeoutMs,ACCAZA_AI_OPENROUTER_OPTIONS);
+}
 async function askCloudflareAccazaAi(question,facts,history,timeoutMs){
   const messages=[{role:"system",content:ACCAZA_AI_ANALYSIS_SYSTEM},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}];
   return askOpenAiCompatibleChat("Cloudflare",accazaAiCloudflareUrl(),accazaAiCloudflareKey(),ACCAZA_AI_CLOUDFLARE_MODEL,messages,0.15,timeoutMs,ACCAZA_AI_CLOUDFLARE_OPTIONS);
@@ -134,19 +150,21 @@ async function askQwenAccazaAi(question,facts,history,timeoutMs){
 }
 // Provider order (6 Oct 2026, Danilo removed DeepSeek, Jev/OpenRouter, Ashna and OrcaRouter after
 // their keys or plans stopped working; 31 Oct 2026 Cloudflare replaced Cerebras in the same slot):
-// General chat Gemini -> Groq -> Cloudflare -> direct Qwen; analysis Gemini -> Cloudflare -> Groq ->
-// direct Qwen. Groq and Qwen receive only fact packs.
+// General chat Gemini -> Groq -> Cloudflare -> direct Qwen -> OpenRouter; analysis Gemini -> Cloudflare
+// -> Groq -> direct Qwen -> OpenRouter. Groq and Qwen receive only fact packs.
 function accazaAiAnalysisProviders(question,facts,history){return[
   {name:"gemini",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiAccazaAi(question,facts,history,timeoutMs)},
   {name:"cloudflare",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:accazaAiCloudflareEnabled,ask:timeoutMs=>askCloudflareAccazaAi(question,facts,history,timeoutMs)},
   {name:"groq",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiGroqKey()),ask:timeoutMs=>askGroqAccazaAi(question,facts,history,timeoutMs)},
   {name:"qwen",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiQwenKey()),ask:timeoutMs=>askQwenAccazaAi(question,facts,history,timeoutMs)},
+  {name:"openrouter",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiOpenRouterKey()),ask:timeoutMs=>askOpenRouterAccazaAi(question,facts,history,timeoutMs)},
 ];}
 function accazaAiGeneralChatProviders(question,history){return[
   {name:"gemini",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiWebChat(question,history,timeoutMs)},
   {name:"groq",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiGroqKey()),ask:timeoutMs=>askGroqGeneralChat(question,history,timeoutMs)},
   {name:"cloudflare",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:accazaAiCloudflareEnabled,ask:timeoutMs=>askCloudflareGeneralChat(question,history,timeoutMs)},
   {name:"qwen",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiQwenKey()),ask:timeoutMs=>askQwenGeneralChat(question,history,timeoutMs)},
+  {name:"openrouter",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiOpenRouterKey()),ask:timeoutMs=>askOpenRouterGeneralChat(question,history,timeoutMs)},
 ];}
 // Only unusual outcomes are written (a backup answered, or nothing answered), so a normal
 // Gemini answer costs no extra write. The Exception Center reads today and yesterday.
@@ -183,11 +201,11 @@ async function accazaAiWithFallback(providers,context){
       return{provider:provider.name,result,failures};
     }catch(error){if(!(error&&error.details&&error.details.providerFailure))throw error;failures.push({provider:provider.name,reason:error.message});}
   }
-  if(!configured)throw new HttpsError("failed-precondition","Accaza AI has no configured provider. Set the Gemini, Groq, Cloudflare or Qwen credentials.");
+  if(!configured)throw new HttpsError("failed-precondition","Accaza AI has no configured provider. Set the Gemini, Groq, Cloudflare, Qwen or OpenRouter credentials.");
   await accazaAiRecordProviderHealth(context,null,failures);
   throw new HttpsError("unavailable",context&&context.general?"The AI service is temporarily unavailable. Please try again in a few minutes.":"Accaza AI is temporarily unavailable. Please try again in a few minutes.");
 }
-exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,CLOUDFLARE_AI_TOKEN,CLOUDFLARE_ACCOUNT_ID,GROQ_API_KEY,QWEN_API_KEY]},async request=>{
+exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,CLOUDFLARE_AI_TOKEN,CLOUDFLARE_ACCOUNT_ID,GROQ_API_KEY,QWEN_API_KEY,OPENROUTER_API_KEY]},async request=>{
   const db=getDatabase(),actor=await requirePortalUser(db,request);if(!ACCAZA_AI_QUERY_ROLES.includes(actor.role))throw new HttpsError("permission-denied","Accaza AI is available to authorized portal accounts only.");
   const question=accazaAiText(request.data&&request.data.question,800),mode=request.data&&request.data.mode==="web"?"web":"accaza",history=accazaAiHistory(request.data&&request.data.history),requestedProvider=accazaAiText(request.data&&request.data.provider,24).toLowerCase()||"auto";if(question.length<3)throw new HttpsError("invalid-argument","Enter a question for Accaza AI.");
   if(mode==="web"&&accazaAiWebQuestionBlocked(question))throw new HttpsError("failed-precondition","Use Accaza analysis for Accaza business or app questions. Web chat never receives Accaza data.");

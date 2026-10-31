@@ -8,8 +8,9 @@ import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const source=(fs.readFileSync(path.join(root,'src/functions/62-accaza-ai.js'),'utf8')+fs.readFileSync(path.join(root,'src/functions/62-accaza-chat.js'),'utf8'));
-// 6 Oct 2026: DeepSeek, Jev/OpenRouter, Ashna and OrcaRouter were removed (dead keys or plans).
-assert.ok(!/DEEPSEEK_API_KEY|ASHNA_API_KEY|OPENROUTER_API_KEY|ORCAROUTER_API_KEY|askJev|askAshna|askDeepSeek|askOrcaRouter/.test(source),'the removed providers must not return without a decision');
+// 6 Oct 2026: DeepSeek, Jev/OpenRouter, Ashna and OrcaRouter were removed (dead keys or plans);
+// 31 Oct 2026 Danilo brought OpenRouter back as the last backup.
+assert.ok(!/DEEPSEEK_API_KEY|ASHNA_API_KEY|ORCAROUTER_API_KEY|askJev|askAshna|askDeepSeek|askOrcaRouter/.test(source),'the removed providers must not return without a decision');
 const pick=(start,end)=>{const a=source.indexOf(start),b=source.indexOf(end,a);assert.ok(a>=0&&b>a,`missing ${start}`);return source.slice(a,b);};
 const lineOf=start=>{const a=source.indexOf(start);assert.ok(a>=0,`missing ${start}`);return source.slice(a,source.indexOf('\n',a)+1);};
 let code=lineOf('function accazaAiText(')+lineOf('function accazaAiProviderFailure(')+lineOf('function accazaAiAnswer(')
