@@ -6672,7 +6672,7 @@ exports.createOnlineOrder = onCall(
 );
 
 exports.getPaymentProof = onCall(
-  {region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 30, memory: "256MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
     await requirePortalUser(db, request);
@@ -6722,7 +6722,7 @@ exports.confirmOrderReceived = onCall(
 );
 
 exports.ensureActiveOrders = onCall(
-  {region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 60, memory: "256MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
     const portal = await requirePortalUser(db, request);
@@ -10974,7 +10974,7 @@ async function traceStockAdjustment(db, row) {
 }
 
 exports.postInventoryMovements = onCall(
-  {region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 120, memory: "256MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
     const movements = listFromFirebase(request.data && request.data.movements);
@@ -10997,7 +10997,7 @@ exports.postInventoryMovements = onCall(
 );
 
 exports.ensureInventoryLedger = onCall(
-  {region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 300, memory: "512MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 300, memory: "512MiB"},
   async (request) => {
     const db = getDatabase();
     const actor = await requirePortalPermission(db, request, ["inventory"]);
@@ -11333,7 +11333,7 @@ async function bakingValidateProduct(db, productId, product) {
 }
 
 exports.checkBakingMapping = onCall(
-  { region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 60, memory: "256MiB" },
+  { region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB" },
   async (request) => {
     const db = getDatabase();
     const actor = await requirePortalUser(db, request);
@@ -11354,7 +11354,7 @@ exports.checkBakingMapping = onCall(
 );
 
 exports.postBatchCard = onCall(
-  { region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 120, memory: "256MiB" },
+  { region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "256MiB" },
   async (request) => {
     const db = getDatabase();
     const actor = await requirePortalUser(db, request);
@@ -11541,7 +11541,7 @@ exports.postBatchCard = onCall(
 );
 
 exports.reverseBatchCard = onCall(
-  { region: ORDER_REGION, enforceAppCheck: false, timeoutSeconds: 120, memory: "256MiB" },
+  { region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "256MiB" },
   async (request) => {
     const db = getDatabase();
     const actor = await requirePortalUser(db, request);

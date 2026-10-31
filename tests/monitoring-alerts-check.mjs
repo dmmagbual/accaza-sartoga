@@ -62,7 +62,11 @@ const refused = byName['Accaza CRITICAL - Staff device refused by App Check'].fi
 assert.match(refused, /firebase-log-type"="callable-request-verification"/);
 assert.match(refused, /verifications\.auth="VALID"/);
 const notEnforced = [...built.matchAll(/exports\.(\w+) = onCall\(\s*\{[^}]*enforceAppCheck: (?:false|ENFORCE_APP_CHECK_ORDERS)\b/g)].map((m) => m[1].toLowerCase());
-assert.ok(notEnforced.length >= 11, `expected the exempt and order callables, found ${notEnforced.length}`);
+assert.ok(notEnforced.length >= 4, `expected telemetry and the order callables, found ${notEnforced.length}`);
+// 31 Oct 2026: telemetry is the only staff callable allowed to skip App Check; it is the signal that
+// reports a device without a token, so enforcing it would blind that diagnostic.
+const hardcodedOff = [...built.matchAll(/exports\.(\w+) = onCall\(\s*\{[^}]*enforceAppCheck: false\b/g)].map((m) => m[1]);
+assert.deepEqual(hardcodedOff, ['recordClientTelemetry'], `only recordClientTelemetry may hardcode enforceAppCheck: false (found ${hardcodedOff.join(', ')}); staff callables follow ENFORCE_APP_CHECK`);
 for (const service of notEnforced) assert.ok(refused.includes(`"${service}"`), `App Check alert must exclude non-enforced callable ${service}`);
 const fnLibUrl = new URL('../functions/node_modules/firebase-functions/lib/common/providers/https.js', import.meta.url);
 if (fs.existsSync(fnLibUrl)) assert.ok(fs.readFileSync(fnLibUrl, 'utf8').includes('"firebase-log-type": "callable-request-verification"'), 'firebase-functions changed its verification log label; update the App Check alert filter');
