@@ -73,6 +73,8 @@ const CLOUDFLARE_AI_TOKEN = defineSecret("CLOUDFLARE_AI_TOKEN");
 const CLOUDFLARE_ACCOUNT_ID = defineSecret("CLOUDFLARE_ACCOUNT_ID");
 const GROQ_API_KEY = defineSecret("GROQ_API_KEY");
 const QWEN_API_KEY = defineSecret("QWEN_API_KEY");
+// OpenRouter free models returned 31 Oct 2026 as the last Accaza AI backup (Danilo's decision).
+const OPENROUTER_API_KEY = defineSecret("OPENROUTER_API_KEY");
 // Every `retry: true` database trigger is bounded: transient failures still
 // retry, but an event that keeps failing past the retry window is recorded in
 // /functionDeadLetters and acknowledged instead of being redelivered (and its
