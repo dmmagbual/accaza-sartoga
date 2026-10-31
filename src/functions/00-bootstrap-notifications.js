@@ -68,7 +68,9 @@ const OrderRecords = require("./lib/order-records");
 const RetryGuard = require("./lib/retry-guard");
 const DeadLetterResolution = require("./lib/dead-letter-resolution");
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
-const CEREBRAS_API_KEY = defineSecret("CEREBRAS_API_KEY");
+// Cloudflare Workers AI replaced Cerebras on 31 Oct 2026 (Cerebras prepaid credit ran out).
+const CLOUDFLARE_AI_TOKEN = defineSecret("CLOUDFLARE_AI_TOKEN");
+const CLOUDFLARE_ACCOUNT_ID = defineSecret("CLOUDFLARE_ACCOUNT_ID");
 const GROQ_API_KEY = defineSecret("GROQ_API_KEY");
 const QWEN_API_KEY = defineSecret("QWEN_API_KEY");
 // Every `retry: true` database trigger is bounded: transient failures still

@@ -215,7 +215,7 @@ async function askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now){
   for(let round=0;round<=ACCAZA_AI_AGENT_MAX_ROUNDS;round+=1){
     const final=round===ACCAZA_AI_AGENT_MAX_ROUNDS,remaining=deadline-Date.now();if(remaining<3000)throw accazaAiProviderFailure("Gemini ran out of time while checking records.");
     const {response,body}=await accazaAiFetchJson("Gemini",`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:`${ACCAZA_AI_ANALYSIS_SYSTEM_WITH_TOOLS} ${ACCAZA_AI_AGENT_GUIDE} ${ACCAZA_AI_STRATEGY_GUIDE}`}]},contents,tools:accazaAiGeminiTools(),toolConfig:{functionCallingConfig:{mode:final?"NONE":"AUTO"}},generationConfig:{temperature:0.15,maxOutputTokens:1400}})},remaining);
-    if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Gemini could not answer right now."));
+    if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Gemini could not answer right now.",response.status));
     const content=body&&body.candidates&&body.candidates[0]&&body.candidates[0].content,parts=content&&Array.isArray(content.parts)?content.parts:[],calls=parts.filter(part=>part&&part.functionCall);
     if(!calls.length||final)return accazaAiProseAnswer(parts.map(part=>part&&part.text||"").join("\n"));
     // The model turn goes back verbatim so Gemini's thought signatures stay intact.
@@ -231,7 +231,7 @@ async function askOpenAiCompatibleAccazaAgent(label,url,key,model,question,facts
   for(let round=0;round<=ACCAZA_AI_AGENT_MAX_ROUNDS;round+=1){
     const final=round===ACCAZA_AI_AGENT_MAX_ROUNDS,remaining=deadline-Date.now();if(remaining<3000)throw accazaAiProviderFailure(`${label} ran out of time while checking records.`);
     const {response,body}=await accazaAiFetchJson(label,url,{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify(Object.assign({model,messages,temperature:0.15,max_tokens:opts.maxTokens||1400,stream:false,tools:accazaAiOpenAiTools(),tool_choice:final?"none":round===0&&opts.forceFirstTool?"required":"auto"},opts.body||{}))},remaining);
-    if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,`${label} could not answer right now.`));
+    if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,`${label} could not answer right now.`,response.status));
     const message=body&&body.choices&&body.choices[0]&&body.choices[0].message||{},calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
     if(!calls.length||final)return accazaAiProseAnswer(message.content);
     messages.push({role:"assistant",content:message.content||"",tool_calls:calls});
@@ -242,11 +242,11 @@ async function askOpenAiCompatibleAccazaAgent(label,url,key,model,question,facts
 }
 // Management analysis: trusted tool-capable providers can read records; bounded fact-pack
 // fallbacks can still answer without receiving record-tool access.
-// Order: Gemini -> Cerebras -> Groq -> direct Qwen. Groq and Qwen answer only from the bounded
+// Order: Gemini -> Cloudflare -> Groq -> direct Qwen. Groq and Qwen answer only from the bounded
 // FACT PACK, never with record-tool access.
 function accazaAiAgentProviders(question,facts,history,ctx,now){return[
   {name:"gemini",maxMs:45000,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now)},
-  {name:"cerebras",maxMs:30000,enabled:()=>Boolean(accazaAiCerebrasKey()),ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("Cerebras",ACCAZA_AI_CEREBRAS_URL,accazaAiCerebrasKey(),ACCAZA_AI_CEREBRAS_MODEL,question,facts,history,timeoutMs,ctx,now,ACCAZA_AI_CEREBRAS_OPTIONS)},
+  {name:"cloudflare",maxMs:30000,enabled:accazaAiCloudflareEnabled,ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("Cloudflare",accazaAiCloudflareUrl(),accazaAiCloudflareKey(),ACCAZA_AI_CLOUDFLARE_MODEL,question,facts,history,timeoutMs,ctx,now,ACCAZA_AI_CLOUDFLARE_OPTIONS)},
   {name:"groq",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiGroqKey()),ask:timeoutMs=>askGroqAccazaAi(question,facts,history,timeoutMs)},
   {name:"qwen",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiQwenKey()),ask:timeoutMs=>askQwenAccazaAi(question,facts,history,timeoutMs)},
 ];}
