@@ -1,19 +1,12 @@
 import {salesStamp, periodKey} from './sales-period-data.mjs?v=562';
 
-// Saved Sales History has two tiers:
-//  1. sessionStorage — synchronous, so a tab switch renders instantly;
-//  2. IndexedDB — survives reloads, new tabs and browser restarts.
-// Both hold a display copy only. RTDB and Finance Books stay authoritative, and
-// selected-period totals still come from the server's compact summaries.
-// A saved range records the change-journal sequence it is current to. On open
-// it is shown immediately and caught up from the durable change log by exact
-// order ID, so an unchanged period costs zero Firestore reads.
+// sessionStorage is the instant display tier; IndexedDB survives browser restarts.
+// Both are display copies. Server summaries and Finance Books stay authoritative.
 const CACHE_PREFIX = 'accaza_historical_period_v1:';
 const CACHE_INDEX = `${CACHE_PREFIX}index`;
 const CACHE_MAX_RANGES = 6;
 const PERSIST_MAX_RANGES = 12;
-// Catching up more changes than this costs more RTDB download than one
-// bounded page reload, so larger gaps reload instead.
+// Larger gaps use one bounded reload instead of change-log catch-up.
 const CATCH_UP_MAX_CHANGES = 2000;
 const IDS_PER_READ = 32;
 

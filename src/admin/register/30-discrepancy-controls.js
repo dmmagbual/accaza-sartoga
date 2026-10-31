@@ -1,9 +1,6 @@
 
 /* ---------- Discrepancy Log (Feature D) ---------- */
-/* The helpers the always-on badge path needs (dnum, discrepancyDate, isRetainedLegacyDiscrepancy,
-   isHiddenLegacyDiscrepancy, discList, updateDiscBadge) now live in 29-discrepancy-eager.js so this
-   render code can become a lazily loaded companion without breaking the badge on other tabs.
-   discrepancyOutcome stays here because only renderDiscrepancies uses it. */
+/* Eager badge helpers live in 29-discrepancy-eager.js. */
 function discrepancyOutcome(d){
   if(d.kind==='inventory'){
     /* The stock adjustment IS the treatment: it moved the stock and posted its Finance offset, so the
@@ -43,9 +40,7 @@ function reviewDiscrepancy(id){
   if(d.kind==='cash'){cashDifferenceCase(id,d);return;}
   resolveInventoryDiscrepancies([id]);
 }
-/* Inventory flags are already treated by the stock adjustment that raised them. This links each open
-   flag to that adjustment and to the Admin who made it, with one approval for the whole batch, and
-   posts nothing: the adjustment's reason and Finance offset were the treatment. */
+/* Link inventory flags to their existing adjustment; do not post a second journal. */
 function resolveInventoryDiscrepancies(ids){
   var a=A();if(!a.reviewDiscrepancy||!a.managerApproval){alert('The discrepancy service is not available. Refresh the portal.');return;}
   var open=(ids||[]).filter(function(k){var d=discMap[k];return d&&d.kind==='inventory'&&d.status!=='reviewed';});

@@ -7,11 +7,7 @@ function renderTaxCompliance(){
 }
 
 /* ══════════ BIR TAX CARD (VAT / Percentage tax) ══════════ */
-/* Labels mirror the server-side canonical checklist in src/functions/20c-tax-settings.js —
-   activation is blocked client-side with the same message, and the server re-checks every id.
-   The registered identity (TIN, branch code, business structure) is typed once in the
-   Company Information tab; the server stamps it into taxSettings at activation, so receipts
-   and online orders keep printing exactly as they do today. */
+/* Mirrors the server checklist; the server rechecks every id and stamps the registered identity. */
 var TAX_REQ_META={
   cas_1905_filed:{label:'BIR Form 1905 filed to register this POS system with your RDO',help:'RR 7-2024: the POS itself must be registered before Accaza receipts can serve as official invoices.'},
   pos_reports_audit:{label:'This POS can produce sales and audit reports on demand',help:'BIR officers may require daily and periodic sales reports from the register at any time.'},
@@ -143,10 +139,7 @@ function saveTaxSettings(state){
 }
 
 /* ══════════ BIR QUARTERLY RETURNS (2550Q / 2551Q / annual 1701-1702 export) ══════════ */
-/* One-click preparation from the Tax Compliance tab. Figures come from reconciled
-   Financial Close summaries and purchase input VAT through the prepareQuarterlyTaxReturn
-   Cloud Function — no raw order data is re-read here. /taxReturns history is fetched
-   once when the tab opens (single read, no listener). */
+/* Uses reconciled close summaries and purchase input VAT; history is read once on tab open. */
 var QUARTER_DUE={1:'25 April',2:'25 July',3:'25 October',4:'25 January'};
 var QUARTER_LABEL={1:'Q1 (Jan - Mar)',2:'Q2 (Apr - Jun)',3:'Q3 (Jul - Sep)',4:'Q4 (Oct - Dec)'};
 var QUARTER_END={1:'-03-31',2:'-06-30',3:'-09-30',4:'-12-31'};
