@@ -10,7 +10,7 @@ The snapshot never writes to production data and cannot mark the release certifi
 
 ## Operator-required evidence
 
-These items deliberately remain operator-required and the release manifest remains `candidate_pending_production_verification`:
+These items remain operator-required; code cannot complete them. The release manifest was `candidate_pending_production_verification` until the last outstanding item, the quarterly permission review, was completed by the owner on 2 Nov 2026 (`docs/evidence/2026-11-02-quarterly-permission-review.md`). It is now `production_verified`:
 
 1. Restore a production backup into an isolated project; verify its SHA-256 fingerprint and reconcile the restored inventory, cash custody, AR, AP, Finance movements, and Books.
 2. Run the current dependency registry audit and review every finding; do not force a breaking downgrade.

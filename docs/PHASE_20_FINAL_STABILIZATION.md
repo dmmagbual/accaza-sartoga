@@ -6,7 +6,7 @@ Phase 20 closes the numbered construction program with a deterministic meta-gate
 
 The gate confirms that recovery certification, production certification, production validation, alert escalation, and security/accounting assurance remain present and passing. It also proves that CI still runs release consistency, repository safety, database-rule emulator tests, and desktop/mobile browser smoke tests.
 
-The release deliberately remains `candidate_pending_production_verification`. Code cannot truthfully complete the following operator evidence:
+The release remained `candidate_pending_production_verification` until 2 Nov 2026. Code cannot truthfully complete operator evidence; the items below carry dated owner evidence (restore drill 15 Oct 2026, production performance 13 Oct 2026, quarterly permission review 2 Nov 2026), and the manifest is now `production_verified`:
 
 1. Restore the latest production `backup-v2` into an isolated project and reconcile inventory, cash custody, AR, AP, Finance movements, and Books at one cut-off.
 2. Review actual production performance and critical customer/POS/PWA journeys after deployment.
