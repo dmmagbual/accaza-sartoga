@@ -9,6 +9,9 @@
  *   node tools/admin-screen-check.mjs
  *   node tools/admin-screen-check.mjs https://acczacoffee.com/admin.html --tabs pos,inventory --timeout 180
  *
+ * Local DNS for the custom domain has been flaky on the dev machine, so the host is resolved over
+ * DNS-over-HTTPS first and Chromium is given a resolver rule. If that fails it falls back to local DNS.
+ *
  * Output: test-results/screen-check/<timestamp>/ with one screenshot per tab, report.json, and a PASS or
  * FAIL summary. The browser profile is kept in test-results/screen-check/profile so repeat runs stay
  * signed in; delete that folder to start fresh.
@@ -16,6 +19,7 @@
 import {chromium} from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
+import https from 'node:https';
 
 process.on('uncaughtException', error => {
   console.error('Screen check could not run: ' + String((error && error.message) || error));
@@ -29,6 +33,7 @@ const value = (name, fallback) => {
   return i > -1 && args[i + 1] ? args[i + 1] : fallback;
 };
 const url = args.find(a => /^https?:/i.test(a)) || 'https://acczacoffee.com/admin.html';
+const host = (() => { try { return new URL(url).hostname; } catch { return 'accazacoffee.com'; } })();
 const tabs = String(value('tabs', 'pos,inventory,recipes,possettings')).split(',').map(s => s.trim()).filter(Boolean);
 const signInSeconds = Number(value('timeout', '180')) || 180;
 const outDir = path.join('test-results', 'screen-check', new Date().toISOString().replace(/[:.]/g, '-'));
@@ -36,8 +41,6 @@ const profileDir = path.join('test-results', 'screen-check', 'profile');
 fs.mkdirSync(outDir, {recursive: true});
 fs.mkdirSync(profileDir, {recursive: true});
 
-// Screens the stage 3 module split must not break. A missing element is recorded, not assumed broken,
-// because some containers are created by their own module when the screen opens.
 const MARKERS = [
   {name: 'Products categories', selector: '#categoryList'},
   {name: 'Options', selector: '#optGroupList'},
@@ -47,16 +50,99 @@ const MARKERS = [
 
 const consoleErrors = [], pageErrors = [], failedRequests = [];
 const stamp = () => new Date().toISOString();
-const context = await chromium.launchPersistentContext(profileDir, {headless: false, viewport: {width: 1440, height: 900}});
-const page = context.pages()[0] || await context.newPage();
-page.on('console', m => { if (m.type() === 'error') consoleErrors.push({at: stamp(), text: m.text().slice(0, 300)}); });
-page.on('pageerror', e => pageErrors.push({at: stamp(), text: String((e && e.message) || e).slice(0, 300)}));
-page.on('requestfailed', r => failedRequests.push({at: stamp(), url: r.url().slice(0, 300), error: String((r.failure() && r.failure().errorText) || '')}));
+let route = 'local DNS';
+
+function watch(page) {
+  page.on('console', m => { if (m.type() === 'error') consoleErrors.push({at: stamp(), text: m.text().slice(0, 300)}); });
+  page.on('pageerror', e => pageErrors.push({at: stamp(), text: String((e && e.message) || e).slice(0, 300)}));
+  page.on('requestfailed', r => failedRequests.push({at: stamp(), url: r.url().slice(0, 300), error: String((r.failure() && r.failure().errorText) || '')}));
+}
+
+function resolveIps(endpoint) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(endpoint, {headers: {accept: 'application/dns-json'}}, response => {
+      let body = '';
+      response.on('data', chunk => { body += chunk; });
+      response.on('end', () => {
+        try { resolve((JSON.parse(body).Answer || []).filter(a => a.type === 1).map(a => a.data)); }
+        catch (error) { reject(error); }
+      });
+    });
+    request.on('error', reject);
+    request.setTimeout(8000, () => request.destroy(new Error('resolver timeout')));
+  });
+}
+
+async function firstIp(name) {
+  if (/^(localhost|127\.|\[::1\])/i.test(name)) return null;
+  const endpoints = [
+    'https://dns.google/resolve?name=' + encodeURIComponent(name) + '&type=A',
+    'https://cloudflare-dns.com/dns-query?name=' + encodeURIComponent(name) + '&type=A'
+  ];
+  for (const endpoint of endpoints) {
+    try { const ips = await resolveIps(endpoint); if (ips.length) return ips[0]; }
+    catch (_error) { /* next resolver */ }
+  }
+  return null;
+}
+
+async function launch(mappedIp) {
+  const options = {headless: false, viewport: {width: 1440, height: 900}};
+  if (mappedIp) options.args = ['--host-resolver-rules=MAP ' + host + ' ' + mappedIp];
+  // Prefer the installed Chrome: it carries the operator's own DNS and secure-DNS settings, which the
+  // bundled Playwright Chromium does not. Fall back to the bundled build when Chrome is not installed.
+  const channel = value('channel', 'chrome');
+  if (channel) options.channel = channel;
+  let context;
+  try {
+    context = await chromium.launchPersistentContext(profileDir, options);
+  } catch (error) {
+    if (!channel) throw error;
+    delete options.channel;
+    context = await chromium.launchPersistentContext(profileDir, options);
+  }
+  const page = context.pages()[0] || await context.newPage();
+  watch(page);
+  return {context, page};
+}
+
+async function navigate(page) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try { await page.goto(url, {waitUntil: 'domcontentloaded', timeout: 120000}); return; }
+    catch (error) { lastError = error; await page.waitForTimeout(2000); }
+  }
+  throw lastError;
+}
 
 console.log('Opening ' + url);
-await page.goto(url, {waitUntil: 'domcontentloaded', timeout: 120000});
-console.log('Sign in in the browser window (it is a normal browser, nothing is recorded until you do).');
-console.log('Waiting up to ' + signInSeconds + 's for a staff session…');
+// Local DNS for the custom domain flaps on some machines, so keep trying both routes instead of
+// failing the operator's run on one bad minute.
+async function openPage() {
+  // The domain's public DNS flaps between a valid answer and NXDOMAIN on this network, so allow a few
+  // minutes of retries instead of failing the operator's run on one bad window.
+  const attempts = Number(value('attempts', '20')) || 20;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const ip = await firstIp(host);
+    const mapping = ip ? 'DNS-over-HTTPS -> ' + ip : 'local DNS';
+    let opened = null;
+    try {
+      opened = await launch(ip);
+      await navigate(opened.page);
+      route = mapping;
+      if (ip) console.log('Resolved ' + host + ' to ' + ip + ' over DNS-over-HTTPS.');
+      return opened;
+    } catch (error) {
+      if (opened) await opened.context.close().catch(() => {});
+      console.log('Attempt ' + attempt + '/' + attempts + ' via ' + mapping + ' failed: ' + String(error.message).split('\n')[0]);
+      if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+  }
+  throw new Error('could not reach ' + url + ' after ' + attempts + ' attempts');
+}
+const {context, page} = await openPage();
+
+console.log('Sign in in the browser window. Waiting up to ' + signInSeconds + 's for a staff session…');
 const signedIn = async () => page.evaluate(() => !!(window.__accazaAuthz && window.__accazaAuthz.uid)).catch(() => false);
 const deadline = Date.now() + signInSeconds * 1000;
 while (Date.now() < deadline && !(await signedIn())) await page.waitForTimeout(1000);
@@ -91,13 +177,7 @@ for (const tab of tabs) {
   console.log('  ' + tab + ': ' + markers.map(m => m.name + '=' + (m.present ? m.chars + ' chars' : 'missing')).join(', '));
 }
 
-// Pages opened later (dialogs, other tabs) are reported too, so a silent failure cannot hide.
-await page.waitForTimeout(500);
-const report = {
-  url, generatedAt: stamp(), signedIn: authOk, tabs, screens,
-  consoleErrors, pageErrors, failedRequests,
-  verdict: 'pass',
-};
+const report = {url, route, generatedAt: stamp(), signedIn: authOk, tabs, screens, consoleErrors, pageErrors, failedRequests, verdict: 'pass'};
 const emptyScreens = authOk ? screens.filter(s => s.markers.every(m => !m.present || !m.chars)) : [];
 if (!authOk) report.verdict = 'inconclusive';
 else if (pageErrors.length) report.verdict = 'fail';
@@ -109,6 +189,7 @@ await context.close();
 
 console.log('');
 console.log('Verdict: ' + report.verdict.toUpperCase());
+console.log('Route: ' + route);
 console.log('Screenshots + report: ' + path.relative(process.cwd(), outDir));
 console.log('Console errors: ' + consoleErrors.length + ', page errors: ' + pageErrors.length + ', failed requests: ' + failedRequests.length);
 if (report.reason) console.log('Reason: ' + report.reason);
