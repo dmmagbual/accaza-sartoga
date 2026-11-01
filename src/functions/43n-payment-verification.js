@@ -18,6 +18,9 @@ function paymentDirectRows(order) {
   const rows = Array.isArray(order && order.payments) && order.payments.length ? order.payments : [{method: order && order.payment, amount: order && order.total}];
   return rows.filter((row) => String(row && row.method || "").toLowerCase() !== "cash");
 }
+function paymentDirectAmount(order) {
+  return Financial.money(paymentDirectRows(order).reduce((sum, row) => sum + Financial.money(row.amount), 0));
+}
 function paymentVerificationQueueRow(order, clearing, movementId, occurredAt) {
   const direct = paymentDirectRows(order), saleAt = Number(occurredAt || order.completedAt || order.receivedAt || order.timestamp || Date.now());
   return {
@@ -59,16 +62,71 @@ async function verifiedReceivingAccount(db, data) {
 // money still sits in 1060, post Dr bank / Cr 1060 on the sale date (today if that month is
 // closed). Run by the verify actions and by the posting trigger, so neither the order in which
 // they finish nor a failed write can leave a verified payment stuck in 1060.
-const VERIFIED_PAYMENT_STATUSES = new Set(["cashier_verified", "manager_validated", "confirmed"]);
+const VERIFIED_PAYMENT_STATUSES = new Set(["manager_validated", "confirmed"]);
+async function withPaymentDecisionLock(db, orderId, actor, work) {
+  const id = financeKey(orderId, "Order ID"), ref = db.ref(`/paymentDecisionLocks/${id}`), now = Date.now(), token = crypto.randomBytes(12).toString("hex");
+  const claim = await ref.transaction((current) => {
+    if (current && Number(current.claimedAt || 0) > now - 120000) return;
+    return {token, claimedAt: now, claimedBy: actor.uid, schemaVersion: 1};
+  }, undefined, false);
+  if (!claim.committed || !claim.snapshot.val() || claim.snapshot.val().token !== token) throw new HttpsError("aborted", "This payment review is already being decided. Refresh and retry.");
+  try { return await work(); }
+  finally { await ref.transaction((current) => current && current.token === token ? null : current, undefined, false); }
+}
+async function paymentVerificationOpenAmount(db, id) {
+  const [saleSnap, reviewSnap] = await Promise.all([
+    db.ref(`/financialMovements/sale_${id}`).get(), db.ref(`/financialMovements/payreview_${id}`).get(),
+  ]);
+  return {
+    sale: saleSnap.val(),
+    review: reviewSnap.val(),
+    clearing: Financial.money(Financial.verificationClearing(saleSnap.val()) + Financial.verificationClearing(reviewSnap.val())),
+  };
+}
+// Current cashier-manager reviews created before this rule already debited a bank. Preserve the
+// immutable sale and move only its electronic receipt back to 1060. Archived reviews are owner-
+// accepted as received and are deliberately excluded.
+async function prepareActivePaymentReview(db, orderId, actor) {
+  const id = financeKey(orderId, "Order ID"), found = await findOrder(db, id), order = found.order;
+  if (found.node !== "orders" || order.status === "Archived") throw new HttpsError("failed-precondition", "Archived sales are accepted as received and are not moved back into payment review.");
+  if (order.paymentStatus !== "cashier_verified") throw new HttpsError("failed-precondition", "Only a current cashier-verified payment awaiting manager review can be prepared.");
+  if (String(order.paymentVerificationPolicy || "cashier_manager") !== "cashier_manager") throw new HttpsError("failed-precondition", "This payment does not use cashier-and-manager verification.");
+  if (Financial.money(order.refundAmount) > 0) throw new HttpsError("failed-precondition", "This manager-review sale already has a refund. Verify the actual receipt or use a controlled financial correction; it cannot be moved or rejected automatically without double-reversing revenue.");
+  let state = await paymentVerificationOpenAmount(db, id);
+  if (!state.sale) {
+    const [accountsSnap, taxSnap] = await Promise.all([db.ref("/cfAccounts").get(), db.ref("/taxSettings").get()]);
+    await postOrderFinancial(db, order, accountsSnap.val() || {}, {uid: "server", role: "server"}, taxSnap.val() || {});
+    state = await paymentVerificationOpenAmount(db, id);
+  }
+  if (!state.sale) throw new HttpsError("failed-precondition", "The sale has not reached Finance Books yet. Wait for posting and retry.");
+  const saleAt = Number(state.sale.occurredAt || order.completedAt || order.timestamp || Date.now()), now = Date.now();
+  if (state.clearing > 0) {
+    const queue = (await db.ref(`/paymentVerificationQueue/${id}`).get()).val();
+    if (!queue) await db.ref().update({[`paymentVerificationQueue/${id}`]: paymentVerificationQueueRow(order, state.clearing, state.review ? `payreview_${id}` : `sale_${id}`, saleAt), [`operationalAudit/${now}_restore_payment_review_queue_${id}`]: operationalAuditRecord("restore_payment_review_queue", "order", id, actor, {amount: state.clearing})});
+    return {orderId: id, amount: state.clearing, duplicate: true, alreadyInReview: true};
+  }
+  if (state.review) return {orderId: id, duplicate: true, alreadyInReview: Financial.verificationClearing(state.review) > 0};
+  const movement = Financial.paymentReviewPosting(order, state.sale), open = await periodOpenFor(db, saleAt);
+  movement.occurredAt = open ? saleAt : now; if (!open) movement.originalSaleDate = financeDateFromTimestamp(saleAt);
+  movement.actorName = financeText(actor.role, 160); movement.reference = id;
+  const movementId = `payreview_${id}`, writes = {
+    [`paymentVerificationQueue/${id}`]: paymentVerificationQueueRow(order, movement.amount, movementId, saleAt),
+    [`orders/${id}/paymentReviewClearing`]: {amount: movement.amount, movementId, preparedAt: now, preparedBy: actor.uid, schemaVersion: 1},
+    [`operationalAudit/${now}_prepare_payment_review_${id}`]: operationalAuditRecord("prepare_payment_review", "order", id, actor, {movementId, amount: movement.amount, accounting: "Dr 1060 / Cr originally posted receiving account; archived sales excluded."}),
+  };
+  addOrderCashWrites(writes, movement, movementId, order, actor);
+  const result = await commitFinancial(db, movementId, movement, actor, writes);
+  return {orderId: id, amount: movement.amount, duplicate: result.duplicate === true, alreadyInReview: true};
+}
 async function settleVerifiedPayment(db, orderId, actor) {
   const id = financeKey(orderId, "Order ID");
   let found; try { found = await findOrder(db, id); } catch (error) { return null; }
   const order = found.order;
   if (order.voided === true || !VERIFIED_PAYMENT_STATUSES.has(String(order.paymentStatus || ""))) return null;
-  const sale = (await db.ref(`/financialMovements/sale_${id}`).get()).val(), clearing = Financial.verificationClearing(sale);
+  const state = await paymentVerificationOpenAmount(db, id), sale = state.sale, clearing = state.clearing;
   if (!(clearing > 0)) return null;
   if ((await db.ref(`/financialMovements/payver_${id}`).limitToFirst(1).get()).exists()) return {duplicate: true};
-  const accounts = (await db.ref("/cfAccounts").get()).val() || {}, saleAt = Number(sale.occurredAt || order.completedAt || order.timestamp || Date.now());
+  const accounts = (await db.ref("/cfAccounts").get()).val() || {}, saleAt = Number((sale && sale.occurredAt) || order.completedAt || order.timestamp || Date.now());
   const movement = Financial.verificationPosting(order, accounts, {clearing, accountId: financeText(order.paymentReceivingAccountId, 160)});
   const open = await periodOpenFor(db, saleAt), now = Date.now();
   movement.occurredAt = open ? saleAt : now; if (!open) movement.originalSaleDate = financeDateFromTimestamp(saleAt);

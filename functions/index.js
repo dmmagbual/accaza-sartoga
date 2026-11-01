@@ -1421,7 +1421,7 @@ async function scanOperationalExceptions(db, now) {
     const deadLetters = deadLetterSnap.val() || {};
     await repairHistoricalReplicaDeadLetters(db, deadLetters, now);
     await verifyOpenDeadLetters(db, deadLetters, now);
-    const paymentQueueSnap = await db.ref("/paymentVerificationQueue").limitToFirst(300).get();
+    const paymentQueueSnap = /* download-ok: bounded complete open control subledger; truncation could falsely reconcile 1060 */await db.ref("/paymentVerificationQueue").get();
     return OperationalExceptions.buildOperationalExceptions({paymentVerificationQueue: paymentQueueSnap.val() || {}, activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, booksChart: booksChartSnap.val() || {}, cashAccountMap: cashAccountMapSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
 }
 
@@ -5146,7 +5146,8 @@ exports.unlinkLoyaltyFromDevice = onCall(
 // ---------------------------------------------------------------------------
 function loyaltyOrderCanEarn(order) {
   const effectiveStatus = order.status === "Archived" ? order.prevStatus : order.status;
-  return ["Completed", "Received"].includes(String(effectiveStatus || "")) && !["pending", "not_received"].includes(String(order.paymentStatus || "")) && !order.unpaidSale && order.voided !== true && String(order.channel || "instore").toLowerCase() === "instore" && !!order.loyaltyMemberId;
+  const paymentStatus = String(order.paymentStatus || ""), paymentAccepted = ["manager_validated", "confirmed"].includes(paymentStatus) || (order.status === "Archived" && paymentStatus === "cashier_verified");
+  return ["Completed", "Received"].includes(String(effectiveStatus || "")) && paymentAccepted && !order.unpaidSale && order.voided !== true && String(order.channel || "instore").toLowerCase() === "instore" && !!order.loyaltyMemberId;
 }
 
 async function postLoyaltyEarning(db, order) {
@@ -7318,7 +7319,7 @@ exports.onOrderFinancialPosting = onValueWritten(
     const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const taxSettings = (await db.ref("/taxSettings").get()).val() || {}; const actor = {uid: "server", role: "server"};
     await postOrderFinancial(db, order, accounts, actor, taxSettings);
     // Only sales that were ever unverified can hold money in 1060; cash and confirmed sales skip the reads.
-    if (before.paymentStatus === "pending" || order.paymentStatus === "pending") await settleVerifiedPayment(db, order.id, actor);
+    if (["pending", "cashier_verified"].includes(before.paymentStatus) || order.paymentStatus === "pending") await settleVerifiedPayment(db, order.id, actor);
     await postPreCompletionCashRefund(db, order, actor);
     const beforeRefund = Financial.money(before.refundAmount), afterRefund = Financial.money(order.refundAmount);
     if (afterRefund > beforeRefund) {
@@ -8767,7 +8768,7 @@ async function applyCompletedOrderCorrectionInventory(db, order, plan, token, no
 exports.processOrderAdjustment = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "512MiB"},
   async (request) => {
-    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["registerOps"]); const data = request.data || {}, found = await findOrder(db, data.orderId), o = found.order;
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["registerOps"]); const data = request.data || {}; let found = await findOrder(db, data.orderId), o = found.order;
     if (data.action === "start_instore_preparation") {
       if (found.node !== "orders" || o.source !== "pos" || String(o.channel || "instore").toLowerCase() !== "instore" || o.status !== "Completed") throw new HttpsError("failed-precondition", "Only a current in-store completed sale can start preparation.");
       const active = (await db.ref("/posActiveShift").get()).val() || null;
@@ -8803,15 +8804,22 @@ exports.processOrderAdjustment = onCall(
       return {verified: true, status: nextStatus, paymentStatus: "cashier_verified", financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
     }
     if (data.action === "manager_validate_payment") {
-      if (o.paymentStatus === "manager_validated" || o.paymentStatus === "confirmed") return {alreadyValidated: true};
+      return withPaymentDecisionLock(db, o.id, actor, async () => {
+      found = await findOrder(db, o.id); o = found.order;
+      if (o.paymentStatus === "manager_validated" || o.paymentStatus === "confirmed") {await settleVerifiedPayment(db, o.id, actor);return {alreadyValidated: true};}
       const payments = (Array.isArray(o.payments) && o.payments.length ? o.payments : [{method: o.payment, amount: o.total}]).map((row) => Object.assign({}, row)), direct = PaymentVerification.directPaymentRows(payments), posSettings = await readPosSettings(db, ["payMethods"]), verificationPolicy = PaymentVerification.paymentPolicy(payments, posSettings.payMethods);
       if (!direct.length) throw new HttpsError("failed-precondition", "This order has no direct electronic payment to validate.");
       if (verificationPolicy === PaymentVerification.CASHIER_MANAGER && o.paymentStatus !== "cashier_verified") throw new HttpsError("failed-precondition", "Cashier verification is required before manager validation.");
       if (verificationPolicy === PaymentVerification.MANAGER_ONLY && !["pending", "cashier_verified"].includes(o.paymentStatus)) throw new HttpsError("failed-precondition", "This payment is not awaiting manager verification.");
       if (direct.some((row) => !financeText(row.ref, 120))) throw new HttpsError("invalid-argument", "Every direct electronic payment requires a transaction reference.");
+      const directAmount = Financial.money(direct.reduce((sum, row) => sum + Financial.money(row.amount), 0));
+      if (!(directAmount > 0)) throw new HttpsError("failed-precondition", "This order has no electronic payment awaiting validation.");
+      // Serialize the current-review reclassification before changing the status. New sales are
+      // already in 1060; pre-rule active reviews receive one idempotent Dr 1060 / Cr bank movement.
+      if (found.node === "orders" && o.paymentStatus === "cashier_verified" && Financial.money(o.refundAmount) <= 0) await prepareActivePaymentReview(db, o.id, actor);
       const receivingAccountId = await verifiedReceivingAccount(db, data), pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
       const verifierCheck = await paymentVerifierCheck(db, o, pendingApproval.approvedBy, pendingApproval.approvedRole);
-      const approval = await claimManagerApproval(db, data, "validate_payment", o.id, Financial.money(o.total), `validate_${o.id}`), now = Date.now(), approvedBy = approval.record.approvedEmail || approval.record.approvedRole, website = o.source === "online" || o.channel === "online", nextStatus = website && String(o.status || "Pending") === "Pending" ? "Confirmed" : String(o.status || "Pending");
+      const approval = await claimManagerApproval(db, data, "validate_payment", o.id, directAmount, `validate_${o.id}`), now = Date.now(), approvedBy = approval.record.approvedEmail || approval.record.approvedRole, website = o.source === "online" || o.channel === "online", nextStatus = website && String(o.status || "Pending") === "Pending" ? "Confirmed" : String(o.status || "Pending");
       const validated = Object.assign({}, o, {paymentReceivingAccountId: receivingAccountId || null, paymentSelfCheck: verifierCheck.selfCheck, payments, paymentStatus: "manager_validated", paymentVerificationPolicy: verificationPolicy, managerValidatedAt: now, managerValidatedBy: approval.record.approvedBy, managerValidatedRole: approval.record.approvedRole, managerValidatedName: approvedBy, paymentApprovalId: approval.id, status: nextStatus});
       if (nextStatus !== o.status) { validated.statusUpdatedAt = now; validated.statusUpdatedBy = actor.uid; }
       const activeShift = (await db.ref("/posActiveShift").get()).val() || null;
@@ -8820,16 +8828,25 @@ exports.processOrderAdjustment = onCall(
       await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {}, posted = await postOrderFinancial(db, validated, accounts, {uid: "server", role: "server"}, taxSettings);
       await settleVerifiedPayment(db, o.id, actor);
       return {validated: true, paymentStatus: "manager_validated", approvedBy, financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
+      });
     }
     if (data.action === "payment_not_received") {
+      return withPaymentDecisionLock(db, o.id, actor, async () => {
+      found = await findOrder(db, o.id); o = found.order;
       if (!Financial.recognizedSale(o) || !Financial.paymentAwaitingVerification(o)) throw new HttpsError("failed-precondition", "Only a completed sale whose payment is still awaiting verification can be recorded as not received.");
-      const reason = paymentNotReceivedReason(data), sale = (await db.ref(`/financialMovements/sale_${financeKey(o.id, "Order ID")}`).get()).val(), clearing = Financial.verificationClearing(sale);
+      if (Financial.money(o.refundAmount) > 0) throw new HttpsError("failed-precondition", "This manager-review sale already has a refund. Use a controlled financial correction so revenue, cash and the original refund are not reversed twice.");
+      const reason = paymentNotReceivedReason(data), state = await paymentVerificationOpenAmount(db, financeKey(o.id, "Order ID")), clearing = state.clearing;
       if (!(clearing > 0)) throw new HttpsError("failed-precondition", "This sale has no payment waiting in Payments Awaiting Verification. Post it to Finance Books first.");
       const pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
       const verifierCheck = await paymentVerifierCheck(db, o, pendingApproval.approvedBy, pendingApproval.approvedRole);
       const approval = await claimManagerApproval(db, data, "payment_not_received", o.id, clearing, `not_received_${o.id}`), approvedBy = approval.record.approvedEmail || approval.record.approvedRole;
       const result = await commitUnpaidSale(db, found.node, o, clearing, reason, actor, {verifierUid: approval.record.approvedBy, verifierRole: approval.record.approvedRole, verifierName: approvedBy, approvalId: approval.id, selfCheck: verifierCheck.selfCheck, usedWrites: approval.usedWrites});
       return {orderId: o.id, notReceived: true, amount: clearing, duplicate: result && result.duplicate === true, approvedBy};
+      });
+    }
+    if (data.action === "prepare_payment_review") {
+      if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only managers may move a cashier-verified payment into manager review.");
+      return withPaymentDecisionLock(db, o.id, actor, () => prepareActivePaymentReview(db, o.id, actor));
     }
     if (data.action === "recognize_unverified_sale") return recognizeUnverifiedSale(db, found, actor);
     if (data.action === "settle_verified_payment") {
@@ -9903,6 +9920,9 @@ function paymentDirectRows(order) {
   const rows = Array.isArray(order && order.payments) && order.payments.length ? order.payments : [{method: order && order.payment, amount: order && order.total}];
   return rows.filter((row) => String(row && row.method || "").toLowerCase() !== "cash");
 }
+function paymentDirectAmount(order) {
+  return Financial.money(paymentDirectRows(order).reduce((sum, row) => sum + Financial.money(row.amount), 0));
+}
 function paymentVerificationQueueRow(order, clearing, movementId, occurredAt) {
   const direct = paymentDirectRows(order), saleAt = Number(occurredAt || order.completedAt || order.receivedAt || order.timestamp || Date.now());
   return {
@@ -9944,16 +9964,71 @@ async function verifiedReceivingAccount(db, data) {
 // money still sits in 1060, post Dr bank / Cr 1060 on the sale date (today if that month is
 // closed). Run by the verify actions and by the posting trigger, so neither the order in which
 // they finish nor a failed write can leave a verified payment stuck in 1060.
-const VERIFIED_PAYMENT_STATUSES = new Set(["cashier_verified", "manager_validated", "confirmed"]);
+const VERIFIED_PAYMENT_STATUSES = new Set(["manager_validated", "confirmed"]);
+async function withPaymentDecisionLock(db, orderId, actor, work) {
+  const id = financeKey(orderId, "Order ID"), ref = db.ref(`/paymentDecisionLocks/${id}`), now = Date.now(), token = crypto.randomBytes(12).toString("hex");
+  const claim = await ref.transaction((current) => {
+    if (current && Number(current.claimedAt || 0) > now - 120000) return;
+    return {token, claimedAt: now, claimedBy: actor.uid, schemaVersion: 1};
+  }, undefined, false);
+  if (!claim.committed || !claim.snapshot.val() || claim.snapshot.val().token !== token) throw new HttpsError("aborted", "This payment review is already being decided. Refresh and retry.");
+  try { return await work(); }
+  finally { await ref.transaction((current) => current && current.token === token ? null : current, undefined, false); }
+}
+async function paymentVerificationOpenAmount(db, id) {
+  const [saleSnap, reviewSnap] = await Promise.all([
+    db.ref(`/financialMovements/sale_${id}`).get(), db.ref(`/financialMovements/payreview_${id}`).get(),
+  ]);
+  return {
+    sale: saleSnap.val(),
+    review: reviewSnap.val(),
+    clearing: Financial.money(Financial.verificationClearing(saleSnap.val()) + Financial.verificationClearing(reviewSnap.val())),
+  };
+}
+// Current cashier-manager reviews created before this rule already debited a bank. Preserve the
+// immutable sale and move only its electronic receipt back to 1060. Archived reviews are owner-
+// accepted as received and are deliberately excluded.
+async function prepareActivePaymentReview(db, orderId, actor) {
+  const id = financeKey(orderId, "Order ID"), found = await findOrder(db, id), order = found.order;
+  if (found.node !== "orders" || order.status === "Archived") throw new HttpsError("failed-precondition", "Archived sales are accepted as received and are not moved back into payment review.");
+  if (order.paymentStatus !== "cashier_verified") throw new HttpsError("failed-precondition", "Only a current cashier-verified payment awaiting manager review can be prepared.");
+  if (String(order.paymentVerificationPolicy || "cashier_manager") !== "cashier_manager") throw new HttpsError("failed-precondition", "This payment does not use cashier-and-manager verification.");
+  if (Financial.money(order.refundAmount) > 0) throw new HttpsError("failed-precondition", "This manager-review sale already has a refund. Verify the actual receipt or use a controlled financial correction; it cannot be moved or rejected automatically without double-reversing revenue.");
+  let state = await paymentVerificationOpenAmount(db, id);
+  if (!state.sale) {
+    const [accountsSnap, taxSnap] = await Promise.all([db.ref("/cfAccounts").get(), db.ref("/taxSettings").get()]);
+    await postOrderFinancial(db, order, accountsSnap.val() || {}, {uid: "server", role: "server"}, taxSnap.val() || {});
+    state = await paymentVerificationOpenAmount(db, id);
+  }
+  if (!state.sale) throw new HttpsError("failed-precondition", "The sale has not reached Finance Books yet. Wait for posting and retry.");
+  const saleAt = Number(state.sale.occurredAt || order.completedAt || order.timestamp || Date.now()), now = Date.now();
+  if (state.clearing > 0) {
+    const queue = (await db.ref(`/paymentVerificationQueue/${id}`).get()).val();
+    if (!queue) await db.ref().update({[`paymentVerificationQueue/${id}`]: paymentVerificationQueueRow(order, state.clearing, state.review ? `payreview_${id}` : `sale_${id}`, saleAt), [`operationalAudit/${now}_restore_payment_review_queue_${id}`]: operationalAuditRecord("restore_payment_review_queue", "order", id, actor, {amount: state.clearing})});
+    return {orderId: id, amount: state.clearing, duplicate: true, alreadyInReview: true};
+  }
+  if (state.review) return {orderId: id, duplicate: true, alreadyInReview: Financial.verificationClearing(state.review) > 0};
+  const movement = Financial.paymentReviewPosting(order, state.sale), open = await periodOpenFor(db, saleAt);
+  movement.occurredAt = open ? saleAt : now; if (!open) movement.originalSaleDate = financeDateFromTimestamp(saleAt);
+  movement.actorName = financeText(actor.role, 160); movement.reference = id;
+  const movementId = `payreview_${id}`, writes = {
+    [`paymentVerificationQueue/${id}`]: paymentVerificationQueueRow(order, movement.amount, movementId, saleAt),
+    [`orders/${id}/paymentReviewClearing`]: {amount: movement.amount, movementId, preparedAt: now, preparedBy: actor.uid, schemaVersion: 1},
+    [`operationalAudit/${now}_prepare_payment_review_${id}`]: operationalAuditRecord("prepare_payment_review", "order", id, actor, {movementId, amount: movement.amount, accounting: "Dr 1060 / Cr originally posted receiving account; archived sales excluded."}),
+  };
+  addOrderCashWrites(writes, movement, movementId, order, actor);
+  const result = await commitFinancial(db, movementId, movement, actor, writes);
+  return {orderId: id, amount: movement.amount, duplicate: result.duplicate === true, alreadyInReview: true};
+}
 async function settleVerifiedPayment(db, orderId, actor) {
   const id = financeKey(orderId, "Order ID");
   let found; try { found = await findOrder(db, id); } catch (error) { return null; }
   const order = found.order;
   if (order.voided === true || !VERIFIED_PAYMENT_STATUSES.has(String(order.paymentStatus || ""))) return null;
-  const sale = (await db.ref(`/financialMovements/sale_${id}`).get()).val(), clearing = Financial.verificationClearing(sale);
+  const state = await paymentVerificationOpenAmount(db, id), sale = state.sale, clearing = state.clearing;
   if (!(clearing > 0)) return null;
   if ((await db.ref(`/financialMovements/payver_${id}`).limitToFirst(1).get()).exists()) return {duplicate: true};
-  const accounts = (await db.ref("/cfAccounts").get()).val() || {}, saleAt = Number(sale.occurredAt || order.completedAt || order.timestamp || Date.now());
+  const accounts = (await db.ref("/cfAccounts").get()).val() || {}, saleAt = Number((sale && sale.occurredAt) || order.completedAt || order.timestamp || Date.now());
   const movement = Financial.verificationPosting(order, accounts, {clearing, accountId: financeText(order.paymentReceivingAccountId, 160)});
   const open = await periodOpenFor(db, saleAt), now = Date.now();
   movement.occurredAt = open ? saleAt : now; if (!open) movement.originalSaleDate = financeDateFromTimestamp(saleAt);

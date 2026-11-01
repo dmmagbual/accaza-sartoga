@@ -26,10 +26,20 @@ const db = createFakeDatabase({
     AP_VAL: approval('validate_payment', 'POS-V1', 560), AP_SELF: approval('validate_payment', 'POS-S1', 560, 'crew_uid'),
     AP_SA: approval('validate_payment', 'POS-S1', 560, 'crew_uid', 'superadmin'), AP_NR: approval('payment_not_received', 'POS-N1', 560),
     AP_EARLY: approval('validate_payment', 'POS-E1', 560), AP_SPLIT: approval('payment_not_received', 'POS-SP1', 360),
+    AP_CM: approval('validate_payment', 'POS-CM1', 560), AP_LEG: approval('validate_payment', 'POS-LEG1', 560),
+    AP_SV: approval('validate_payment', 'POS-SV1', 360), AP_CNR: approval('payment_not_received', 'POS-CNR1', 560),
+    AP_RACE_VAL: approval('validate_payment', 'POS-RACE1', 560), AP_RACE_NR: approval('payment_not_received', 'POS-RACE1', 560),
   },
   orders: {'POS-V1': sale('POS-V1'), 'POS-S1': sale('POS-S1'), 'POS-N1': sale('POS-N1'), 'POS-AR1': sale('POS-AR1'), 'POS-VD1': sale('POS-VD1', {completedAt: NOW - 3600000, timestamp: NOW - 3600000}), 'POS-E1': sale('POS-E1'),
     'POS-R1': sale('POS-R1', {paymentStatus: 'manager_validated'}), 'POS-SP1': sale('POS-SP1', {payment: 'Split', payments: [{method: 'Cash', amount: 200}, {method: 'Bank Transfer', amount: 360, ref: 'BT-9'}]}),
-    'POS-C1': sale('POS-C1', {payment: 'GCash', payments: [{method: 'GCash', amount: 560, ref: 'GC-1'}]})},
+    'POS-C1': sale('POS-C1', {payment: 'GCash', payments: [{method: 'GCash', amount: 560, ref: 'GC-1'}]}),
+    'POS-CM1': sale('POS-CM1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager'}),
+    'POS-LEG1': sale('POS-LEG1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager'}),
+    'POS-SV1': sale('POS-SV1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager', payment: 'Split', payments: [{method: 'Cash', amount: 200}, {method: 'Bank Transfer', amount: 360, ref: 'BT-SV'}]}),
+    'POS-CNR1': sale('POS-CNR1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager'}),
+    'POS-RACE1': sale('POS-RACE1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager'}),
+    'POS-PR1': sale('POS-PR1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager', refundAmount: 100, refundPayments: {Cash: 100}}),
+  },
   archivedOrders: {
     'POS-AUG1': Object.assign(sale('POS-AUG1', {completedAt: Date.parse('2026-08-15T11:00:00+08:00'), timestamp: Date.parse('2026-08-15T11:00:00+08:00')}), {status: 'Archived', prevStatus: 'Completed', archivedAt: Date.parse('2026-08-20T00:00:00+08:00')}),
   },
@@ -41,7 +51,7 @@ const trigger = async (id) => { const order = await read(`orders/${id}`); await 
 const lines = (mv, account) => (mv && mv.lines || []).filter((l) => l.account === account).reduce((s, l) => Financial.money(s + Number(l.debit || 0) - Number(l.credit || 0)), 0);
 
 // 1. Captured -> posted: revenue on the sale date, the unverified payment in 1060, no bank, no Cash Flow.
-for (const id of ['POS-V1', 'POS-S1', 'POS-N1', 'POS-VD1', 'POS-SP1', 'POS-C1']) await trigger(id);
+for (const id of ['POS-V1', 'POS-S1', 'POS-N1', 'POS-VD1', 'POS-SP1', 'POS-C1', 'POS-CM1', 'POS-SV1', 'POS-CNR1', 'POS-RACE1']) await trigger(id);
 const s1 = await read('financialMovements/sale_POS-V1');
 assert.ok(s1, 'an unverified POS sale posts when captured');
 assert.equal(lines(s1, 'asset:payment_verification'), 560, 'the unverified payment is debited to 1060');
@@ -49,6 +59,53 @@ assert.equal(lines(s1, 'asset:cash_account:bdo'), 0, 'nothing reaches the bank b
 assert.equal(Object.values(await read('cfLedger') || {}).length, 0, 'no Cash Flow entry before verification');
 assert.equal((await read('paymentVerificationQueue/POS-V1')).amount, 560, 'the payment is queued for verification');
 assert.equal(s1.occurredAt, SALE_AT, 'posted on the sale date');
+
+// 1b. Cashier verification is still manager-pending: it stays in 1060 and creates no bank/Cash Flow.
+const cmSale = await read('financialMovements/sale_POS-CM1');
+assert.equal(lines(cmSale, 'asset:payment_verification'), 560, 'cashier-only verification must remain in 1060');
+assert.equal(lines(cmSale, 'asset:cash_account:bdo'), 0, 'cashier-only verification must not reach the bank');
+assert.ok(await read('paymentVerificationQueue/POS-CM1'), 'cashier-only verification must remain in the manager queue');
+await fx.processOrderAdjustment(req({action: 'manager_validate_payment', orderId: 'POS-CM1', approvalId: 'AP_CM'}));
+assert.equal(lines(await read('financialMovements/payver_POS-CM1'), 'asset:payment_verification'), -560, 'manager validation clears 1060');
+assert.equal(lines(await read('financialMovements/payver_POS-CM1'), 'asset:cash_account:bdo'), 560, 'manager validation reaches the bank');
+
+// 1c. Existing active reviews are reclassified without editing the old sale; archived reviews stay received.
+const legacyOrder = await read('orders/POS-LEG1');
+await db.ref('financialMovements/sale_POS-LEG1').set(Financial.orderPosting({...legacyOrder, paymentStatus: 'confirmed'}, {bdo: {feedMethods: ['Bank Transfer']}}, null));
+await fx.processOrderAdjustment(req({action: 'prepare_payment_review', orderId: 'POS-LEG1'}));
+const review = await read('financialMovements/payreview_POS-LEG1');
+assert.equal(lines(review, 'asset:payment_verification'), 560, 'legacy active review is moved into 1060');
+assert.equal(lines(review, 'asset:cash_account:bdo'), -560, 'legacy active review is removed from its posted bank');
+assert.equal((await fx.processOrderAdjustment(req({action: 'prepare_payment_review', orderId: 'POS-LEG1'}))).duplicate, true, 'review preparation is idempotent');
+await fx.processOrderAdjustment(req({action: 'manager_validate_payment', orderId: 'POS-LEG1', approvalId: 'AP_LEG'}));
+assert.equal(lines(await read('financialMovements/payver_POS-LEG1'), 'asset:cash_account:bdo'), 560, 'legacy review returns to the manager-confirmed bank once');
+const archivedAccepted = Financial.orderPosting(Object.assign(sale('ARCH-CM', {paymentStatus: 'cashier_verified'}), {status: 'Archived', prevStatus: 'Completed'}), {bdo: {feedMethods: ['Bank Transfer']}}, null);
+assert.equal(lines(archivedAccepted, 'asset:payment_verification'), 0, 'archived cashier-verified sales remain accepted as received');
+assert.equal(lines(archivedAccepted, 'asset:cash_account:bdo'), 560, 'archived accepted sales keep their bank posting');
+
+// 1d. Split-tender manager approval binds to the electronic share, not the order total.
+await fx.processOrderAdjustment(req({action: 'manager_validate_payment', orderId: 'POS-SV1', approvalId: 'AP_SV'}));
+assert.equal(lines(await read('financialMovements/payver_POS-SV1'), 'asset:cash_account:bdo'), 360, 'only the electronic split reaches the bank');
+
+// 1e. A manager may reject cashier-only evidence; refunds stay blocked until that outcome.
+await assert.rejects(fx.processOrderAdjustment(req({action: 'refund', orderId: 'POS-CNR1', amount: 100, reason: 'test'})), /Verify this payment first/);
+await fx.processOrderAdjustment(req({action: 'payment_not_received', orderId: 'POS-CNR1', approvalId: 'AP_CNR', reasonCode: 'no_transfer_found', note: 'Statement checked'}));
+assert.equal(lines(await read('financialMovements/unpaid_POS-CNR1'), 'asset:payment_verification'), -560, 'cashier-only not-received clears 1060');
+assert.equal((await read('orders/POS-CNR1')).paymentStatus, 'not_received');
+
+// 1f. Validation and rejection share one per-order decision lock; only one outcome can post.
+const race = await Promise.allSettled([
+  fx.processOrderAdjustment(req({action: 'manager_validate_payment', orderId: 'POS-RACE1', approvalId: 'AP_RACE_VAL'})),
+  fx.processOrderAdjustment(req({action: 'payment_not_received', orderId: 'POS-RACE1', approvalId: 'AP_RACE_NR', reasonCode: 'no_transfer_found', note: 'Statement checked'})),
+]);
+assert.equal(race.filter((result) => result.status === 'fulfilled').length, 1, 'only one payment decision may win');
+assert.notEqual(!!(await read('financialMovements/payver_POS-RACE1')), !!(await read('financialMovements/unpaid_POS-RACE1')), 'validation and rejection movements are mutually exclusive');
+
+// 1g. A pre-rule cashier review with an existing refund is fail-closed against double reversal.
+const partial = await read('orders/POS-PR1');
+await db.ref('financialMovements/sale_POS-PR1').set(Financial.orderPosting({...partial, paymentStatus: 'confirmed'}, {bdo: {feedMethods: ['Bank Transfer']}}, null));
+await assert.rejects(fx.processOrderAdjustment(req({action: 'prepare_payment_review', orderId: 'POS-PR1'})), /already has a refund/);
+await assert.rejects(fx.processOrderAdjustment(req({action: 'payment_not_received', orderId: 'POS-PR1', approvalId: 'AP_CNR', reasonCode: 'no_transfer_found', note: 'Statement checked'})), /already has a refund/);
 
 // 2. Admin counts the same sale (shared sales authority), so Admin and Finance agree.
 const ctx = {window: {}}; vm.createContext(ctx); vm.runInContext(fs.readFileSync('assets/js/shared/sales-authority.js', 'utf8').replace('(function(global){', '(function(global){').replace(/\}\)\(typeof window[^;]*;?\s*$/, '})(window);'), ctx);
@@ -127,8 +184,9 @@ assert.equal(lines(await read('financialMovements/sale_POS-E1'), 'asset:payment_
 const staleE1 = sale('POS-E1'); await fx.onOrderFinancialPosting({params: {orderId: 'POS-E1'}, data: {before: {val: () => null}, after: {val: () => staleE1}}});
 assert.equal(await read('financialMovements/payver_POS-E1'), null, 'a stale trigger run does not post a second receipt');
 // 8c. A verified sale left in 1060 (failed write) is settled by the next trigger run.
-await db.ref('financialMovements/sale_POS-R1').set(Financial.orderPosting(sale('POS-R1'), {bdo: {feedMethods: ['Bank Transfer']}}, null));
-await fx.onOrderFinancialPosting({params: {orderId: 'POS-R1'}, data: {before: {val: () => sale('POS-R1')}, after: {val: () => sale('POS-R1', {paymentStatus: 'manager_validated'})}}});
+const cashierR1 = sale('POS-R1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager'});
+await db.ref('financialMovements/sale_POS-R1').set(Financial.orderPosting(cashierR1, {bdo: {feedMethods: ['Bank Transfer']}}, null));
+await fx.onOrderFinancialPosting({params: {orderId: 'POS-R1'}, data: {before: {val: () => cashierR1}, after: {val: () => sale('POS-R1', {paymentStatus: 'manager_validated', paymentVerificationPolicy: 'cashier_manager'})}}});
 assert.equal(lines(await read('financialMovements/payver_POS-R1'), 'asset:payment_verification'), -560, 'the settlement step clears a stuck 1060 balance');
 // 8c-2. The manual "finish verification" retry is the same idempotent step.
 assert.equal((await fx.processOrderAdjustment(req({action: 'settle_verified_payment', orderId: 'POS-R1'}))).duplicate, true, 'retrying a finished verification posts nothing');

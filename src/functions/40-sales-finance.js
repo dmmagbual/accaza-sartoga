@@ -459,7 +459,7 @@ exports.onOrderFinancialPosting = onValueWritten(
     const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const taxSettings = (await db.ref("/taxSettings").get()).val() || {}; const actor = {uid: "server", role: "server"};
     await postOrderFinancial(db, order, accounts, actor, taxSettings);
     // Only sales that were ever unverified can hold money in 1060; cash and confirmed sales skip the reads.
-    if (before.paymentStatus === "pending" || order.paymentStatus === "pending") await settleVerifiedPayment(db, order.id, actor);
+    if (["pending", "cashier_verified"].includes(before.paymentStatus) || order.paymentStatus === "pending") await settleVerifiedPayment(db, order.id, actor);
     await postPreCompletionCashRefund(db, order, actor);
     const beforeRefund = Financial.money(before.refundAmount), afterRefund = Financial.money(order.refundAmount);
     if (afterRefund > beforeRefund) {
