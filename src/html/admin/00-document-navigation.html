@@ -34,7 +34,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
 <link rel="manifest" href="/manifest-admin.json"/>
 <meta name="theme-color" content="#19241b"/>
-<meta name="accaza-admin-build" content="734"/>
+<meta name="accaza-admin-build" content="735"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -42,6 +42,12 @@
 <script>(function(){var sa=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;if(sa&&location.search.indexOf('full=1')===-1)document.documentElement.classList.add('app-mode');})();</script>
 <link rel="stylesheet" href="assets/css/admin/app-shell.css"/>
 <link rel="canonical" href="https://accazacoffee.com/"/>
+<!-- 2 Nov 2026: the Firebase SDK, Identity Toolkit and Google Fonts are separate origins. Without
+     these hints every cold boot pays a fresh DNS lookup and TLS handshake before its first byte. -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin/>
+<link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script type="application/ld+json">
 {

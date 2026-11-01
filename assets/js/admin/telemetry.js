@@ -20,7 +20,12 @@
   function flush(){if(flushing||!queue.length||Date.now()-lastFlush<5000||!signedIn()||!global.__accaza||!global.__accaza.recordClientTelemetry)return Promise.resolve({deferred:true});var batch=queue.splice(0,20);flushing=true;lastFlush=Date.now();return Promise.resolve(global.__accaza.recordClientTelemetry({events:batch,build:buildLabel()})).catch(function(e){if(refused(e))return{dropped:batch.length};queue=batch.concat(queue).slice(0,MAX_QUEUE);return{failed:true};}).finally(function(){flushing=false;});}
   global.addEventListener('error',function(e){var src=String(e&&e.filename||'').split('/').pop().replace(/\.(m?js).*$/,'');error('js_'+(src||'unknown'));});
   global.addEventListener('unhandledrejection',function(){error('unhandled_promise');});
-  global.addEventListener('load',function(){setTimeout(function(){try{var n=performance.getEntriesByType('navigation')[0];if(n)metric('pos_boot',n.loadEventEnd||n.duration,true);}catch(e){}flush();},0);});
+  // 2 Nov 2026 (Danilo): "POS launch" was the browser's loadEventEnd, so it waited for every image,
+  // font, Google Analytics beacon and the 839 KB reCAPTCHA Enterprise script that Firebase App Check
+  // downloads before the page can boot. Those are still visible in Technical diagnostics; this number
+  // now reports when the page has parsed and run its own scripts, which is what tells a manager
+  // whether the till is usable.
+  global.addEventListener('load',function(){setTimeout(function(){try{var n=performance.getEntriesByType('navigation')[0];if(n)metric('pos_boot',n.domContentLoadedEventEnd||n.loadEventEnd||n.duration,true);}catch(e){}flush();},0);});
   global.addEventListener('online',flush);global.addEventListener('pagehide',flush);setInterval(flush,30000);
   global.AccazaTelemetry={start:start,end:end,metric:metric,error:error,flush:flush,snapshot:function(){return JSON.parse(JSON.stringify(local));}};
 })(window);
