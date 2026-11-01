@@ -218,8 +218,11 @@ function buildOperationalExceptions(input, now = Date.now()) {
   // sale behind it until management recovers or dismisses it; a handed-over shift has no
   // final Z report until management reconciles it.
   rows(input.posSyncAlerts).forEach((alert) => {if (alert.state !== "open") return;exceptions.push(item("pos_sale_rejected", "critical", alert.id, `POS sale ${alert.orderId || alert.id} was not saved`, `${String(alert.message || "The server refused this sale.").slice(0, 200)} Recover or dismiss it in Register Ops → Sales needing recovery.`, Number(alert.lastAt || alert.firstAt || 0), "ops"));});
-  // Payments awaiting verification (Danilo, 29 Oct 2026): warn after 24 hours, escalate after 7 days.
-  rows(input.paymentVerificationQueue).forEach((row) => {const at = Number(row.saleAt || row.createdAt || 0), age = now - at;if (!(at > 0) || age < 86400000) return;const days = Math.floor(age / 86400000), critical = age >= 7 * 86400000;exceptions.push(item("payment_unverified", critical ? "critical" : "warning", `payment_unverified_${row.orderId || row.id}`, `${row.methods || "E-payment"} ₱${Number(row.amount || 0).toFixed(2)} for ${row.orderId || row.id} not verified for ${days} day${days === 1 ? "" : "s"}`, critical ? "Owner escalation: verify it against the actual receiving account or record it as not received in Register → Payments awaiting verification." : "Verify it against the actual receiving account, or record it as not received, in Register → Payments awaiting verification.", at, "ops"));});
+  // Payments awaiting verification are deliberately NOT listed here (Danilo, 1 Nov 2026): the
+  // register already shows every open payment in Register → Payments awaiting verification, so one
+  // card per sale only piles up duplicate to-dos as the queue ages. The payment control itself is
+  // still guarded below: a live review missing from 1060, or a 1060 balance that disagrees with the
+  // open queue, is reported because that means the control is broken, not merely waiting.
   // A live cashier-only review must have a matching 1060 queue row. Archived cashier-verified sales
   // are intentionally accepted as received and never enter this control.
   const queueByOrder = input.paymentVerificationQueue || {};
