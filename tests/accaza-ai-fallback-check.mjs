@@ -11,6 +11,11 @@ const source=(fs.readFileSync(path.join(root,'src/functions/62-accaza-ai.js'),'u
 // 6 Oct 2026: DeepSeek, Jev/OpenRouter, Ashna and OrcaRouter were removed (dead keys or plans);
 // 31 Oct 2026 Danilo brought OpenRouter back as the last backup.
 assert.ok(!/DEEPSEEK_API_KEY|ASHNA_API_KEY|ORCAROUTER_API_KEY|askJev|askAshna|askDeepSeek|askOrcaRouter/.test(source),'the removed providers must not return without a decision');
+// 1 Nov 2026: the Operations Center guidance must name the providers that are actually configured. The
+// owner was told to check DeepSeek keys and the Ollama tunnel long after both had been removed.
+const dashboardSource=fs.readFileSync(path.join(root,'assets/js/admin/operations-dashboard.js'),'utf8');
+assert.ok(!/SUPERDAD|Ollama|DeepSeek/.test(dashboardSource),'the Operations Center AI guidance must not name retired providers');
+for(const provider of ['Gemini','Groq','Cloudflare','Qwen','OpenRouter'])assert.ok(dashboardSource.includes(provider),`the Operations Center AI guidance must name ${provider}`);
 const pick=(start,end)=>{const a=source.indexOf(start),b=source.indexOf(end,a);assert.ok(a>=0&&b>a,`missing ${start}`);return source.slice(a,b);};
 const lineOf=start=>{const a=source.indexOf(start);assert.ok(a>=0,`missing ${start}`);return source.slice(a,source.indexOf('\n',a)+1);};
 let code=lineOf('function accazaAiText(')+lineOf('function accazaAiProviderFailure(')+lineOf('function accazaAiAnswer(')
