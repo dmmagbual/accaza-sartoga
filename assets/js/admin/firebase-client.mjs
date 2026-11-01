@@ -1,6 +1,13 @@
 import{initializeApp,deleteApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,set,get,push,update,remove,onValue,onDisconnect,serverTimestamp,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,orderByKey,equalTo,limitToFirst,limitToLast,startAt,endAt,endBefore}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
+// 2 Nov 2026 (Danilo): Firebase Messaging is only needed when a device registers for push, so it is
+// imported on demand instead of on every Admin boot. That keeps one cross-origin SDK download and its
+// execution off the POS launch path; callers await loadFirebaseMessaging().
+let firebaseMessagingModule=null;
+function loadFirebaseMessaging(){
+  if(!firebaseMessagingModule)firebaseMessagingModule=import("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js");
+  return firebaseMessagingModule;
+}
 import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import{initializeAccazaAppCheck}from"../shared/firebase-app-check.mjs";
@@ -40,4 +47,4 @@ callableNames.unshift('managePortalAccount');
 const CALLABLE_TIMEOUTS={askAccazaAI:130000};
 const callables=Object.fromEntries(callableNames.map(function(name){return [name,CALLABLE_TIMEOUTS[name]?httpsCallable(functions,name,{timeout:CALLABLE_TIMEOUTS[name]}):httpsCallable(functions,name)];}));
 
-export{firebaseConfig,app,appCheck,db,auth,callables,initializeApp,deleteApp,initializeAccazaAppCheck,ref,set,get,push,update,remove,onValue,onDisconnect,serverTimestamp,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,orderByKey,equalTo,limitToFirst,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence};
+export{firebaseConfig,app,appCheck,db,auth,callables,initializeApp,deleteApp,initializeAccazaAppCheck,ref,set,get,push,update,remove,onValue,onDisconnect,serverTimestamp,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,orderByKey,equalTo,limitToFirst,limitToLast,startAt,endAt,endBefore,loadFirebaseMessaging,getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence};
