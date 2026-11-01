@@ -64,12 +64,13 @@ exports.processOrderAdjustment = onCall(
       if (direct.some((row) => !financeText(row.ref, 120))) throw new HttpsError("invalid-argument", "Every direct electronic payment requires a transaction reference.");
       const directAmount = Financial.money(direct.reduce((sum, row) => sum + Financial.money(row.amount), 0));
       if (!(directAmount > 0)) throw new HttpsError("failed-precondition", "This order has no electronic payment awaiting validation.");
-      // Serialize the current-review reclassification before changing the status. New sales are
-      // already in 1060; pre-rule active reviews receive one idempotent Dr 1060 / Cr bank movement.
-      if (found.node === "orders" && o.paymentStatus === "cashier_verified" && Financial.money(o.refundAmount) <= 0) await prepareActivePaymentReview(db, o.id, actor);
       const receivingAccountId = await verifiedReceivingAccount(db, data), pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
       const verifierCheck = await paymentVerifierCheck(db, o, pendingApproval.approvedBy, pendingApproval.approvedRole);
-      const approval = await claimManagerApproval(db, data, "validate_payment", o.id, directAmount, `validate_${o.id}`), now = Date.now(), approvedBy = approval.record.approvedEmail || approval.record.approvedRole, website = o.source === "online" || o.channel === "online", nextStatus = website && String(o.status || "Pending") === "Pending" ? "Confirmed" : String(o.status || "Pending");
+      const approval = await claimManagerApproval(db, data, "validate_payment", o.id, directAmount, `validate_${o.id}`);
+      // Only after the manager approval is claimed: a receipt the cashier's check already banked
+      // moves back into 1060 (one idempotent Dr 1060 / Cr bank) under the approving manager's name.
+      if (found.node === "orders" && o.paymentStatus === "cashier_verified" && Financial.money(o.refundAmount) <= 0) await prepareActivePaymentReview(db, o.id, {uid: approval.record.approvedBy, role: approval.record.approvedRole});
+      const now = Date.now(), approvedBy = approval.record.approvedEmail || approval.record.approvedRole, website = o.source === "online" || o.channel === "online", nextStatus = website && String(o.status || "Pending") === "Pending" ? "Confirmed" : String(o.status || "Pending");
       const validated = Object.assign({}, o, {paymentReceivingAccountId: receivingAccountId || null, paymentSelfCheck: verifierCheck.selfCheck, payments, paymentStatus: "manager_validated", paymentVerificationPolicy: verificationPolicy, managerValidatedAt: now, managerValidatedBy: approval.record.approvedBy, managerValidatedRole: approval.record.approvedRole, managerValidatedName: approvedBy, paymentApprovalId: approval.id, status: nextStatus});
       if (nextStatus !== o.status) { validated.statusUpdatedAt = now; validated.statusUpdatedBy = actor.uid; }
       const activeShift = (await db.ref("/posActiveShift").get()).val() || null;
@@ -86,7 +87,7 @@ exports.processOrderAdjustment = onCall(
       if (!Financial.recognizedSale(o) || !Financial.paymentAwaitingVerification(o)) throw new HttpsError("failed-precondition", "Only a completed sale whose payment is still awaiting verification can be recorded as not received.");
       if (Financial.money(o.refundAmount) > 0) throw new HttpsError("failed-precondition", "This manager-review sale already has a refund. Use a controlled financial correction so revenue, cash and the original refund are not reversed twice.");
       const reason = paymentNotReceivedReason(data), state = await paymentVerificationOpenAmount(db, financeKey(o.id, "Order ID")), clearing = state.clearing;
-      if (!(clearing > 0)) throw new HttpsError("failed-precondition", "This sale has no payment waiting in Payments Awaiting Verification. Post it to Finance Books first.");
+      if (!(clearing > 0)) throw new HttpsError("failed-precondition", o.paymentStatus === "cashier_verified" ? "This sale has no payment waiting in Payments Awaiting Verification: the cashier check already banked it. Move it into manager review first, then record it as not received." : "This sale has no payment waiting in Payments Awaiting Verification. Post it to Finance Books first.");
       const pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
       const verifierCheck = await paymentVerifierCheck(db, o, pendingApproval.approvedBy, pendingApproval.approvedRole);
       const approval = await claimManagerApproval(db, data, "payment_not_received", o.id, clearing, `not_received_${o.id}`), approvedBy = approval.record.approvedEmail || approval.record.approvedRole;

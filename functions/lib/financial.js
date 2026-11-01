@@ -224,6 +224,11 @@ function unpaidAmount(order) { return money(order && order.unpaidSale && order.u
 function verificationClearing(movementRecord) {
   return money(((movementRecord && movementRecord.lines) || []).reduce((sum, entry) => sum + (safe(entry.account) === PAYMENT_VERIFICATION_ACCOUNT ? money(entry.debit) - money(entry.credit) : 0), 0));
 }
+// 1060 balance for one source: the net of every movement posted for it (sale, review
+// reclassification, cashier/manager deposit, not-received, void). Ledger-derived, never a flag.
+function verificationBalance(movements) {
+  return money((movements || []).reduce((sum, item) => sum + verificationClearing(item), 0));
+}
 // Verification (QuickBooks "Bank Deposit" from Undeposited Funds): Dr the receiving bank, Cr 1060,
 // for the recorded amount. Like a Xero/QuickBooks deposit, the verifier may choose the account the
 // money actually landed in (options.accountId); otherwise the payment's mapped account is used.
@@ -560,4 +565,4 @@ function payableSettledAmount(row) {
 }
 function payableHasSettlement(row) { return !!row && (row.status === "paid" || payableSettledAmount(row) > 0.009); }
 
-module.exports = {PAYMENT_VERIFICATION_ACCOUNT, UNPAID_SALES_LOSS_ACCOUNT, paymentAwaitingVerification, recognizedSale, unpaidAmount, verificationClearing, verificationPosting, paymentReviewPosting, unpaidSalePosting, payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, methodKey, line, totals, assertBalanced, accountForMethod,accountForPayment,receivingAccountForMethodFallback,receivingAccountForCustomerChoice,receivingAccountForRow,accountNumber,accountForNumber,customerPaymentRow,CUSTOMER_PAYMENT_ROWS,METHOD_FOR_CUSTOMER_ROW,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};
+module.exports = {PAYMENT_VERIFICATION_ACCOUNT, UNPAID_SALES_LOSS_ACCOUNT, paymentAwaitingVerification, recognizedSale, unpaidAmount, verificationClearing, verificationBalance, verificationPosting, paymentReviewPosting, unpaidSalePosting, payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, methodKey, line, totals, assertBalanced, accountForMethod,accountForPayment,receivingAccountForMethodFallback,receivingAccountForCustomerChoice,receivingAccountForRow,accountNumber,accountForNumber,customerPaymentRow,CUSTOMER_PAYMENT_ROWS,METHOD_FOR_CUSTOMER_ROW,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};

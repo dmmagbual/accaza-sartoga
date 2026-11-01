@@ -438,9 +438,10 @@ async function fullOrderVoidMovement(db, order, accounts, settlementPayments, ta
   if (!movement) return null;
   const remaining = Financial.money(Math.max(0, Financial.money(order.total) - Financial.money(order.refundAmount)));
   const settlement = Financial.reversalPosting(order, remaining, "void", accounts || {}, settlementPayments, Financial.effectiveTaxFor(taxSettings, Number(order.completedAt || order.receivedAt || order.timestamp || Date.now())));
-  // An unverified e-payment never reached the bank, so its void moves no cash: the reversal lines
-  // credit 1060 (netted from the sale) and there is no Cash Flow outflow.
-  movement.cashEntries = Financial.paymentAwaitingVerification(order) ? (settlement.cashEntries || []).filter((entry) => /cash/i.test(String(entry.method || ""))) : (settlement.cashEntries || []);
+  // Cash Flow follows the ledger: while the order still holds money in 1060 the e-payment never
+  // reached the bank, so the void moves only cash. Once banked (pre-rule sale or a cashier
+  // deposit), the void reverses that bank inflow too.
+  movement.cashEntries = Financial.verificationBalance(Object.values(movementSnap.val() || {})) > 0 ? (settlement.cashEntries || []).filter((entry) => /cash/i.test(String(entry.method || ""))) : (settlement.cashEntries || []);
   movement.settlementPayments = settlement.settlementPayments || [];
   movement.warnings = settlement.warnings || [];
   return movement;

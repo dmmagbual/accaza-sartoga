@@ -28,6 +28,7 @@ const db = createFakeDatabase({
     AP_EARLY: approval('validate_payment', 'POS-E1', 560), AP_SPLIT: approval('payment_not_received', 'POS-SP1', 360),
     AP_CM: approval('validate_payment', 'POS-CM1', 560), AP_LEG: approval('validate_payment', 'POS-LEG1', 560),
     AP_SV: approval('validate_payment', 'POS-SV1', 360), AP_CNR: approval('payment_not_received', 'POS-CNR1', 560),
+    AP_W1: approval('validate_payment', 'POS-W1', 560), AP_W2: approval('payment_not_received', 'POS-W2', 560),
     AP_RACE_VAL: approval('validate_payment', 'POS-RACE1', 560), AP_RACE_NR: approval('payment_not_received', 'POS-RACE1', 560),
   },
   orders: {'POS-V1': sale('POS-V1'), 'POS-S1': sale('POS-S1'), 'POS-N1': sale('POS-N1'), 'POS-AR1': sale('POS-AR1'), 'POS-VD1': sale('POS-VD1', {completedAt: NOW - 3600000, timestamp: NOW - 3600000}), 'POS-E1': sale('POS-E1'),
@@ -38,6 +39,9 @@ const db = createFakeDatabase({
     'POS-SV1': sale('POS-SV1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager', payment: 'Split', payments: [{method: 'Cash', amount: 200}, {method: 'Bank Transfer', amount: 360, ref: 'BT-SV'}]}),
     'POS-CNR1': sale('POS-CNR1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager'}),
     'POS-RACE1': sale('POS-RACE1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager'}),
+    'POS-W1': sale('POS-W1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager'}),
+    'POS-W2': sale('POS-W2', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager'}),
+    'POS-W3': sale('POS-W3', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager'}),
     'POS-PR1': sale('POS-PR1', {paymentStatus: 'cashier_verified', paymentVerificationPolicy: 'cashier_manager', refundAmount: 100, refundPayments: {Cash: 100}}),
   },
   archivedOrders: {
@@ -189,7 +193,10 @@ await db.ref('financialMovements/sale_POS-R1').set(Financial.orderPosting(cashie
 await fx.onOrderFinancialPosting({params: {orderId: 'POS-R1'}, data: {before: {val: () => cashierR1}, after: {val: () => sale('POS-R1', {paymentStatus: 'manager_validated', paymentVerificationPolicy: 'cashier_manager'})}}});
 assert.equal(lines(await read('financialMovements/payver_POS-R1'), 'asset:payment_verification'), -560, 'the settlement step clears a stuck 1060 balance');
 // 8c-2. The manual "finish verification" retry is the same idempotent step.
-assert.equal((await fx.processOrderAdjustment(req({action: 'settle_verified_payment', orderId: 'POS-R1'}))).duplicate, true, 'retrying a finished verification posts nothing');
+const r1Retry = await fx.processOrderAdjustment(req({action: 'settle_verified_payment', orderId: 'POS-R1'}));
+assert.equal(r1Retry.settled, false, 'retrying a finished verification posts nothing');
+assert.equal(r1Retry.nothingToSettle || r1Retry.duplicate, true, 'a finished verification has nothing left in 1060');
+assert.equal(await read('financialMovements/payvalid_POS-R1'), null, 'no second deposit for a finished verification');
 // 8d. The till login cannot verify its own sale on the cashier path either.
 await assert.rejects(fx.processOrderAdjustment(req({action: 'cashier_verify_payment', orderId: 'POS-C1', reference: 'GC-1'}, 'till_uid')), /cannot verify or reject its payment/);
 // 8e. Split cash + e-payment not received: only the e-payment share is reversed, with its share of cost.
@@ -206,5 +213,44 @@ const vatSale = Financial.orderPosting(sale('VAT1', {total: 112, subtotal: 112, 
 assert.equal(lines(vatSale, 'asset:payment_verification'), 112);
 const vatUnpaid = Financial.unpaidSalePosting(sale('VAT1', {total: 112, subtotal: 112}), 112, {mode: 'vat', rate: 12, inclusive: true}, []);
 assert.equal(lines(vatUnpaid, 'liability:output_vat'), 12, 'output VAT is reversed with the unpaid sale');
+
+// 1h. Orders cashier-verified between 29 Oct and the manager-review rule: the sale posted to 1060
+// and the old cashier step already banked it (payver_ Dr bank / Cr 1060). 1060 is the net of all
+// the order's movements, so these are never read as still open.
+const bdoAccounts = {bdo: {feedMethods: ['Bank Transfer']}};
+for (const id of ['POS-W1', 'POS-W2', 'POS-W3']) {
+  const order = await read(`orders/${id}`);
+  await db.ref(`financialMovements/sale_${id}`).set(Financial.orderPosting({...order, paymentStatus: 'pending'}, bdoAccounts, null));
+  await db.ref(`financialMovements/payver_${id}`).set(Financial.verificationPosting(order, bdoAccounts, {clearing: 560, accountId: 'bdo'}));
+}
+const orderNet = async (id, account) => Object.values(await read('financialMovements') || {}).filter((mv) => mv.sourceId === id).reduce((sum, mv) => Financial.money(sum + lines(mv, account)), 0);
+assert.equal(await orderNet('POS-W1', 'asset:payment_verification'), 0, 'window order starts with nothing in 1060');
+// Rejection cannot credit 1060 for money that already left it.
+await assert.rejects(fx.processOrderAdjustment(req({action: 'payment_not_received', orderId: 'POS-W2', approvalId: 'AP_W2', reasonCode: 'no_transfer_found', note: 'Statement checked'})), /no payment waiting/);
+assert.equal(await read('financialMovements/unpaid_POS-W2'), null, 'no unpaid posting against an empty 1060');
+// Review moves the banked receipt back into 1060 from the cashier deposit's bank lines.
+await fx.processOrderAdjustment(req({action: 'prepare_payment_review', orderId: 'POS-W2'}));
+assert.equal(lines(await read('financialMovements/payreview_POS-W2'), 'asset:cash_account:bdo'), -560, 'review reverses the cashier deposit bank line');
+assert.equal((await read('paymentVerificationQueue/POS-W2')).amount, 560, 'review restores the queue row at the ledger amount');
+await fx.processOrderAdjustment(req({action: 'payment_not_received', orderId: 'POS-W2', approvalId: 'AP_W2', reasonCode: 'no_transfer_found', note: 'Statement checked'}));
+assert.equal(await orderNet('POS-W2', 'asset:payment_verification'), 0, 'not received clears 1060 to zero, never negative');
+assert.equal(await orderNet('POS-W2', 'asset:cash_account:bdo'), 0, 'not received leaves no money in the bank');
+// Manager validation posts a second, distinct deposit (payvalid_) once; audit names the approving manager.
+await fx.processOrderAdjustment(req({action: 'manager_validate_payment', orderId: 'POS-W1', approvalId: 'AP_W1'}));
+assert.equal(lines(await read('financialMovements/payvalid_POS-W1'), 'asset:cash_account:bdo'), 560, 'manager validation banks the reviewed receipt');
+assert.equal(await orderNet('POS-W1', 'asset:payment_verification'), 0, '1060 is clear after validation');
+assert.equal(await orderNet('POS-W1', 'asset:cash_account:bdo'), 560, 'the bank holds the receipt exactly once');
+assert.equal(await read('paymentVerificationQueue/POS-W1'), null, 'no stranded queue row after validation');
+const w1Audit = Object.values(await read('operationalAudit') || {}).find((row) => row.action === 'prepare_payment_review' && row.sourceId === 'POS-W1');
+assert.equal(w1Audit && w1Audit.actorUid, 'mgr2_uid', 'reclassification inside validation is attributed to the approving manager');
+assert.equal((await fx.processOrderAdjustment(req({action: 'settle_verified_payment', orderId: 'POS-W1'}))).settled, false, 'settlement retry posts nothing more');
+assert.equal(await orderNet('POS-W1', 'asset:cash_account:bdo'), 560, 'retry leaves the bank unchanged');
+// Voiding a banked window order reverses its Cash Flow inflow as well as the bank.
+const w3 = {...(await read('orders/POS-W3')), voided: true, voidedAt: NOW};
+await db.ref('orders/POS-W3').set(w3);
+await fx.onOrderFinancialPosting({params: {orderId: 'POS-W3'}, data: {before: {val: () => ({...w3, voided: false})}, after: {val: () => w3}}});
+assert.equal(await orderNet('POS-W3', 'asset:cash_account:bdo'), 0, 'void credits the bank the receipt reached');
+const w3Flow = Object.values(await read('cfLedger') || {}).filter((row) => row.ref === 'POS-W3');
+assert.equal(w3Flow.filter((row) => row.dir === 'out').reduce((sum, row) => Financial.money(sum + row.amount), 0), 560, 'void records the Cash Flow outflow for banked money');
 
 console.log('PASS: every POS sale posts when captured; unverified e-payments wait in 1060, move to the bank on verification (Dr bank / Cr 1060, sale date) or reverse as not received (credit note, cost to 6120); duties are separated, refunds/archive/void are guarded, and Admin matches Finance.');
