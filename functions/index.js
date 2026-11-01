@@ -1278,6 +1278,19 @@ exports.manageAccountingPeriod = onCall(
     let period;
     try { period = AccountingPeriods.periodKey(data.period); } catch (error) { throw new HttpsError("invalid-argument", error.message); }
     if (!reason) throw new HttpsError("invalid-argument", "A clear reason is required for closing or reopening a period.");
+    if (action === "close") {
+      const queueSnap = /* download-ok: bounded open control subledger (unverified electronic payments only); a close check must see every row */await db.ref("/paymentVerificationQueue").get();
+      const open = AccountingPeriods.openPaymentVerificationsForPeriod(queueSnap.val() || {}, period);
+      if (open.count) {
+        const sample = open.rows.slice(0, 5).map((row) => `${row.orderId} (${row.saleDate}, PHP ${row.amount.toFixed(2)})`).join("; ");
+        console.warn("accounting_period_close_refused", JSON.stringify({period, reason: "payments_awaiting_verification", count: open.count, total: open.total, uid: actor.uid}));
+        throw new HttpsError("failed-precondition", `${period} still has ${open.count} payment(s) awaiting verification, PHP ${open.total.toFixed(2)} in 1060. Verify each one, or record it as not received, in Register Ops > Payments awaiting verification, then close the month. Closing now would post those receipts in the next month and the bank balance would not match the statement. ${sample}${open.count > 5 ? `; and ${open.count - 5} more` : ""}.`);
+      }
+      if (open.unreadable.length) {
+        console.warn("accounting_period_close_refused", JSON.stringify({period, reason: "unreadable_verification_rows", count: open.unreadable.length, orderIds: open.unreadable.slice(0, 20).map((row) => row.orderId), uid: actor.uid}));
+        throw new HttpsError("failed-precondition", `${open.unreadable.length} payment(s) awaiting verification have no readable sale date or amount, so it is not known which month they belong to: ${open.unreadable.slice(0, 5).map((row) => row.orderId).join(", ")}${open.unreadable.length > 5 ? ` and ${open.unreadable.length - 5} more` : ""}. Verify each one, or record it as not received, in Register Ops > Payments awaiting verification before closing any month.`);
+      }
+    }
     const now = Date.now(), periodRef = db.ref(`/accountingPeriods/${period}`); let next;
     const result = await periodRef.transaction((current) => {
       try { next = AccountingPeriods.transition(current, action, period, actor, reason, now); return next; } catch (error) { throw error; }
