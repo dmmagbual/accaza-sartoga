@@ -45,15 +45,16 @@ if(!backup||backup.severity!=='warning'||!/4 times/.test(backup.title)||!/ollama
 if(buildOperationalExceptions({aiProviderHealth:{'2026-09-25':{failedQuestions:0,backupAnswers:{}}}},now).exceptions.some(x=>x.category==='ai_provider'))throw new Error('a clean AI day must raise nothing');
 console.log('PASS: Accaza AI provider failures and backup answers surface in the Exception Center.');}
 
-// 29 Oct 2026: payments awaiting verification alert after 24 hours and escalate after 7 days.
+// 1 Nov 2026 (Danilo): an open verification queue must NOT raise one card per sale. The register
+// shows the queue itself, so the Operations Center only reports a broken payment control (the 1060
+// reconciliation checks below) and never repeats routine waiting as a to-do.
 {
-  const q = buildOperationalExceptions({paymentVerificationQueue: {
+  const quiet = buildOperationalExceptions({paymentVerificationQueue: {
     fresh: {orderId: 'POS-F', amount: 100, methods: 'GCash', saleAt: now - 2 * hour},
     day2: {orderId: 'POS-D', amount: 200, methods: 'Bank Transfer', saleAt: now - 2 * day},
     week: {orderId: 'POS-W', amount: 300, methods: 'GCash', saleAt: now - 8 * day},
   }}, now).exceptions.filter((x) => x.category === 'payment_unverified');
-  if (q.length !== 2) throw new Error('only payments older than 24 hours alert');
-  if (q.find((x) => x.id === 'payment_unverified_POS-D').severity !== 'warning' || q.find((x) => x.id === 'payment_unverified_POS-W').severity !== 'critical') throw new Error('a payment unverified for 7 days must escalate');
+  if (quiet.length) throw new Error('routine payments awaiting verification must stay out of the Operations Center exception feed');
 }
 {
   const ok = buildOperationalExceptions({paymentVerificationQueue: {a: {orderId: 'A', amount: 560, saleAt: now}}, booksMonthlyNet: {'2026-08': {'1060': 560}}}, now).exceptions.some((x) => x.category === 'payment_verification_mismatch');
@@ -66,4 +67,4 @@ console.log('PASS: Accaza AI provider failures and backup answers surface in the
   const archivedOnly = buildOperationalExceptions({activeOrders: {}, paymentVerificationQueue: {}, booksMonthlyNet: {}}, now).exceptions;
   if (archivedOnly.some((x) => x.category === 'payment_verification_missing')) throw new Error('archived accepted reviews must remain outside the live control');
 }
-console.log('Payment verification alerts passed');
+console.log('PASS: no per-sale payment verification cards; the 1060 control checks still alert.');
