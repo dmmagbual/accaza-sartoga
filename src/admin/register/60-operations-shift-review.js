@@ -9,7 +9,7 @@ function renderOps(){
   if(activeShift){
     var z=computeZ(activeShift);
     html+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;"><div><span style="color:#2a9d5c;font-weight:700;">🟢 Shift open</span> · Cashier <b>'+esc(activeShift.staff)+'</b> · since '+new Date(activeShift.openAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})+'</div><button class="pz-btn warn" id="opsClose">Close shift &amp; Z-report</button></div>';
-    html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn ok" id="opsReview">📋 Shift review</button><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button>'+(denomTrackingOnR()?'<button class="pz-btn sec" id="opsSwap">🔁 Break a bill</button>':'')+'<span style="font-size:0.72rem;color:var(--tl);">The register drawer is for sales intake. Expenses and supplier payments use Financials → Cash Payments.</span></div>';
+    html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn ok" id="opsReview">📋 Shift review</button><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button>'+(denomTrackingOnR()?'<button class="pz-btn sec" id="opsSwap">🔁 Break a bill</button><button class="pz-btn sec" id="opsRecount">🧮 Recount drawer</button>':'')+'<span style="font-size:0.72rem;color:var(--tl);">The register drawer is for sales intake. Expenses and supplier payments use Financials → Cash Payments.</span></div>';
     html+=crewPanelHtml(activeShift);
     html+='<div class="az-kpis" style="margin-top:0.8rem;">'+kpi('Sales',z.tx)+kpi('Net',peso(z.net))+kpi('Cash in',peso(z.cashSales))+kpi('Tips',peso(z.tips))+kpi('Expected drawer',peso(z.expectedCash))+kpi('Cash to settle',peso(z.cashToSettle))+kpi('Voids',z.voidCount)+kpi('Refunds',peso(z.refunds))+kpi('⏳ Cashier check',peso(z.pending)+(z.pendingCount?' ('+z.pendingCount+')':''))+kpi('🔎 Manager review',peso(z.managerPending)+(z.managerPendingCount?' ('+z.managerPendingCount+')':''))+'</div>';
   } else {
@@ -53,7 +53,7 @@ function renderOps(){
   var oClose=document.getElementById('opsClose');if(oClose)oClose.onclick=closeShift;
   var oCin=document.getElementById('opsCashIn');if(oCin)oCin.onclick=function(){cashMove('in');};
   var oRev=document.getElementById('opsReview');if(oRev)oRev.onclick=openShiftReview;
-  var oSwap=document.getElementById('opsSwap');if(oSwap)oSwap.onclick=cashSwap;
+  var oSwap=document.getElementById('opsSwap');if(oSwap)oSwap.onclick=function(){cashSwap();};var oRc=document.getElementById('opsRecount');if(oRc)oRc.onclick=function(){drawerRecount();};
   root.querySelectorAll('[data-void]').forEach(function(b){b.onclick=function(){voidSale(b.getAttribute('data-void'));};});
   root.querySelectorAll('[data-refund]').forEach(function(b){b.onclick=function(){refundSale(b.getAttribute('data-refund'));};});
   root.querySelectorAll('[data-paid-change]').forEach(function(b){b.onclick=function(){changePaidOrder(b.getAttribute('data-paid-change'));};});
