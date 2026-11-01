@@ -345,9 +345,9 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   const Health = require('../functions/lib/production-health.js');
   const now = Date.UTC(2026, 8, 16, 4);
   const backup = (bytes) => ({takenAt: now - 3600000, version: 'backup-v2', validation: 'passed', dataSha256: 'a'.repeat(64), bytes});
-  const ids = (bytes) => Health.evaluate({backup: backup(bytes), telemetry: [], operational: {counts: {}}}, now).alerts.map((x) => x.id);
+  const ids = (bytes) => Health.evaluate({backup: backup(bytes), telemetry: [], operational: {generatedAt: now, counts: {}}}, now).alerts.map((x) => x.id);
   assert.ok(!ids(13 * 1048576).includes('backup_download_budget'), 'today\'s 13 MB backup is inside budget');
-  const warn = Health.evaluate({backup: backup(61 * 1048576), telemetry: [], operational: {counts: {}}}, now);
+  const warn = Health.evaluate({backup: backup(61 * 1048576), telemetry: [], operational: {generatedAt: now, counts: {}}}, now);
   assert.equal(warn.status, 'warning');
   assert.ok(warn.alerts.some((x) => x.id === 'backup_download_budget' && x.severity === 'warning' && x.detail.includes('61 MB') && x.detail.includes('360 MB')));
   assert.ok(Health.BACKUP_DOWNLOAD_WARN_BYTES * 6 <= Health.DAILY_FREE_DOWNLOAD_BYTES, 'the warning fires at no more than a sixth of the daily allowance');

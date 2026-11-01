@@ -60,4 +60,10 @@ console.log('PASS: Accaza AI provider failures and backup answers surface in the
   const bad = buildOperationalExceptions({paymentVerificationQueue: {}, booksMonthlyNet: {'2026-08': {'1060': 560}}}, now).exceptions.some((x) => x.category === 'payment_verification_mismatch');
   if (ok || !bad) throw new Error('1060 must reconcile to the open verification queue');
 }
+{
+  const missing = buildOperationalExceptions({activeOrders: {A: {id: 'A', paymentStatus: 'cashier_verified', total: 560, completedAt: now}}, paymentVerificationQueue: {}, booksMonthlyNet: {}}, now).exceptions;
+  if (!missing.some((x) => x.category === 'payment_verification_missing')) throw new Error('a live cashier-only review missing from 1060 must be critical');
+  const archivedOnly = buildOperationalExceptions({activeOrders: {}, paymentVerificationQueue: {}, booksMonthlyNet: {}}, now).exceptions;
+  if (archivedOnly.some((x) => x.category === 'payment_verification_missing')) throw new Error('archived accepted reviews must remain outside the live control');
+}
 console.log('Payment verification alerts passed');

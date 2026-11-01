@@ -18,7 +18,7 @@ async function applyCompletedOrderCorrectionInventory(db, order, plan, token, no
 exports.processOrderAdjustment = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "512MiB"},
   async (request) => {
-    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["registerOps"]); const data = request.data || {}, found = await findOrder(db, data.orderId), o = found.order;
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["registerOps"]); const data = request.data || {}; let found = await findOrder(db, data.orderId), o = found.order;
     if (data.action === "start_instore_preparation") {
       if (found.node !== "orders" || o.source !== "pos" || String(o.channel || "instore").toLowerCase() !== "instore" || o.status !== "Completed") throw new HttpsError("failed-precondition", "Only a current in-store completed sale can start preparation.");
       const active = (await db.ref("/posActiveShift").get()).val() || null;
@@ -54,15 +54,23 @@ exports.processOrderAdjustment = onCall(
       return {verified: true, status: nextStatus, paymentStatus: "cashier_verified", financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
     }
     if (data.action === "manager_validate_payment") {
-      if (o.paymentStatus === "manager_validated" || o.paymentStatus === "confirmed") return {alreadyValidated: true};
+      return withPaymentDecisionLock(db, o.id, actor, async () => {
+      found = await findOrder(db, o.id); o = found.order;
+      if (o.paymentStatus === "manager_validated" || o.paymentStatus === "confirmed") {await settleVerifiedPayment(db, o.id, actor);return {alreadyValidated: true};}
       const payments = (Array.isArray(o.payments) && o.payments.length ? o.payments : [{method: o.payment, amount: o.total}]).map((row) => Object.assign({}, row)), direct = PaymentVerification.directPaymentRows(payments), posSettings = await readPosSettings(db, ["payMethods"]), verificationPolicy = PaymentVerification.paymentPolicy(payments, posSettings.payMethods);
       if (!direct.length) throw new HttpsError("failed-precondition", "This order has no direct electronic payment to validate.");
       if (verificationPolicy === PaymentVerification.CASHIER_MANAGER && o.paymentStatus !== "cashier_verified") throw new HttpsError("failed-precondition", "Cashier verification is required before manager validation.");
       if (verificationPolicy === PaymentVerification.MANAGER_ONLY && !["pending", "cashier_verified"].includes(o.paymentStatus)) throw new HttpsError("failed-precondition", "This payment is not awaiting manager verification.");
       if (direct.some((row) => !financeText(row.ref, 120))) throw new HttpsError("invalid-argument", "Every direct electronic payment requires a transaction reference.");
+      const directAmount = Financial.money(direct.reduce((sum, row) => sum + Financial.money(row.amount), 0));
+      if (!(directAmount > 0)) throw new HttpsError("failed-precondition", "This order has no electronic payment awaiting validation.");
       const receivingAccountId = await verifiedReceivingAccount(db, data), pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
       const verifierCheck = await paymentVerifierCheck(db, o, pendingApproval.approvedBy, pendingApproval.approvedRole);
-      const approval = await claimManagerApproval(db, data, "validate_payment", o.id, Financial.money(o.total), `validate_${o.id}`), now = Date.now(), approvedBy = approval.record.approvedEmail || approval.record.approvedRole, website = o.source === "online" || o.channel === "online", nextStatus = website && String(o.status || "Pending") === "Pending" ? "Confirmed" : String(o.status || "Pending");
+      const approval = await claimManagerApproval(db, data, "validate_payment", o.id, directAmount, `validate_${o.id}`);
+      // Only after the manager approval is claimed: a receipt the cashier's check already banked
+      // moves back into 1060 (one idempotent Dr 1060 / Cr bank) under the approving manager's name.
+      if (found.node === "orders" && o.paymentStatus === "cashier_verified" && Financial.money(o.refundAmount) <= 0) await prepareActivePaymentReview(db, o.id, {uid: approval.record.approvedBy, role: approval.record.approvedRole});
+      const now = Date.now(), approvedBy = approval.record.approvedEmail || approval.record.approvedRole, website = o.source === "online" || o.channel === "online", nextStatus = website && String(o.status || "Pending") === "Pending" ? "Confirmed" : String(o.status || "Pending");
       const validated = Object.assign({}, o, {paymentReceivingAccountId: receivingAccountId || null, paymentSelfCheck: verifierCheck.selfCheck, payments, paymentStatus: "manager_validated", paymentVerificationPolicy: verificationPolicy, managerValidatedAt: now, managerValidatedBy: approval.record.approvedBy, managerValidatedRole: approval.record.approvedRole, managerValidatedName: approvedBy, paymentApprovalId: approval.id, status: nextStatus});
       if (nextStatus !== o.status) { validated.statusUpdatedAt = now; validated.statusUpdatedBy = actor.uid; }
       const activeShift = (await db.ref("/posActiveShift").get()).val() || null;
@@ -71,16 +79,25 @@ exports.processOrderAdjustment = onCall(
       await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, taxSettings = (await db.ref("/taxSettings").get()).val() || {}, posted = await postOrderFinancial(db, validated, accounts, {uid: "server", role: "server"}, taxSettings);
       await settleVerifiedPayment(db, o.id, actor);
       return {validated: true, paymentStatus: "manager_validated", approvedBy, financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
+      });
     }
     if (data.action === "payment_not_received") {
+      return withPaymentDecisionLock(db, o.id, actor, async () => {
+      found = await findOrder(db, o.id); o = found.order;
       if (!Financial.recognizedSale(o) || !Financial.paymentAwaitingVerification(o)) throw new HttpsError("failed-precondition", "Only a completed sale whose payment is still awaiting verification can be recorded as not received.");
-      const reason = paymentNotReceivedReason(data), sale = (await db.ref(`/financialMovements/sale_${financeKey(o.id, "Order ID")}`).get()).val(), clearing = Financial.verificationClearing(sale);
-      if (!(clearing > 0)) throw new HttpsError("failed-precondition", "This sale has no payment waiting in Payments Awaiting Verification. Post it to Finance Books first.");
+      if (Financial.money(o.refundAmount) > 0) throw new HttpsError("failed-precondition", "This manager-review sale already has a refund. Use a controlled financial correction so revenue, cash and the original refund are not reversed twice.");
+      const reason = paymentNotReceivedReason(data), state = await paymentVerificationOpenAmount(db, financeKey(o.id, "Order ID")), clearing = state.clearing;
+      if (!(clearing > 0)) throw new HttpsError("failed-precondition", o.paymentStatus === "cashier_verified" ? "This sale has no payment waiting in Payments Awaiting Verification: the cashier check already banked it. Move it into manager review first, then record it as not received." : "This sale has no payment waiting in Payments Awaiting Verification. Post it to Finance Books first.");
       const pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
       const verifierCheck = await paymentVerifierCheck(db, o, pendingApproval.approvedBy, pendingApproval.approvedRole);
       const approval = await claimManagerApproval(db, data, "payment_not_received", o.id, clearing, `not_received_${o.id}`), approvedBy = approval.record.approvedEmail || approval.record.approvedRole;
       const result = await commitUnpaidSale(db, found.node, o, clearing, reason, actor, {verifierUid: approval.record.approvedBy, verifierRole: approval.record.approvedRole, verifierName: approvedBy, approvalId: approval.id, selfCheck: verifierCheck.selfCheck, usedWrites: approval.usedWrites});
       return {orderId: o.id, notReceived: true, amount: clearing, duplicate: result && result.duplicate === true, approvedBy};
+      });
+    }
+    if (data.action === "prepare_payment_review") {
+      if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only managers may move a cashier-verified payment into manager review.");
+      return withPaymentDecisionLock(db, o.id, actor, () => prepareActivePaymentReview(db, o.id, actor));
     }
     if (data.action === "recognize_unverified_sale") return recognizeUnverifiedSale(db, found, actor);
     if (data.action === "settle_verified_payment") {

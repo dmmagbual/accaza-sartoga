@@ -40,6 +40,8 @@ vm.runInContext(eligibilitySource, context);
 const eligible = context.loyaltyOrderCanEarn;
 assert.equal(eligible({status:'Completed',channel:'instore',paymentStatus:'confirmed',loyaltyMemberId:'mem_1'}), true);
 assert.equal(eligible({status:'Completed',channel:'instore',paymentStatus:'pending',loyaltyMemberId:'mem_1'}), false);
+assert.equal(eligible({status:'Completed',channel:'instore',paymentStatus:'cashier_verified',loyaltyMemberId:'mem_1'}), false);
+assert.equal(eligible({status:'Archived',prevStatus:'Completed',channel:'instore',paymentStatus:'cashier_verified',loyaltyMemberId:'mem_1'}), true);
 assert.equal(eligible({status:'Completed',channel:'instore',paymentStatus:'confirmed'}), false);
 assert.equal(eligible({status:'Completed',channel:'instore',paymentStatus:'confirmed',loyaltyMemberId:'mem_1',voided:true}), false);
 assert.ok(/if \(!loyaltyOrderCanEarn\(beforeOrder\) && loyaltyOrderCanEarn\(order\)\) await postLoyaltyEarning/.test(server),

@@ -205,7 +205,14 @@ function orderOutputVat(order, tax) {
 }
 const PAYMENT_VERIFICATION_ACCOUNT = "asset:payment_verification";
 const UNPAID_SALES_LOSS_ACCOUNT = "expense:unpaid_sales_loss";
-function paymentAwaitingVerification(order) { return !!order && order.paymentStatus === "pending"; }
+function paymentAwaitingVerification(order) {
+  if (!order) return false;
+  if (order.paymentStatus === "pending") return true;
+  // A cashier check is evidence for the manager, not final receipt authority. Existing archived
+  // cashier-verified sales were accepted as received by owner decision (31 Oct 2026), so only a
+  // current/live sale stays in clearing while manager review is outstanding.
+  return order.paymentStatus === "cashier_verified" && order.status !== "Archived";
+}
 // Recognized sale: completed or received and not voided, whatever the payment status (Danilo,
 // 29 Oct 2026). Payment verification decides where the money sits, never whether the sale exists.
 function recognizedSale(order) {
@@ -216,6 +223,11 @@ function recognizedSale(order) {
 function unpaidAmount(order) { return money(order && order.unpaidSale && order.unpaidSale.amount); }
 function verificationClearing(movementRecord) {
   return money(((movementRecord && movementRecord.lines) || []).reduce((sum, entry) => sum + (safe(entry.account) === PAYMENT_VERIFICATION_ACCOUNT ? money(entry.debit) - money(entry.credit) : 0), 0));
+}
+// 1060 balance for one source: the net of every movement posted for it (sale, review
+// reclassification, cashier/manager deposit, not-received, void). Ledger-derived, never a flag.
+function verificationBalance(movements) {
+  return money((movements || []).reduce((sum, item) => sum + verificationClearing(item), 0));
 }
 // Verification (QuickBooks "Bank Deposit" from Undeposited Funds): Dr the receiving bank, Cr 1060,
 // for the recorded amount. Like a Xero/QuickBooks deposit, the verifier may choose the account the
@@ -234,6 +246,25 @@ function verificationPosting(order, accounts, options) {
   lines.push(line(PAYMENT_VERIFICATION_ACCOUNT, 0, clearing, "Payment verified"));
   assertBalanced(lines);
   return {type: "payment_verification", sourceType: "order", sourceId: id, channel: safe(order.channel || "instore").toLowerCase(), amount: clearing, lines, cashEntries, warnings};
+}
+// Move a current cashier-verified sale that was posted straight to a bank back into 1060. The
+// original sale remains immutable; final manager verification reverses this classification.
+function paymentReviewPosting(order, saleMovement) {
+  order = order || {}; saleMovement = saleMovement || {}; const id = safe(order.id); if (!id) throw new Error("Order ID is required.");
+  const lines = [], cashEntries = [];
+  (saleMovement.lines || []).forEach((entry, index) => {
+    const account = safe(entry && entry.account), value = money(money(entry && entry.debit) - money(entry && entry.credit));
+    const cashAccount = account.indexOf("asset:cash_account:") === 0;
+    const unmappedPayment = account.indexOf("asset:unmapped_payment:") === 0 && account !== "asset:unmapped_payment:balance";
+    if (!(value > 0) || (!cashAccount && !unmappedPayment)) return;
+    lines.push(line(PAYMENT_VERIFICATION_ACCOUNT, value, 0, "Payment awaiting manager verification"));
+    lines.push(line(account, 0, value, "Remove cashier-only verification from receiving account"));
+    if (cashAccount) cashEntries.push({id: `cfreview_${id}_${index}`, accountId: account.slice("asset:cash_account:".length), dir: "out", amount: value, category: "Payment moved to manager review", method: "Payment review"});
+  });
+  const amount = lines.filter((entry) => entry.account === PAYMENT_VERIFICATION_ACCOUNT).reduce((sum, entry) => money(sum + entry.debit), 0);
+  if (!(amount > 0)) throw new Error("This sale has no electronic receipt to move into manager review.");
+  assertBalanced(lines);
+  return {type: "payment_review_reclassification", sourceType: "order", sourceId: id, channel: safe(order.channel || "instore").toLowerCase(), amount, lines, cashEntries, warnings: []};
 }
 // Payment not received (QuickBooks/Xero credit note + stock write-off): reverse the sale's revenue and
 // tax exactly like a refund, credit 1060 instead of cash, and move the sale's cost from COGS to
@@ -534,4 +565,4 @@ function payableSettledAmount(row) {
 }
 function payableHasSettlement(row) { return !!row && (row.status === "paid" || payableSettledAmount(row) > 0.009); }
 
-module.exports = {PAYMENT_VERIFICATION_ACCOUNT, UNPAID_SALES_LOSS_ACCOUNT, paymentAwaitingVerification, recognizedSale, unpaidAmount, verificationClearing, verificationPosting, unpaidSalePosting, payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, methodKey, line, totals, assertBalanced, accountForMethod,accountForPayment,receivingAccountForMethodFallback,receivingAccountForCustomerChoice,receivingAccountForRow,accountNumber,accountForNumber,customerPaymentRow,CUSTOMER_PAYMENT_ROWS,METHOD_FOR_CUSTOMER_ROW,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};
+module.exports = {PAYMENT_VERIFICATION_ACCOUNT, UNPAID_SALES_LOSS_ACCOUNT, paymentAwaitingVerification, recognizedSale, unpaidAmount, verificationClearing, verificationBalance, verificationPosting, paymentReviewPosting, unpaidSalePosting, payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, methodKey, line, totals, assertBalanced, accountForMethod,accountForPayment,receivingAccountForMethodFallback,receivingAccountForCustomerChoice,receivingAccountForRow,accountNumber,accountForNumber,customerPaymentRow,CUSTOMER_PAYMENT_ROWS,METHOD_FOR_CUSTOMER_ROW,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};

@@ -438,9 +438,10 @@ async function fullOrderVoidMovement(db, order, accounts, settlementPayments, ta
   if (!movement) return null;
   const remaining = Financial.money(Math.max(0, Financial.money(order.total) - Financial.money(order.refundAmount)));
   const settlement = Financial.reversalPosting(order, remaining, "void", accounts || {}, settlementPayments, Financial.effectiveTaxFor(taxSettings, Number(order.completedAt || order.receivedAt || order.timestamp || Date.now())));
-  // An unverified e-payment never reached the bank, so its void moves no cash: the reversal lines
-  // credit 1060 (netted from the sale) and there is no Cash Flow outflow.
-  movement.cashEntries = Financial.paymentAwaitingVerification(order) ? (settlement.cashEntries || []).filter((entry) => /cash/i.test(String(entry.method || ""))) : (settlement.cashEntries || []);
+  // Cash Flow follows the ledger: while the order still holds money in 1060 the e-payment never
+  // reached the bank, so the void moves only cash. Once banked (pre-rule sale or a cashier
+  // deposit), the void reverses that bank inflow too.
+  movement.cashEntries = Financial.verificationBalance(Object.values(movementSnap.val() || {})) > 0 ? (settlement.cashEntries || []).filter((entry) => /cash/i.test(String(entry.method || ""))) : (settlement.cashEntries || []);
   movement.settlementPayments = settlement.settlementPayments || [];
   movement.warnings = settlement.warnings || [];
   return movement;
@@ -459,7 +460,7 @@ exports.onOrderFinancialPosting = onValueWritten(
     const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const taxSettings = (await db.ref("/taxSettings").get()).val() || {}; const actor = {uid: "server", role: "server"};
     await postOrderFinancial(db, order, accounts, actor, taxSettings);
     // Only sales that were ever unverified can hold money in 1060; cash and confirmed sales skip the reads.
-    if (before.paymentStatus === "pending" || order.paymentStatus === "pending") await settleVerifiedPayment(db, order.id, actor);
+    if (["pending", "cashier_verified"].includes(before.paymentStatus) || order.paymentStatus === "pending") await settleVerifiedPayment(db, order.id, actor);
     await postPreCompletionCashRefund(db, order, actor);
     const beforeRefund = Financial.money(before.refundAmount), afterRefund = Financial.money(order.refundAmount);
     if (afterRefund > beforeRefund) {
