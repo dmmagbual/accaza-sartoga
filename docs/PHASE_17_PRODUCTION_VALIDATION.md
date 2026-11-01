@@ -24,4 +24,4 @@ Rollback the release by reverting the Phase 17 commit. Because the Phase 17 endp
 
 ## Completion rule
 
-Phase 17 tooling does not change `candidate_pending_production_verification`. The release may move to production-verified only through a separate evidence-only pull request containing dated, independently reviewed results. Never store production exports, credentials, customer details, payment data, or account numbers in Git.
+Phase 17 tooling does not change `candidate_pending_production_verification`. The release may move to production-verified only through a separate evidence-only pull request containing dated, independently reviewed results. That evidence-only change was made on 2 Nov 2026 for the final outstanding item, the quarterly permission review. Never store production exports, credentials, customer details, payment data, or account numbers in Git.
