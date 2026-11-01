@@ -193,6 +193,10 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // lazy Storage loader and the merged onPosActiveShiftWritten trigger (closed-shift cleanup and the
 // read-compare public order status), and the register-float guard pins the merged float sync. Same
 // guards, same meaning; guard count stays at 577 and executable checks stay at 33.
-if(guardDigest!=='277c7617ce435c51da35e1d9870d2a0e9ccf2d83642a8fb36e05d1a2f910bc2c')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// 2 Nov 2026 (POS launch measurement, Admin 735): the Phase 4 module-boundary guard now compares the
+// source with cache-busting ?v= query strings removed, so history-pager can share one realtime-hub
+// download instead of fetching a second copy. Same guards, same meaning; guard count stays at 577
+// and executable checks stay at 33.
+if(guardDigest!=='67431bac47c7fd1e297dd77d725ed46850aef765b3ed80d32533f55e70f12326')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
