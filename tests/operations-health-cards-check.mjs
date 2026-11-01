@@ -57,7 +57,11 @@ for (const category of categories) {
 
 // 3. Every hourly-monitor alert is shown on a specific card (or deliberately covered elsewhere).
 const monitorIds = [...monitorSource.matchAll(/alert\(("?)(`?)([a-z_]+)/g)].map(m => m[3]).filter(id => id !== 'id');
-assert.ok(monitorIds.includes('client_errors') && monitorIds.includes('backup_stale'), 'monitor alert scan failed');
+assert.ok(monitorIds.includes('backup_stale') && monitorIds.includes('operational_critical'), 'monitor alert scan failed');
+// 2 Nov 2026 (Danilo): frontend speed and browser-error counts are Technical diagnostics evidence, not
+// business tasks. They must still be evaluated (signal()) but must never be an alert that moves a card.
+assert.ok(!monitorIds.includes('client_errors') && !monitorIds.some(id => id.startsWith('performance_')), 'frontend telemetry must not be a business alert');
+assert.ok(monitorSource.includes('function signal(') && monitorSource.includes('diagnosticsOnly'), 'frontend telemetry must still be recorded as diagnostics evidence');
 const fresh = Date.now();
 const healthyBackup = {takenAt: fresh - 3600000};
 const healthyMonitor = {status: 'healthy', evaluatedAt: fresh - 600000, alerts: []};
