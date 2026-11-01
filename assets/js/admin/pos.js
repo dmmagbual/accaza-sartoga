@@ -2971,7 +2971,13 @@ function shiftDrawer(){var sh=window.__posShift;return (sh&&sh.drawer)?Object.as
 function posRcvRead(){var counts={},total=0;document.querySelectorAll('[data-prd]').forEach(function(inp){var q=Number(inp.value)||0;if(q>0){counts[inp.getAttribute('data-prd')]=q;total+=q*(Number(inp.getAttribute('data-prv'))||0);}});return {counts:counts,total:Math.round(total*100)/100};}
 function mergeDenoms(a,b){var o=Object.assign({},a||{});Object.keys(b||{}).forEach(function(k){o[k]=(Number(o[k])||0)+(Number(b[k])||0);});return o;}
 function posKeepTip(change){var k=document.getElementById('posKeep');if(!k||!k.checked)return 0;change=Math.round((Number(change)||0)*100)/100;var amt=Number((document.getElementById('posKeepAmt')||{}).value);if(!(amt>0))amt=change;return Math.min(Math.max(0,Math.round(amt*100)/100),change);}
-function makeChange(amount,avail){var rem=Math.round(amount*100);var give={};POS_DENOMS.forEach(function(d){if(rem<=0)return;var cents=Math.round(d.v*100);var have=Number(avail[d.k])||0;var use=Math.min(Math.floor(rem/cents),have);if(use>0){give[d.k]=use;rem-=use*cents;}});return {denoms:give,ok:rem<=0,short:rem/100};}
+// Exact change from every combination the drawer holds (assets/js/shared/cash-change.js); the
+// largest-first loop below is only the fallback if that shared script failed to load.
+function makeChange(amount,avail){if(window.AccazaCashChange)return window.AccazaCashChange.plan(amount,avail||{});var rem=Math.round(amount*100);var give={};POS_DENOMS.forEach(function(d){if(rem<=0)return;var cents=Math.round(d.v*100);var have=Number(avail[d.k])||0;var use=Math.min(Math.floor(rem/cents),have);if(use>0){give[d.k]=use;rem-=use*cents;}});return {denoms:give,ok:rem<=0,short:rem/100};}
+function posDenomTotal(c){var t=0;POS_DENOMS.forEach(function(d){t+=(Number(c&&c[d.k])||0)*Math.round(d.v*100);});return t/100;}
+// Notes/coins the cashier wants to hand over that the POS count (drawer + just received) does not hold.
+// The server refuses a sale whose change would take a count below zero, so these must be fixed first.
+function posDenomLack(given,avail){return POS_DENOMS.filter(function(d){return (Number(given&&given[d.k])||0)>(Number(avail&&avail[d.k])||0);}).map(function(d){return (Number(avail&&avail[d.k])||0)+' × '+d.lbl;});}
 function posDenomPadHtml(){
   return '<span class="pz-lbl">Cash received — enter note/coin counts</span>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:0.3rem;margin-top:0.3rem;">'
@@ -3180,24 +3186,43 @@ function renderPosCart(options){
   function renderReceivingAccount(){var wrap=document.getElementById('posAccountWrap');if(!wrap)return;var opts=paymentAccountOptions(pay.value),saved=posDraft.posReceivingAccount&&posDraft.posReceivingAccount.value;if(!opts.length){wrap.innerHTML='<div style="color:#c0392b;font-weight:600;font-size:.75rem;">No receiving account is assigned in POS Settings. This method cannot be charged.</div>';return;}wrap.innerHTML='<span class="pz-lbl">Receiving account</span><select class="pz-in" id="posReceivingAccount">'+opts.map(function(a){return '<option value="'+esc(a.id)+'"'+(a.id===saved?' selected':'')+'>'+esc(a.name)+'</option>';}).join('')+'</select>'+(opts.length>1?'<div style="font-size:.7rem;color:var(--tl);margin-top:.15rem;">Select the account where this customer transfer was actually received.</div>':'');var sel=document.getElementById('posReceivingAccount');if(sel)sel.onchange=invalidatePaymentVerification;}
   function syncPayMethod(changed){var isc=isCashMethod(pay.value);document.getElementById('posCashWrap').style.display=isc?'block':'none';var rw=document.getElementById('posRefWrap');if(rw)rw.style.display=isc?'none':'block';if(!isc)renderReceivingAccount();updateKeep();if(changed)invalidatePaymentVerification();}pay.onchange=function(){syncPayMethod(true);};syncPayMethod(false);
   var tender0=document.getElementById('posTender'); if(tender0)tender0.oninput=refreshSingle;
-  var pk=document.getElementById('posKeep'); if(pk)pk.onchange=function(){var kw=document.getElementById('posKeepAmtWrap'); if(kw)kw.style.display=this.checked?'block':'none'; var amt=document.getElementById('posKeepAmt'); if(this.checked&&amt&&!amt.value)amt.value=curChange;};
-  function refreshDenom(){ var tot=grandTotal(); var r=posRcvRead(); var el=document.getElementById('posDenomInfo'); if(!el)return;
+  var pk=document.getElementById('posKeep'); if(pk)pk.onchange=function(){var kw=document.getElementById('posKeepAmtWrap'); if(kw)kw.style.display=this.checked?'block':'none'; var amt=document.getElementById('posKeepAmt'); if(this.checked&&amt&&!amt.value)amt.value=curChange; if(denomTrackingOn())refreshDenom();};
+  // Change given (1 Nov 2026): the POS suggests change from its note/coin count. When the cashier
+  // hands over different notes, "Edit change given" records what actually left the drawer so the
+  // count stays true. When the count cannot make the change, the cashier can record the bill break
+  // or recount the drawer here instead of being told to ask the customer for exact money.
+  var chgEdit=null,chgEditKey='';
+  function chgEdOpen(seed){var box=document.getElementById('posChgEd'),info=document.getElementById('posDenomInfo');if(!info)return;if(!box){box=document.createElement('div');box.id='posChgEd';box.style.cssText='margin-top:0.4rem;padding:0.45rem;border:1px dashed var(--cd);border-radius:6px;';info.insertAdjacentElement('afterend',box);}
+    if(!seed){chgEdit=null;box.style.display='none';box.innerHTML='';refreshDenom();return;}
+    chgEdit=Object.assign({},seed);box.style.display='block';
+    box.innerHTML='<span class="pz-lbl">Change given — notes/coins handed to the customer</span><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:0.3rem;margin-top:0.3rem;">'+POS_DENOMS.map(function(d){return '<label style="font-size:0.68rem;color:var(--tm);display:flex;flex-direction:column;gap:0.1rem;">'+d.lbl+'<input class="pz-in" type="number" min="0" step="1" data-pcg="'+d.k+'" value="'+(chgEdit[d.k]||'')+'" placeholder="0" style="padding:0.2rem 0.3rem;"/></label>';}).join('')+'</div><button type="button" class="pz-btn sec" id="posChgEdOff" style="margin-top:0.35rem;font-size:0.75rem;">Use the suggested change</button>';
+    box.querySelectorAll('[data-pcg]').forEach(function(inp){inp.oninput=function(){var c={};box.querySelectorAll('[data-pcg]').forEach(function(x){var q=Math.floor(Number(x.value)||0);if(q>0)c[x.getAttribute('data-pcg')]=q;});chgEdit=c;refreshDenom();};});
+    document.getElementById('posChgEdOff').onclick=function(){chgEdOpen(null);};refreshDenom();}
+  function refreshDenom(){ window.__posChangeEdit=null; var tot=grandTotal(); var r=posRcvRead(); var el=document.getElementById('posDenomInfo'); if(!el)return;
     function ln(l,v,bold){return '<div style="display:flex;justify-content:space-between;'+(bold?'font-weight:700;':'')+'"><span>'+l+'</span><span>'+v+'</span></div>';}
+    var key=JSON.stringify(r.counts)+'|'+tot;
+    if(key!==chgEditKey){chgEditKey=key;if(chgEdit){chgEdit=null;var ob=document.getElementById('posChgEd');if(ob){ob.style.display='none';ob.innerHTML='';}}}
     if(r.total<tot-0.001){ el.innerHTML=ln('Amount tendered',peso(r.total))+'<div style="color:var(--tl);margin-top:0.15rem;">'+peso(tot-r.total)+' more needed for the '+peso(tot)+' sale.</div>'; window.__posChange=null; curChange=0; updateKeep(); return; }
     var change=Math.round((r.total-tot)*100)/100; curChange=change; updateKeep();
     var html=ln('Amount tendered',peso(r.total)); var balanced=true;
     if(change<=0.001){ html+=ln('Change','—'); window.__posChange={amount:0,denoms:{},short:0}; }
     else{
-      var mc=makeChange(change, mergeDenoms(shiftDrawer(), r.counts));
-      html+='<div style="margin-top:0.15rem;">Change:</div>'
-        +POS_DENOMS.filter(function(d){return mc.denoms[d.k];}).map(function(d){return '<div style="display:flex;justify-content:space-between;padding-left:0.9rem;"><span>'+mc.denoms[d.k]+' × '+d.lbl+'</span><span>'+peso(mc.denoms[d.k]*d.v)+'</span></div>';}).join('')
-        +ln('Change total',peso(change-mc.short));
-      window.__posChange={amount:change,denoms:mc.denoms,short:mc.short};
-      if(!mc.ok){ balanced=false; html+='<div style="color:#c0392b;font-weight:600;margin-top:0.15rem;">⚠ No exact change — short '+peso(mc.short)+'. Ask for the exact amount &amp; edit the counts.</div>'; }
+      var avail=mergeDenoms(shiftDrawer(), r.counts), mc=makeChange(change, avail), due=Math.round((change-posKeepTip(change))*100)/100, shown=chgEdit||mc.denoms;
+      window.__posChange={amount:change,denoms:mc.denoms,short:mc.short,due:due,dueDenoms:due===change?mc.denoms:makeChange(due,avail).denoms,received:r.counts};
+      html+='<div style="margin-top:0.15rem;">'+(chgEdit?'Change given (edited):':'Change:')+'</div>'
+        +POS_DENOMS.filter(function(d){return shown[d.k];}).map(function(d){return '<div style="display:flex;justify-content:space-between;padding-left:0.9rem;"><span>'+shown[d.k]+' × '+d.lbl+'</span><span>'+peso(shown[d.k]*d.v)+'</span></div>';}).join('')
+        +ln('Change total',peso(chgEdit?posDenomTotal(chgEdit):change-mc.short));
+      if(chgEdit){ window.__posChangeEdit=chgEdit; var gt=posDenomTotal(chgEdit),lack=posDenomLack(chgEdit,avail);
+        if(Math.abs(gt-due)>0.001){balanced=false;html+='<div style="color:#c0392b;font-weight:600;margin-top:0.15rem;">⚠ Change given '+peso(gt)+' must equal the change due '+peso(due)+'.</div>';}
+        if(lack.length){balanced=false;html+='<div style="color:#c0392b;font-weight:600;margin-top:0.15rem;">⚠ The POS count shows only '+lack.join(', ')+'. If the drawer has more, record the bill break or recount the drawer first.</div>';} }
+      else if(!mc.ok){ balanced=false; html+='<div style="color:#c0392b;font-weight:600;margin-top:0.15rem;">⚠ The POS count cannot make '+peso(change)+' exactly — short '+peso(mc.short)+'. If the drawer has the coins, the POS count is out of date: record the bill break or recount the drawer. Otherwise ask for the exact amount &amp; edit the counts.</div>'; }
+      var fix=!balanced&&window.__posCashSwap&&window.__posDrawerRecount;
+      html+='<div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-top:0.3rem;">'+(chgEdit?'':'<button type="button" class="pz-btn sec" data-chg="edit" style="font-size:0.75rem;">✏️ Edit change given</button>')+(fix?'<button type="button" class="pz-btn sec" data-chg="swap" style="font-size:0.75rem;">🔁 Record bill break</button><button type="button" class="pz-btn sec" data-chg="recount" style="font-size:0.75rem;">🧮 Recount drawer</button>':'')+'</div>';
     }
     html+='<div style="border-top:1px solid var(--cd);margin-top:0.3rem;padding-top:0.2rem;">'+ln('Current sale',peso(tot),true)+'</div>'
       +'<div style="text-align:right;font-size:0.75rem;font-weight:600;margin-top:0.15rem;color:'+(balanced?'#155724':'#c0392b')+';">'+(balanced?'✓ balanced':'⚠ not balanced')+'</div>';
     el.innerHTML=html;
+    el.querySelectorAll('[data-chg]').forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-chg');var pc=window.__posChange||{};if(k==='edit')chgEdOpen(pc.dueDenoms||{});else if(k==='swap')window.__posCashSwap(refreshDenom);else window.__posDrawerRecount(refreshDenom,pc.received||{});};});
   }
   if(denomTrackingOn()){ document.querySelectorAll('[data-prd]').forEach(function(inp){inp.oninput=refreshDenom;}); refreshDenom(); }
   splitChk=document.getElementById('posSplitChk');
@@ -3285,7 +3310,7 @@ function renderPosCart(options){
     }
     else { var m=pay.value; var isc=isCashMethod(m);
       if(!isc){ var ref1=(document.getElementById('posPayRef').value||'').trim(),acct1=(document.getElementById('posReceivingAccount')||{}).value||'',received=Math.round((Number((document.getElementById('posPaidAmount')||{}).value)||tot)*100)/100; if(!ref1){alert('Enter the '+m+' reference number before charging.');return;}var resolved=resolvedPayment(m,acct1,received,ref1);if(!resolved){alert('Assign a valid receiving account to '+m+' in POS Settings before charging.');return;}payments=[resolved]; }
-      else if(denomTrackingOn()){ var r=posRcvRead(); if(r.total<tot-0.001){alert('Cash received ('+peso(r.total)+') is less than the total ('+peso(tot)+').');return;} var chg=Math.round((r.total-tot)*100)/100; var tip=posKeepTip(chg); var giveChg=Math.round((chg-tip)*100)/100; var mc=makeChange(giveChg, mergeDenoms(shiftDrawer(),r.counts)); payments=[{method:m,amount:tot,tendered:r.total,change:giveChg,ref:'',cashReceived:r.counts,cashChange:mc.denoms,changeShort:mc.ok?0:mc.short,tipRounding:tip}]; }
+      else if(denomTrackingOn()){ var r=posRcvRead(); if(r.total<tot-0.001){alert('Cash received ('+peso(r.total)+') is less than the total ('+peso(tot)+').');return;} var chg=Math.round((r.total-tot)*100)/100; var tip=posKeepTip(chg); var giveChg=Math.round((chg-tip)*100)/100; var ce=window.__posChangeEdit,mc; if(ce&&giveChg>0.001){ var lk=posDenomLack(ce,mergeDenoms(shiftDrawer(),r.counts)),ct=posDenomTotal(ce); if(Math.abs(ct-giveChg)>0.001){alert('Change given ('+peso(ct)+') must equal the change due ('+peso(giveChg)+'). Fix the change given, or tap "Use the suggested change".');return;} if(lk.length){alert('The POS count shows only '+lk.join(', ')+' in the drawer. Record the bill break or recount the drawer first.');return;} mc={denoms:Object.assign({},ce),ok:true,short:0}; } else { ce=null; mc=makeChange(giveChg, mergeDenoms(shiftDrawer(),r.counts)); } payments=[{method:m,amount:tot,tendered:r.total,change:giveChg,ref:'',cashReceived:r.counts,cashChange:mc.denoms,changeShort:mc.ok?0:mc.short,tipRounding:tip}]; if(ce)payments[0].changeEdited=true; }
       else { var tv=Number((document.getElementById('posTender')||{}).value)||0; if(tv&&tv<tot){alert('Cash tendered is less than the total.');return;} var chg2=tv?Math.max(0,Math.round((tv-tot)*100)/100):0; var tip2=posKeepTip(chg2); payments=[{method:m,amount:tot,tendered:tv,change:Math.round((chg2-tip2)*100)/100,ref:'',tipRounding:tip2}]; }
     }
     var verificationSignature=paymentVerificationSignature(payments,tot),direct=directPaymentRows(payments),verificationPolicy=paymentVerificationPolicy(payments),cashierVerification=null,receiptSignature=JSON.stringify(direct.map(function(p){return[p.method,p.receivingAccountId,Math.round((+p.amount||0)*100)/100,p.ref];})),receiptVerified=posPaymentVerification&&posPaymentVerification.receiptSignature===receiptSignature;
