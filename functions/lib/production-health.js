@@ -7,21 +7,30 @@ const crypto=require("node:crypto");
 const BACKUP_DOWNLOAD_WARN_BYTES=60*1024*1024,DAILY_FREE_DOWNLOAD_BYTES=360*1024*1024;
 const TARGETS={pos_boot:6000,pos_build:1500,cart_render:100,charge_to_durable:1500,offline_flush:5000,realtime_order_arrival:1500,live_ready:5000};
 function alert(id,severity,title,detail){return{id,severity,title,detail};}
+// 2 Nov 2026 (Danilo): frontend speed and browser-error counts are evidence for Technical
+// diagnostics, not tasks for the business panel. System Health already renders the same figures by
+// day and by build under "Technical diagnostics - application performance by build", whose own text
+// says they are not daily business tasks. Promoting them to alerts put a permanent amber card on
+// "Frontend & customer app": the evaluator pools today and yesterday and flags one slow sample or one
+// browser error, so a single event held the card up for two days, it never cleared, and it never named
+// anything a manager could repair. They stay in `telemetry` as evidence; only the card is gone.
+function signal(id,title,detail){return{id,severity:"warning",title,detail,diagnosticsOnly:true};}
 function evaluate(input,now=Date.now()){
-  input=input||{};const alerts=[],backup=input.backup||{},rows=input.telemetry||[],operational=input.operational||{counts:{}};
+  input=input||{};const alerts=[],telemetry=[],backup=input.backup||{},rows=input.telemetry||[],operational=input.operational||{counts:{}};
   const backupAge=now-Number(backup.takenAt||0),hash=String(backup.dataSha256||"");
   if(!backup.takenAt)alerts.push(alert("backup_missing","critical","No verified database backup","System Health has no completed backup record."));
   else if(backupAge>36*3600000)alerts.push(alert("backup_stale","critical","Database backup is stale",`Latest backup is ${Math.floor(backupAge/3600000)} hours old.`));
   else if(backup.version!=="backup-v2"||backup.validation!=="passed"||!/^[a-f0-9]{64}$/.test(hash))alerts.push(alert("backup_unverified","warning","Backup integrity evidence is incomplete","Confirm backup-v2 validation and its SHA-256 fingerprint."));
   if(Number(backup.bytes)>=BACKUP_DOWNLOAD_WARN_BYTES)alerts.push(alert("backup_download_budget","warning","Backup size is growing",`The backup is now ${Math.round(Number(backup.bytes)/1048576)} MB; a full backup would use that much of the ${Math.round(DAILY_FREE_DOWNLOAD_BYTES/1048576)} MB free daily Realtime Database allowance. Plan archiving of old history before it reaches the limit.`));
   const combined={metrics:{},errors:0,samples:0,latest:0};rows.forEach(row=>{row=row||{};combined.latest=Math.max(combined.latest,Number(row.updatedAt)||0);Object.values(row.errors||{}).forEach(n=>combined.errors+=Number(n)||0);Object.keys(row.metrics||{}).forEach(key=>{const src=row.metrics[key]||{},dst=combined.metrics[key]||(combined.metrics[key]={count:0,totalMs:0,maxMs:0,failed:0});dst.count+=Number(src.count)||0;dst.totalMs+=Number(src.totalMs)||0;dst.maxMs=Math.max(dst.maxMs,Number(src.maxMs)||0);dst.failed+=Number(src.failed)||0;combined.samples+=Number(src.count)||0;});});
-  Object.keys(TARGETS).forEach(key=>{const row=combined.metrics[key]||{},count=Number(row.count)||0;if(!count)return;const average=Number(row.totalMs||0)/count,target=TARGETS[key];if(Number(row.failed)>0||average>target||Number(row.maxMs)>target*2)alerts.push(alert(`performance_${key}`,"warning",`${key.replace(/_/g," ")} needs attention`,`${count} samples; average ${Math.round(average)}ms, worst ${Math.round(Number(row.maxMs)||0)}ms, failed ${Number(row.failed)||0}.`));});
-  if(combined.errors>0)alerts.push(alert("client_errors","warning","Client errors detected",`${combined.errors} privacy-safe client error signal(s) were recorded.`));
-  if(Number(operational.counts&&operational.counts.critical)>0)alerts.push(alert("operational_critical","critical","Critical operational exceptions exist",`${operational.counts.critical} critical exception(s) require controlled review.`));
+  Object.keys(TARGETS).forEach(key=>{const row=combined.metrics[key]||{},count=Number(row.count)||0;if(!count)return;const average=Number(row.totalMs||0)/count,target=TARGETS[key];if(Number(row.failed)>0||average>target||Number(row.maxMs)>target*2)telemetry.push(signal(`performance_${key}`,`${key.replace(/_/g," ")} needs attention`,`${count} samples; average ${Math.round(average)}ms, worst ${Math.round(Number(row.maxMs)||0)}ms, failed ${Number(row.failed)||0}.`));});
+  if(combined.errors>0)telemetry.push(signal("client_errors","Client errors detected",`${combined.errors} privacy-safe client error signal(s) were recorded.`));
+  if(Number(operational.counts&&operational.counts.critical)>0)alerts.push(alert("operational_critical","critical","Critical operational exceptions exist",`${Number(operational.counts.critical)} critical exception(s) require controlled review.`));
   const operationalAge=now-Number(operational.generatedAt||0);
   if(!operational.generatedAt||operationalAge>24*3600000)alerts.push(alert("operational_scan_stale",operationalAge>72*3600000?"critical":"warning","Operational control scan is stale",operational.generatedAt?`Latest manual control scan is ${Math.floor(operationalAge/3600000)} hours old.`:"No completed operational control scan is available."));
-  const rank={critical:0,warning:1};alerts.sort((a,b)=>rank[a.severity]-rank[b.severity]||a.id.localeCompare(b.id));
+  const rank={critical:0,warning:1};alerts.sort((a,b)=>rank[a.severity]-rank[b.severity]||a.id.localeCompare(b.id));telemetry.sort((a,b)=>a.id.localeCompare(b.id));
+  // Only alerts move a business card, so only alerts decide status, counts and the change signature.
   const status=alerts.some(x=>x.severity==="critical")?"critical":alerts.length?"warning":"healthy",signature=crypto.createHash("sha256").update(JSON.stringify(alerts.map(x=>[x.id,x.severity]))).digest("hex").slice(0,24);
-  return{evaluatedAt:now,status,signature,counts:{critical:alerts.filter(x=>x.severity==="critical").length,warning:alerts.filter(x=>x.severity==="warning").length,total:alerts.length},signals:{backupAgeMs:backup.takenAt?backupAge:null,telemetrySamples:combined.samples,clientErrors:combined.errors,operationalExceptions:Number(operational.counts&&operational.counts.total)||0},alerts};
+  return{evaluatedAt:now,status,signature,counts:{critical:alerts.filter(x=>x.severity==="critical").length,warning:alerts.filter(x=>x.severity==="warning").length,total:alerts.length},signals:{backupAgeMs:backup.takenAt?backupAge:null,telemetrySamples:combined.samples,clientErrors:combined.errors,operationalExceptions:Number(operational.counts&&operational.counts.total)||0,frontendFindings:telemetry.length},alerts,telemetry};
 }
 module.exports={TARGETS,BACKUP_DOWNLOAD_WARN_BYTES,DAILY_FREE_DOWNLOAD_BYTES,evaluate};
