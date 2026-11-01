@@ -26,9 +26,9 @@ The split described in this document was implemented, merged (#765) and **revert
 - A companion is viable only if what it needs is **exposed on `window`** by an API the wrapper
   publishes, or if the wrapper itself is restructured (each section its own IIFE with a shared
   namespace, or ES modules). Both are real refactors needing their own verification.
-- The ceiling is **300,000 bytes** (re-based 13 Oct 2026, reason recorded in
-  `tests/bundle-budgets.mjs`) and the bundle sits at ~277 KB, so there is headroom and **no urgent
-  need** to touch this at all.
+- The ceiling is **319,400 bytes** (re-based 1 Nov 2026 at admin 733; the 13 Oct 2026 review point
+  was 300,000, reason recorded in `tests/bundle-budgets.mjs`) and the bundle sits at ~304 KB, so a
+  split still has **no urgent need**.
 
 ## Why
 
