@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,loadFirebaseMessaging,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=736";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=737";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
-import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=736";
+import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=737";
 import{archiveOutcome}from"./order-display.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=736";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=737";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -15,8 +15,7 @@ import{createCustomerOrderTracker}from"./customer-order-tracker.mjs";
 import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
 import{sortArchivedOrders,summarizeArchivedOrders}from"./archive-order-sort.mjs";
-import{createOrderArchivePanel}from"./order-archive-panel.mjs";
-import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=736";
+import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=737";
 const paymentAccountLinks=createPaymentAccountLinks(()=>overviewCashAccounts||{});
 
 const {getPaymentProof:getPaymentProofCall,getCurrentCashBalances:getCurrentCashBalancesCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,manageFixedAsset:manageFixedAssetCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,manageAccountingPeriod:manageAccountingPeriodCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,reopenDiscrepancy:reopenDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,setUndepositedOpeningBalance:setUndepositedOpeningBalanceCall,repairPettyVoucherFinancial:repairPettyVoucherFinancialCall,retireRevolvingFund:retireRevolvingFundCall,repairClosedShiftTurnover:repairClosedShiftTurnoverCall,repairShiftDeclaredTips:repairShiftDeclaredTipsCall,repairReversedPayoutDeposit:repairReversedPayoutDepositCall,reconcileUndepositedCustody:reconcileUndepositedCustodyCall,runFinancialClose:runFinancialCloseCall,archiveActivityLog:archiveActivityLogCall}=callables;
@@ -991,8 +990,13 @@ window.savePayment=async function(){
 
 let archivePanelOpen=false;
 window.toggleArchivePanel=function(){archivePanelOpen=!archivePanelOpen;document.getElementById('archivePanel').style.display=archivePanelOpen?'block':'none';var ordersList=document.getElementById('ordersList');if(ordersList){if(archivePanelOpen)ordersList.style.display='none';else ordersList.style.removeProperty('display');}var btn=document.getElementById('archiveToggleBtn');var hdg=document.getElementById('ordersHeading');if(btn){btn.textContent=archivePanelOpen?'← Back to Orders':'📦 View Archive';}if(hdg){hdg.textContent=archivePanelOpen?'Order Archive':'Active Orders';}subscriptionHub.activate(archivePanelOpen?'archive':'orders');if(archivePanelOpen)renderArchive();};
-const orderArchivePanel=createOrderArchivePanel({getArchivedOrders:()=>archivedOrdersMap,archiveOutcome,hub:subscriptionHub,isAdmin:()=>adminLoggedIn,showDeletePopup:(label,fn)=>showDeletePopup(label,fn),requestManagerApproval,manageOrderArchive:command=>manageOrderArchiveCall(command)});
-function renderArchive(){orderArchivePanel.render();}
+// 2 Nov 2026 (Danilo): the archived-orders panel is only needed when a manager opens it, so its
+// module is imported on demand instead of on every Admin/POS boot. renderArchive() keeps its
+// synchronous contract: the first call loads the module, then renders.
+let orderArchivePanel=null;
+const ARCHIVE_PANEL_DEPS={getArchivedOrders:()=>archivedOrdersMap,archiveOutcome,hub:subscriptionHub,isAdmin:()=>adminLoggedIn,showDeletePopup:(label,fn)=>showDeletePopup(label,fn),requestManagerApproval,manageOrderArchive:command=>manageOrderArchiveCall(command)};
+function withArchivePanel(fn){if(orderArchivePanel){fn(orderArchivePanel);return;}import('./order-archive-panel.mjs').then(function(m){if(!orderArchivePanel)orderArchivePanel=m.createOrderArchivePanel(ARCHIVE_PANEL_DEPS);fn(orderArchivePanel);}).catch(function(){});}
+function renderArchive(){withArchivePanel(function(p){p.render();});}
 
 function showDeletePopup(label,onConfirm){
   document.getElementById('deleteLabel').textContent=label;
