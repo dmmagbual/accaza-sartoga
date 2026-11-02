@@ -18,7 +18,17 @@
   function signedIn(){var a=global.__accazaAuthz;return!!(a&&a.uid);}
   function refused(e){return/unauthenticated|permission-denied|invalid-argument|failed-precondition/.test(String(e&&e.code||''));}
   function flush(){if(flushing||!queue.length||Date.now()-lastFlush<5000||!signedIn()||!global.__accaza||!global.__accaza.recordClientTelemetry)return Promise.resolve({deferred:true});var batch=queue.splice(0,20);flushing=true;lastFlush=Date.now();return Promise.resolve(global.__accaza.recordClientTelemetry({events:batch,build:buildLabel()})).catch(function(e){if(refused(e))return{dropped:batch.length};queue=batch.concat(queue).slice(0,MAX_QUEUE);return{failed:true};}).finally(function(){flushing=false;});}
-  global.addEventListener('error',function(e){var src=String(e&&e.filename||'').split('/').pop().replace(/\.(m?js).*$/,'');error('js_'+(src||'unknown'));});
+  // 3 Nov 2026: an error used to report only its source file, so the 31 errors from 27 Oct to 2 Nov
+  // could not be named. The error type and source line are code positions, not message text: they carry
+  // no personal, sale, payment or staff content, and the message and stack are never sent. The server
+  // accepts any js_ name, so this needs no schema or Functions change.
+  function errorLabel(e){
+    var src=String(e&&e.filename||'').split('/').pop().replace(/\.(m?js).*$/,'').replace(/[^a-z0-9_-]/gi,'_').slice(0,20);
+    var kind=String(e&&e.error&&e.error.name||'').toLowerCase().replace(/[^a-z]/g,'').slice(0,14);
+    var line=Math.max(0,Math.min(999999,Math.round(Number(e&&e.lineno)||0)));
+    return 'js_'+(src||'unknown')+(kind?'_'+kind:'')+(line?'_l'+line:'');
+  }
+  global.addEventListener('error',function(e){error(errorLabel(e));});
   global.addEventListener('unhandledrejection',function(){error('unhandled_promise');});
   // 2 Nov 2026 (Danilo): "POS launch" was the browser's loadEventEnd, so it waited for every image,
   // font, Google Analytics beacon and the 839 KB reCAPTCHA Enterprise script that Firebase App Check

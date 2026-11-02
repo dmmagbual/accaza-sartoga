@@ -31,4 +31,6 @@ The view reports sample count, arithmetic average, worst observed duration, fail
 
 ## Consequences
 
-The dashboard stays bounded and inexpensive as history grows. It can detect broad regressions but cannot calculate percentiles, device segmentation, or root-cause traces. Those require a future privacy-reviewed schema change.
+The dashboard stays bounded and inexpensive as history grows. It can detect broad regressions but cannot calculate percentiles or device segmentation. Those require a future privacy-reviewed schema change.
+
+3 November 2026: client error keys append the browser error type and source line, for example `js_register_typeerror_l1234`, so a recurring error can be named without a browser session. This is the only root-cause evidence added. The error message and stack are never recorded, and the key carries no customer, order, payment, staff or item content. The server's existing `js_` name validation accepts it, so no database, rules or Functions change was needed.

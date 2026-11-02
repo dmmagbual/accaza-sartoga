@@ -14,11 +14,12 @@ function harness(){
   let now=1_000_000;
   const calls=[];let reply=()=>Promise.resolve({accepted:1});
   const document={querySelector:()=>({content:'650'})};
-  const window={document,addEventListener(){},__accaza:{recordClientTelemetry(command){calls.push(command);return reply(command);}}};
+  const listeners={};
+  const window={document,addEventListener(type,fn){listeners[type]=fn;},__accaza:{recordClientTelemetry(command){calls.push(command);return reply(command);}}};
   const context={window,document,performance:{now:()=>now,getEntriesByType:()=>[]},setInterval(){},setTimeout(){},Promise,JSON,Math,String,Number,Date:{now:()=>now}};
   vm.createContext(context);vm.runInContext(source,context);
   const T=window.AccazaTelemetry;
-  return{T,window,calls,advance(ms){now+=ms;},setReply(fn){reply=fn;},signIn(){window.__accazaAuthz={uid:'staff-1',role:'staff',isPrivileged:false};},signOut(){window.__accazaAuthz=null;}};
+  return{T,window,calls,advance(ms){now+=ms;},setReply(fn){reply=fn;},signIn(){window.__accazaAuthz={uid:'staff-1',role:'staff',isPrivileged:false};},signOut(){window.__accazaAuthz=null;},fireError(event){if(listeners.error)listeners.error(event);}};
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 
@@ -31,6 +32,19 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
   h.signIn();await h.T.flush();
   if(h.calls.length!==1||h.calls[0].events.length!==2||h.calls[0].events[0].name!=='pos_boot')fail('Events queued on the login screen must be sent once after sign-in');
   if(h.calls[0].build!=='admin-v650')fail('Telemetry must keep reporting the admin build label');
+}
+{ // Browser errors carry the source, error type and line, never the message text.
+  const h=harness();h.signIn();
+  h.fireError({filename:'https://accazacoffee.com/assets/js/admin/register.js?v=742',lineno:1234,error:{name:'TypeError'},message:'TypeError: order for Maria is missing'});
+  h.fireError({filename:'https://accazacoffee.com/admin.html',lineno:77,error:{name:'ReferenceError'}});
+  h.fireError({filename:'',lineno:0});
+  await h.T.flush();
+  const names=(h.calls[0]?h.calls[0].events:[]).map(event=>event.name);
+  if(names.length!==3)fail('Three browser errors must queue three events');
+  if(names[0]!=='js_register_typeerror_l1234')fail('A browser error must report its source file, error type and line; got '+names[0]);
+  if(names[1]!=='js_admin_html_referenceerror_l77')fail('An inline-handler error must report the page, error type and line; got '+names[1]);
+  if(names[2]!=='js_unknown')fail('A browser error without a filename must stay js_unknown; got '+names[2]);
+  if(names.some(name=>/maria|missing|message/i.test(name)))fail('A browser error name must never carry message text');
 }
 { // A refusal drops the batch instead of retrying it forever.
   for(const code of ['functions/permission-denied','functions/unauthenticated','permission-denied']){

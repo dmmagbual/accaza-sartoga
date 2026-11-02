@@ -222,7 +222,7 @@ Use `OPERATIONS_RELEASE_RUNBOOK.md`. Change the manifest to `production_verified
 - Two September 2026 optimizations were deliberately held: cache-first service-worker loading (can leave a till on old code; needs the production performance review first) and a Finance Books journal delta cache (every journal writer would need a change stamp; a missed one would show stale amounts).
 
 - Production timing evidence for v173 is pending; local tests cannot prove real cashier-device speed.
-- The telemetry schema does not retain individual samples, device segmentation, or percentiles.
+- The telemetry schema does not retain individual samples, device segmentation, or percentiles. Client error keys carry the browser error type and source line (for example `js_register_typeerror_l1234`); the message and stack are never stored.
 - App Check: staff callables enforce from 28 Oct 2026 (`ENFORCE_APP_CHECK` default `"true"`); the public order path (`ENFORCE_APP_CHECK_ORDERS`) stays in monitor mode and Realtime Database is never enforced. See `APP_CHECK_ENFORCEMENT_RUNBOOK.md` for rollback.
 - Some legacy authorized browser writes remain for ordinary operational nodes; protected inventory/financial authority is server-side, but future hardening can move more commands behind Functions.
 - The source still contains large native JavaScript modules, especially POS/register/analytics. They are lazy-loaded, but further splitting should be driven by measured regressions, not cosmetic architecture goals.
