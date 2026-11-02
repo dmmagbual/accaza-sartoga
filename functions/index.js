@@ -8875,10 +8875,22 @@ exports.processOrderAdjustment = onCall(
       found = await findOrder(db, o.id); o = found.order;
       if (!Financial.recognizedSale(o) || !Financial.paymentAwaitingVerification(o)) throw new HttpsError("failed-precondition", "Only a completed sale whose payment is still awaiting verification can be recorded as not received.");
       if (Financial.money(o.refundAmount) > 0) throw new HttpsError("failed-precondition", "This manager-review sale already has a refund. Use a controlled financial correction so revenue, cash and the original refund are not reversed twice.");
-      const reason = paymentNotReceivedReason(data), state = await paymentVerificationOpenAmount(db, financeKey(o.id, "Order ID")), clearing = state.clearing;
-      if (!(clearing > 0)) throw new HttpsError("failed-precondition", o.paymentStatus === "cashier_verified" ? "This sale has no payment waiting in Payments Awaiting Verification: the cashier check already banked it. Move it into manager review first, then record it as not received." : "This sale has no payment waiting in Payments Awaiting Verification. Post it to Finance Books first.");
+      const reason = paymentNotReceivedReason(data);
       const pendingApproval = (await db.ref(`/financialApprovals/${financeKey(data.approvalId, "Privileged approval")}`).get()).val() || {};
       const verifierCheck = await paymentVerifierCheck(db, o, pendingApproval.approvedBy, pendingApproval.approvedRole);
+      // A live cashier-verified sale whose receipt an older cashier step already banked moves back
+      // into 1060 first (one idempotent Dr 1060 / Cr bank), exactly as manager validation does, so
+      // "not received" never needs the retired "Move current reviews to 1060" batch (3 Nov 2026).
+      // It runs only after the separation-of-duties check, so the sale's own crew cannot trigger it.
+      // The approval must already be a live, unused not-received approval for this sale (its amount is
+      // checked when it is claimed below), so a missing or spent approval moves no money.
+      if (found.node === "orders" && o.paymentStatus === "cashier_verified" && String(o.paymentVerificationPolicy || "cashier_manager") === "cashier_manager") {
+        if (pendingApproval.action !== "payment_not_received" || pendingApproval.sourceId !== String(o.id) || pendingApproval.usedAt || Number(pendingApproval.expiresAt || 0) < Date.now()) throw new HttpsError("failed-precondition", "Privileged approval is missing, expired, already used, or does not match this action.");
+        await prepareActivePaymentReview(db, o.id, actor);
+        found = await findOrder(db, o.id); o = found.order;
+      }
+      const state = await paymentVerificationOpenAmount(db, financeKey(o.id, "Order ID")), clearing = state.clearing;
+      if (!(clearing > 0)) throw new HttpsError("failed-precondition", "This sale has no payment waiting in Payments Awaiting Verification. Post it to Finance Books first.");
       const approval = await claimManagerApproval(db, data, "payment_not_received", o.id, clearing, `not_received_${o.id}`), approvedBy = approval.record.approvedEmail || approval.record.approvedRole;
       const result = await commitUnpaidSale(db, found.node, o, clearing, reason, actor, {verifierUid: approval.record.approvedBy, verifierRole: approval.record.approvedRole, verifierName: approvedBy, approvalId: approval.id, selfCheck: verifierCheck.selfCheck, usedWrites: approval.usedWrites});
       return {orderId: o.id, notReceived: true, amount: clearing, duplicate: result && result.duplicate === true, approvedBy};

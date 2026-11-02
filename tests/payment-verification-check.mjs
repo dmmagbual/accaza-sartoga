@@ -225,16 +225,24 @@ for (const id of ['POS-W1', 'POS-W2', 'POS-W3']) {
 }
 const orderNet = async (id, account) => Object.values(await read('financialMovements') || {}).filter((mv) => mv.sourceId === id).reduce((sum, mv) => Financial.money(sum + lines(mv, account)), 0);
 assert.equal(await orderNet('POS-W1', 'asset:payment_verification'), 0, 'window order starts with nothing in 1060');
-// Rejection cannot credit 1060 for money that already left it.
-await assert.rejects(fx.processOrderAdjustment(req({action: 'payment_not_received', orderId: 'POS-W2', approvalId: 'AP_W2', reasonCode: 'no_transfer_found', note: 'Statement checked'})), /no payment waiting/);
-assert.equal(await read('financialMovements/unpaid_POS-W2'), null, 'no unpaid posting against an empty 1060');
-// Review moves the banked receipt back into 1060 from the cashier deposit's bank lines.
-await fx.processOrderAdjustment(req({action: 'prepare_payment_review', orderId: 'POS-W2'}));
-assert.equal(lines(await read('financialMovements/payreview_POS-W2'), 'asset:cash_account:bdo'), -560, 'review reverses the cashier deposit bank line');
-assert.equal((await read('paymentVerificationQueue/POS-W2')).amount, 560, 'review restores the queue row at the ledger amount');
+// Not received first moves the banked receipt back into 1060 from the cashier deposit's bank lines
+// (3 Nov 2026: the "Move current reviews to 1060" batch is retired), then reverses it once.
+// A wrong approval (here the validate approval for another sale) moves no money.
+await assert.rejects(fx.processOrderAdjustment(req({action: 'payment_not_received', orderId: 'POS-W2', approvalId: 'AP_W1', reasonCode: 'no_transfer_found', note: 'Statement checked'})), /approval is missing, expired, already used, or does not match/);
+assert.equal(await read('financialMovements/payreview_POS-W2'), null, 'no move into 1060 without a matching approval');
 await fx.processOrderAdjustment(req({action: 'payment_not_received', orderId: 'POS-W2', approvalId: 'AP_W2', reasonCode: 'no_transfer_found', note: 'Statement checked'}));
+assert.equal(lines(await read('financialMovements/payreview_POS-W2'), 'asset:cash_account:bdo'), -560, 'not received reverses the cashier deposit bank line first');
+assert.ok(await read('financialMovements/unpaid_POS-W2'), 'the unpaid sale is recorded against the restored 1060 balance');
+await fx.processOrderAdjustment(req({action: 'payment_not_received', orderId: 'POS-W2', approvalId: 'AP_W2', reasonCode: 'no_transfer_found', note: 'Statement checked'})).catch(() => null);
+assert.equal(Object.keys(await read('financialMovements') || {}).filter((key) => key === 'payreview_POS-W2' || key === 'unpaid_POS-W2').length, 2, 'a retry posts nothing twice');
 assert.equal(await orderNet('POS-W2', 'asset:payment_verification'), 0, 'not received clears 1060 to zero, never negative');
 assert.equal(await orderNet('POS-W2', 'asset:cash_account:bdo'), 0, 'not received leaves no money in the bank');
+// The move back into 1060 runs only after the separation-of-duties check.
+{
+  const adj = fs.readFileSync(new URL('../src/functions/43g-order-adjustments.js', import.meta.url), 'utf8');
+  const block = adj.slice(adj.indexOf('if (data.action === "payment_not_received")'), adj.indexOf('claimManagerApproval(db, data, "payment_not_received"'));
+  assert.ok(block.indexOf('paymentVerifierCheck(') > 0 && block.indexOf('paymentVerifierCheck(') < block.indexOf('prepareActivePaymentReview('), 'the sale crew is refused before any money moves');
+}
 // Manager validation posts a second, distinct deposit (payvalid_) once; audit names the approving manager.
 await fx.processOrderAdjustment(req({action: 'manager_validate_payment', orderId: 'POS-W1', approvalId: 'AP_W1'}));
 assert.equal(lines(await read('financialMovements/payvalid_POS-W1'), 'asset:cash_account:bdo'), 560, 'manager validation banks the reviewed receipt');

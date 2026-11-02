@@ -44,10 +44,10 @@ assert.match(notices[1].message, /Verification finished/);
 alertDelay = 700; context.alert('Read and dismissed');
 assert.equal(notices.length, 2, 'a dismissed alert raises no notice');
 
-// The 1060 money action uses the in-page dialog, never a browser popup.
-const register = fs.readFileSync(new URL('../src/admin/register/00-bootstrap-payment-controls.js', import.meta.url), 'utf8');
-const start = register.indexOf('async function prepareCurrentPaymentReviews'), body = register.slice(start, register.indexOf('\nasync function ', start + 10) > 0 ? register.indexOf('\nasync function ', start + 10) : start + 4000);
-assert.ok(start >= 0, 'prepareCurrentPaymentReviews exists');
-assert.ok(body.includes("F().run({title:title") && body.includes("submitLabel:'Move to 1060'"), 'moving reviews to 1060 confirms in the page');
-assert.ok(!/\bconfirm\(|\balert\(/.test(body), 'moving reviews to 1060 uses no browser popup');
-console.log('PASS: blocked alert/confirm popups are reported in the page with unchanged answers, and moving reviews to 1060 confirms in an in-page dialog.');
+// The "Move current reviews to 1060" batch is retired (3 Nov 2026): validating or recording a
+// payment as not received moves its receipt into 1060 on the server, one sale at a time.
+for (const file of ['src/admin/register/00-bootstrap-payment-controls.js', 'src/admin/register/50-cash-movements.js', 'src/admin/register/60-operations-shift-review.js', 'assets/js/admin/register.js']) {
+  const text = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+  assert.ok(!text.includes('prepareCurrentPaymentReviews') && !text.includes('data-prepare-current-reviews') && !text.includes('Move current reviews to 1060'), `${file} no longer offers the retired batch button`);
+}
+console.log('PASS: blocked alert/confirm popups are reported in the page with unchanged answers, and the retired move-to-1060 batch button is gone.');

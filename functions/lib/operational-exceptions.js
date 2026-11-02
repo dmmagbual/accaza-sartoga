@@ -229,7 +229,7 @@ function buildOperationalExceptions(input, now = Date.now()) {
   const queueByOrder = input.paymentVerificationQueue || {};
   rows(input.activeOrders).filter((order) => order.paymentStatus === "cashier_verified").forEach((order) => {
     if (queueByOrder[order.id]) return;
-    exceptions.push(item("payment_verification_missing", "critical", `payment_review_missing_${order.id}`, `Cashier-verified payment ${order.id} is awaiting manager review but is missing from 1060`, "Open Register → Manager revalidation and move current reviews to 1060 before validating or rejecting the payment.", Number(order.completedAt || order.timestamp || now), "ops"));
+    exceptions.push(item("payment_verification_missing", "critical", `payment_review_missing_${order.id}`, `Cashier-verified payment ${order.id} is awaiting manager review but is missing from 1060`, "Open Register → Manager revalidation and validate the payment, or record it as not received in Payments awaiting verification. Either action moves the receipt back into 1060 first.", Number(order.completedAt || order.timestamp || now), "ops"));
   });
   // Control check: the 1060 balance in Books must equal the open verification queue. A difference
   // means a payment is stuck (verified but not moved to the bank) or a queue row is missing.

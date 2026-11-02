@@ -1,4 +1,4 @@
-import{HISTORY_TAB_PATHS}from"./realtime-hub.mjs?v=740";
+import{HISTORY_TAB_PATHS}from"./realtime-hub.mjs?v=741";
 
 function createHistoryPager(subscriptionHub){
   return function renderHistoryPager(tab){
