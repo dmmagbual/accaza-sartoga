@@ -112,48 +112,37 @@ async function launch(mappedIp) {
   return {context, page};
 }
 
-async function navigate(page) {
-  let lastError = null;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    try { await page.goto(url, {waitUntil: 'domcontentloaded', timeout: 120000}); return; }
-    catch (error) { lastError = error; await page.waitForTimeout(2000); }
-  }
-  throw lastError;
-}
-
 console.log('Opening ' + url);
-// Local DNS for the custom domain flaps on some machines, so keep trying both routes instead of
-// failing the operator's run on one bad minute.
+// The domain's public DNS flaps between a valid answer and NXDOMAIN on some networks. Retry the
+// navigation inside the browser that is already open. Relaunching per attempt threw a new Chrome
+// window at the operator for every failed try, which is wrong for a desktop tool.
 async function openPage() {
-  // The domain's public DNS flaps between a valid answer and NXDOMAIN on this network, so allow a few
-  // minutes of retries instead of failing the operator's run on one bad window.
-  const attempts = Number(value('attempts', '20')) || 20;
-  let rotated = false;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const ip = await firstIp(host);
-    const mapping = ip ? 'DNS-over-HTTPS -> ' + ip : 'local DNS';
-    let opened = null;
-    try {
-      opened = await launch(ip);
-      await navigate(opened.page);
-      route = mapping;
-      if (ip) console.log('Resolved ' + host + ' to ' + ip + ' over DNS-over-HTTPS.');
-      return opened;
-    } catch (error) {
-      if (opened) await opened.context.close().catch(() => {});
-      console.log('Attempt ' + attempt + '/' + attempts + ' via ' + mapping + ' failed: ' + String(error.message).split('\n')[0]);
-      // A locked or unwritable profile also shows up as "browser has been closed"; rotate once to a
-      // fresh profile instead of failing the operator's run.
-      if (!rotated && /browser has been closed|Access is denied|SingletonLock|profile/i.test(String(error.message))) {
-        rotated = true;
-        profileDir = path.join(profileRoot, 'accaza-screen-check', 'profile-' + Date.now());
-        fs.mkdirSync(profileDir, {recursive: true});
-        console.log('Rotating to a fresh browser profile: ' + profileDir + ' (sign-in will be needed).');
+  const attempts = Number(value('attempts', '12')) || 12;
+  const waitMs = 5000;
+  let ip = await firstIp(host);
+  if (ip) console.log('Resolved ' + host + ' to ' + ip + ' over DNS-over-HTTPS.');
+  let windows = 0;
+  while (windows < 2) {
+    windows += 1;
+    route = ip ? 'DNS-over-HTTPS -> ' + ip : 'local DNS';
+    const opened = await launch(ip);
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        await opened.page.goto(url, {waitUntil: 'domcontentloaded', timeout: 120000});
+        return opened;
+      } catch (error) {
+        const message = String(error.message).split('\n')[0];
+        console.log('Navigation attempt ' + attempt + '/' + attempts + ' via ' + route + ' failed: ' + message);
+        if (/browser has been closed|Target page, context/i.test(message)) break;
+        if (attempt < attempts) await opened.page.waitForTimeout(waitMs).catch(() => {});
       }
-      if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, 5000));
     }
+    await opened.context.close().catch(() => {});
+    if (windows >= 2) break;
+    ip = ip ? null : await firstIp(host);
+    console.log('Reopening the browser once via ' + (ip ? 'DNS-over-HTTPS -> ' + ip : 'local DNS') + '.');
   }
-  throw new Error('could not reach ' + url + ' after ' + attempts + ' attempts');
+  throw new Error('could not reach ' + url + ' after opening the browser twice');
 }
 const {context, page} = await openPage();
 
