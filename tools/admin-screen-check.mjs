@@ -113,9 +113,10 @@ async function candidateIps() {
 async function launch(mappedIp) {
   const options = {headless: args.includes('--headless'), viewport: {width: 1440, height: 900}};
   if (mappedIp) options.args = ['--host-resolver-rules=MAP ' + host + ' ' + mappedIp];
-  // Prefer the installed Chrome: it carries the operator's own DNS and secure-DNS settings, which the
-  // bundled Playwright Chromium does not. Fall back to the bundled build when Chrome is not installed.
-  const channel = value('channel', 'chrome');
+  // Bundled Chromium by default. The installed Chrome on this machine resolved the custom domain
+  // through its own DNS stack and failed with NXDOMAIN while the bundled build loaded the same URL.
+  // Use --channel chrome to force the installed browser.
+  const channel = value('channel', '');
   if (channel) options.channel = channel;
   let context;
   try {
