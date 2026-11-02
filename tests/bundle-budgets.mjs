@@ -39,7 +39,11 @@ export const BUNDLE_BUDGETS=Object.freeze({
   // separate, tighter 126,000 ceiling). Sep 2026 re-baseline: reviewed 120,880 bytes (admin 611).
   // Oct 2026 (admin 646): Order Archive panel moved to order-archive-panel.mjs and 109 garbled
   // (double-encoded) characters repaired, 126,976 -> ~121,970 bytes. Ceiling unchanged.
-  'assets/js/admin/core.mjs':127000,
+  // 2 Nov 2026 (admin 737) re-baseline under the budget policy above: the 2.5% warning fired at
+  // 123,825 bytes and stayed on for every release, so the owner set the ceiling ~5% above the
+  // reviewed size instead of letting a gauge block work. Reviewed 124,019 bytes at 130,300; that
+  // leaves 6,281 bytes (4.9%) of ordinary growth before the warning returns.
+  'assets/js/admin/core.mjs':130300,
   // Build 491 adds stock-item archiving: a retire path for ledger items that cannot be deleted,
   // with the guards, pickers and filter that go with it.
   // Per-item pastry packaging overrides (Customize/Edit/Revert) add ~11.6 KB: private
