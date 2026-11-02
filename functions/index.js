@@ -1278,17 +1278,23 @@ exports.manageAccountingPeriod = onCall(
     let period;
     try { period = AccountingPeriods.periodKey(data.period); } catch (error) { throw new HttpsError("invalid-argument", error.message); }
     if (!reason) throw new HttpsError("invalid-argument", "A clear reason is required for closing or reopening a period.");
-    if (action === "close") {
-      const queueSnap = /* download-ok: bounded open control subledger (unverified electronic payments only); a close check must see every row */await db.ref("/paymentVerificationQueue").get();
-      const open = AccountingPeriods.openPaymentVerificationsForPeriod(queueSnap.val() || {}, period);
+    // Closing is refused while the month still has payments in 1060 (Danilo, 2 Nov 2026). The queue is
+    // read again after the close commits: a payment for the month that lands between the two reads
+    // (a late offline sync) reopens the month automatically, so no month stays closed with 1060 open.
+    const readOpenPayments = async () => AccountingPeriods.openPaymentVerificationsForPeriod((/* download-ok: bounded open control subledger (unverified electronic payments only); a close check must see every row */await db.ref("/paymentVerificationQueue").get()).val() || {}, period);
+    const closeRefusal = (open) => {
       if (open.count) {
         const sample = open.rows.slice(0, 5).map((row) => `${row.orderId} (${row.saleDate}, PHP ${row.amount.toFixed(2)})`).join("; ");
-        console.warn("accounting_period_close_refused", JSON.stringify({period, reason: "payments_awaiting_verification", count: open.count, total: open.total, uid: actor.uid}));
-        throw new HttpsError("failed-precondition", `${period} still has ${open.count} payment(s) awaiting verification, PHP ${open.total.toFixed(2)} in 1060. Verify each one, or record it as not received, in Register Ops > Payments awaiting verification, then close the month. Closing now would post those receipts in the next month and the bank balance would not match the statement. ${sample}${open.count > 5 ? `; and ${open.count - 5} more` : ""}.`);
+        return {log: {reason: "payments_awaiting_verification", count: open.count, total: open.total}, message: `${period} still has ${open.count} payment(s) awaiting verification, PHP ${open.total.toFixed(2)} in 1060. Verify each one, or record it as not received, in Register Ops > Payments awaiting verification, then close the month. Closing now would post those receipts in the next month and the bank balance would not match the statement. ${sample}${open.count > 5 ? `; and ${open.count - 5} more` : ""}.`};
       }
-      if (open.unreadable.length) {
-        console.warn("accounting_period_close_refused", JSON.stringify({period, reason: "unreadable_verification_rows", count: open.unreadable.length, orderIds: open.unreadable.slice(0, 20).map((row) => row.orderId), uid: actor.uid}));
-        throw new HttpsError("failed-precondition", `${open.unreadable.length} payment(s) awaiting verification have no readable sale date or amount, so it is not known which month they belong to: ${open.unreadable.slice(0, 5).map((row) => row.orderId).join(", ")}${open.unreadable.length > 5 ? ` and ${open.unreadable.length - 5} more` : ""}. Verify each one, or record it as not received, in Register Ops > Payments awaiting verification before closing any month.`);
+      if (open.unreadable.length) return {log: {reason: "unreadable_verification_rows", count: open.unreadable.length, orderIds: open.unreadable.slice(0, 20).map((row) => row.orderId)}, message: `${open.unreadable.length} payment(s) awaiting verification have no readable sale date or amount, so it is not known which month they belong to: ${open.unreadable.slice(0, 5).map((row) => row.orderId).join(", ")}${open.unreadable.length > 5 ? ` and ${open.unreadable.length - 5} more` : ""}. Verify each one, or record it as not received, in Register Ops > Payments awaiting verification before closing any month.`};
+      return null;
+    };
+    if (action === "close") {
+      const refusal = closeRefusal(await readOpenPayments());
+      if (refusal) {
+        console.warn("accounting_period_close_refused", JSON.stringify(Object.assign({period, uid: actor.uid}, refusal.log)));
+        throw new HttpsError("failed-precondition", refusal.message);
       }
     }
     const now = Date.now(), periodRef = db.ref(`/accountingPeriods/${period}`); let next;
@@ -1298,6 +1304,20 @@ exports.manageAccountingPeriod = onCall(
     if (!result.committed) throw new HttpsError("aborted", "The accounting period changed at the same time. Refresh and try again.");
     const record = result.snapshot.val() || next;
     await db.ref(`/operationalAudit/${now}_accounting_period_${period}_${record.revision || 0}`).set(operationalAuditRecord(action === "close" ? "close_accounting_period" : "reopen_accounting_period", "accountingPeriod", period, actor, {period, status: record.status, reason, revision: record.revision || 0}));
+    if (action === "close" && record.status === "closed") {
+      const late = closeRefusal(await readOpenPayments());
+      if (late) {
+        const rollbackAt = Date.now(), rollbackReason = "Automatic reopen: a payment awaiting verification for this month arrived while it was being closed.";
+        let reopened;
+        const rollback = await periodRef.transaction((current) => { reopened = AccountingPeriods.transition(current, "reopen", period, actor, rollbackReason, rollbackAt); return reopened; }, undefined, false);
+        console.error("accounting_period_close_rolled_back", JSON.stringify(Object.assign({period, uid: actor.uid, reopened: rollback.committed}, late.log)));
+        if (!rollback.committed) throw new HttpsError("aborted", `${period} was closed, but a payment awaiting verification for it arrived at the same moment and the month could not be reopened automatically. Reopen ${period} in Finance Books, clear Payments awaiting verification, then close it again.`);
+        const after = rollback.snapshot.val() || reopened;
+        // The reopen has committed; a failed audit write must not hide that from the user.
+        await db.ref(`/operationalAudit/${rollbackAt}_accounting_period_${period}_${after.revision || 0}`).set(operationalAuditRecord("reopen_accounting_period", "accountingPeriod", period, actor, {period, status: after.status, reason: rollbackReason, revision: after.revision || 0, automatic: true, trigger: late.log.reason, count: late.log.count})).catch((error) => console.error("accounting_period_rollback_audit_failed", JSON.stringify({period, error: String(error && error.message || error)})));
+        throw new HttpsError("failed-precondition", `${period} was reopened automatically. ${late.message}`);
+      }
+    }
     return {period, status: record.status, revision: record.revision || 0, duplicate: record.status !== (action === "close" ? "closed" : "open")};
   }
 );
@@ -1439,7 +1459,8 @@ async function scanOperationalExceptions(db, now) {
     await repairHistoricalReplicaDeadLetters(db, deadLetters, now);
     await verifyOpenDeadLetters(db, deadLetters, now);
     const paymentQueueSnap = /* download-ok: bounded complete open control subledger; truncation could falsely reconcile 1060 */await db.ref("/paymentVerificationQueue").get();
-    return OperationalExceptions.buildOperationalExceptions({paymentVerificationQueue: paymentQueueSnap.val() || {}, activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, booksChart: booksChartSnap.val() || {}, cashAccountMap: cashAccountMapSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
+    const accountingPeriodsSnap = await db.ref("/accountingPeriods").orderByChild("updatedAt").limitToLast(120).get();
+    return OperationalExceptions.buildOperationalExceptions({paymentVerificationQueue: paymentQueueSnap.val() || {}, accountingPeriods: accountingPeriodsSnap.val() || {}, activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, booksChart: booksChartSnap.val() || {}, cashAccountMap: cashAccountMapSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
 }
 
 
