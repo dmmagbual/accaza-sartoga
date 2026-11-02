@@ -5,6 +5,7 @@ const {replicaRepairFor} = require("./dead-letter-resolution");
 const OrderService = require("./order-service");
 const Financial = require("./financial");
 const BankLedgerLink = require("./bank-ledger-link");
+const AccountingPeriods = require("./accounting-periods");
 
 const TERMINAL = new Set(["Completed", "Received", "Rejected", "Archived"]);
 const FINALIZED = new Set(["Completed", "Received"]);
@@ -237,6 +238,12 @@ function buildOperationalExceptions(input, now = Date.now()) {
     const ledger = round2(Object.values(input.booksMonthlyNet || {}).reduce((sum, month) => sum + (Number(month && month["1060"]) || 0), 0));
     if (Math.abs(ledger - queued) > 0.009) exceptions.push(item("payment_verification_mismatch", "critical", "payment_verification_1060", `Payments Awaiting Verification (1060) is ₱${ledger.toFixed(2)} but open payments total ₱${queued.toFixed(2)}`, "A verified payment may not have moved to the bank, or an unverified payment is missing from the queue. Open Register → Payments awaiting verification and Finance Books → 1060 to find the order; report it if it does not clear.", now, "ops"));
   }
+  // A closed month that still has payments in 1060 (Danilo, 2 Nov 2026): verifying them now would
+  // post the bank receipt in a later month, so the closed month's bank balance would not match the
+  // statement. One card per closed month, not per sale.
+  AccountingPeriods.paymentVerificationsInClosedPeriods(input.paymentVerificationQueue, input.accountingPeriods).forEach((group) => {
+    exceptions.push(item("payment_verification_closed_month", "warning", `payment_verification_closed_${group.period}`, `${group.period} is closed but ${group.count} payment${group.count === 1 ? "" : "s"} dated in it ${group.count === 1 ? "is" : "are"} still awaiting verification (₱${group.total.toFixed(2)} in 1060)`, `Verifying ${group.count === 1 ? "it" : "them"} now posts the bank receipt on the verification date, so ${group.period}'s bank balance would not match the statement. Reopen ${group.period} in Finance Books, verify each payment or record it as not received in Register Ops → Payments awaiting verification, then close the month again. ${group.orderIds.slice(0, 5).join(", ")}${group.count > 5 ? ` and ${group.count - 5} more` : ""}.`, now, "operations"));
+  });
   rows(input.pendingShiftHandovers).forEach((handover) => {exceptions.push(item("shift_handover_pending", now - Number(handover.at || 0) > 86400000 ? "critical" : "warning", handover.id, `Shift of ${handover.staff || "a cashier"} has a provisional Z report`, "The server issues the final Z report as soon as every sale is confirmed, and at the latest when the next shift ends. A manager can finalize it sooner in Register Ops.", Number(handover.at || 0), "ops"));});
   // A final Z issued with open items, or re-issued after a late sale changed the cash result.
   rows(input.shiftCloseFollowUps).forEach((row) => {if (row.state !== "open") return;const late = row.kind === "late_sale_variance";exceptions.push(item("shift_close_follow_up", "warning", `close_${row.id}`, late ? `Z report of ${row.staff || "a shift"} changed after a late sale` : row.kind === "z_amendment_failed" ? `Z report of ${row.staff || "a shift"} could not be re-issued` : `Shift of ${row.staff || "a cashier"} closed with open items`, late ? `Cash variance posted at close PHP ${Number(row.postedVariance || 0).toFixed(2)}, recalculated PHP ${Number(row.recalculatedVariance || 0).toFixed(2)}. Settle the difference in Discrepancies, then mark it reviewed in Register Ops.` : "Review the exceptions on its final Z report, recover any sale in Sales needing recovery, then mark it reviewed in Register Ops.", Number(row.at || 0), "ops"));});

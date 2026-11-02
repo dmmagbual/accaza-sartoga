@@ -73,4 +73,23 @@ function openPaymentVerificationsForPeriod(queue, period) {
   return {count: rows.length, total: totalCents / 100, rows: rows.map((row) => ({orderId: row.orderId, saleDate: row.saleDate, amount: row.cents / 100})), unreadable};
 }
 
-module.exports = {periodKey, periodForDate, isClosed, transition, openPaymentVerificationsForPeriod};
+// Payments still in 1060 whose sale month is already closed (a late offline sync after the close, or
+// a month closed before this control existed). Verifying them posts the bank receipt on the
+// verification date, so each closed month is listed once for System Health. Centavo totals.
+function paymentVerificationsInClosedPeriods(queue, periods) {
+  const byPeriod = {};
+  Object.keys(queue && typeof queue === "object" ? queue : {}).forEach((key) => {
+    const row = queue[key];
+    if (!row || typeof row !== "object") return;
+    let saleDate = "";
+    try { saleDate = verificationRowDate(row); } catch (error) { return; }
+    const period = saleDate.slice(0, 7), cents = Math.round(Number(row.amount) * 100);
+    if (!saleDate || !isClosed(periods && periods[period])) return;
+    // A row with an unreadable amount still counts: the month is listed even if the total is short.
+    const group = byPeriod[period] || (byPeriod[period] = {period, count: 0, cents: 0, orderIds: []});
+    group.count += 1; group.cents += Number.isFinite(cents) && cents > 0 ? cents : 0; group.orderIds.push(String(row.orderId || key));
+  });
+  return Object.keys(byPeriod).sort().map((period) => { const group = byPeriod[period]; return {period, count: group.count, total: group.cents / 100, orderIds: group.orderIds.sort()}; });
+}
+
+module.exports = {periodKey, periodForDate, isClosed, transition, openPaymentVerificationsForPeriod, paymentVerificationsInClosedPeriods};

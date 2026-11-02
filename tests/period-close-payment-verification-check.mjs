@@ -6,7 +6,9 @@
 // 1. the helper picks only rows dated in the month being closed and sums them in whole centavos,
 // 2. manageAccountingPeriod refuses to close such a month and writes nothing,
 // 3. reopening, and closing a month whose open items belong to other months, still work,
-// 4. a row whose sale date or amount cannot be read fails closed and blocks every close.
+// 4. a row whose sale date or amount cannot be read fails closed and blocks every close,
+// 5. a payment for the month that arrives while it is closing reopens the month automatically,
+// 6. System Health shows one card per closed month that still has payments in 1060.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -58,7 +60,7 @@ class HttpsError extends Error { constructor(code, message) { super(message); th
 const harness = async (code, store, data) => {
   const writes = [];
   const db = {ref: (path) => ({
-    get: async () => ({val: () => (store[path] === undefined ? null : store[path]), exists: () => store[path] != null}),
+    get: async () => { const value = typeof store[path] === 'function' ? store[path]() : store[path]; return {val: () => (value === undefined ? null : value), exists: () => value != null}; },
     transaction: async (fn) => { const value = fn(store[path] || null); writes.push(path); store[path] = value; return {committed: true, snapshot: {val: () => value}}; },
     set: async (value) => { writes.push(path); store[path] = value; },
   })};
@@ -97,5 +99,81 @@ for (const [label, source] of [['source', read('src/functions/20-portal-auth.js'
   const reopened = await harness(code, reopenStore, {action: 'reopen', period: '2026-10', reason: 'Late verification'});
   assert.equal(reopened.result && reopened.result.status, 'open', `${label}: reopening is never blocked by 1060 items`);
 }
+
+// 5. Late arrival between the pre-check and the close.
+for (const [label, source] of [['source', read('src/functions/20-portal-auth.js')], ['bundle', read('functions/index.js')]]) {
+  const code = extract(source);
+  let reads = 0;
+  const store = {'/paymentVerificationQueue': () => (++reads === 1 ? {} : {LATE: {orderId: 'LATE', saleDate: '2026-10-31', saleAt: at('2026-10-31T10:00:00Z'), amount: 250}})};
+  const late = await harness(code, store, {action: 'close', period: '2026-10', reason: 'Month end'});
+  assert.equal(reads, 2, `${label}: the queue is read again after the close commits`);
+  assert.equal(late.error && late.error.code, 'failed-precondition', `${label}: the late payment is reported`);
+  assert.match(late.error.message, /^2026-10 was reopened automatically\. 2026-10 still has 1 payment\(s\) awaiting verification, PHP 250\.00 in 1060/);
+  const period = store['/accountingPeriods/2026-10'];
+  assert.equal(period.status, 'open', `${label}: the month is left open, never closed with 1060 items`);
+  assert.equal(period.revision, 2, `${label}: close and automatic reopen are both in the period history`);
+  assert.match(period.history['2'].reason, /^Automatic reopen/);
+  assert.equal(late.writes.filter((path) => path.startsWith('/operationalAudit/')).length, 2, `${label}: both the close and the reopen are audited`);
+
+  let quietReads = 0;
+  const quiet = {'/paymentVerificationQueue': () => { quietReads++; return {}; }};
+  const ok = await harness(code, quiet, {action: 'close', period: '2026-10', reason: 'Month end'});
+  assert.equal(ok.result && ok.result.status, 'closed');
+  assert.equal(quietReads, 2, `${label}: a clean close reads the queue twice and stays closed`);
+
+  let reopenReads = 0;
+  const reopenOnly = {'/paymentVerificationQueue': () => { reopenReads++; return queue; }, '/accountingPeriods/2026-10': {period: '2026-10', status: 'closed', revision: 1}};
+  await harness(code, reopenOnly, {action: 'reopen', period: '2026-10', reason: 'Fix'});
+  assert.equal(reopenReads, 0, `${label}: reopening never reads the queue`);
+}
+
+// 5a. The automatic reopen is safe on the SDK's first null callback and on a month already reopened.
+assert.equal(AccountingPeriods.transition(null, 'reopen', '2026-10', {uid: 'u1', role: 'superadmin'}, 'r', 1).status, 'open');
+const alreadyOpen = {period: '2026-10', status: 'open', revision: 3};
+assert.equal(AccountingPeriods.transition(alreadyOpen, 'reopen', '2026-10', {uid: 'u1', role: 'superadmin'}, 'r', 1), alreadyOpen, 'an already-open month is returned unchanged, never an error');
+
+// 5b. A failed audit write after the automatic reopen still reports the reopen, not a generic error.
+{
+  const code = extract(read('functions/index.js'));
+  let reads = 0, audits = 0;
+  const store = {'/paymentVerificationQueue': () => (++reads === 1 ? {} : {LATE: {orderId: 'LATE', saleDate: '2026-10-20', amount: 10}})};
+  const writes = [];
+  const db = {ref: (path) => ({
+    get: async () => { const value = typeof store[path] === 'function' ? store[path]() : store[path]; return {val: () => value ?? null, exists: () => value != null}; },
+    transaction: async (fn) => { const value = fn(store[path] || null); store[path] = value; writes.push(path); return {committed: true, snapshot: {val: () => value}}; },
+    set: async () => { if (path.startsWith('/operationalAudit/') && ++audits === 2) throw new Error('write failed'); },
+  })};
+  const context = {exports: {}, onCall: (o, h) => h, HttpsError, AccountingPeriods, ORDER_REGION: 'x', ENFORCE_APP_CHECK: false, getDatabase: () => db,
+    requirePortalPermission: async () => ({uid: 'u1', role: 'superadmin'}), financeText: (v, m = 160) => String(v ?? '').trim().slice(0, m),
+    operationalAuditRecord: (action) => ({action}), Date, console: {warn() {}, log() {}, error() {}}};
+  vm.runInNewContext(code, context);
+  const error = await context.exports.manageAccountingPeriod({data: {action: 'close', period: '2026-10', reason: 'Month end'}}).catch((e) => e);
+  assert.equal(error.code, 'failed-precondition');
+  assert.match(error.message, /was reopened automatically/);
+  assert.equal(store['/accountingPeriods/2026-10'].status, 'open');
+}
+
+// 6. Closed months that still hold 1060 items.
+const periods = {'2026-09': {status: 'closed'}, '2026-10': {status: 'closed'}, '2026-11': {status: 'open'}};
+const stuck = AccountingPeriods.paymentVerificationsInClosedPeriods({
+  S1: {orderId: 'S1', saleDate: '2026-09-30', amount: 0.1},
+  S2: {orderId: 'S2', saleAt: at('2026-09-12T02:00:00Z'), amount: 0.2},
+  O1: {orderId: 'O1', saleDate: '2026-10-03', amount: 99.95},
+  N1: {orderId: 'N1', saleDate: '2026-11-01', amount: 50},
+  X: {orderId: 'X', amount: 5},
+  Q: {orderId: 'Q', saleDate: '2026-09-02', amount: 'abc'},
+}, periods);
+assert.deepEqual(stuck, [{period: '2026-09', count: 3, total: 0.3, orderIds: ['Q', 'S1', 'S2']}, {period: '2026-10', count: 1, total: 99.95, orderIds: ['O1']}], 'only closed months, centavo totals, a bad amount still counted, open months and dateless rows excluded');
+assert.deepEqual(AccountingPeriods.paymentVerificationsInClosedPeriods({}, periods), []);
+assert.deepEqual(AccountingPeriods.paymentVerificationsInClosedPeriods({O1: {orderId: 'O1', saleDate: '2026-10-03', amount: 1}}, undefined), [], 'no period records: nothing is closed');
+const {buildOperationalExceptions} = require('../functions/lib/operational-exceptions.js');
+const scan = buildOperationalExceptions({paymentVerificationQueue: {O1: {orderId: 'O1', saleDate: '2026-10-03', amount: 99.95}, N1: {orderId: 'N1', saleDate: '2026-11-01', amount: 50}}, accountingPeriods: periods}, at('2026-11-02T00:00:00Z'));
+const cards = scan.exceptions.filter((row) => row.category === 'payment_verification_closed_month');
+assert.equal(cards.length, 1, 'one card per closed month, none for the open month');
+assert.equal(cards[0].severity, 'warning');
+assert.match(cards[0].title, /^2026-10 is closed but 1 payment dated in it is still awaiting verification \(₱99\.95 in 1060\)$/);
+assert.match(cards[0].detail, /Reopen 2026-10 in Finance Books.*O1\.$/);
+const ops = read('src/functions/20-portal-operations.js');
+assert.ok(ops.includes('db.ref("/accountingPeriods").orderByChild("updatedAt").limitToLast(120).get()') && ops.includes('accountingPeriods: accountingPeriodsSnap.val() || {}'), 'the scan reads a bounded set of period records and passes them in');
 
 console.log('period-close-payment-verification-check: ok');
