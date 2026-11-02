@@ -36,6 +36,9 @@ const value = (name, fallback) => {
 };
 const url = args.find(a => /^https?:/i.test(a)) || 'https://acczacoffee.com/admin.html';
 const host = (() => { try { return new URL(url).hostname; } catch { return 'accazacoffee.com'; } })();
+// GitHub Pages serves every project site from these four anycast addresses. They are used only when
+// public resolution returns nothing, so the check can still run while the machine DNS is failing.
+const KNOWN_HOST_IPS = ['185.199.108.153', '185.199.109.153', '185.199.110.153', '185.199.111.153'];
 const tabs = String(value('tabs', 'pos,inventory,recipes,possettings')).split(',').map(s => s.trim()).filter(Boolean);
 const signInSeconds = Number(value('timeout', '180')) || 180;
 const outDir = path.join('test-results', 'screen-check', new Date().toISOString().replace(/[:.]/g, '-'));
@@ -92,8 +95,23 @@ async function firstIp(name) {
   return null;
 }
 
+async function candidateIps() {
+  const forced = value('ip', '');
+  if (forced) return forced.split(',').map(s => s.trim()).filter(Boolean);
+  const found = [];
+  for (const endpoint of [
+    'https://dns.google/resolve?name=' + encodeURIComponent(host) + '&type=A',
+    'https://cloudflare-dns.com/dns-query?name=' + encodeURIComponent(host) + '&type=A'
+  ]) {
+    try { (await resolveIps(endpoint)).forEach(ip => { if (!found.includes(ip)) found.push(ip); }); }
+    catch (_error) { /* next resolver */ }
+    if (found.length) break;
+  }
+  return found.length ? found : KNOWN_HOST_IPS;
+}
+
 async function launch(mappedIp) {
-  const options = {headless: false, viewport: {width: 1440, height: 900}};
+  const options = {headless: args.includes('--headless'), viewport: {width: 1440, height: 900}};
   if (mappedIp) options.args = ['--host-resolver-rules=MAP ' + host + ' ' + mappedIp];
   // Prefer the installed Chrome: it carries the operator's own DNS and secure-DNS settings, which the
   // bundled Playwright Chromium does not. Fall back to the bundled build when Chrome is not installed.
@@ -119,13 +137,17 @@ console.log('Opening ' + url);
 async function openPage() {
   const attempts = Number(value('attempts', '12')) || 12;
   const waitMs = 5000;
-  let ip = await firstIp(host);
-  if (ip) console.log('Resolved ' + host + ' to ' + ip + ' over DNS-over-HTTPS.');
+  // At most two browser windows: normal DNS first, then one resolved address if DNS fails. The
+  // address route still verifies the TLS certificate, and it is a fallback, not the default, because
+  // a custom domain can reject the direct-IP route even when DNS is broken.
+  const candidates = (await candidateIps()).slice(0, 1);
+  const routes = [null].concat(candidates);
   let windows = 0;
-  while (windows < 2) {
+  for (const candidate of routes.slice(0, 2)) {
     windows += 1;
-    route = ip ? 'DNS-over-HTTPS -> ' + ip : 'local DNS';
-    const opened = await launch(ip);
+    route = candidate ? 'DNS-over-HTTPS -> ' + candidate : 'local DNS';
+    console.log('Browser window ' + windows + ' via ' + route + '.');
+    const opened = await launch(candidate);
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
         await opened.page.goto(url, {waitUntil: 'domcontentloaded', timeout: 120000});
@@ -138,9 +160,6 @@ async function openPage() {
       }
     }
     await opened.context.close().catch(() => {});
-    if (windows >= 2) break;
-    ip = ip ? null : await firstIp(host);
-    console.log('Reopening the browser once via ' + (ip ? 'DNS-over-HTTPS -> ' + ip : 'local DNS') + '.');
   }
   throw new Error('could not reach ' + url + ' after opening the browser twice');
 }
