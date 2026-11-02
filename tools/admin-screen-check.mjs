@@ -13,12 +13,14 @@
  * DNS-over-HTTPS first and Chromium is given a resolver rule. If that fails it falls back to local DNS.
  *
  * Output: test-results/screen-check/<timestamp>/ with one screenshot per tab, report.json, and a PASS or
- * FAIL summary. The browser profile is kept in test-results/screen-check/profile so repeat runs stay
- * signed in; delete that folder to start fresh.
+ * FAIL summary. The browser profile is kept outside the repository (LOCALAPPDATA\accaza-screen-check)
+ * because Chrome aborts when it cannot clean caches under this tree, and so repeat runs stay signed in;
+ * delete that folder to start fresh. Use --profile <dir> to choose another one.
  */
 import {chromium} from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import https from 'node:https';
 
 process.on('uncaughtException', error => {
@@ -37,9 +39,13 @@ const host = (() => { try { return new URL(url).hostname; } catch { return 'acca
 const tabs = String(value('tabs', 'pos,inventory,recipes,possettings')).split(',').map(s => s.trim()).filter(Boolean);
 const signInSeconds = Number(value('timeout', '180')) || 180;
 const outDir = path.join('test-results', 'screen-check', new Date().toISOString().replace(/[:.]/g, '-'));
-const profileDir = path.join('test-results', 'screen-check', 'profile');
+// Chrome aborts if it cannot delete its own caches inside the profile, and this repo tree carries a deny
+// ACE for deleting subdirectories. Keep the browser profile outside the repository.
+const profileRoot = process.env.LOCALAPPDATA || os.tmpdir();
+let profileDir = value('profile', '') || path.join(profileRoot, 'accaza-screen-check', 'profile');
 fs.mkdirSync(outDir, {recursive: true});
 fs.mkdirSync(profileDir, {recursive: true});
+console.log('Browser profile: ' + profileDir);
 
 const MARKERS = [
   {name: 'Products categories', selector: '#categoryList'},
@@ -122,6 +128,7 @@ async function openPage() {
   // The domain's public DNS flaps between a valid answer and NXDOMAIN on this network, so allow a few
   // minutes of retries instead of failing the operator's run on one bad window.
   const attempts = Number(value('attempts', '20')) || 20;
+  let rotated = false;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const ip = await firstIp(host);
     const mapping = ip ? 'DNS-over-HTTPS -> ' + ip : 'local DNS';
@@ -135,6 +142,14 @@ async function openPage() {
     } catch (error) {
       if (opened) await opened.context.close().catch(() => {});
       console.log('Attempt ' + attempt + '/' + attempts + ' via ' + mapping + ' failed: ' + String(error.message).split('\n')[0]);
+      // A locked or unwritable profile also shows up as "browser has been closed"; rotate once to a
+      // fresh profile instead of failing the operator's run.
+      if (!rotated && /browser has been closed|Access is denied|SingletonLock|profile/i.test(String(error.message))) {
+        rotated = true;
+        profileDir = path.join(profileRoot, 'accaza-screen-check', 'profile-' + Date.now());
+        fs.mkdirSync(profileDir, {recursive: true});
+        console.log('Rotating to a fresh browser profile: ' + profileDir + ' (sign-in will be needed).');
+      }
       if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }
