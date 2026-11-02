@@ -1,21 +1,20 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,loadFirebaseMessaging,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=739";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=740";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
-import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=739";
+import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=740";
 import{archiveOutcome}from"./order-display.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=739";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=740";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
-import{createCatalogAdmin}from"./catalog-admin.mjs";
 import{createAppCustomerSession}from"./app-customer-session.mjs";
 import{createCustomerOrderTracker}from"./customer-order-tracker.mjs";
 import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
 import{sortArchivedOrders,summarizeArchivedOrders}from"./archive-order-sort.mjs";
-import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=739";
+import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=740";
 const paymentAccountLinks=createPaymentAccountLinks(()=>overviewCashAccounts||{});
 
 const {getPaymentProof:getPaymentProofCall,getCurrentCashBalances:getCurrentCashBalancesCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,manageFixedAsset:manageFixedAssetCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,manageAccountingPeriod:manageAccountingPeriodCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,reopenDiscrepancy:reopenDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,setUndepositedOpeningBalance:setUndepositedOpeningBalanceCall,repairPettyVoucherFinancial:repairPettyVoucherFinancialCall,retireRevolvingFund:retireRevolvingFundCall,repairClosedShiftTurnover:repairClosedShiftTurnoverCall,repairShiftDeclaredTips:repairShiftDeclaredTipsCall,repairReversedPayoutDeposit:repairReversedPayoutDepositCall,reconcileUndepositedCustody:reconcileUndepositedCustodyCall,runFinancialClose:runFinancialCloseCall,archiveActivityLog:archiveActivityLogCall}=callables;
@@ -195,8 +194,17 @@ const customerOrderTracker=createCustomerOrderTracker({getOrders:function(){retu
 
 const reservationManager=createReservationManager({subscriptionHub:subscriptionHub,isPortalActive:function(){return adminLoggedIn||staffLoggedIn;},onReservationsChanged:updateStats,playChime:playChime,showDeletePopup:showDeletePopup});
 const renderReservations=reservationManager.renderReservations,renderCustomerCalendar=reservationManager.renderCustomerCalendar,renderAdminCalendar=reservationManager.renderAdminCalendar;
-const catalogAdmin=createCatalogAdmin({getCategoriesMap:()=>categoriesMap,getMenuItemsMap:()=>menuItemsMap,getOptionGroupsMap:()=>optionGroupsMap,optionsReady:()=>ogLoaded,getAvailability:()=>availability,getCats,getMenuItems,getEffectiveOptionIds,isAvail,isStaffLoggedIn:()=>staffLoggedIn,showDeletePopup,renderMenuSection,renderOrderSection,invalidateCatalogCache:()=>subscriptionHub.invalidateMasterCache()});
-const renderCategoryManager=catalogAdmin.renderCategoryManager,renderOptionManager=catalogAdmin.renderOptionManager,renderNewItemOptionChecklist=catalogAdmin.renderNewItemOptionChecklist,renderStaffMenu=catalogAdmin.renderStaffMenu,buildAvail=catalogAdmin.buildAvail;
+// 3 Nov 2026: the catalog screens are only used after sign-in, so the module is imported on demand
+// instead of during page load. Every call site runs post-auth (data subscriptions and loginSuccess),
+// which moves ~41 KB off the pre-auth boot path without changing what the screens do.
+const CATALOG_DEPS={getCategoriesMap:()=>categoriesMap,getMenuItemsMap:()=>menuItemsMap,getOptionGroupsMap:()=>optionGroupsMap,optionsReady:()=>ogLoaded,getAvailability:()=>availability,getCats,getMenuItems,getEffectiveOptionIds,isAvail,isStaffLoggedIn:()=>staffLoggedIn,showDeletePopup,renderMenuSection,renderOrderSection,invalidateCatalogCache:()=>subscriptionHub.invalidateMasterCache()};
+let catalogAdmin=null;
+function withCatalog(fn){if(catalogAdmin){fn(catalogAdmin);return;}import('./catalog-admin.mjs').then(function(m){if(!catalogAdmin)catalogAdmin=m.createCatalogAdmin(CATALOG_DEPS);fn(catalogAdmin);}).catch(function(){});}
+function renderCategoryManager(){withCatalog(function(c){c.renderCategoryManager();});}
+function renderOptionManager(){withCatalog(function(c){c.renderOptionManager();});}
+function renderNewItemOptionChecklist(){withCatalog(function(c){c.renderNewItemOptionChecklist();});}
+function renderStaffMenu(){withCatalog(function(c){c.renderStaffMenu();});}
+function renderAvailabilityAdmin(){withCatalog(function(c){c.buildAvail();});}
 
 document.getElementById('fbSync').classList.add('online');
 setTimeout(()=>document.getElementById('fbSync').style.display='none',4000);
@@ -248,7 +256,7 @@ subscriptionHub.subscribe('categories',snap=>{
   rebuildTabs();
   renderMenuSection();
   renderOrderSection();
-  if(adminLoggedIn){buildAvail();renderCategoryManager();}
+  if(adminLoggedIn){renderAvailabilityAdmin();renderCategoryManager();}
 });
 
 function migrateItemOptions(){
@@ -276,7 +284,7 @@ subscriptionHub.subscribe('optionGroups',snap=>{
     set(optionGroupsRef,DEFAULT_OPTION_GROUPS).catch(function(){});
   }
   migrateItemOptions();
-  if(adminLoggedIn){renderOptionManager();buildAvail();}
+  if(adminLoggedIn){renderOptionManager();renderAvailabilityAdmin();}
   renderNewItemOptionChecklist();
 });
 
@@ -353,7 +361,7 @@ subscriptionHub.subscribe('menuItems',snap=>{
   migrateItemOptions();
   renderMenuSection();
   renderOrderSection();
-  if(adminLoggedIn){buildAvail();renderOptionManager();}
+  if(adminLoggedIn){renderAvailabilityAdmin();renderOptionManager();}
   if(staffLoggedIn)renderStaffMenu();
 });
 
@@ -433,7 +441,7 @@ subscriptionHub.subscribe('reviews',snap=>{
   renderPublicReviews();
   if(adminLoggedIn||staffLoggedIn)renderAdminReviews();
 });
-subscriptionHub.subscribe('availability',snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);renderMenuSection();renderOrderSection();if(adminLoggedIn)buildAvail();});
+subscriptionHub.subscribe('availability',snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);renderMenuSection();renderOrderSection();if(adminLoggedIn)renderAvailabilityAdmin();});
 // The link picker lives in payment-account-links.mjs to keep this bundle inside its byte budget.
 subscriptionHub.subscribe('payment',snap=>{
   const p=snap.val();if(!p)return;
@@ -1052,7 +1060,7 @@ mountLegacyAdminPanels();
 window.showAdminSection=function(id,btn){
   if(!canOpenAdminRoute(id)){alert('This account does not have access to this section.');return false;}
   var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
-  if(id==='availSection'){document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(av)av.style.display='block';subscriptionHub.activate('availability');buildAvail();renderOptionManager();workspaceShell.update('availability');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'});}
+  if(id==='availSection'){document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(av)av.style.display='block';subscriptionHub.activate('availability');renderAvailabilityAdmin();renderOptionManager();workspaceShell.update('availability');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'});}
   else if(id==='commentsSection'){ document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(cm)cm.style.display='block';subscriptionHub.activate('comments');if(typeof renderComments==='function')renderComments();workspaceShell.update('comments');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'}); }
   else { if(av)av.style.display='none'; if(cm)cm.style.display='none'; window.scrollTo({top:0,behavior:'smooth'}); }
   return true;
@@ -1112,7 +1120,7 @@ async function loginSuccess(role,username,uid,serverRole,profile){
     var hdr=document.querySelector('#adminDash .admin-header p');
     if(hdr)hdr.textContent=superAdminLoggedIn?((currentUser.title||'Systems Administrator')+': '+username+' · Super Admin'):(effectiveRole.charAt(0).toUpperCase()+effectiveRole.slice(1)+': '+username);
     setTimeout(function(){
-      buildAvail();renderCategoryManager();renderOptionManager();renderNewItemOptionChecklist();renderComments();renderOrders();renderReservations();
+      renderAvailabilityAdmin();renderCategoryManager();renderOptionManager();renderNewItemOptionChecklist();renderComments();renderOrders();renderReservations();
       renderAdminReviews();renderAdminCalendar();renderDashboard();
     },300);
   }else{
