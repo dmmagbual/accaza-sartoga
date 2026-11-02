@@ -3845,7 +3845,7 @@ exports.repairClosedShiftTurnover = onCall(
     if (data.preview === true) return {shiftId, amount, staff: financeText(shift.staff, 100), closedAt: Number(shift.closeAt || 0), preview: true, duplicate: false};
     const approval = await claimManagerApproval(db, data, "repair_closed_shift_turnover", shiftId, amount, movementId), now = Date.now(), approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
     const movement = Financial.movement("shift_cash_to_custody", "shift", shiftId, [Financial.line("asset:cash_awaiting_deposit", amount, 0, "Confirmed closed-shift cash received"), Financial.line("asset:register_cash", 0, amount, "Closed-shift cash handed over")], {occurredAt:Number(shift.closeAt||now),actorName:approvedBy,approvalId:approval.id,repair:true,controlReason:"Manager confirmed omitted cash was physically received"});
-    const writes = Object.assign({}, approval.usedWrites, {[`cashCustody/${shiftId}`]:{shiftId,staff:financeText(shift.staff,100),amount,depositedAmount:0,remaining:amount,retainedFloat:Financial.money(shift.retainedFloat),status:"awaiting_deposit",closedAt:Number(shift.closeAt||now),movementId,source:"closed_shift_turnover_repair",schemaVersion:2},[`shifts/${shiftId}/turnoverCorrection`]:{amount,movementId,postedAt:now,postedBy:actor.uid,approvedBy,approvalId:approval.id,reason:"Confirmed cash received into Undeposited Collection",schemaVersion:1},[`operationalAudit/${now}_${shiftId}_turnover_repair`]:operationalAuditRecord("repair_closed_shift_turnover","shift",shiftId,actor,{amount,movementId,approvalId:approval.id,approvedBy})});
+    const writes = Object.assign({}, approval.usedWrites, {[`cashCustody/${shiftId}`]:{shiftId,...(financeText(shift.shiftReference,80)?{shiftReference:financeText(shift.shiftReference,80)}:{}),staff:financeText(shift.staff,100),amount,depositedAmount:0,remaining:amount,retainedFloat:Financial.money(shift.retainedFloat),status:"awaiting_deposit",closedAt:Number(shift.closeAt||now),movementId,source:"closed_shift_turnover_repair",schemaVersion:2},[`shifts/${shiftId}/turnoverCorrection`]:{amount,movementId,postedAt:now,postedBy:actor.uid,approvedBy,approvalId:approval.id,reason:"Confirmed cash received into Undeposited Collection",schemaVersion:1},[`operationalAudit/${now}_${shiftId}_turnover_repair`]:operationalAuditRecord("repair_closed_shift_turnover","shift",shiftId,actor,{amount,movementId,approvalId:approval.id,approvedBy})});
     const committed = await commitFinancial(db,movementId,movement,actor,writes);
     return {shiftId,amount,movementId,duplicate:committed.duplicate,repaired:!committed.duplicate};
   },
@@ -4478,6 +4478,9 @@ function openItemBlocker(items,scope){
   if(scope!=='retained'&&(items.postingInventory.length||items.postingFinance.length))return `Server postings remain: inventory ${items.postingInventory.length}, Finance ${items.postingFinance.length}.`;
   return '';
 }
+// Staff and managers quote the server-issued shift reference, never the internal shifts/<id>
+// key. Records that outlive the shift screen carry it so every surface shows the same number.
+function shiftReferenceField(shift){const ref=financeText(shift&&shift.shiftReference,80);return ref?{shiftReference:ref}:{};}
 function closeExceptions(items){const out={};for(const key of ['retainedSales','otherDevices','crewUnreported','postingInventory','postingFinance'])if(items[key].length)out[key]=items[key];return Object.keys(out).length?out:null;}
 async function finalizeShiftHandover(db,id,actor,options){
   const href=db.ref(`/shiftHandovers/${id}`),sref=db.ref(`/shifts/${id}`),mode=options.mode,reason=options.reason;
@@ -4509,7 +4512,7 @@ async function finalizeShiftHandover(db,id,actor,options){
   const writes={[`pendingShiftHandovers/${id}`]:null,[`shifts/${id}/status`]:'closed',[`shifts/${id}/reconciliationStatus`]:'resolved',[`shifts/${id}/reconciliationMode`]:mode,[`shifts/${id}/zReport`]:z,[`shifts/${id}/provisionalZReport`]:null,[`shiftHandovers/${id}/state`]:'resolved',[`shiftHandovers/${id}/resolvedAt`]:now,[`shiftHandovers/${id}/resolvedBy`]:actor.uid,[`shiftHandovers/${id}/resolutionMode`]:mode,[`shiftHandovers/${id}/resolutionReason`]:reason,[`shiftHandovers/${id}/autoFinalize`]:null,[`shiftCloseVerifications/${id}`]:{shiftId:id,verifiedAt:now,verifiedBy:actor.uid,saleCount:items.saleCount,inventoryOutstanding:items.postingInventory.length,financeOutstanding:items.postingFinance.length,handover:true,mode},[`operationalAudit/handover_reconciled_${id}`]:{action:mode==='manager'?'reconcile_shift_handover':mode==='automatic'?'auto_finalize_shift_handover':'grace_finalize_shift_handover',sourceType:'shift',sourceId:id,actorUid:actor.uid,ts:now,reason,variance:z.variance,closeCheckError:handover.closeCheckError||'',exceptionCount:exceptions?Object.values(exceptions).reduce((sum,list)=>sum+list.length,0):0}};
   for(const key of ['tx','gross','discounts','refunds','cashRefunds','net','cashSales','tips','voidCount','voidAmt','pending','pendingCount','byMethod','byChannel','payIns','payOuts','expectedCash','variance','varianceStatus','invoiceRange'])writes[`shifts/${id}/${key}`]=z[key];
   if(z.variance)writes[`discrepancies/handover_${id}`]={kind:'cash',expected:z.expectedCash,actual:z.countedCash,variance:z.variance,value:z.variance,type:z.variance<0?'shortage':'overage',shiftId:id,staff:shift.staff||'',status:'open',financialStatus:'pending_manager_reconciliation',pendingMovementId:`shift_variance_${id}`,ts:handover.at};
-  if(exceptions)writes[`shiftCloseFollowUps/${id}`]={shiftId:id,staff:shift.staff||'',kind:'closed_with_exceptions',at:now,closedAt:handover.at,exceptions,state:'open',schemaVersion:1};
+  if(exceptions)writes[`shiftCloseFollowUps/${id}`]={shiftId:id,...shiftReferenceField(shift),staff:shift.staff||'',kind:'closed_with_exceptions',at:now,closedAt:handover.at,exceptions,state:'open',schemaVersion:1};
   await db.ref().update(writes);
   // A sale still retained when the next shift ended is not lost: it moves to Sales needing
   // recovery with its exact command, and recovering it re-issues this shift's Z report.
@@ -4583,7 +4586,7 @@ async function amendClosedShiftZ(db,id,actor,details){
   const writes={[`shiftZHistory/${id}/${n}`]:{...previous,supersededAt:now},[`shifts/${id}/zReport`]:z,[`operationalAudit/${now}_shift_z_amended_${id}`]:{action:'amend_shift_z_report',sourceType:'shift',sourceId:id,actorUid:actor.uid,ts:now,orderId:z.amendedOrderId,amendment:n,previousNet:Number(previous.net)||0,net:z.net,postedVariance,recalculatedVariance:z.variance}};
   // Sales totals follow the amendment; the posted cash-control figures stay as closed.
   for(const key of ['tx','gross','discounts','refunds','cashRefunds','net','cashSales','tips','voidCount','voidAmt','pending','pendingCount','byMethod','byChannel'])writes[`shifts/${id}/${key}`]=z[key];
-  if(Math.abs(z.variance-postedVariance)>=.005)writes[`shiftCloseFollowUps/${id}`]={shiftId:id,staff:shift.staff||'',kind:'late_sale_variance',at:now,closedAt:Number(shift.closeAt)||0,postedVariance,recalculatedVariance:z.variance,orderId:z.amendedOrderId,state:'open',schemaVersion:1};
+  if(Math.abs(z.variance-postedVariance)>=.005)writes[`shiftCloseFollowUps/${id}`]={shiftId:id,...shiftReferenceField(shift),staff:shift.staff||'',kind:'late_sale_variance',at:now,closedAt:Number(shift.closeAt)||0,postedVariance,recalculatedVariance:z.variance,orderId:z.amendedOrderId,state:'open',schemaVersion:1};
   await db.ref().update(writes);
   return z;
 }
@@ -4593,7 +4596,13 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
   if(action==='list'){
     if(!manager)throw new HttpsError('permission-denied','Only management can review other cashier handovers.');
     const [snap,follow]=await Promise.all([db.ref('/pendingShiftHandovers').orderByChild('at').limitToFirst(50).get(),db.ref('/shiftCloseFollowUps').orderByChild('state').equalTo('open').limitToFirst(50).get()]);
-    return {rows:Object.entries(snap.val()||{}).map(([shiftId,h])=>({shiftId,...h})),followUps:Object.entries(follow.val()||{}).map(([shiftId,f])=>({...f,shiftId}))};
+    const rows=Object.entries(snap.val()||{}).map(([shiftId,h])=>({shiftId,...h})),followUps=Object.entries(follow.val()||{}).map(([shiftId,f])=>({...f,shiftId}));
+    // Records written before the reference was stored on them read it from the shift (one
+    // short string per row, at most 100 rows, only when a manager opens this list).
+    const missing=[...new Set([...rows,...followUps].filter(row=>!row.shiftReference).map(row=>row.shiftId))];
+    const refs=Object.fromEntries(await Promise.all(missing.map(async shiftId=>[shiftId,financeText((await db.ref(`/shifts/${shiftId}/shiftReference`).get()).val(),80)])));
+    const withRef=row=>({...row,shiftReference:financeText(row.shiftReference,80)||refs[row.shiftId]||''});
+    return {rows:rows.map(withRef),followUps:followUps.map(withRef)};
   }
   if(action==='review_followup'){
     if(!manager)throw new HttpsError('permission-denied','Only management can review shift close follow-ups.');
@@ -4634,7 +4643,7 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
     // A retry after a lost response must preserve the first cash count and must never
     // clear an incoming cashier's shift. Saving evidence precedes releasing the till.
     await sref.transaction(row=>row&&row.status!=='closed'?{...row,status:'handover_pending',handoverAt:handover.at,closeAt:handover.at,...handover.cash,reconciliationStatus:'pending',handoverId:id}:row,undefined,false);
-    await db.ref().update({[`pendingShiftHandovers/${id}`]:{staff:handover.staff,at:handover.at,cash:handover.cash},[`operationalAudit/handover_${id}`]:{action:'cashier_shift_handover',sourceType:'shift',sourceId:id,actorUid:handover.by,ts:handover.at,countedCash:handover.cash.countedCash,cashToSettle:handover.cash.cashToSettle,closeCheckError:handover.closeCheckError||'',managerCashAttested:!!handover.managerCashAttestation,managerCashCountReason:financeText(handover.managerCashAttestation&&handover.managerCashAttestation.reason,300)},[`ownerDailySummaries/${financeDateFromTimestamp(handover.at)}/${id}`]:{shiftId:id,staff:handover.staff,closedAt:handover.at,status:'handover_pending',controlTotals:handover.cash}});
+    await db.ref().update({[`pendingShiftHandovers/${id}`]:{staff:handover.staff,...shiftReferenceField(shift),at:handover.at,cash:handover.cash},[`operationalAudit/handover_${id}`]:{action:'cashier_shift_handover',sourceType:'shift',sourceId:id,actorUid:handover.by,ts:handover.at,countedCash:handover.cash.countedCash,cashToSettle:handover.cash.cashToSettle,closeCheckError:handover.closeCheckError||'',managerCashAttested:!!handover.managerCashAttestation,managerCashCountReason:financeText(handover.managerCashAttestation&&handover.managerCashAttestation.reason,300)},[`ownerDailySummaries/${financeDateFromTimestamp(handover.at)}/${id}`]:{shiftId:id,staff:handover.staff,closedAt:handover.at,status:'handover_pending',controlTotals:handover.cash}});
     await db.ref('/posActiveShift').transaction(row=>row&&row.id===id?null:row,undefined,false);
     await OfflineSync.endShiftCrew(db,id,handover.at,handover.by,'shift_handover');
     const pendingSales=Object.keys(handover.commands||{}).length;
@@ -4651,7 +4660,7 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
     // sale validation, inventory posting, period locks and idempotency still apply.
     return {results:await retryRetainedSales(db,id,handover,actor)};
   }
-  if(action==='inspect')return {shiftId:id,state:handover.state,cash:handover.cash,closeCheckError:handover.closeCheckError||'',autoFinalizeBlocker:(handover.autoFinalize&&handover.autoFinalize.blocker)||'',devices:handover.devices||{},commands:Object.entries(handover.commands||{}).map(([key,r])=>({id:key,orderId:r.orderId,lastError:r.lastError||'',syncedAt:r.syncedAt||0}))};
+  if(action==='inspect')return {shiftId:id,shiftReference:financeText(shift.shiftReference,80),state:handover.state,cash:handover.cash,closeCheckError:handover.closeCheckError||'',autoFinalizeBlocker:(handover.autoFinalize&&handover.autoFinalize.blocker)||'',devices:handover.devices||{},commands:Object.entries(handover.commands||{}).map(([key,r])=>({id:key,orderId:r.orderId,lastError:r.lastError||'',syncedAt:r.syncedAt||0}))};
   if(action==='provisional_z'){if(handover.state!=='pending'){const closed=(await sref.get()).val()||{};return {shiftId:id,zReport:closed.zReport||null,shift:handoverShiftSummary(closed,handover)};}return {shiftId:id,provisionalZReport:await provisionalShiftZ(db,id),shift:handoverShiftSummary(shift,handover)};}
   if(action!=='reconcile'||!manager)throw new HttpsError('permission-denied','A manager must finalize the reconciliation.');
   if(handover.state==='resolved')return {shiftId:id,resolved:true,duplicate:true};
@@ -4770,7 +4779,7 @@ exports.managePosSaleRecovery=onCall({region:ORDER_REGION,enforceAppCheck:ENFORC
   catch(error){await ref.update({lastRecoveryError:String(error&&error.message||error).slice(0,500),lastRecoveryAt:now,lastRecoveryBy:actor.uid});throw error;}
   await db.ref().update({[`posSyncAlerts/${transactionId}/state`]:'recovered',[`posSyncAlerts/${transactionId}/recoveredAt`]:now,[`posSyncAlerts/${transactionId}/recoveredBy`]:actor.uid,[`posSyncAlerts/${transactionId}/resolutionReason`]:reason,[`operationalAudit/${now}_pos_sale_recover_${transactionId}`]:operationalAuditRecord('recover_rejected_pos_sale','order',result.orderId,actor,{transactionId,shiftId:alert.shiftId,rungBy:alert.actorUid||'',total:Number(alert.total)||0,reason,duplicate:!!result.duplicate})});
   let zReport=null;
-  if(lateRecovery){try{zReport=await amendClosedShiftZ(db,alert.shiftId,actor,{reason,orderId:result.orderId});}catch(error){await db.ref().update({[`shiftCloseFollowUps/${alert.shiftId}`]:{shiftId:alert.shiftId,staff:shift.staff||'',kind:'z_amendment_failed',at:now,orderId:result.orderId,error:String(error&&error.message||error).slice(0,300),state:'open',schemaVersion:1}});}}
+  if(lateRecovery){try{zReport=await amendClosedShiftZ(db,alert.shiftId,actor,{reason,orderId:result.orderId});}catch(error){await db.ref().update({[`shiftCloseFollowUps/${alert.shiftId}`]:{shiftId:alert.shiftId,...(financeText(shift.shiftReference,80)?{shiftReference:financeText(shift.shiftReference,80)}:{}),staff:shift.staff||'',kind:'z_amendment_failed',at:now,orderId:result.orderId,error:String(error&&error.message||error).slice(0,300),state:'open',schemaVersion:1}});}}
   return {transactionId,orderId:result.orderId,state:'recovered',duplicate:!!result.duplicate,amendedZ:!!zReport};
 });
 // ---------------------------------------------------------------------------

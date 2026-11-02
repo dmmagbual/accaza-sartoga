@@ -35,6 +35,9 @@ function acctName(id){return (accountsMap[id]&&accountsMap[id].name)||'—';}
 function ledgerArr(){return Object.keys(ledgerMap).map(function(k){return Object.assign({id:k},ledgerMap[k]);});}
 function financialMovementArr(){return Object.keys(financialMovementsMap).map(function(k){return Object.assign({id:k},financialMovementsMap[k]);}).sort(function(a,b){return (b.occurredAt||0)-(a.occurredAt||0);});}
 function chartList(){return Object.keys(chartMap).map(function(k){return Object.assign({id:k},chartMap[k]);}).sort(function(a,b){return String(a.code||'').localeCompare(String(b.code||''));});}
+// Custody rows show the shift reference staff quote; a non-shift row (opening balance,
+// journal recovery) keeps its own label. A bare shifts/<id> key is never shown.
+function custodyReferenceLabel(x){var ref=String(x&&(x.shiftReference||x.reference)||'').trim();if(ref)return ref;var key=String(x&&(x.shiftId||x.id)||'');return /^SH-\d{6}-[0-9a-f]{6}$/i.test(key)?'Shift reference pending':key;}
 function custodyList(){return Object.keys(custodyMap).map(function(k){return Object.assign({id:k},custodyMap[k]);}).filter(function(x){return Number(x.remaining)>0;}).sort(function(a,b){return (a.closedAt||0)-(b.closedAt||0);});}
 function acctBalance(id){var b=Number((accountsMap[id]||{}).opening)||0;ledgerArr().forEach(function(e){if(e.accountId!==id)return;b+=(e.dir==='in'?1:-1)*(Number(e.amount)||0);});return Math.round(b*100)/100;}
 // A balance that did not load is null, never 0: showing ₱0.00 hid a 23 Oct 2026 server outage.

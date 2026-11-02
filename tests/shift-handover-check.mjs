@@ -152,7 +152,7 @@ const replay=await call({shiftId:'SH-REPLAY',deviceId:'tablet',closeCount:{b100:
 assert.equal(replay.resolved,true,JSON.stringify(replay));assert.equal(replay.zReport.net,50);assert.equal(read('/orders/POS-REPLAY/shiftId'),'SH-REPLAY');assert.equal(read('/shifts/SH-REPLAY/status'),'closed');assert.equal(read('/shiftHandovers/SH-REPLAY/commands/pos_replay_transaction/recoveredBy'),'server');
 // Grace: when the next shift ends, a handover still open gets a final Z listing its exceptions,
 // and its unrecovered sale moves to Sales needing recovery.
-openShift('SH-STUCK');
+openShift('SH-STUCK');write('/shifts/SH-STUCK/shiftReference','SH-ALEX-STUCK1');
 const stuckOrder={...order,id:'POS-STUCK',clientTxnId:'pos_stuck_transaction',shiftId:'SH-STUCK',timestamp:6000};
 write('/shiftSyncGates/SH-STUCK/finalizingAt',Date.now());
 const stuck=await call({shiftId:'SH-STUCK',deviceId:'tablet',closeCount:{b100:1,b50:1},rows:[{id:stuckOrder.clientTxnId,status:'failed',order:stuckOrder,drawerDelta:{b50:1}}]},alex);
@@ -166,12 +166,12 @@ const nextShift={id:'SH-AFTER',openAt:Date.now(),status:'closed',staff:'Louize'}
 // and the next 5-minute pass completes it.
 write('/shiftSyncGates/SH-STUCK/pending/other_txn',{at:Date.now(),token:'t'});
 await ctx.exports.onShiftEndResolveEarlierHandovers({params:{shiftId:'SH-AFTER'},data:{before:{val:()=> 'open'},after:{val:()=> 'closed'}}});
-assert.equal(read('/shifts/SH-STUCK/status'),'handover_pending');assert.ok(read('/shiftHandovers/SH-STUCK/graceDueAt'));assert.match(read('/shiftHandovers/SH-STUCK/autoFinalize/blocker'),/Could not issue the final Z/);
+assert.equal(read('/pendingShiftHandovers/SH-STUCK/shiftReference'),'SH-ALEX-STUCK1','a pending handover carries the shift reference staff quote');assert.equal(read('/shifts/SH-STUCK/status'),'handover_pending');assert.ok(read('/shiftHandovers/SH-STUCK/graceDueAt'));assert.match(read('/shiftHandovers/SH-STUCK/autoFinalize/blocker'),/Could not issue the final Z/);
 write('/shiftSyncGates/SH-STUCK/pending/other_txn',null);
 await ctx.exports.resolvePendingShiftHandovers();
 assert.equal(read('/shifts/SH-STUCK/status'),'closed');assert.equal(read('/shifts/SH-STUCK/reconciliationMode'),'grace');
 const graceZ=read('/shifts/SH-STUCK/zReport');assert.equal(graceZ.closeMode,'grace_handover');assert.equal(graceZ.exceptions.retainedSales[0].orderId,'POS-STUCK');assert.equal(graceZ.net,0);assert.equal(graceZ.variance,50,'the unrecovered cash sale shows as an overage until it is recovered');
-assert.equal(read('/shiftCloseFollowUps/SH-STUCK/kind'),'closed_with_exceptions');assert.equal(read('/posSyncAlerts/pos_stuck_transaction/state'),'open');assert.equal(read('/posSyncAlerts/pos_stuck_transaction/command/order/id'),'POS-STUCK');
+assert.equal(read('/shiftCloseFollowUps/SH-STUCK/kind'),'closed_with_exceptions');assert.equal(read('/shiftCloseFollowUps/SH-STUCK/shiftReference'),'SH-ALEX-STUCK1','the close follow-up carries the shift reference');assert.equal(read('/posSyncAlerts/pos_stuck_transaction/state'),'open');assert.equal(read('/posSyncAlerts/pos_stuck_transaction/command/order/id'),'POS-STUCK');
 assert.equal(read('/discrepancies/handover_SH-STUCK/variance'),50);assert.equal(read('/shifts/SH-STUCK/provisionalZReport'),undefined);
 // The sale left over after the grace close is recovered into its original shift and the Z is
 // re-issued as an amendment; an ordinary device sync still never reopens a closed shift.
@@ -185,9 +185,15 @@ await assert.rejects(OfflineSync.syncOfflinePosSaleCommand({...lateCtx,lateRecov
 const amended=await ctx.amendClosedShiftZ(db,'SH-STUCK',manager,{reason:'Recovered retained sale',orderId:'POS-STUCK'});
 assert.equal(amended.net,50);assert.equal(amended.variance,0);assert.equal(amended.postedVariance,50);assert.equal(amended.amendmentCount,1);assert.equal(amended.closeMode,'grace_handover');assert.equal(amended.exceptions,undefined,'the recovered sale leaves the exception list');
 assert.equal(read('/shifts/SH-STUCK/net'),50);assert.equal(read('/shifts/SH-STUCK/variance'),50,'the posted cash variance is not rewritten');assert.equal(read('/shiftZHistory/SH-STUCK/1/closeMode'),'grace_handover');
-assert.equal(read('/shiftCloseFollowUps/SH-STUCK/kind'),'late_sale_variance');assert.equal(read('/shiftCloseFollowUps/SH-STUCK/recalculatedVariance'),0);
+assert.equal(read('/shiftCloseFollowUps/SH-STUCK/kind'),'late_sale_variance');assert.equal(read('/shiftCloseFollowUps/SH-STUCK/shiftReference'),'SH-ALEX-STUCK1');assert.equal(read('/shiftCloseFollowUps/SH-STUCK/recalculatedVariance'),0);
 assert.equal((await ctx.amendClosedShiftZ(db,'SH-STUCK',manager,{reason:'again',orderId:'POS-STUCK'})).amendmentCount,2,'each amendment keeps the previous report');
+// Follow-ups written before the reference was stored read it from the shift; a shift with
+// none shows no internal key.
+write('/shiftCloseFollowUps/SH-OLDREF',{state:'open',kind:'closed_with_exceptions',staff:'Alex',at:1});write('/shifts/SH-OLDREF/shiftReference','SH-ALEX-LEGACY-OLD1');
+write('/shiftCloseFollowUps/SH-NOREF',{state:'open',kind:'closed_with_exceptions',staff:'Alex',at:1});
 const listed=await call({action:'list'},manager);assert.ok(listed.followUps.some(f=>f.shiftId==='SH-STUCK'));
+assert.equal(listed.followUps.find(f=>f.shiftId==='SH-STUCK').shiftReference,'SH-ALEX-STUCK1');assert.equal(listed.followUps.find(f=>f.shiftId==='SH-OLDREF').shiftReference,'SH-ALEX-LEGACY-OLD1');assert.equal(listed.followUps.find(f=>f.shiftId==='SH-NOREF').shiftReference,'');
+assert.equal((await call({action:'inspect',shiftId:'SH-STUCK'},manager)).shiftReference,'SH-ALEX-STUCK1','the handover detail names the shift by its reference');
 await call({action:'review_followup',shiftId:'SH-STUCK',reason:'Sale recovered, overage reviewed'},manager);assert.equal(read('/shiftCloseFollowUps/SH-STUCK/state'),'reviewed');
 await assert.rejects(call({action:'review_followup',shiftId:'SH-STUCK',reason:'x'},alex),/Only management/);
 console.log('PASS: pending-sale handover releases the till, preserves immutable count and sale commands, recovers once into the original shift, protects the next drawer, enforces roles/period locks, and separates custody from final variance; a clean handover closes itself with a Z report, and any blocker stays pending with its reason.');
