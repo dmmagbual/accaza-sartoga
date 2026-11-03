@@ -1,5 +1,7 @@
 "use strict";
 
+const {REJECTION_OUTCOMES, MANAGER_ROLES} = require("./order-service");
+
 const MUTABLE = new Set(["Pending", "Confirmed", "Preparing", "Ready", "Rejected"]);
 const TARGETS = new Set([...MUTABLE, "Completed"]);
 const TERMINAL = new Set(["Completed", "Received"]);
@@ -38,6 +40,7 @@ async function updateOrderStatusCommand(options) {
   const targetStatus = normalizeStatus(data && data.status);
   if (!targetStatus) raise(options, "invalid-argument", "Order status is invalid.");
   const expectedStatus = String(data && data.expectedStatus || "").trim();
+  const rejectionOutcome = String(data && data.rejectionOutcome || "").trim();
   const now = Date.now(), commandRef = db.ref(`/orderStatusCommands/${requestId}`);
   let commandConflict = false, commandAlreadyApplied = false;
   await commandRef.transaction((current) => {
@@ -66,16 +69,32 @@ async function updateOrderStatusCommand(options) {
     if (!snap.exists()) raise(options, "not-found", "Order not found.");
     const current = snap.val() || {};
     const from = String(current.status || "Pending");
-    if (from === targetStatus) {
+    const websiteOrder = current.source === "online" || current.channel === "online";
+    // A website order rejected before outcomes existed may have one recorded now (Rejected -> Rejected).
+    const recordingOutcome = from === "Rejected" && targetStatus === "Rejected" && websiteOrder && !current.rejection && !!rejectionOutcome;
+    if (from === targetStatus && !recordingOutcome) {
       result = {orderId, fromStatus: from, status: targetStatus, duplicate: true};
       updatedOrder = current;
     } else {
       if (expectedStatus && expectedStatus !== from) raise(options, "aborted", `Order changed from ${expectedStatus} to ${from}. Refresh and try again.`);
       if (!canTransition(from, targetStatus)) raise(options, "failed-precondition", `Order cannot move from ${from} to ${targetStatus}.`);
-      const websiteOrder = current.source === "online" || current.channel === "online";
       const requiresShiftCapture = ["Preparing", "Ready", "Completed"].includes(targetStatus);
       if (websiteOrder && requiresShiftCapture && (!current.shiftId || current.posCaptured !== true || !["cashier_verified", "manager_validated", "confirmed"].includes(current.paymentStatus))) {
         raise(options, "failed-precondition", "Cashier verification and POS shift acceptance are required before preparing or completing this website order.");
+      }
+      // Rejecting a website order records what happens to the customer's money; reopening one
+      // clears that choice, unless its refund was already recorded as paid.
+      let rejection;
+      if (websiteOrder && targetStatus === "Rejected") {
+        if (!REJECTION_OUTCOMES.has(rejectionOutcome)) raise(options, "invalid-argument", "Choose what happens to the customer's payment: payment not found, or refund due.");
+        // A payment someone already confirmed was received cannot be written off as not found.
+        if (rejectionOutcome === "payment_not_found" && ["cashier_verified", "manager_validated", "confirmed"].includes(current.paymentStatus)) raise(options, "failed-precondition", "This payment was already verified as received, so the customer is owed a refund. Choose refund due.");
+        rejection = {outcome: rejectionOutcome, at: now, byUid: actor.uid, byRole: actor.role, schemaVersion: 1};
+        if (rejectionOutcome === "refund_due") Object.assign(rejection, {refundStatus: "owed", refundAmount: Math.round((Number(current.total) || 0) * 100) / 100});
+      } else if (from === "Rejected" && current.rejection) {
+        if (current.rejection.refundStatus === "paid") raise(options, "failed-precondition", "This order's refund is already recorded as paid, so it cannot be reopened.");
+        if (current.rejection.outcome === "refund_due" && !MANAGER_ROLES.has(actor.role)) raise(options, "permission-denied", "A refund is owed on this order. Only a manager can reopen it.");
+        rejection = null;
       }
       updatedOrder = Object.assign({}, current, {
         status: targetStatus,
@@ -84,8 +103,10 @@ async function updateOrderStatusCommand(options) {
         statusUpdatedRole: actor.role,
         statusCommandId: requestId,
       });
+      if (rejection) updatedOrder.rejection = rejection;
+      else if (rejection === null) delete updatedOrder.rejection;
       const history = Object.assign({}, current.statusHistory || {});
-      history[requestId] = {from, to: targetStatus, at: now, actorUid: actor.uid, actorRole: actor.role};
+      history[requestId] = Object.assign({from, to: targetStatus, at: now, actorUid: actor.uid, actorRole: actor.role}, rejection ? {rejectionOutcome: rejection.outcome} : {});
       updatedOrder.statusHistory = history;
       result = {orderId, fromStatus: from, status: targetStatus, duplicate: false};
     }
@@ -106,6 +127,7 @@ async function updateOrderStatusCommand(options) {
       action: "update_order_status", sourceType: "order", sourceId: orderId,
       actorUid: actor.uid, actorRole: actor.role, previousStatus: result.fromStatus,
       status: targetStatus, requestId, ts: now, schemaVersion: 1,
+      ...(updatedOrder.rejection && result.status === "Rejected" ? {rejectionOutcome: updatedOrder.rejection.outcome} : {}),
     };
     await db.ref().update(writes);
     return result;

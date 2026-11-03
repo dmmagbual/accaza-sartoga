@@ -37,6 +37,26 @@ function isOnlineOrder(order) {return !!order && (order.source === "online" || o
 function rejectedBeforeCapture(order) {
   return isOnlineOrder(order) && String(order.status || "") === "Rejected" && order.voided !== true && !order.shiftId && order.posCaptured !== true && ["", "pending"].includes(String(order.paymentStatus || ""));
 }
+// What staff chose for the customer's money when rejecting a website order (Nov 2026).
+// A rejected website order never posted a sale: posting starts at Completed/Received, and
+// those statuses can never move to Rejected. So the outcome replaces the payment review:
+// a refund still owed holds the order live; "payment not found" or a paid refund releases it.
+const REJECTION_OUTCOMES = new Set(["payment_not_found", "refund_due"]);
+function rejectionState(order) {
+  if (!isOnlineOrder(order) || String(order.status || "") !== "Rejected" || order.voided === true) return "";
+  const rejection = order.rejection && typeof order.rejection === "object" ? order.rejection : null;
+  if (rejection && rejection.outcome === "refund_due") return rejection.refundStatus === "paid" ? "released" : "refund_owed";
+  if (rejection && rejection.outcome === "payment_not_found") return "released";
+  // Rejected before outcomes existed: only a never-accepted, never-verified order is released.
+  return rejectedBeforeCapture(order) ? "released" : "";
+}
+// Why a website/e-payment order must stay under review: a refund still owed on a rejected
+// order, or an e-payment not yet validated (unless a rejection outcome replaced that review).
+function paymentHoldReason(order) {
+  const state = rejectionState(order);
+  if (state === "refund_owed") return "refund_owed";
+  return ["pending", "cashier_verified"].includes(String(order && order.paymentStatus || "")) && state !== "released" ? "payment_review" : "";
+}
 function isServiceChannelOrder(order) {return !!order && order.source === "pos" && SERVICE_CHANNELS.has(String(order.channel || "instore").toLowerCase());}
 function fullyRefunded(order) {const refund = money(order && order.refundAmount);return refund > 0 && refund >= money(order.total) - 0.009;}
 function serviceState(order) {return String((order && order.service && order.service.state) || "");}
@@ -255,4 +275,4 @@ async function manageOrderServiceCommand(options) {
   return applyAction(options, order, action, requestId, {reason: data.reason, note: data.note, believedStage: data.believedStage}, now);
 }
 
-module.exports = {SERVICE_VERSION, MANAGER_ROLES, initialService, needsService, keepsOrderLive, isOnlineOrder, rejectedBeforeCapture, isServiceChannelOrder, fullyRefunded, transition, manageOrderServiceCommand};
+module.exports = {SERVICE_VERSION, MANAGER_ROLES, initialService, needsService, keepsOrderLive, isOnlineOrder, rejectedBeforeCapture, REJECTION_OUTCOMES, rejectionState, paymentHoldReason, isServiceChannelOrder, fullyRefunded, transition, manageOrderServiceCommand};

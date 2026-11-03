@@ -2397,6 +2397,7 @@ const ORDER_ARCHIVE_REFUSAL = {
   not_final: "Only completed, received, rejected, or voided orders can be archived.",
   serving_queue: "This order is still in the serving queue. Mark it served or not collected first.",
   payment_review: "Verify this payment first: a manager has not validated this e-payment yet.",
+  refund_owed: "A refund is still owed. Record it as paid in Register Ops first.",
   inventory_reversal: "This order is still waiting for its inventory reversal.",
   platform_unsettled: "This platform receivable is still unsettled.",
   posting_incomplete: "The order is still posting to inventory or Finance Books.",
@@ -2454,7 +2455,8 @@ async function orderArchiveCheck(db, orderId, options = {}) {
   if (!ORDER_ARCHIVE_FINAL_STATUSES.includes(String(order.status || "")) && order.voided !== true) return {ok: false, reason: "not_final"};
   if (OrderService.keepsOrderLive(order)) return {ok: false, reason: "serving_queue"};
   // Unverified e-payments stay in the verification queue (manual and automatic archive alike).
-  if (["pending", "cashier_verified"].includes(String(order.paymentStatus || "")) && !OrderService.rejectedBeforeCapture(order)) return {ok: false, reason: "payment_review"};
+  const paymentHold = OrderService.paymentHoldReason(order);
+  if (paymentHold) return {ok: false, reason: paymentHold};
   if (options.strict) {
     // Reuse the live-projection rule instead of a second guess: an order the
     // register or the manager validation queue still shows - an electronic
@@ -6257,7 +6259,8 @@ function shouldProjectOrder(order, activeShift, now = Date.now()) {
   if (OrderService.keepsOrderLive(order)) return true;
   const status = String(order.status || "Pending");
   if (["Pending", "Confirmed", "Preparing", "Ready"].includes(status)) return true;
-  if (["pending", "cashier_verified"].includes(order.paymentStatus) && !OrderService.rejectedBeforeCapture(order)) return true;
+  // An unvalidated e-payment, or a refund still owed on a rejected website order, stays live.
+  if (OrderService.paymentHoldReason(order)) return true;
   // A missed platform order re-keyed from Payout Reconciliation is a back-office record:
   // it was never on a till, so it has no shift, no serving state and no place in the live
   // order list. Its unsettled receivable is worked from Payout Reconciliation, which reads
@@ -8923,6 +8926,34 @@ exports.processOrderAdjustment = onCall(
     if (data.action === "prepare_payment_review") {
       if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only managers may move a cashier-verified payment into manager review.");
       return withPaymentDecisionLock(db, o.id, actor, () => prepareActivePaymentReview(db, o.id, actor));
+    }
+    if (data.action === "record_rejection_refund") {
+      // A website order rejected with "refund due" (Nov 2026). No sale was ever posted for it,
+      // so this records the payback for the audit trail and releases the order; it posts nothing.
+      if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only a manager can record that a refund was paid.");
+      const paidAlready = o.rejection && o.rejection.outcome === "refund_due" && o.rejection.refundStatus === "paid";
+      if (paidAlready) return {orderId: o.id, duplicate: true};
+      if (found.node !== "orders" || OrderService.rejectionState(o) !== "refund_owed") throw new HttpsError("failed-precondition", "This order has no refund owed.");
+      const method = financeText(data.refundMethod, 40), reference = financeText(data.refundReference, 120);
+      if (!method || !reference) throw new HttpsError("invalid-argument", "Enter how the refund was sent and its reference.");
+      const now = Date.now(); let blocked = false;
+      // Same cold-cache rule as start_instore_preparation: a null first pass is handed back.
+      const changed = await db.ref(`/orders/${o.id}/rejection`).transaction((current) => {
+        blocked = false;
+        if (current == null) return null;
+        if (current.refundStatus === "paid") return current;
+        if (current.outcome !== "refund_due") { blocked = true; return; }
+        return Object.assign({}, current, {refundStatus: "paid", refundPaidAt: now, refundPaidByUid: actor.uid, refundPaidByRole: actor.role, refundMethod: method, refundReference: reference});
+      }, undefined, false);
+      const rejection = changed.snapshot.val();
+      if (blocked || !changed.committed || !rejection) throw new HttpsError("aborted", "The order changed. Refresh and try again.");
+      if (rejection.refundPaidAt !== now) return {orderId: o.id, duplicate: true};
+      const updated = Object.assign({}, o, {rejection}), activeShift = (await db.ref("/posActiveShift").get()).val() || null;
+      await db.ref().update({
+        [`activeOrders/${o.id}`]: shouldProjectOrder(updated, activeShift) ? activeOrderProjection(updated) : null,
+        [`operationalAudit/${now}_rejection_refund_${o.id}`]: operationalAuditRecord("record_rejection_refund", "order", o.id, actor, {amount: Financial.money(rejection.refundAmount), method, reference, accounting: "No posting: the rejected order never posted a sale."}),
+      });
+      return {orderId: o.id, refunded: true, amount: Financial.money(rejection.refundAmount)};
     }
     if (data.action === "recognize_unverified_sale") return recognizeUnverifiedSale(db, found, actor);
     if (data.action === "settle_verified_payment") {

@@ -24,7 +24,8 @@ function shouldProjectOrder(order, activeShift, now = Date.now()) {
   if (OrderService.keepsOrderLive(order)) return true;
   const status = String(order.status || "Pending");
   if (["Pending", "Confirmed", "Preparing", "Ready"].includes(status)) return true;
-  if (["pending", "cashier_verified"].includes(order.paymentStatus) && !OrderService.rejectedBeforeCapture(order)) return true;
+  // An unvalidated e-payment, or a refund still owed on a rejected website order, stays live.
+  if (OrderService.paymentHoldReason(order)) return true;
   // A missed platform order re-keyed from Payout Reconciliation is a back-office record:
   // it was never on a till, so it has no shift, no serving state and no place in the live
   // order list. Its unsettled receivable is worked from Payout Reconciliation, which reads

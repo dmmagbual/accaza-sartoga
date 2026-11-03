@@ -8,6 +8,9 @@ function renderCustomerOrders(){
   if(!active.length){el.innerHTML='<div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div>';return;}
   el.innerHTML=active.map(function(o){const s=statusConfig[o.status]||statusConfig.Pending;const isDelivery=o.type==='Delivery';
     var _msg=(o.status==='Ready')?(isDelivery?'Ready for your courier to collect! 🎉':'Your order is now ready for pick-up! Please proceed to the counter. 🎉'):s.msg;
+    // A rejection with a refund due tells the customer their money is coming back (Nov 2026).
+    var rj=o.status==='Rejected'&&o.rejection&&o.rejection.outcome==='refund_due'?o.rejection:null,rjAmt='₱'+(Number(rj&&rj.refundAmount)||0).toLocaleString();
+    if(rj)_msg=rj.refundStatus==='paid'?'Your '+rjAmt+' refund has been sent. Thank you for your patience.':'We are sorry, we could not fulfil this order. We will refund your '+rjAmt+' payment and contact you to confirm.';
     return'<div style="background:#fff;border:2px solid #a8d5b5;border-radius:12px;overflow:hidden;margin-bottom:1.25rem;">'
       +'<div style="background:var(--bd);padding:1rem 1.25rem;text-align:center;">'
       +'<p style="font-size:0.72rem;color:rgba(224,212,198,0.6);text-transform:uppercase;letter-spacing:0.15em;margin-bottom:0.25rem;">Order ID</p>'
