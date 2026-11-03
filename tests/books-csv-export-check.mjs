@@ -27,7 +27,9 @@ const booksCss=fs.readFileSync('assets/css/books.css','utf8');for(const marker o
 for(const marker of ['<th>Date</th><th>Reference</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th>','AccazaReportPagination.apply(m,\'ledger-\'+code,true)','Latest balance'])if(!shell.includes(marker))throw new Error(`Subsidiary ledger presentation safeguard missing: ${marker}`);
 if(!pages.includes('<th>Date</th><th>Reference</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th>'))throw new Error('Journal must expose all six accounting columns without a horizontal-scroll-only balance');
 for(const marker of ["App.printFinancePage('Journal')","App.printFinancePage('General Ledger')"])if(!pages.includes(marker))throw new Error(`Main Finance print action missing: ${marker}`);
-for(const field of ['Entry ID','Reference','Debit','Credit','Reversal of','Corrects movement']){
+// One reference per document (3 Nov 2026, Danilo): exports name journals by reference; database
+// entry and movement IDs are never exported.
+for(const field of ['Reference','Debit','Credit','Reversal of','Corrects journal']){
   if(!csv.includes(field))throw new Error(`Journal audit field missing from CSV: ${field}`);
 }
 
@@ -44,20 +46,23 @@ assert.equal(ctx.csvSafe('a,"b"'),'"a,""b"""');
 let result;
 ctx.csvDownload=(name,headers,rows)=>{result={name,headers,rows};};
 ctx.exportLedgerCsv();
-assert.equal(result.rows.find(r=>r[1]==='1000'&&r[10]==='Closing')[9],390);
-assert.equal(result.rows.find(r=>r[1]==='4000'&&r[10]==='Closing')[9],290);
+assert.ok(!result.headers.includes('Entry ID'),'general ledger CSV has no Entry ID column');
+assert.equal(result.rows.find(r=>r[1]==='1000'&&r[9]==='Closing')[8],390);
+assert.equal(result.rows.find(r=>r[1]==='4000'&&r[9]==='Closing')[8],290);
 ctx.exportJournalCsv();
 assert.equal(result.rows.length,5);
-assert.equal(result.rows[0][1],'compound');
-assert.equal(result.rows[0][8],40);
+assert.ok(!result.headers.includes('Entry ID'),'journal CSV has no Entry ID column');
+assert.equal(result.rows[0][1],'C-2','journal rows carry the journal reference');
+assert.ok(!result.rows.some(r=>r.includes('compound')),'no entry ID leaks into the journal CSV');
+assert.equal(result.rows[0][7],40);
 ctx.exportAccountLedgerCsv('1000');
-assert.equal(result.rows[0][6],'Opening balance');
-assert.equal(result.rows.at(-1)[6],'Closing balance');
-assert.equal(result.rows.at(-1)[9],390);
-assert.equal(result.rows[1][4],'compound');
-assert.equal(result.rows[1][7],40);
-assert.equal(result.rows[1][8],10);
-assert.equal(result.rows[1][9],390);
+assert.equal(result.rows[0][5],'Opening balance');
+assert.equal(result.rows.at(-1)[5],'Closing balance');
+assert.equal(result.rows.at(-1)[8],390);
+assert.equal(result.rows[1][4],'C-2');
+assert.equal(result.rows[1][6],40);
+assert.equal(result.rows[1][7],10);
+assert.equal(result.rows[1][8],390);
 assert.ok(html.indexOf('src/books/csv-exports.js')<html.indexOf('assets/js/books/app.js'),'CSV helpers must load before direct-link rendering');
 const ledgerShell=fs.readFileSync('src/books/app/10-application-shell.js','utf8');
 assert.ok(ledgerShell.includes('class="ledger-date-filter" data-drill-code=')&&ledgerShell.includes('id="drillFrom"')&&ledgerShell.includes('id="drillTo"'),'The account ledger must offer a From/To date filter');

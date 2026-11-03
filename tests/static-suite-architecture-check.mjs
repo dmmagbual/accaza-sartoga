@@ -200,6 +200,7 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // 3 Nov 2026 (catalog module split, Admin 740): the Phase 4 module-boundary guard now pins the
 // catalog module by path instead of the static-import literal, so it can be imported on demand after
 // sign-in. Same guards, same meaning; guard count stays at 577 and executable checks stay at 33.
-if(guardDigest!=='c0054cbbedbb5a6a2e1b5ab38a3ca59424e2f795e230661b61fb41137e041547')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// 3 Nov 2026: the admin-only precache guard reads the Books build from release-manifest.json instead of a hardcoded number.
+if(guardDigest!=='f5cc96b6800e010f0cca1477e897d08b8d29523eafdce755ad8cec8d03c3e217')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

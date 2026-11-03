@@ -12,6 +12,10 @@ function todayStr(){return manilaKey(Date.now());}
 function chLbl(c){return c==='grabfood'?'GrabFood':c==='foodpanda'?'FoodPanda':c;}
 var accountsMap={},ledgerMap={},financialMovementsMap={},cashBalancesMap={},cashBalancesReady=false,cashBalancesError='',cashBalanceRetries=0,cashRegisterGross=0,chartMap={},custodyMap={},arMap={},apMap={},payoutsMapCF={},ordersMapCF={},archMapCF={},financialAudit=null,registerFloatAmount=4000;
 var cashBalanceRefresh=null;
+// One reference per document (3 Nov 2026): journals, bills, custody rows and payouts held here
+// label every screen's links through AccazaRef; database keys are never shown.
+if(window.AccazaRef){AccazaRef.provide('movement',function(){return financialMovementsMap;});AccazaRef.provide('custody',function(){return custodyMap;});AccazaRef.provide('payable',function(){return apMap;});AccazaRef.provide('receivable',function(){return arMap;});AccazaRef.provide('payout',function(){return payoutsMapCF;});}
+function cfRef(m){return window.AccazaRef?AccazaRef.movement(m):'';}
 var cfFrom=null,cfTo=null,cfAcctFilter='all';
 var CF_CATS=['Sales deposit','Platform payout','Purchases','Supplier payment','Rent','Utilities','Salaries','Owner draw','Capital in','Bank charges','AR collection','AP payment','Transfer','Other'];
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
