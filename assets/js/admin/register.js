@@ -9,6 +9,9 @@ function A(){return window.__accaza;}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
+// Quantity formatter. The POS bundle has its own copy: each admin bundle is a sealed closure, so a
+// helper defined in one is not visible in another (the shift review crashed on num() until 3 Nov 2026).
+function num(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
 function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
 function shiftReference(value,fallback){return String(value||fallback||'Legacy shift').trim();}
 function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
@@ -866,7 +869,7 @@ function shiftSummaryObj(shift,isOpen){
 }
 function loadShiftTransactions(id){var a=A(),active=a.query(a.ref(a.db,'orders'),a.orderByChild('shiftId'),a.equalTo(id)),archived=a.query(a.ref(a.db,'archivedOrders'),a.orderByChild('shiftId'),a.equalTo(id));return Promise.all([a.get(active),a.get(archived)]).then(function(snaps){var merged=Object.assign({},snaps[1].val()||{},snaps[0].val()||{});return Object.keys(merged).map(function(k){return Object.assign({id:k},merged[k]);}).filter(function(o){return isShiftTransaction(o,id);}).sort(function(x,y){return (x.timestamp||0)-(y.timestamp||0);});});}
 function reviewShiftCash(shift,isOpen){
-  if(isOpen){openShiftReview();return;}
+  if(isOpen){try{openShiftReview();}catch(e){shiftReviewFailed(shift,'open',e);}return;}
   var reportWindow=window.open('','_blank','width=380,height=680')||zReportInPageWindow();reportWindow.document.write('<html><body style="font-family:monospace;padding:12px;">Loading complete shift report…</body></html>');reportWindow.document.close();
   var r=shift.zReport||shift.provisionalZReport||null,z=r?Object.assign({},r,{saleList:r.sales||[],reportClosedAt:r.capturedAt,closeCount:r.closeCount||{},expectedDrawer:r.expectedDrawer||{},reconcileTotalOnly:!!r.reconcileTotalOnly}):{tx:Number(shift.tx)||0,gross:Number(shift.gross)||0,discounts:Number(shift.discounts)||0,refunds:Number(shift.refunds)||0,cashRefunds:Number(shift.cashRefunds)||0,net:Number(shift.net)||0,byMethod:shift.byMethod||{},byChannel:shift.byChannel||{},cashSales:Number((shift.byMethod||{}).Cash)||0,tips:Number(shift.tips)||0,payIns:Number(shift.payIns)||0,payOuts:Number(shift.payOuts)||0,expectedCash:Number(shift.expectedCash)||0,countedCash:Number(shift.countedCash)||0,variance:Number(shift.variance)||0,retainedFloat:Number(shift.retainedFloat)||0,cashToSettle:Number(shift.cashToSettle)||0,voidCount:Number(shift.voidCount)||0,voidAmt:Number(shift.voidAmt)||0,pending:Number(shift.pending)||0,pendingCount:Number(shift.pendingCount)||0,closeCount:shift.closeCount||{},expectedDrawer:shift.drawerExpected||{},reportClosedAt:shift.closeAt,legacyReport:true};
   loadShiftTransactions(shift.id).then(function(sales){z.saleList=sales;showZ(shift,z,reportWindow);}).catch(function(){showZ(shift,z,reportWindow);});
@@ -1761,7 +1764,38 @@ function showZ(shift,z,existingWindow){
 /* ══════════ SHIFT REVIEW (live liquidation for the open shift) ══════════ */
 function shiftSales(shift){return Object.keys(ordersMap).map(function(k){return ordersMap[k];}).filter(function(o){return o&&o.shiftId===shift.id&&!o.voided&&(o.status==='Completed'||o.status==='Received');}).sort(function(a,b){return (a.timestamp||0)-(b.timestamp||0);});}
 function shiftItemsSummary(shift){var m={};shiftSales(shift).forEach(function(o){(o.correctedLineItems||o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!m[k])m[k]={name:li.name||k,qty:0,sales:0};m[k].qty+=Number(li.qty)||0;m[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});});return Object.keys(m).map(function(k){return m[k];}).sort(function(a,b){return b.sales-a.sales;});}
+// Live drawer by denomination (3 Nov 2026). The POS keeps a note-by-note count on the open shift; the
+// review shows it beside expected cash so a manager sees the mix without recounting. Amounts are
+// added in centavos so 25c/10c/5c coins total exactly.
+function shiftDrawerBreakdown(shift){
+  // An empty or all-zero map is "no count yet", not an empty drawer.
+  var counts=(shift&&shift.drawer)||null,rows=[],cents=0;if(!counts)return null;
+  DENOMS.forEach(function(d){var n=Number(counts[d.k]);if(!Number.isFinite(n))return;var c=Math.max(0,Math.floor(n));if(!c)return;var amt=Math.round(d.v*100)*c;cents+=amt;rows.push({label:d.lbl||peso(d.v),count:c,amount:amt/100});});
+  return rows.length?{rows:rows,total:cents/100,cents:cents}:null;
+}
+// Drawer count minus expected cash, in whole centavos: positive = over, negative = short.
+function shiftDrawerDiff(b,z){return (b.cents!=null?b.cents:Math.round(b.total*100))-Math.round((Number(z.expectedCash)||0)*100);}
+function shiftDrawerDiffText(d){return d===0?'Matches':(d>0?'Over ':'Short ')+peso(Math.abs(d)/100);}
+function shiftDrawerCardHtml(shift,z){
+  var b=shiftDrawerBreakdown(shift),head='<div class="pz-card" style="margin-bottom:0.8rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.3rem;">🪙 Drawer by denomination</div>';
+  if(!b)return head+'<div class="az-note">'+(denomTrackingOnR()?'No note-by-note count on this shift yet.':'Denomination tracking is off in POS Settings.')+'</div></div>';
+  var diff=shiftDrawerDiff(b,z),off=diff!==0;
+  return head+'<table class="pz-tbl"><thead><tr><th>Note / coin</th><th class="r">Count</th><th class="r">Amount</th></tr></thead><tbody>'
+    +b.rows.map(function(r){return '<tr><td>'+esc(r.label)+'</td><td class="r">'+num(r.count)+'</td><td class="r">'+peso(r.amount)+'</td></tr>';}).join('')
+    +'<tr class="register-total"><td colspan="2">Total in drawer (POS count)</td><td class="r">'+peso(b.total)+'</td></tr>'
+    +'<tr><td colspan="2">Expected cash on hand</td><td class="r">'+peso(z.expectedCash)+'</td></tr>'
+    +'<tr><td colspan="2"><b>Difference</b></td><td class="r" style="color:'+(off?'#c0392b':'#155724')+';"><b>'+shiftDrawerDiffText(diff)+'</b></td></tr>'
+    +'</tbody></table>'+(off?'<div class="az-note">The POS count and the cash records disagree. Recount the drawer to confirm what is there.</div>':'')+'</div>';
+}
+function shiftDrawerPrintHtml(shift,z){
+  var b=shiftDrawerBreakdown(shift);if(!b)return '';var diff=shiftDrawerDiff(b,z);
+  return '<div><b>Drawer by denomination (POS count)</b></div><table>'
+    +b.rows.map(function(r){return '<tr><td>'+esc(r.label)+' × '+num(r.count)+'</td><td style="text-align:right;">'+peso(r.amount)+'</td></tr>';}).join('')
+    +'<tr><td><b>Total in drawer</b></td><td style="text-align:right;"><b>'+peso(b.total)+'</b></td></tr>'
+    +'<tr><td>Against cash on hand</td><td style="text-align:right;">'+shiftDrawerDiffText(diff)+'</td></tr></table><hr>';
+}
 function shiftTxnMethod(o){return paysOf(o).map(function(p){return p.method;}).join('+');}
+function shiftReviewFailed(shift,what,e){var msg=(e&&e.message)||String(e);if(window.console)console.error('Shift review '+what+' failed',e);if(window.__posLog)window.__posLog('shift-review-failed',(shift&&shift.id)||'',what+': '+msg);alert('The shift review could not '+(what==='print'?'print':'open')+': '+msg+'. Tell the manager.');}
 function openShiftReview(){
   if(!activeShift){alert('No open shift to review.');return;}
   var shift=activeShift,z=computeZ(shift),sales=shiftSales(shift),items=shiftItemsSummary(shift);
@@ -1784,6 +1818,7 @@ function openShiftReview(){
       +(shift.payOuts||[]).map(function(x){return '<tr><td>'+esc((x.type==='purchase_advance'?'Purchase cash — '+(x.recipient||x.purpose||'')+' · '+peso(x.remainingAmount!=null?x.remainingAmount:x.amount)+' awaiting allocation':(x.reason||'Authorized cash-out')) )+'</td><td class="r">−'+peso(x.amount)+'</td></tr>';}).join('')
       +'<tr style="border-top:1px solid var(--cd);"><td><b>► Expected cash to hand over</b></td><td class="r"><b>'+peso(z.cashToSettle)+'</b></td></tr>'
       +'</tbody></table>'+(z.floatMismatch?'<div class="az-note" style="color:#c0392b;">⚠ Opened with '+peso(shift.openingFloat)+' but standard float is '+peso(fixedFloatCfg)+'.</div>':'')+'</div>'
+    +shiftDrawerCardHtml(shift,z)
     +'<div class="pz-card" style="margin-bottom:0.8rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.3rem;">🧾 Sales by channel</div><table class="pz-tbl"><tbody>'
       +([['instore','In-store'],['online','Online Orders'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(z.byChannel&&z.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join(''))
       +'<tr class="register-total"><td>Total net sales</td><td class="r">'+peso(z.net)+'</td></tr></tbody></table><div class="az-note">Online Orders are verified non-cash sales. GrabFood/FoodPanda are platform receivables. None increases drawer cash.</div></div>'
@@ -1799,7 +1834,7 @@ function openShiftReview(){
   document.body.appendChild(mask);
   function close(){document.body.removeChild(mask);}
   mask.querySelector('#srClose').onclick=close;mask.querySelector('#srClose2').onclick=close;
-  mask.querySelector('#srPrint').onclick=function(){printShiftReview(shift,z,sales,items);};
+  mask.querySelector('#srPrint').onclick=function(){try{printShiftReview(shift,z,sales,items);}catch(e){shiftReviewFailed(shift,'print',e);}};
   mask.querySelector('#srExcel').onclick=function(){exportShiftReviewXlsx(shift,z,sales,items);};
 }
 function printShiftReview(shift,z,sales,items){
@@ -1819,6 +1854,7 @@ function printShiftReview(shift,z,sales,items){
     +'<tr><td><b>Cash on hand</b></td><td style="text-align:right;"><b>'+peso(z.expectedCash)+'</b></td></tr>'
     +'<tr><td>Less float retained</td><td style="text-align:right;">-'+peso(z.retainedFloat)+'</td></tr>'
     +'<tr><td><b>Cash to settle</b></td><td style="text-align:right;"><b>'+peso(z.cashToSettle)+'</b></td></tr></table><hr>'
+    +shiftDrawerPrintHtml(shift,z)
     +'<div><b>By payment method</b></div><table>'+(methods||'<tr><td>None</td></tr>')+'</table><hr>'
     +'<div><b>Transactions ('+sales.length+')</b></div><table>'+(txn||'<tr><td>None</td></tr>')+'</table><hr>'
     +'<div><b>Items sold</b></div><table>'+(it||'<tr><td>None</td></tr>')+'</table><hr>'

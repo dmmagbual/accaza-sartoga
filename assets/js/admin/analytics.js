@@ -579,11 +579,32 @@ function catchupItemFields(){var menu=(A()&&A().menuItemsMap)||{},opts=[{value:'
   for(var n=1;n<=CATCHUP_ITEM_ROWS;n++){out.push({name:'item'+n,label:'Item '+n+(n===1?' (required)':''),type:'select',required:n===1,options:opts});out.push({name:'size'+n,label:'Size '+n,type:'select',options:[{value:'M',label:'M'},{value:'S',label:'S'},{value:'L',label:'L'}],value:'M'});out.push({name:'qty'+n,label:'Quantity '+n,type:'number',min:0,value:n===1?1:0});}
   return out;}
 function catchupLines(v){var lines=[];for(var n=1;n<=CATCHUP_ITEM_ROWS;n++){var key=v['item'+n],qty=Math.floor(Number(v['qty'+n])||0);if(key&&qty>0)lines.push({itemKey:key,size:v['size'+n]||'M',qty:qty});}if(!lines.length)throw new Error('Enter at least one item with a quantity.');return lines;}
+// Commission rate for the re-key hint: live POS Settings when this page already holds them, else one
+// small read of posSettings/channels (bounded: two channel rows). A failed read falls back to the default rate.
+// The read is cached for the page and capped at 1.5 s, so an offline device still opens the form.
+var platformChannelSettingsRead=null;
+function platformRateFor(ch){
+  var P=window.AccazaPlatformChannels;if(!P)return Promise.resolve(0);
+  if(window.__posSettings)return Promise.resolve(P.rate(ch,window.__posSettings.channels));
+  var a=A();if(!a||!a.get)return Promise.resolve(P.rate(ch,null));
+  if(!platformChannelSettingsRead){
+    platformChannelSettingsRead=Promise.race([
+      Promise.resolve(a.get(a.ref(a.db,'posSettings/channels'))).then(function(s){return s&&s.val();}),
+      new Promise(function(resolve){setTimeout(function(){resolve(null);},1500);})
+    ]).then(function(v){if(v==null)platformChannelSettingsRead=null;return v;},function(){platformChannelSettingsRead=null;return null;});
+  }
+  return platformChannelSettingsRead.then(function(v){return P.rate(ch,v);});
+}
+// One form at a time: a second click while the rate loads must not open a second re-key form.
+var reKeyOpening=false;
 function reKeyMissedOrder(ch,chLbl){
+  if(reKeyOpening)return Promise.resolve();reKeyOpening=true;
+  return platformRateFor(ch).then(function(rate){reKeyOpening=false;reKeyMissedOrderWithRate(ch,chLbl,rate);}).catch(function(e){reKeyOpening=false;alert('The re-key form could not open: '+((e&&e.message)||String(e))+'.');});
+}
+function reKeyMissedOrderWithRate(ch,chLbl,rate){
   if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh the portal.');return;}
   var a=A();
   if(!a||!a.recordPlatformCatchup||!a.managerApproval){alert('Re-key service unavailable. Refresh the portal.');return;}
-  var rate=(typeof channelRate==='function')?(Number(channelRate(ch))||0):0;
   window.AccazaFormDialog.run({
     title:'Re-key a missed '+chLbl+' order',
     subtitle:'Records a '+chLbl+' order that was never entered in the POS. Books revenue, commission and the receivable on the order date, and deducts the stock the items used so their cost is recorded. Enter every item on the order.',

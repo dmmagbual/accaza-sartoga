@@ -9,6 +9,9 @@ function A(){return window.__accaza;}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
+// Quantity formatter. The POS bundle has its own copy: each admin bundle is a sealed closure, so a
+// helper defined in one is not visible in another (the shift review crashed on num() until 3 Nov 2026).
+function num(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
 function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
 function shiftReference(value,fallback){return String(value||fallback||'Legacy shift').trim();}
 function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
