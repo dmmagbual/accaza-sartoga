@@ -159,7 +159,13 @@ exports.mirrorPosMovementToBooks = onValueCreated(
 async function cogsPostingTime(db, order, orderId) {
   const legacy = await db.ref(`/books/journal/${BooksBridge.cogsLegacyBucketKey(order)}/sources/cogs_${orderId}`).get();
   if (legacy.exists()) return 0;
-  return BooksBridge.cogsPostedAt(false, (await db.ref(`/financialMovements/sale_${orderId}/occurredAt`).get()).val());
+  const saleAt = (await db.ref(`/financialMovements/sale_${orderId}/occurredAt`).get()).val();
+  if (Number(saleAt) > 0) return BooksBridge.cogsPostedAt(false, saleAt);
+  // The sale has not posted yet. In an open month it will post on its sale time, so COGS can too;
+  // in a closed month it will post in the open month, so wait for it rather than land in the closed one.
+  const saleTime = Number(order && (order.completedAt || order.receivedAt || order.occurredAt || order.timestamp)) || 0;
+  if (!saleTime || await periodOpenFor(db, saleTime)) return 0;
+  throw new Error(`COGS for ${orderId} waits for its sale to post: the sale month is closed.`);
 }
 // COGS leg: when an order's COGS snapshot is written, fold Dr COGS / Cr Inventory
 // into the same daily-summary-per-channel entry. Idempotent via sources[cogs_<orderId>].

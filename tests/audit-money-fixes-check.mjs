@@ -111,8 +111,10 @@ assert.equal(BB.cogsLegacyBucketKey({completedAt: sold, channel: 'instore'}), '2
 {
   const src = fs.readFileSync('src/functions/10-books-bridge.js', 'utf8');
   assert.ok(/cogsMovement\(order, orderId, maps\.inventory, categories, postedAt\)/.test(src) && /sources\/cogs_\$\{orderId\}`\)\.get\(\)/.test(src), 'the live mirror checks the sale-date bucket before moving the cost');
-  assert.ok(!/periodOpenFor/.test(src.slice(src.indexOf('async function cogsPostingTime'), src.indexOf('exports.mirrorPosCogsToBooks'))), 'the COGS date must not depend on when the mirror runs');
+  const timing = src.slice(src.indexOf('async function cogsPostingTime'), src.indexOf('exports.mirrorPosCogsToBooks'));
+  assert.ok(timing.indexOf('sources/cogs_') < timing.indexOf('financialMovements/sale_') && timing.indexOf('financialMovements/sale_') < timing.indexOf('periodOpenFor'), 'an applied cost stays put; a posted sale decides the date; the period is checked only while the sale is unposted');
   assert.ok(/BooksBridge\.cogsPostedAt\(inSaleDate, movements\[`sale_\$\{id\}`\]/.test(src), 'the Books rebuild uses the same rule');
+  assert.ok(/waits for its sale to post: the sale month is closed/.test(src), 'COGS for a late sale waits for the sale instead of landing in the closed month');
 }
 
 // ---------- C-01: refund-due rejection postings ----------
@@ -197,6 +199,26 @@ assert.equal(BB.mapAccount('liability:customer_change_refund:rejection_refund_OD
   ctx.db.state.orders['OD-1'].rejection = paid6;
   await fire(r6, paid6);
   assert.equal(ctx.db.state.financialMovements['rejection_paid_OD-1_888'].lines[1].account, 'asset:unmapped_payment:gcash', 'the refund clears the account the receipt used');
+  // A refund sent by a method that maps to no account goes to review, not to the incoming wallet.
+  const r7 = Object.assign({}, rejection, {at: 901});
+  ctx.db = fakeDb({cfAccounts: accounts, orders: {'OD-1': Object.assign({}, web, {status: 'Rejected', rejection: r7})}});
+  await fire(null, r7);
+  const paid7 = Object.assign({}, r7, {refundStatus: 'paid', refundPaidAt: 902, refundMethod: 'Maya', refundReference: 'M-1'});
+  ctx.db.state.orders['OD-1'].rejection = paid7; await fire(r7, paid7);
+  assert.equal(ctx.db.state.financialMovements['rejection_paid_OD-1_901'].lines[1].account, 'asset:unmapped_payment:maya');
+  assert.equal(ctx.db.state.payables['rejection_refund_OD-1_901'].settlingBy, undefined, 'the settlement claim is cleared once paid');
+  // A payable already being settled elsewhere is not paid a second time.
+  const r8 = Object.assign({}, rejection, {at: 903});
+  ctx.db = fakeDb({cfAccounts: accounts, orders: {'OD-1': Object.assign({}, web, {status: 'Rejected', rejection: r8})}});
+  await fire(null, r8);
+  ctx.db.state.payables['rejection_refund_OD-1_903'].status = 'settling';
+  const paid8 = Object.assign({}, r8, {refundStatus: 'paid', refundPaidAt: 904, refundMethod: 'GCash', refundReference: 'GC-8'});
+  ctx.db.state.orders['OD-1'].rejection = paid8; await fire(r8, paid8);
+  assert.equal(ctx.db.state.financialMovements['rejection_paid_OD-1_903'], undefined, 'a claimed payable is not settled twice');
+  // Reopened after the refund was paid: stop and alert rather than let the sale book it again.
+  const r9 = Object.assign({}, rejection, {at: 905, refundStatus: 'paid'});
+  ctx.db = fakeDb({cfAccounts: accounts, orders: {'OD-1': Object.assign({}, web, {status: 'Preparing'})}});
+  await assert.rejects(fire(r9, null), /reopened after its refund was paid/);
   // Payment not found posts nothing.
   ctx.db = fakeDb({cfAccounts: accounts, orders: {'OD-2': Object.assign({}, web, {id: 'OD-2', status: 'Rejected'})}});
   await fire(null, {outcome: 'payment_not_found', at: 666}, 'OD-2');

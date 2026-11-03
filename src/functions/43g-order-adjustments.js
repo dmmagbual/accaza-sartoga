@@ -279,17 +279,34 @@ async function postRejectionRefundPaid(db, order, rejection, actor) {
   if (!payable || payable.status !== "open") return {skipped: true};
   const amount = Financial.money(original.amount), remaining = Financial.money(payable.remainingAmount != null ? payable.remainingAmount : payable.amount);
   if (Math.abs(remaining - amount) > .009) {logger.warn("Rejection refund partly paid elsewhere; remainder left open", {orderId: k.id, remaining}); return {skipped: true};}
+  if (!(await claimRejectionPayable(db, k, k.paidId, amount))) return {skipped: true};
   // The refund clears what the receipt actually debited, unless staff sent it by another method that maps to an account.
   const accounts = (await db.ref("/cfAccounts").get()).val() || {}, method = financeText(rejection.refundMethod, 40), reference = financeText(rejection.refundReference, 120);
   const recorded = Array.isArray(original.refundSources) && original.refundSources.length ? original.refundSources : (original.lines || []).filter((row) => Number(row.debit) > 0).map((row) => ({account: row.account, accountId: String(row.account || "").indexOf("asset:cash_account:") === 0 ? String(row.account).split(":")[2] : "", amount: Financial.money(row.debit), method: ""}));
-  const sources = recorded.map((row) => {const same = row.method && Financial.methodKey(row.method) === Financial.methodKey(method), other = !same && Financial.accountForMethod(method, accounts); return other ? Object.assign({}, row, {accountId: other, account: `asset:cash_account:${other}`, method}) : row;});
+  // Same method: the account the receipt used. Another method: its mapped account, or review
+  // (unmapped) when nothing maps, never a silent credit to the wallet the money came in to.
+  const sources = recorded.map((row) => {const same = !method || (row.method && Financial.methodKey(row.method) === Financial.methodKey(method)); if (same) return row; const other = Financial.accountForMethod(method, accounts); return other ? Object.assign({}, row, {accountId: other, account: `asset:cash_account:${other}`, method}) : Object.assign({}, row, {accountId: "", account: `asset:unmapped_payment:${method.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, method});});
   const liability = ((original.lines || []).find((row) => Number(row.credit) > 0) || {}).account || `liability:customer_change_refund:${k.payableId}`;
   const occurredAt = await rejectionPostingTime(db, Number(rejection.refundPaidAt) || 0), date = financeDateFromTimestamp(occurredAt);
   const lines = Financial.rejectionRefundPaidPosting({liability, amount, sources}, `Refund sent · ${method}${reference ? ` · ${reference}` : ""}`);
   const movement = Financial.movement("customer_change_refunded", "order_rejection", k.id, lines, {occurredAt, actorName: financeText(rejection.refundPaidByRole || "Manager", 60), reference: reference || k.id, amount, payableId: k.payableId});
-  const writes = {[`payables/${k.payableId}/status`]: "paid", [`payables/${k.payableId}/remainingAmount`]: 0, [`payables/${k.payableId}/paidAmount`]: amount, [`payables/${k.payableId}/settlementMovementId`]: k.paidId, [`payables/${k.payableId}/paidAt`]: occurredAt};
+  const writes = {[`payables/${k.payableId}/status`]: "paid", [`payables/${k.payableId}/remainingAmount`]: 0, [`payables/${k.payableId}/paidAmount`]: amount, [`payables/${k.payableId}/settlementMovementId`]: k.paidId, [`payables/${k.payableId}/paidAt`]: occurredAt, [`payables/${k.payableId}/settlingBy`]: null, [`payables/${k.payableId}/settlingAt`]: null};
   rejectionCashRows(writes, `rejpaid_${k.id}_${k.at}`, sources, "out", "Customer refund paid · rejected order", order, k.paidId, movement, actor, date);
-  return commitFinancial(db, k.paidId, movement, actor, writes);
+  try { return await commitFinancial(db, k.paidId, movement, actor, writes); } catch (error) { await releaseRejectionPayable(db, k, k.paidId); throw error; }
+}
+// One settlement at a time: the payable is claimed (open → settling) before the trigger pays or
+// reverses it, so a second path that checks the claim cannot settle the same refund twice.
+async function claimRejectionPayable(db, k, claimId, amount) {
+  const result = await db.ref(`/payables/${k.payableId}`).transaction((row) => {
+    if (row == null) return row;
+    const left = Financial.money(row.remainingAmount != null ? row.remainingAmount : row.amount);
+    if (row.status !== "open" || Math.abs(left - amount) > .009) return;
+    return Object.assign({}, row, {status: "settling", settlingBy: claimId, settlingAt: Date.now()});
+  }, undefined, false);
+  return !!(result.committed && result.snapshot.val() && result.snapshot.val().settlingBy === claimId);
+}
+async function releaseRejectionPayable(db, k, claimId) {
+  await db.ref(`/payables/${k.payableId}`).transaction((row) => row && row.status === "settling" && row.settlingBy === claimId ? Object.assign({}, row, {status: "open", settlingBy: null, settlingAt: null}) : row, undefined, false);
 }
 async function reverseRejectionRefundDue(db, order, rejection, actor) {
   const k = rejectionKeys(order.id, rejection);
@@ -299,13 +316,13 @@ async function reverseRejectionRefundDue(db, order, rejection, actor) {
   const payable = (await db.ref(`/payables/${k.payableId}`).get()).val() || {};
   const remaining = Financial.money(payable.remainingAmount != null ? payable.remainingAmount : payable.amount);
   // A refund partly paid through Cash Payments cannot simply be undone; stop and alert instead.
-  if (payable.status !== "open" || Math.abs(remaining - Financial.money(original.amount)) > .009) throw new Error(`Rejected order ${k.id} was reopened after part of its refund was paid. Review 2030 before completing it.`);
+  if (payable.status !== "open" || Math.abs(remaining - Financial.money(original.amount)) > .009 || !(await claimRejectionPayable(db, k, k.reversalId, Financial.money(original.amount)))) throw new Error(`Rejected order ${k.id} was reopened after part of its refund was paid. Review 2030 before completing it.`);
   const reversal = Financial.reverseMovement(Object.assign({id: k.dueId}, original), "customer_refund_due_reversed", "Rejected order reopened: refund due reversed");
   reversal.occurredAt = Date.now(); reversal.sourceType = "order_rejection"; reversal.sourceId = k.id; reversal.payableId = k.payableId;
-  const date = financeDateFromTimestamp(reversal.occurredAt), writes = {[`payables/${k.payableId}/status`]: "reversed", [`payables/${k.payableId}/remainingAmount`]: 0, [`payables/${k.payableId}/reversalMovementId`]: k.reversalId};
+  const date = financeDateFromTimestamp(reversal.occurredAt), writes = {[`payables/${k.payableId}/status`]: "reversed", [`payables/${k.payableId}/remainingAmount`]: 0, [`payables/${k.payableId}/reversalMovementId`]: k.reversalId, [`payables/${k.payableId}/settlingBy`]: null, [`payables/${k.payableId}/settlingAt`]: null};
   const sources = (original.lines || []).filter((row) => Number(row.debit) > 0 && String(row.account || "").indexOf("asset:cash_account:") === 0).map((row) => ({accountId: String(row.account).split(":")[2], amount: Financial.money(row.debit), method: ""}));
   rejectionCashRows(writes, `rejrev_${k.id}_${k.at}`, sources, "out", "Rejected order reopened · refund due reversed", order, k.reversalId, reversal, actor, date);
-  return commitFinancial(db, k.reversalId, reversal, actor, writes);
+  try { return await commitFinancial(db, k.reversalId, reversal, actor, writes); } catch (error) { await releaseRejectionPayable(db, k, k.reversalId); throw error; }
 }
 // The order's current rejection: live, or archived once it has left /orders.
 async function currentRejectedOrder(db, orderId) {
@@ -324,7 +341,12 @@ exports.onOrderRejectionFinancial = onValueWritten(
     const current = found.order.rejection || null;
     // An earlier refund due this order no longer carries (reopened, or replaced): reverse it.
     // An archived order keeps its rejection, so archiving is never mistaken for a reopen.
-    if (before && before.outcome === "refund_due" && before.refundStatus !== "paid" && !sameRefundDue(before, current)) await reverseRejectionRefundDue(db, found.order, before, actor);
+    if (before && before.outcome === "refund_due" && !sameRefundDue(before, current)) {
+      // Reopening is refused once the refund is paid; if one gets through, stop and alert, because
+      // the later sale would book money the customer already has back.
+      if (before.refundStatus === "paid") throw new Error(`Rejected order ${orderId} was reopened after its refund was paid. Review it before completing the sale.`);
+      await reverseRejectionRefundDue(db, found.order, before, actor);
+    }
     // Post only what the order currently carries, never a stale event's copy.
     if (!(current && current.outcome === "refund_due")) return;
     if (!Number(current.at)) {logger.error("Refund-due rejection has no timestamp; not posted", {orderId}); return;}
