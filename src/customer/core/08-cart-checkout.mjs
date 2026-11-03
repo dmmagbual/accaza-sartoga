@@ -14,7 +14,7 @@ function updateCartDisplay(){
       +'<div style="font-size:0.75rem;color:var(--tl);">₱'+item.unitTotal.toLocaleString()+' each</div></div>'
       +'<div style="display:flex;align-items:center;gap:0.4rem;margin-left:0.5rem;">'
       +(item.pkgId?'<span style="font-size:0.8rem;color:var(--tl);">Qty '+item.qty+'</span><button data-removepkg="'+item.pkgId+'" title="Remove package" style="border:1px solid #c0392b;background:#fff;color:#c0392b;border-radius:6px;padding:0.2rem 0.4rem;cursor:pointer;">Remove</button>':'<button data-cartkey="'+k+'" data-delta="-1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">−</button><span style="font-size:0.85rem;font-weight:500;min-width:18px;text-align:center;">'+item.qty+'</span><button data-cartkey="'+k+'" data-delta="1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">+</button>')
-      +'<span style="font-size:0.85rem;font-weight:500;color:var(--bl);min-width:50px;text-align:right;">₱'+line.toLocaleString()+'</span>'
+      +'<span style="font-size:0.85rem;font-weight:500;color:var(--bl-ink);min-width:50px;text-align:right;">₱'+line.toLocaleString()+'</span>'
       +'</div></div></div>';
   }).join('');
   var pkgExtra=(window.__custPkgs||[]).reduce(function(s,p){return s+(Number(p.extraCost)||0);},0);if(pkgExtra){total+=pkgExtra;box.innerHTML+='<div style="display:flex;justify-content:space-between;padding:0.55rem 0;color:var(--bd);font-size:0.82rem;"><span>Package extra charges</span><strong>₱'+pkgExtra.toLocaleString()+'</strong></div>';}

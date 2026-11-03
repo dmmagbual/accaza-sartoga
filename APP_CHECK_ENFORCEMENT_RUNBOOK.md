@@ -21,12 +21,12 @@ const ENFORCE_APP_CHECK_ORDERS = String(process.env.ENFORCE_APP_CHECK_ORDERS || 
 ```
 
 Two places that look like controls and are **not**:
-- `functions/.env.accaza-sartoga` — git-ignored (`.gitignore` lines 6–8 allow only `.env.example`), so it does not exist on the GitHub Actions runner and the CLI loads nothing.
+- `functions/.env.accaza-sartoga` — git-ignored (`.gitignore` lines 6–8 allow only `.env.example`), so it does not exist on the GitHub Actions runner and CI loads nothing. **On your PC it is different:** the Firebase CLI loads this file on a local deploy, and any `ENFORCE_APP_CHECK=` line in it overrides the committed default. A stale `ENFORCE_APP_CHECK=false` from 8 Aug sat there until 3 Nov 2026; it is now comment-only. Keep it free of App Check flags.
 - A workflow step's `env:` — that is shell environment for the `firebase` CLI process. The CLI never forwards it into a deployed function's runtime configuration. The values PR #660 added there were inert, which is why they were removed.
 
-**To change enforcement:** edit the default literal (`"false"` → `"true"`) in that file, commit, open a PR, merge. CI redeploys Functions and the value bakes into the function config at deploy time. A manual `firebase deploy --only "functions" --project "accaza-sartoga"` from your PC bakes in the same committed value, so **a local deploy can no longer silently revert what CI set** — that footgun is gone.
+**To change enforcement:** edit the default literal (`"false"` → `"true"`) in that file, commit, open a PR, merge. CI redeploys Functions and the value bakes into the function config at deploy time. A manual `firebase deploy --only "functions" --project "accaza-sartoga"` from your PC bakes in the same committed value **only while `functions/.env.accaza-sartoga` sets no App Check flag** — check it before any local deploy.
 
-The optional `process.env` override still works for a one-off experiment on your own machine, but any later deploy restores the committed default. Do not rely on it.
+The optional `process.env` override still works for a one-off experiment on your own machine, but the next CI deploy restores the committed default, while every local deploy re-applies it until you remove the line. Do not rely on it.
 
 ## 2. Phase 1 — Verify token flow (do this over a few days; do not skip)
 **Do not wait for ~100% Verified.** The console showed 89% Auth / 78% Realtime Database on 2026-09-30 and that share can never reach 100% on a public site: JS-running bots that reCAPTCHA Enterprise refuses, privacy browsers and trackers-blockers, and any client whose token exchange fails all sit in the Unverified bucket permanently. Chasing 100% blocks the work forever.

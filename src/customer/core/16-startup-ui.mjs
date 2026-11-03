@@ -67,6 +67,16 @@ setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},
     if (e.key === 'ArrowRight') shiftLightbox(1);
   });
 })();
+// Keyboard activation for non-button controls marked role="button" (proof upload box,
+// gallery cards): Enter or Space acts like a click, as on a native button. A real button
+// nested inside (e.g. "Remove" in the upload box) keeps its own native behaviour.
+document.addEventListener('keydown', function(e) {
+  var t = e.target;
+  if ((e.key !== 'Enter' && e.key !== ' ') || e.repeat || !t || !t.getAttribute || t.tagName === 'BUTTON') return;
+  if (t.getAttribute('role') !== 'button' || !t.hasAttribute('tabindex')) return;
+  e.preventDefault();
+  t.click();
+});
 // ── Hamburger menu
 window.toggleNav = function() {
   var nl = document.querySelector('.nav-links');

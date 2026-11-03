@@ -98,6 +98,19 @@ const openShift = {SH: {'SH-1': {status: 'open'}}};
   const undated = fakeDb({orders: {A: Object.assign({}, completed, {completedAt: 0, receivedAt: 0, timestamp: 0})}, shifts: closedShift.SH}, []);
   assert.equal((await ctx.orderArchiveCheck(undated, 'A', {strict: true})).reason, 'too_recent', 'an order with no timestamp is never archived automatically');
 }
+// 3b. A website order rejected before POS acceptance took no sale, so its never-verified
+//     proof must not pin it in /orders (and the customer's tracker) forever. It stays live
+//     for the online review window, then archives; a captured or cashier-verified rejection
+//     still waits for payment review.
+{
+  const rejected = {id: 'A', status: 'Rejected', source: 'online', channel: 'online', paymentStatus: 'pending', timestamp: Date.now() - 3 * 3600000};
+  const due = await ctx.orderArchiveCheck(fakeDb({orders: {A: rejected}}, []), 'A', {strict: true});
+  assert.equal(due.ok, true, 'a rejected, never-accepted website order must archive after the online window');
+  assert.equal((await ctx.orderArchiveCheck(fakeDb({orders: {A: Object.assign({}, rejected, {timestamp: Date.now() - 3600000})}}, []), 'A', {strict: true})).reason, 'still_live', 'it stays visible inside the online window');
+  assert.equal((await ctx.orderArchiveCheck(fakeDb({orders: {A: Object.assign({}, rejected, {shiftId: 'SH-1', posCaptured: true})}, shifts: closedShift.SH}, []), 'A', {strict: true})).reason, 'payment_review', 'a rejection after POS capture still needs payment review');
+  assert.equal((await ctx.orderArchiveCheck(fakeDb({orders: {A: Object.assign({}, rejected, {paymentStatus: 'cashier_verified'})}}, []), 'A', {strict: true})).reason, 'payment_review', 'a cashier-verified proof still needs a manager');
+  assert.equal(ctx.shouldProjectOrder(rejected, null), false, 'the live projection must release it too');
+}
 // 4. Only final statuses leave the live order list.
 {
   const db = fakeDb({orders: {A: Object.assign({}, completed, {status: 'Preparing'})}, shifts: closedShift.SH}, []);

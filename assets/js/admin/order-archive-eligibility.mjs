@@ -11,7 +11,10 @@ export function orderArchiveBlock(o,ctx){
   if(o.voided!==true&&!(refund>0&&refund>=total-.009))queued=online?(st!=='not_collected'&&o.posCaptured===true&&!!o.shiftId&&['Confirmed','Preparing','Ready'].indexOf(status)>=0):(o.source==='pos'&&['instore','grabfood','foodpanda'].indexOf(String(o.channel||'instore').toLowerCase())>=0&&['queued','preparing','ready'].indexOf(st)>=0);
   if(queued)return{ok:false,reason:'serving_queue',message:'Still in the serving queue ('+(st||'queued')+'). Mark it served or not collected in POS first.'};
   if(o.voided!==true&&st==='not_collected'&&!(o.service&&o.service.reviewedAt))return{ok:false,reason:'serving_queue',message:'Marked not collected and waiting for a manager review. Review it in POS, then archive.'};
-  if(o.paymentStatus==='pending')return{ok:false,reason:'payment_review',message:'Payment not verified yet. Verify the e-payment (check the reference in the actual GCash, Maya or bank account) or record it as not received before archiving.'};
+  // Same exemption as rejectedBeforeCapture() in functions/lib/order-service.js: a website order
+  // rejected before POS acceptance took no sale, so its unverified proof has nothing to review.
+  var rejectedUncaptured=online&&status==='Rejected'&&o.voided!==true&&!o.shiftId&&o.posCaptured!==true;
+  if(o.paymentStatus==='pending'&&!rejectedUncaptured)return{ok:false,reason:'payment_review',message:'Payment not verified yet. Verify the e-payment (check the reference in the actual GCash, Maya or bank account) or record it as not received before archiving.'};
   if(o.paymentStatus==='cashier_verified')return{ok:false,reason:'payment_review',message:'The cashier verified this payment; a manager must validate it before it can be archived.'};
   if(!o.shiftId&&o.source==='pos'&&!(o.enteredVia==='payout-rekey'&&o.catchup===true))return{ok:false,reason:'shift_missing',message:'This till order is not linked to a POS shift, so it cannot be archived. Report it to the owner for review.'};
   return{ok:true,reason:'',message:''};

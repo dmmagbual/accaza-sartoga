@@ -2454,7 +2454,7 @@ async function orderArchiveCheck(db, orderId, options = {}) {
   if (!ORDER_ARCHIVE_FINAL_STATUSES.includes(String(order.status || "")) && order.voided !== true) return {ok: false, reason: "not_final"};
   if (OrderService.keepsOrderLive(order)) return {ok: false, reason: "serving_queue"};
   // Unverified e-payments stay in the verification queue (manual and automatic archive alike).
-  if (["pending", "cashier_verified"].includes(String(order.paymentStatus || ""))) return {ok: false, reason: "payment_review"};
+  if (["pending", "cashier_verified"].includes(String(order.paymentStatus || "")) && !OrderService.rejectedBeforeCapture(order)) return {ok: false, reason: "payment_review"};
   if (options.strict) {
     // Reuse the live-projection rule instead of a second guess: an order the
     // register or the manager validation queue still shows - an electronic
@@ -6257,7 +6257,7 @@ function shouldProjectOrder(order, activeShift, now = Date.now()) {
   if (OrderService.keepsOrderLive(order)) return true;
   const status = String(order.status || "Pending");
   if (["Pending", "Confirmed", "Preparing", "Ready"].includes(status)) return true;
-  if (["pending", "cashier_verified"].includes(order.paymentStatus)) return true;
+  if (["pending", "cashier_verified"].includes(order.paymentStatus) && !OrderService.rejectedBeforeCapture(order)) return true;
   // A missed platform order re-keyed from Payout Reconciliation is a back-office record:
   // it was never on a till, so it has no shift, no serving state and no place in the live
   // order list. Its unsettled receivable is worked from Payout Reconciliation, which reads

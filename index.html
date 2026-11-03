@@ -34,7 +34,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
 <link rel="manifest" id="accazaManifest" href="/manifest.json"/>
 <meta name="theme-color" content="#19241b"/>
-<meta name="accaza-customer-build" content="101"/>
+<meta name="accaza-customer-build" content="102"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -109,12 +109,13 @@
 <link rel="stylesheet" href="assets/css/customer/site.css"/>
 </head>
 <body>
-<!-- accaza-index build v101 -->
+<!-- accaza-index build v102 -->
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
   <div><div style="font-weight:600;font-size:0.92rem;" id="orderToastTitle">New order received!</div>
   <div style="font-size:0.8rem;opacity:0.85;" id="orderToastSub">Tap to view orders</div></div>
 </div>
+<a class="skip-link" href="#main-content">Skip to main content</a>
 <nav>
   <div class="nav-logo">Accaza Coffee House</div>
   <a class="order-service-status" id="orderServiceStatus" href="#order" aria-live="polite" aria-label="Checking live online-order availability">
@@ -139,6 +140,7 @@
   </ul>
   <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Open menu"><span></span><span></span><span></span></button>
 </nav>
+<main id="main-content" tabindex="-1">
 
 <!-- HERO -->
 <section class="hero" id="home">
@@ -263,7 +265,7 @@
     <div style="text-align:center;margin-bottom:2rem;">
       <p class="section-label" style="color:var(--bl);">What We Serve</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Our Menu</h2>
-      <p style="text-align:center;margin-bottom:1.25rem;"><p style="font-size:0.95rem;color:rgba(224,212,198,0.7);">From your morning brew to a full day — crafted fresh, served with love.</p>
+      <p style="text-align:center;margin-bottom:1.25rem;font-size:0.95rem;color:rgba(224,212,198,0.7);">From your morning brew to a full day — crafted fresh, served with love.</p>
     </div>
     <div style="text-align:center;margin-bottom:1.25rem;"><p style="font-size:0.95rem;color:rgba(224,212,198,0.7);font-style:italic;">What are you craving today? ☕ Choose a category below to explore our handcrafted drinks and pastries.</p></div>
     <div class="menu-tabs" id="menuTabsRow"></div>
@@ -281,7 +283,7 @@
         <h2>Choose now. Pay at the cashier.</h2>
         <p>Build your order, send it to the POS, then proceed immediately to the cashier with your name and queue number.</p>
       </div>
-      <p class="section-label" style="color:var(--bl);">Place Your Order</p>
+      <p class="section-label" style="color:var(--bl-ink);">Place Your Order</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Order Online</h2>
       <p style="color:var(--tm);max-width:480px;margin:0 auto;font-size:0.95rem;">Pick your items, customize, choose delivery or pick-up, then pay via GCash or bank transfer.</p>
       <div style="background:#fff3cd;border:1px solid #f0ad4e;border-radius:8px;padding:0.85rem 1.25rem;margin-top:1rem;max-width:600px;margin-left:auto;margin-right:auto;"><p style="font-size:0.85rem;color:#856404;line-height:1.6;text-align:center;">📋 <strong>Online Order Terms</strong><br>We accept online orders from customers within <strong>Dasmariñas, Cavite</strong> only.<br><strong>We do not deliver.</strong> Collect your order at the counter, or book your own courier to collect it for you. <strong>The courier fee is paid by you</strong> directly to the courier. Alternatively, you can place your orders through <strong><span style="color:#d70f64">●</span> foodpanda</strong> or <strong><span style="color:#00b14f">●</span> GrabFood</strong>.</p></div>
@@ -315,11 +317,11 @@
             <button class="type-btn active" id="btnPickup" onclick="setType('pickup')">🏠 Pick-up</button>
             <button class="type-btn" id="btnDelivery" onclick="setType('delivery')">🛵 Courier pick-up (you book)</button>
           </div>
-          <div id="deliveryField" style="display:none;margin-top:1rem;"><label class="field-label">Courier Drop-off Address</label><textarea id="deliveryAddr" rows="2" placeholder="Enter your full delivery address..."></textarea><p style="font-size:0.78rem;color:#856404;background:#fff3cd;border:1px solid #f0ad4e;border-radius:6px;padding:0.55rem 0.85rem;margin-top:0.5rem;line-height:1.5;">📦 You book and pay the courier (e.g. Lalamove or Grab Express). We'll have your order ready for them to collect.</p></div>
+          <div id="deliveryField" style="display:none;margin-top:1rem;"><label class="field-label" for="deliveryAddr">Courier Drop-off Address</label><textarea id="deliveryAddr" rows="2" placeholder="Enter your full delivery address..."></textarea><p style="font-size:0.78rem;color:#856404;background:#fff3cd;border:1px solid #f0ad4e;border-radius:6px;padding:0.55rem 0.85rem;margin-top:0.5rem;line-height:1.5;">📦 You book and pay the courier (e.g. Lalamove or Grab Express). We'll have your order ready for them to collect.</p></div>
           <h3 class="order-section-title" style="margin-top:1.5rem;">4. Your Details</h3><div id="appUserIndicator" style="display:none;background:rgba(176,141,87,0.12);border:1px solid rgba(176,141,87,0.4);border-radius:8px;padding:0.55rem 0.85rem;margin-bottom:0.75rem;font-size:0.8rem;color:var(--tm);">👋 Signed in as <strong id="appUserName"></strong> <a onclick="appLogout()" style="color:var(--bd);cursor:pointer;text-decoration:underline;margin-left:0.35rem;">Not you?</a></div><button id="enableNotifyBtn" onclick="enableNotifications()" style="display:none;width:100%;margin-bottom:0.75rem;background:#19241b;color:#fff;border:none;border-radius:8px;padding:0.6rem 0.9rem;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">🔔 Enable order-ready notifications</button>
-          <label class="field-label">Full Name</label><input type="text" id="custName" placeholder="e.g. Maria Santos" style="margin-bottom:0.75rem;"/>
-          <label class="field-label">Phone Number</label><input type="text" id="custPhone" placeholder="e.g. 09XX XXX XXXX" style="margin-bottom:0.75rem;"/>
-          <label class="field-label">Notes (optional)</label><input type="text" id="custNotes" placeholder="e.g. extra hot, no ice..."/>
+          <label class="field-label" for="custName">Full Name</label><input type="text" id="custName" placeholder="e.g. Maria Santos" style="margin-bottom:0.75rem;"/>
+          <label class="field-label" for="custPhone">Phone Number</label><input type="text" id="custPhone" placeholder="e.g. 09XX XXX XXXX" style="margin-bottom:0.75rem;"/>
+          <label class="field-label" for="custNotes">Notes (optional)</label><input type="text" id="custNotes" placeholder="e.g. extra hot, no ice..."/>
           <h3 class="order-section-title" style="margin-top:1.5rem;">5. Payment Method</h3>
           <div class="order-type-btns">
             <button class="type-btn active" id="btnGcash" onclick="setPayment('gcash')">📱 GCash</button>
@@ -333,7 +335,7 @@
             <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.5;">After placing your order, send payment and screenshot your receipt. We'll confirm once verified. ✅</p>
           </div>
           <h3 class="order-section-title" style="margin-top:1.5rem;">6. Proof of Payment</h3>
-          <div style="background:var(--cr);border:2px dashed var(--cd);border-radius:8px;padding:1.25rem;text-align:center;cursor:pointer;" onclick="document.getElementById('paymentProof').click()" id="uploadBox">
+          <div style="background:var(--cr);border:2px dashed var(--cd);border-radius:8px;padding:1.25rem;text-align:center;cursor:pointer;" onclick="document.getElementById('paymentProof').click()" id="uploadBox" role="button" tabindex="0" aria-label="Attach proof of payment (screenshot of your GCash, Maya or bank transfer receipt)">
             <div id="uploadPlaceholder"><div style="font-size:2rem;margin-bottom:0.5rem;">📎</div><p style="font-size:0.85rem;color:var(--tm);font-weight:500;">Click to attach screenshot</p><p style="font-size:0.75rem;color:var(--tl);margin-top:0.25rem;">GCash or bank transfer receipt (JPG, PNG)</p></div>
             <div id="uploadPreview" style="display:none;"><img id="proofImg" style="max-width:100%;max-height:180px;border-radius:6px;margin-bottom:0.5rem;" alt=""/><p style="font-size:0.75rem;color:#2d9e5f;font-weight:500;">✅ Receipt attached!</p><p style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;" id="proofFileName"></p><button onclick="removeProof(event)" style="margin-top:0.5rem;background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.2rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">Remove</button></div>
           </div>
@@ -392,7 +394,7 @@
 <section id="orderTracker" style="background:var(--cd);padding:5rem 2rem;">
   <div style="max-width:1000px;margin:0 auto;">
     <div style="text-align:center;margin-bottom:2rem;">
-      <p class="section-label" style="color:var(--bl);">Your Orders</p>
+      <p class="section-label" style="color:var(--bl-ink);">Your Orders</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">Order Tracker</h2>
       <p style="color:var(--tm);font-size:0.9rem;">Your order will appear here automatically once placed — no refresh needed! 🔥</p>
     </div>
@@ -410,7 +412,7 @@
 </div>
   <div class="res-inner">
     <div style="text-align:center;margin-bottom:3rem;">
-      <p class="section-label" style="color:var(--bl);">Event Reservations</p>
+      <p class="section-label" style="color:var(--bl-glow);">Event Reservations</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Plan an Event or Gathering</h2>
       <div style="background:rgba(201,163,106,0.15);border:1px solid rgba(201,163,106,0.3);border-radius:8px;padding:1rem 1.5rem;margin-top:1rem;max-width:620px;margin-left:auto;margin-right:auto;"><p style="font-size:0.9rem;color:#c9a36a;line-height:1.7;text-align:center;">📋 <strong>Notice to the General Public</strong><br/>We accept reservations exclusively for events and organized gatherings. For study, work, or regular café visits, seating is walk-in and first-come, first-served. Our staff will be happy to help you find a suitable seat or nearby power outlet, subject to availability.<br/><br/><strong>All event reservations are subject to confirmation.</strong> One of our staff will reach out to your contact number to discuss the details and confirm your reservation. For faster assistance, call or message us at <strong>0927 692 4831</strong>. 😊</p></div>
     </div>
@@ -468,8 +470,8 @@
 <!-- REVIEWS -->
 <section class="reviews-section" id="reviews">
   <div class="reviews-inner">
-    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">What People Say</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Customer Reviews</h2></div>
-    <div id="publicReviewsContainer"><p style="text-align:center;color:var(--tl);padding:2rem;">Loading reviews...</p></div>
+    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl-ink);">What People Say</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Customer Reviews</h2></div>
+    <div id="publicReviewsContainer"><p style="text-align:center;color:var(--tm);padding:2rem;">Loading reviews...</p></div>
   </div>
 
   <div style="text-align:center;padding-bottom:2.5rem;">
@@ -485,7 +487,7 @@
 <!-- FEEDBACK -->
 <section class="feedback-section" id="feedback">
   <div class="feedback-inner">
-    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">We'd Love to Hear From You</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Feedback</h2></div>
+    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl-glow);">We'd Love to Hear From You</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Feedback</h2></div>
     <div class="feedback-layout">
       <div class="feedback-form-box">
         <div class="res-field-group"><div class="res-field"><label class="res-label">Your Name</label><input type="text" id="fbName" maxlength="100" placeholder="e.g. Maria Santos"/></div><div class="res-field"><label class="res-label">Phone / Email (optional)</label><input type="text" id="fbContact" maxlength="120" placeholder="So we can follow up"/></div></div>
@@ -506,19 +508,19 @@
 <!-- GALLERY -->
 <section class="gallery-section" id="gallery">
   <div class="gallery-inner">
-    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">Our Space</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">A Peek Inside</h2><p style="color:rgba(224,212,198,0.45);font-size:0.82rem;letter-spacing:0.04em;">Click any photo for a closer look</p></div>
+    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl-ink);">Our Space</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">A Peek Inside</h2><p style="color:rgba(224,212,198,0.45);font-size:0.82rem;letter-spacing:0.04em;">Click any photo for a closer look</p></div>
     <div class="gallery-grid">
-      <div onclick="openLightbox(0)" class="gallery-card tall"><img src="assets/img/gallery/gallery-01.webp" alt="Accaza Coffee House gallery" loading="lazy" decoding="async"/></div>
-      <div onclick="openLightbox(1)" class="gallery-card"><img src="assets/img/gallery/gallery-02.webp" alt="Accaza" loading="lazy" decoding="async"/></div>
-      <div onclick="openLightbox(2)" class="gallery-card"><img src="assets/img/gallery/gallery-03-640.webp" srcset="assets/img/gallery/gallery-03-640.webp 640w, assets/img/gallery/gallery-03.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
-      <div onclick="openLightbox(3)" class="gallery-card"><img src="assets/img/gallery/gallery-04-640.webp" srcset="assets/img/gallery/gallery-04-640.webp 640w, assets/img/gallery/gallery-04.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
-      <div onclick="openLightbox(4)" class="gallery-card"><img src="assets/img/gallery/gallery-05-640.webp" srcset="assets/img/gallery/gallery-05-640.webp 640w, assets/img/gallery/gallery-05.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
-      <div onclick="openLightbox(5)" class="gallery-card"><img src="assets/img/gallery/gallery-06-640.webp" srcset="assets/img/gallery/gallery-06-640.webp 640w, assets/img/gallery/gallery-06.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
-      <div onclick="openLightbox(6)" class="gallery-card"><img src="assets/img/gallery/gallery-07-640.webp" srcset="assets/img/gallery/gallery-07-640.webp 640w, assets/img/gallery/gallery-07.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
-      <div onclick="openLightbox(7)" class="gallery-card"><img src="assets/img/gallery/gallery-08-640.webp" srcset="assets/img/gallery/gallery-08-640.webp 640w, assets/img/gallery/gallery-08.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
-      <div onclick="openLightbox(8)" class="gallery-card"><img src="assets/img/gallery/gallery-09-640.webp" srcset="assets/img/gallery/gallery-09-640.webp 640w, assets/img/gallery/gallery-09.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
-      <div onclick="openLightbox(9)" class="gallery-card"><img src="assets/img/gallery/gallery-10-640.webp" srcset="assets/img/gallery/gallery-10-640.webp 640w, assets/img/gallery/gallery-10.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
-      <div onclick="openLightbox(10)" class="gallery-card"><img src="assets/img/gallery/gallery-11-640.webp" srcset="assets/img/gallery/gallery-11-640.webp 640w, assets/img/gallery/gallery-11.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Frappe and cold drinks at Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(0)" role="button" tabindex="0" aria-label="Open photo 1" class="gallery-card tall"><img src="assets/img/gallery/gallery-01.webp" alt="Accaza Coffee House gallery" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(1)" role="button" tabindex="0" aria-label="Open photo 2" class="gallery-card"><img src="assets/img/gallery/gallery-02.webp" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(2)" role="button" tabindex="0" aria-label="Open photo 3" class="gallery-card"><img src="assets/img/gallery/gallery-03-640.webp" srcset="assets/img/gallery/gallery-03-640.webp 640w, assets/img/gallery/gallery-03.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(3)" role="button" tabindex="0" aria-label="Open photo 4" class="gallery-card"><img src="assets/img/gallery/gallery-04-640.webp" srcset="assets/img/gallery/gallery-04-640.webp 640w, assets/img/gallery/gallery-04.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(4)" role="button" tabindex="0" aria-label="Open photo 5" class="gallery-card"><img src="assets/img/gallery/gallery-05-640.webp" srcset="assets/img/gallery/gallery-05-640.webp 640w, assets/img/gallery/gallery-05.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(5)" role="button" tabindex="0" aria-label="Open photo 6" class="gallery-card"><img src="assets/img/gallery/gallery-06-640.webp" srcset="assets/img/gallery/gallery-06-640.webp 640w, assets/img/gallery/gallery-06.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(6)" role="button" tabindex="0" aria-label="Open photo 7" class="gallery-card"><img src="assets/img/gallery/gallery-07-640.webp" srcset="assets/img/gallery/gallery-07-640.webp 640w, assets/img/gallery/gallery-07.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(7)" role="button" tabindex="0" aria-label="Open photo 8" class="gallery-card"><img src="assets/img/gallery/gallery-08-640.webp" srcset="assets/img/gallery/gallery-08-640.webp 640w, assets/img/gallery/gallery-08.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(8)" role="button" tabindex="0" aria-label="Open photo 9" class="gallery-card"><img src="assets/img/gallery/gallery-09-640.webp" srcset="assets/img/gallery/gallery-09-640.webp 640w, assets/img/gallery/gallery-09.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(9)" role="button" tabindex="0" aria-label="Open photo 10" class="gallery-card"><img src="assets/img/gallery/gallery-10-640.webp" srcset="assets/img/gallery/gallery-10-640.webp 640w, assets/img/gallery/gallery-10.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(10)" role="button" tabindex="0" aria-label="Open photo 11" class="gallery-card"><img src="assets/img/gallery/gallery-11-640.webp" srcset="assets/img/gallery/gallery-11-640.webp 640w, assets/img/gallery/gallery-11.webp 1280w" sizes="(max-width: 680px) 50vw, 320px" alt="Frappe and cold drinks at Accaza" loading="lazy" decoding="async"/></div>
     </div>
   </div>
 </section>
@@ -551,12 +553,13 @@
   </div>
 </section>
 
+</main>
 <footer class="footer">
   <div class="footer-inner">
     <div class="footer-logo">Accaza Coffee House</div>
     <p>Saratoga Ave, La Mediterranea, Dasmariñas, Cavite · Open daily 6AM–12MN</p>
     <div class="footer-links"><a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a><a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a><a href="about.html">About</a><a href="reservations.html">Reservations</a><a href="contact.html">Visit</a></div>
-    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 101</span></p>
+    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 102</span></p>
   </div>
 </footer>
 

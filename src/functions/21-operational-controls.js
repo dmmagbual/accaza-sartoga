@@ -80,7 +80,7 @@ async function orderArchiveCheck(db, orderId, options = {}) {
   if (!ORDER_ARCHIVE_FINAL_STATUSES.includes(String(order.status || "")) && order.voided !== true) return {ok: false, reason: "not_final"};
   if (OrderService.keepsOrderLive(order)) return {ok: false, reason: "serving_queue"};
   // Unverified e-payments stay in the verification queue (manual and automatic archive alike).
-  if (["pending", "cashier_verified"].includes(String(order.paymentStatus || ""))) return {ok: false, reason: "payment_review"};
+  if (["pending", "cashier_verified"].includes(String(order.paymentStatus || "")) && !OrderService.rejectedBeforeCapture(order)) return {ok: false, reason: "payment_review"};
   if (options.strict) {
     // Reuse the live-projection rule instead of a second guess: an order the
     // register or the manager validation queue still shows - an electronic

@@ -52,7 +52,7 @@ for(const side of ['customer','admin']){
   const lightbox=JSON.parse((core.match(/var GALLERY = (\[[^\]]*\])/)||[])[1]||'null');
   const expectedLightbox=gallery.map(name=>`${dir}/${name}.webp`);
   if(JSON.stringify(lightbox)!==JSON.stringify(expectedLightbox))fail(`${lightboxSources[side]} lightbox list must be the 11 local gallery photos in card order`);
-  const cards=[...footer.matchAll(/onclick="openLightbox\((\d+)\)" class="gallery-card[^"]*"><img ([^>]*)>/g)];
+  const cards=[...footer.matchAll(/onclick="openLightbox\((\d+)\)"(?: role="button" tabindex="0" aria-label="Open photo \d+")? class="gallery-card[^"]*"><img ([^>]*)>/g)];
   if(cards.length!==gallery.length)fail(`${side} gallery must have ${gallery.length} cards, found ${cards.length}`);
   for(const [,index,attrs] of cards){
     const name=gallery[Number(index)];
