@@ -1746,6 +1746,21 @@ function posPinValid(pin, row) {
   const value = String(pin || "").trim();
   return /^[0-9]{4,6}$/.test(value) && row && row.pinSalt && row.pinHash && crypto.timingSafeEqual(Buffer.from(posPinHash(value, row.pinSalt), "hex"), Buffer.from(row.pinHash, "hex"));
 }
+// Opening drawer count (3 Nov 2026): only the till's denominations, as whole counts. The database
+// rules freeze an open shift's openCount one denomination at a time, so a key outside this list
+// could otherwise be changed or deleted from a browser. Zero counts are left out.
+const POS_DRAWER_DENOMS = ["b1000", "b500", "b200", "b100", "b50", "p20", "c10", "c5", "c1", "c25", "c10s", "c5s"];
+function posOpenCountMap(raw) {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}, out = {};
+  for (const [key, value] of Object.entries(source)) {
+    const count = Number(value);
+    if (!Number.isInteger(count) || count < 0 || count > 100000) throw new HttpsError("invalid-argument", "Opening cash count is invalid.");
+    if (!count) continue;
+    if (!POS_DRAWER_DENOMS.includes(key)) throw new HttpsError("invalid-argument", "Opening cash count has a note or coin the till does not use.");
+    out[key] = count;
+  }
+  return out;
+}
 // The bundle loads this section before the one that owns durableShiftReference, but every
 // function declaration is hoisted to module scope, so the format stays defined in one place.
 function shiftReferenceFor(shift) { return durableShiftReference(shift, shift && shift.id); }
@@ -1782,7 +1797,7 @@ exports.openLinkedPosShift = onCall(
     const rows = (await db.ref("/posStaff").get()).val() || {}, matches = Object.entries(rows).filter(([, row]) => row && row.accountUid === actor.uid);
     if (matches.length !== 1) throw new HttpsError("failed-precondition", "Your Firebase login is not linked to one active POS staff profile. Ask a manager to complete the link in POS Settings.");
     const [staffId, staff] = matches[0]; if (!posPinValid(data.pin, staff)) throw new HttpsError("permission-denied", "Your POS PIN is incorrect.");
-    const counts = data.openCount && typeof data.openCount === "object" ? data.openCount : {}, openingFloat = Number(data.openingFloat);
+    const counts = posOpenCountMap(data.openCount), openingFloat = Number(data.openingFloat);
     if (!Number.isFinite(openingFloat) || openingFloat < 0 || openingFloat > 1000000) throw new HttpsError("invalid-argument", "Opening cash count is invalid.");
     const settings=(/* download-ok: bounded one POS settings document is required to enforce the configured register float */await db.ref("/posSettings").get()).val()||{},fixed=settings.fixedFloat==null?null:Number(settings.fixedFloat),now = Date.now(), id = `SH-${now.toString().slice(-6)}-${crypto.randomBytes(3).toString("hex")}`, rec = {id,staff:posStaffText(staff.name,"Staff name",120),staffId,accountUid:actor.uid,openingFloat:Math.round(openingFloat*100)/100,openCount:counts,drawer:counts,openAt:now,status:"open",floatMode:fixed==null?"opening-count":"fixed",configuredFloat:fixed,openedByUid:actor.uid,schemaVersion:2};
     // Issue the durable reference when the shift opens, so a new shift is never stamped with

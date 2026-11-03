@@ -86,3 +86,22 @@ has(reg,/'shifts\/'\+shiftId\+'\/drawerRecounts\/'\+ts/);
 has(reg,/window\.__posCashSwap=function\(done\)/); has(reg,/window\.__posDrawerRecount=function\(done,held\)/);
 has(ops,/id="opsRecount">🧮 Recount drawer<\/button>/);
 console.log('cash change check passed');
+
+// Opening drawer count (3 Nov 2026): the server keeps only the till's denominations, so the
+// database rules can freeze every key of an open shift's openCount.
+{
+  const src=read('src/functions/20a-pos-staff-identity.js');
+  const body=src.slice(src.indexOf('const POS_DRAWER_DENOMS'),src.indexOf('// The bundle loads this section'));
+  class HttpsError extends Error{constructor(code,msg){super(msg);this.code=code;}}
+  const {POS_DRAWER_DENOMS:keys,posOpenCountMap}=new Function('HttpsError',body+'\nreturn {POS_DRAWER_DENOMS,posOpenCountMap};')(HttpsError);
+  assert.deepEqual(keys,DENOMS.map((d)=>d.k));
+  assert.deepEqual(posOpenCountMap({b1000:3,b100:4,b50:12,c1:0}),{b1000:3,b100:4,b50:12});
+  assert.deepEqual(posOpenCountMap(null),{});
+  assert.deepEqual(posOpenCountMap({b20:0}),{});
+  for(const bad of [{b20:2},{b100:-1},{b100:1.5},{b100:'x'},{b100:{n:1}}])assert.throws(()=>posOpenCountMap(bad),/Opening cash count/);
+  assert.match(src,/const counts = posOpenCountMap\(data\.openCount\)/);
+  const rules=read('database.rules.json');
+  for(const k of keys)assert.equal(rules.split(`newData.child('openCount/${k}').val() === data.child('openCount/${k}').val()`).length-1,2,k);
+  assert.doesNotMatch(rules,/newData\.child\('openCount'\)\.val\(\) === data\.child\('openCount'\)\.val\(\) && newData\.child\('floatMode'\)/);
+}
+console.log('opening drawer count: denominations ok');
