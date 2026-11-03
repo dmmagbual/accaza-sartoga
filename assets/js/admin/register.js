@@ -104,9 +104,11 @@ function saveDrawer(nd,abs){if(!activeShift)return Promise.resolve(false);var a=
   return a.runTransaction(a.ref(a.db,'shifts/'+id+'/drawer'),next).then(function(r){if(!r||!r.committed)return fail('the POS count no longer holds those notes or coins. Recount the drawer.');var saved=r.snapshot.val()||{};
     // Live copy: rules refuse it unless that shift is still the open one; if it disagrees so badly the
     // change cannot apply, it is brought in line with the shift record instead.
+    // The shift record has already changed here, so a failure on the live copy must not report
+    // "nothing was changed" and must still let the caller write its swap/recount audit record.
     if(!window.__posShift||window.__posShift.id!==id)return true;
-    return a.runTransaction(a.ref(a.db,'posActiveShift/drawer'),function(cur){var n=next(cur);return n===undefined?saved:n;}).then(function(m){if(activeShift&&activeShift.id===id&&m&&m.committed)activeShift.drawer=Object.assign({},m.snapshot.val()||{});return true;});
-  }).catch(function(e){return fail(((e&&e.message)||String(e))+'.');});}
+    return a.runTransaction(a.ref(a.db,'posActiveShift/drawer'),function(cur){var n=next(cur);return n===undefined?saved:n;}).then(function(m){if(activeShift&&activeShift.id===id&&m&&m.committed)activeShift.drawer=Object.assign({},m.snapshot.val()||{});return true;},function(e){var msg=(e&&e.message)||String(e);if(window.__posLog)window.__posLog('drawer-live-copy-failed',id,msg);alert('The drawer count was saved to the shift record, but the till\'s live count did not update: '+msg+'. Tell the manager.');return true;});
+  },function(e){return fail(((e&&e.message)||String(e))+'.');}).catch(function(e){var msg=(e&&e.message)||String(e);if(window.__posLog)window.__posLog('drawer-save-after-commit',id,msg);alert('The drawer count was saved, but the screen did not finish updating: '+msg+'. Check the drawer count and tell the manager.');return true;});}
 function drawerShortOf(out){var have=drawerNow();return DENOMS.filter(function(d){return (Number(out[d.k])||0)>(Number(have[d.k])||0);}).map(function(d){return (Number(have[d.k])||0)+' × '+d.lbl;});}
 function cashSwap(done){
   if(!activeShift)return alert('There is no open shift.');

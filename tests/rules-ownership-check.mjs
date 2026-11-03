@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import {initializeTestEnvironment,assertFails,assertSucceeds} from '@firebase/rules-unit-testing';
-import {get,ref,set,update,query,orderByChild,limitToLast} from 'firebase/database';
+import {get,ref,set,update,query,orderByChild,limitToLast,runTransaction} from 'firebase/database';
 
 const projectId='accaza-sartoga';
 const rules=fs.readFileSync('database.rules.json','utf8');
@@ -86,6 +86,40 @@ try{
   await assertFails(update(ref(owner,'posActiveShift'),{accountUid:'owner'}));
   await assertFails(set(ref(owner,'posActiveShift'),null));
   await assertFails(update(ref(disabled,'shifts/rule-crew'),{drawer:{b100:9}}));
+  // A shift opened with a counted drawer stores openCount as a map of denominations, as the server
+  // writes it. Rules once called val() on that map, which fails the whole rule and refused every
+  // bill break and recount on a counted shift (3 Nov 2026). Any cashier with POS access, owner of the
+  // shift or not, must be able to change the drawer; nobody may change the opening count.
+  const counted={id:'rule-counted',status:'open',accountUid:'owner',staff:'Owner',staffId:'st_owner',openAt:1,openingFloat:4000,floatMode:'fixed',configuredFloat:4000,openCount:{b1000:3,b100:4,b50:12},drawer:{b1000:3,b100:4,b50:12},schemaVersion:2};
+  let crewActive=null;
+  await env.withSecurityRulesDisabled(async c=>{crewActive=(await get(ref(c.database(),'posActiveShift'))).val();await update(ref(c.database()),{'shifts/rule-counted':counted,posActiveShift:counted});});
+  for(const db of [cashier,staff,owner]){
+    await assertSucceeds(runTransaction(ref(db,'shifts/rule-counted/drawer'),cur=>Object.assign({},cur||{},{b1000:2,b500:2})));
+    await assertSucceeds(runTransaction(ref(db,'posActiveShift/drawer'),cur=>Object.assign({},cur||{},{b1000:2,b500:2})));
+  }
+  await assertSucceeds(update(ref(cashier,'shifts/rule-counted/cashSwaps/1'),{out:{b1000:1},in:{b500:2},amount:1000,ts:1,by:'Cashier'}));
+  await assertSucceeds(update(ref(cashier,'shifts/rule-counted/drawerRecounts/1'),{before:{b1000:2},after:{b1000:2},beforeTotal:2000,afterTotal:2000,difference:0,ts:1,by:'Cashier',byUid:'cashier'}));
+  await assertFails(update(ref(kitchen,'shifts/rule-counted/drawer'),{b100:1}));
+  await assertFails(update(ref(kitchen,'posActiveShift/drawer'),{b100:1}));
+  for(const path of ['shifts/rule-counted','posActiveShift']){
+    for(const db of [cashier,owner]){
+      await assertFails(update(ref(db,path),{openCount:{b1000:3,b100:5,b50:12}}));
+      await assertFails(update(ref(db,path),{'openCount/b100':5}));
+      await assertFails(update(ref(db,path),{'openCount/b50':null}));
+      await assertFails(update(ref(db,path),{'openCount/b500':1}));
+      await assertFails(update(ref(db,path),{'openCount/x1':1}));
+      await assertFails(update(ref(db,path),{openCount:null}));
+    }
+  }
+  // A plain-value opening count stays frozen too, and the drawer can still change.
+  await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database()),{'shifts/rule-counted/openCount':500,'posActiveShift/openCount':500});});
+  for(const path of ['shifts/rule-counted','posActiveShift']){
+    await assertFails(update(ref(owner,path),{openCount:600}));
+    await assertFails(update(ref(owner,path),{openCount:{b500:1}}));
+    await assertFails(update(ref(owner,path),{openCount:null}));
+    await assertSucceeds(update(ref(cashier,path+'/drawer'),{b100:1}));
+  }
+  await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database()),{'shifts/rule-counted':null,posActiveShift:crewActive});});
   await env.withSecurityRulesDisabled(async c=>{await set(ref(c.database(),'sessionControl/users/staff'),{at:Date.now()+60000});});
   await assertFails(update(ref(staff,'shifts/rule-crew'),{drawer:{b100:9}}));
   await assertSucceeds(set(ref(cashier,'shifts/rule-crew'),{id:'rule-crew',status:'open',accountUid:'cashier',staff:'Cashier',drawer:{b100:2}}));
