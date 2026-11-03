@@ -4,6 +4,17 @@ import {get,ref,set,update,query,orderByChild,limitToLast,runTransaction} from '
 
 const projectId='accaza-sartoga';
 const rules=fs.readFileSync('database.rules.json','utf8');
+// val() on a node with children fails the whole rule (3 Nov 2026: every bill break on a counted shift was
+// refused). These fields hold collections; no rule may compare them with val().
+for(const field of ['openCount','drawer','inventoryUsage','refundPayments','refundHistory','voidPayments','costCorrections','payOuts','lineItems','correctedLineItems','byMethod','byChannel','floatException']){
+  // The field's own rule may not compare the whole node either.
+  if(new RegExp(`"${field}"\\s*:\\s*\\{[^{}]*newData\\.val\\(\\)`).test(rules))throw new Error(`database.rules.json compares the collection ${field} with newData.val() in its own rule`);
+  // Allowed only behind a guard that proves the stored value is not a collection.
+  for(const m of rules.matchAll(new RegExp(`child\\('${field}'\\)\\.val\\(\\)`,'g'))){
+    const before=rules.slice(Math.max(0,m.index-120),m.index);
+    if(!before.includes(`data.child('${field}').hasChildren() || `))throw new Error(`database.rules.json compares the collection ${field} with val(); compare its leaves or freeze it instead`);
+  }
+}
 const env=await initializeTestEnvironment({projectId,database:{rules}});
 
 try{
@@ -141,6 +152,31 @@ try{
     await assertFails(set(ref(db,'uncostedSales/POS-X__sale_0'),{status:'resolved'}));
   }
   await assertFails(update(ref(owner,'orders/own'),{costCorrections:{forged:{amount:1}}}));
+  // Stock usage (3 Nov 2026): a map written only by the server. Staff with orders/pos access may update
+  // an order that has none, may not add one, and may not update an order once stock was deducted.
+  await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database()),{
+    'orders/rule-usage-none':{id:'rule-usage-none',status:'Completed',total:100,timestamp:1},
+    'orders/rule-usage-set':{id:'rule-usage-set',status:'Completed',total:100,timestamp:1,inventoryDeducted:true,inventoryUsage:{inv_milk:0.2,inv_cup:1},costCorrections:{c1:{amount:1}},refundPayments:{r1:{amount:5}}}});});
+  await assertSucceeds(update(ref(cashier,'orders/rule-usage-none'),{staffNote:'table 4'}));
+  await assertFails(update(ref(cashier,'orders/rule-usage-none'),{inventoryUsage:{inv_milk:1}}));
+  await assertFails(update(ref(cashier,'orders/rule-usage-set'),{staffNote:'table 4'}));
+  await assertFails(update(ref(cashier,'orders/rule-usage-set'),{'inventoryUsage/inv_milk':null}));
+  await assertFails(update(ref(cashier,'orders/rule-usage-set'),{inventoryUsage:null}));
+  await assertSucceeds(update(ref(owner,'orders/rule-usage-set'),{staffNote:'table 4'}));
+  // Staff may not remove a server-only collection from an order that holds one.
+  await env.withSecurityRulesDisabled(async c=>{await set(ref(c.database(),'orders/rule-refunded'),{id:'rule-refunded',status:'Completed',total:100,timestamp:1,refundHistory:{h1:{amount:5}}});});
+  await assertFails(update(ref(cashier,'orders/rule-refunded'),{refundHistory:null}));
+  await assertFails(update(ref(cashier,'orders/rule-refunded'),{'refundHistory/h1':null}));
+  await assertFails(update(ref(cashier,'orders/rule-refunded'),{staffNote:'x'}));
+  await assertSucceeds(update(ref(owner,'orders/rule-refunded'),{staffNote:'x'}));
+  await env.withSecurityRulesDisabled(async c=>{await set(ref(c.database(),'orders/rule-refunded'),null);});
+  for(const db of [owner,cashier]){
+    await assertFails(update(ref(db,'orders/rule-usage-set'),{'costCorrections/c2':{amount:1}}));
+    await assertFails(update(ref(db,'orders/rule-usage-set'),{'refundPayments/r1/amount':6}));
+    await assertFails(update(ref(db,'orders/rule-usage-set'),{voidPayments:{v1:{amount:1}}}));
+    await assertFails(update(ref(db,'orders/rule-usage-set'),{refundHistory:{h1:{amount:1}}}));
+  }
+  await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database()),{'orders/rule-usage-none':null,'orders/rule-usage-set':null});});
   await assertFails(update(ref(owner,'orders/own'),{costCorrectionTotal:1}));
 
   await assertSucceeds(get(ref(a,'orders/own')));
