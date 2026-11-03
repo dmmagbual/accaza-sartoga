@@ -1,6 +1,9 @@
 (function(){
 'use strict';
 var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, purchaseShiftMap={}, purchaseFundAdvanceMap={}, supplierMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={},paymentAccountsMap={},packagingRulesMap={},booksChartMap={};
+// One reference per document (3 Nov 2026): purchases, shifts and cash payments held here label
+// sources on every screen (inventory history, Finance Books links) through AccazaRef.
+if(window.AccazaRef){AccazaRef.provide('purchase',function(){return purchaseInvoicesMap;});AccazaRef.provide('shift',function(){return purchaseShiftMap;});AccazaRef.provide('voucher',function(){return purchaseFundAdvanceMap;});}
 // Order reference: PREFIX-XXXXXX (6 base36 chars from a monotonic timestamp).
 // Prefix namespaces the channel so IDs never collide across channels; the
 // monotonic counter guarantees uniqueness for rapid same-device sales offline.

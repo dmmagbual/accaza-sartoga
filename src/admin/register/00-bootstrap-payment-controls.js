@@ -2,6 +2,9 @@
 'use strict';
 var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},booksChartMap={},cashAccountsMap={},financialMovementsMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=null,logCollapsed=true,cardShiftId=null,shiftReferenceRequests={},shiftReferenceFailures={};
 var pettyVouchers={},pettyRepl={},pettySettings={},supplierMap={};
+// One reference per document (3 Nov 2026): screens in every module label shifts, cash
+// discrepancies, cash payments and journals from the maps this module already holds.
+if(window.AccazaRef){AccazaRef.provide('shift',function(){var m=Object.assign({},shiftsMap);if(activeShift&&activeShift.id)m[activeShift.id]=Object.assign({},m[activeShift.id]||{},activeShift);return m;});AccazaRef.provide('discrepancy',function(){return discMap;});AccazaRef.provide('voucher',function(){return pettyVouchers;});AccazaRef.provide('movement',function(){return financialMovementsMap;});}
 function A(){return window.__accaza;}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}

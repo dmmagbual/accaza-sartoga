@@ -34,7 +34,7 @@ function renderOps(){
   // (Staff & PINs, POS Settings, and Payment methods moved to the Settings ▸ POS Settings tab — see renderPosSettings)
   var acts=Object.keys(activityMap).map(function(k){return activityMap[k];}).sort(function(a,b){return(b.ts||0)-(a.ts||0);}).slice(0,20);
   html+='<div class="az-sec" style="display:flex;justify-content:space-between;align-items:center;"><span id="opsLogToggle" style="cursor:pointer;user-select:none;">'+(logCollapsed?'▸':'▾')+' Activity log <span style="font-weight:400;color:var(--tl);font-size:0.78rem;">('+acts.length+')</span></span> <button class="pz-btn sec" id="opsArchiveLog" style="padding:0.2rem 0.6rem;font-size:0.72rem;font-weight:400;">Archive entries &gt; 60 days</button></div><div class="pz-card" id="opsLogBody"'+(logCollapsed?' style="display:none;"':'')+'><table class="pz-tbl"><tbody>'
-    +(acts.length?acts.map(function(x){return '<tr><td style="white-space:nowrap;color:var(--tl);font-size:0.75rem;">'+new Date(x.ts).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</td><td><b>'+esc(x.action)+'</b> '+esc(x.ref||'')+'</td><td>'+esc(x.detail||'')+'</td><td style="color:var(--tl);">'+esc(x.staff||'')+'</td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No activity yet.</td></tr>')
+    +(acts.length?acts.map(function(x){return '<tr><td style="white-space:nowrap;color:var(--tl);font-size:0.75rem;">'+new Date(x.ts).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</td><td><b>'+esc(x.action)+'</b> '+esc(activityRefLabel(x))+'</td><td>'+esc(x.detail||'')+'</td><td style="color:var(--tl);">'+esc(x.staff||'')+'</td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No activity yet.</td></tr>')
     +'</tbody></table></div>';
   root.innerHTML=html;
   // wire
@@ -64,6 +64,8 @@ function renderOps(){
 // `shifts/<id>`, so it must stay intact, and staff should quote a reference a manager
 // can recognise. Always present the server-issued `shiftReference`; when a shift has
 // none yet, ask the server to issue a durable one and label the gap in plain words.
+// Activity log entries for shift events stored the shift key; show the shift reference instead.
+function activityRefLabel(x){var ref=String(x&&x.ref||'');if(!ref)return '';if(shiftsMap[ref]||(activeShift&&activeShift.id===ref))return shiftReferenceLabel(Object.assign({id:ref},shiftsMap[ref]||activeShift),true);return window.AccazaRef?AccazaRef.text(ref):ref;}
 function shiftReferenceLabel(shift,quiet){
   if(!shift)return '—';
   var known=String(shift.shiftReference||'').trim();

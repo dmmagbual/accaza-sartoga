@@ -86,7 +86,7 @@ function postInventoryOpeningBalance(rng,btn){
     btn.textContent=reposting?'Re-posting\u2026':'Posting\u2026';
     var payload=reposting?{action:'inventory_opening_balance_repost',commandId:commandId,date:rng.t}:{action:'inventory_opening_balance',commandId:commandId,date:rng.t,expectedDifference:r.totalDifference};
     return A().postFinancialCommand(payload);
-  }).then(function(r){if(!r)return;r=r&&r.data?r.data:r||{};alert('Opening inventory balance '+(r.reposted?'re-posted':'posted')+'.\nAdjustment: '+peso(r.adjustment)+'\nMovement: '+r.movementId+'\n\nFinance Books will refresh automatically.');}).catch(function(e){alert('Opening inventory balance was not posted: '+((e&&e.message)||(e&&e.code)||e));btn.disabled=false;btn.textContent='Post / re-post opening inventory balance';});
+  }).then(function(r){if(!r)return;r=r&&r.data?r.data:r||{};alert('Opening inventory balance '+(r.reposted?'re-posted':'posted')+'.\nAdjustment: '+peso(r.adjustment)+'\nJournal: '+((window.AccazaRef&&(AccazaRef.text(r.documentNo)||AccazaRef.movementById(r.movementId)))||'posted')+'\n\nFinance Books will refresh automatically.');}).catch(function(e){alert('Opening inventory balance was not posted: '+((e&&e.message)||(e&&e.code)||e));btn.disabled=false;btn.textContent='Post / re-post opening inventory balance';});
 }
 function autoAdjustInventoryReconciliation(rng,btn){
   if(rng.t!==tsToDate(Date.now())){alert('Set the To date to today before auto-adjusting the current inventory reconciliation.');return;}
@@ -98,7 +98,7 @@ function autoAdjustInventoryReconciliation(rng,btn){
     if(legacyGain>=.005)detail+=(detail?'\n':'')+'Consolidate legacy 4995 into 5905 '+peso(legacyGain);
     if(!confirm('Auto-adjust this inventory variance?\n\n'+detail+'\n\nThis does not change stock quantity or opening balance. It posts one dated Finance adjustment with a permanent audit reference.'))return null;
     btn.textContent='Posting current variance…';return A().postFinancialCommand({action:'inventory_reconciliation_adjustment',commandId:commandId,date:rng.t,expectedFingerprint:r.fingerprint,adjustmentPurpose:'current-reconciliation',classificationConfirmed:true});
-  }).then(function(r){if(!r){btn.disabled=false;btn.textContent='Post current count variance → Gain / (Loss)';return;}r=r&&r.data?r.data:r||{};alert((r.duplicate?'Existing':'New')+' current inventory reconciliation recorded.\nMovement: '+r.movementId+'\n\nFinance Books will refresh automatically.');}).catch(function(e){alert('Current inventory variance was not posted: '+((e&&e.message)||(e&&e.code)||e));btn.disabled=false;btn.textContent='Post current count variance → Gain / (Loss)';});
+  }).then(function(r){if(!r){btn.disabled=false;btn.textContent='Post current count variance → Gain / (Loss)';return;}r=r&&r.data?r.data:r||{};alert((r.duplicate?'Existing':'New')+' current inventory reconciliation recorded.\nJournal: '+((window.AccazaRef&&(AccazaRef.text(r.documentNo)||AccazaRef.movementById(r.movementId)))||'posted')+'\n\nFinance Books will refresh automatically.');}).catch(function(e){alert('Current inventory variance was not posted: '+((e&&e.message)||(e&&e.code)||e));btn.disabled=false;btn.textContent='Post current count variance → Gain / (Loss)';});
 }
 function renderStockValue(){
   var root=document.getElementById('stockValueRoot');if(!root)return;

@@ -1,5 +1,14 @@
 
 /* ============================================================ CSV EXPORTS ============================================================ */
+// One reference per document (3 Nov 2026): journals are named by their document number or source
+// document; movement IDs and entry IDs are internal and never exported or shown.
+function financeRef(e){return window.AccazaRef?window.AccazaRef.journal(e):String(e&&(e.ref||e.reference)||'');}
+function financeMovementRef(id){if(!id)return '';return (window.AccazaRef&&window.AccazaRef.movementById(id))||'Journal';}
+function financeCustodyRef(c){var R=window.AccazaRef;c=c||{};return R?(R.first(c.shiftReference,c.reference)||String(c.staff||'')||R.custody(c)):String(c.shiftReference||c.reference||c.staff||'');}
+function refText(v,fallback){return window.AccazaRef?window.AccazaRef.text(v,fallback):String(v==null?'':v);}
+// Finance Books holds journals, bills, purchases, custody, discrepancies and payouts; the shared
+// reference helper reads them from here, so labelling adds no database reads.
+if(window.AccazaRef){(function(R){R.provide('movement',function(){return window.__financialMovements;});R.provide('payable',function(){return window.__apMap;});R.provide('receivable',function(){return window.__arMap;});R.provide('custody',function(){return window.__cashCustody;});R.provide('discrepancy',function(){return window.__cashDiscrepancies;});R.provide('purchase',function(){return window.__piMap;});R.provide('payout',function(){return window.__platformPayouts;});})(window.AccazaRef);}
 function csvSafe(value){
   if(value==null)return '';
   if(typeof value==='number'&&Number.isFinite(value))return value.toFixed(2);
@@ -15,31 +24,31 @@ function csvDownload(name,headers,rows,range){
 function csvEntryStatus(e){return e.voided?'Voided':e.reversalOf?'Reversal':e.correctsMovementId?'Correction replacement':e.reversedByMovementId?'Corrected / reversed':'Posted';}
 function financeTransactions(){return ENTRIES().filter(entryInPeriod).slice().sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''))||String(b.id||'').localeCompare(String(a.id||''));});}
 function exportJournalCsv(){
-  var rows=[];financeTransactions().forEach(function(e){(e.lines||[]).forEach(function(l){rows.push([e.date||'',e.id||'',e.ref||'',e.memo||'',csvEntryStatus(e),e.sourceType||e.source||'',l.code||'',accName(l.code)||'',Number(l.debit)||0,Number(l.credit)||0,e.reversalOf||'',e.correctsMovementId||'']);});});
-  csvDownload('journal',['Date','Entry ID','Reference','Memo','Status','Source','Account code','Account name','Debit','Credit','Reversal of','Corrects movement'],rows);
+  var rows=[];financeTransactions().forEach(function(e){(e.lines||[]).forEach(function(l){rows.push([e.date||'',financeRef(e),e.memo||'',csvEntryStatus(e),e.sourceType||e.source||'',l.code||'',accName(l.code)||'',Number(l.debit)||0,Number(l.credit)||0,financeMovementRef(e.reversalOf),financeMovementRef(e.correctsMovementId)]);});});
+  csvDownload('journal',['Date','Reference','Memo','Status','Source','Account code','Account name','Debit','Credit','Reversal of','Corrects journal'],rows);
 }
 function exportLedgerCsv(){
   var running={},rows=[],entries=ENTRIES().filter(entryInPeriod).slice().sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.id||'').localeCompare(String(b.id||''));});
   var bounds=periodBounds(),before=ENTRIES().filter(function(e){return e.date&&String(e.date).slice(0,10)<bounds.start;});
-  DB.accounts.forEach(function(a){running[a.code]=isBalanceSheetType(a.type)?normalBalanceFor(a.code,before):0;rows.push([bounds.start,a.code,a.name,a.type,'','','Opening balance',0,0,running[a.code],'Opening']);});
-  entries.forEach(function(e){(e.lines||[]).forEach(function(l){var code=l.code||'',account=acc(code),net=(Number(l.debit)||0)-(Number(l.credit)||0);running[code]=r2((running[code]||0)+(DEBIT_NORMAL[account&&account.type]?net:-net));rows.push([e.date||'',code,accName(code)||'',account&&account.type||'',e.id||'',e.ref||'',e.memo||'',Number(l.debit)||0,Number(l.credit)||0,running[code],csvEntryStatus(e)]);});});
-  DB.accounts.forEach(function(a){rows.push([bounds.end,a.code,a.name,a.type,'','','Closing balance',0,0,running[a.code]||0,'Closing']);});
-  csvDownload('general-ledger',['Date','Account code','Account name','Account type','Entry ID','Reference','Memo','Debit','Credit','Running balance (normal side)','Status'],rows);
+  DB.accounts.forEach(function(a){running[a.code]=isBalanceSheetType(a.type)?normalBalanceFor(a.code,before):0;rows.push([bounds.start,a.code,a.name,a.type,'','Opening balance',0,0,running[a.code],'Opening']);});
+  entries.forEach(function(e){(e.lines||[]).forEach(function(l){var code=l.code||'',account=acc(code),net=(Number(l.debit)||0)-(Number(l.credit)||0);running[code]=r2((running[code]||0)+(DEBIT_NORMAL[account&&account.type]?net:-net));rows.push([e.date||'',code,accName(code)||'',account&&account.type||'',financeRef(e),e.memo||'',Number(l.debit)||0,Number(l.credit)||0,running[code],csvEntryStatus(e)]);});});
+  DB.accounts.forEach(function(a){rows.push([bounds.end,a.code,a.name,a.type,'','Closing balance',0,0,running[a.code]||0,'Closing']);});
+  csvDownload('general-ledger',['Date','Account code','Account name','Account type','Reference','Memo','Debit','Credit','Running balance (normal side)','Status'],rows);
 }
 function accountLedgerDetail(code){
   var a=acc(code),bounds=periodBounds(),carry=isBalanceSheetType(a&&a.type),allThroughEnd=entriesThroughPeriodEnd().filter(function(e){return (e.lines||[]).some(function(line){return line.code===code;});}),entries=(carry?allThroughEnd.filter(entryInPeriod):entriesInPeriod().filter(function(e){return (e.lines||[]).some(function(line){return line.code===code;});})),opening=carry?normalBalanceFor(code,allThroughEnd.filter(function(e){return String(e&&e.date||'').slice(0,10)<bounds.start;})):0,running=opening;
-  var chronological=entries.slice().sort(function(x,y){return String(x.date||'').localeCompare(String(y.date||''))||String(x.id||'').localeCompare(String(y.id||''));}).map(function(e){var matching=(e.lines||[]).filter(function(x){return x.code===code;}),debit=r2(matching.reduce(function(sum,line){return sum+(Number(line.debit)||0);},0)),credit=r2(matching.reduce(function(sum,line){return sum+(Number(line.credit)||0);},0));running=r2(running+(DEBIT_NORMAL[a.type]?(debit-credit):(credit-debit)));return {date:e.date||'',id:e.id||'',reference:e.ref||e.reference||e.sourceId||e.id||'',memo:e.memo||e.description||'',debit:debit,credit:credit,balance:running,status:csvEntryStatus(e),reversalOf:e.reversalOf||''};}),closing=running;
+  var chronological=entries.slice().sort(function(x,y){return String(x.date||'').localeCompare(String(y.date||''))||String(x.id||'').localeCompare(String(y.id||''));}).map(function(e){var matching=(e.lines||[]).filter(function(x){return x.code===code;}),debit=r2(matching.reduce(function(sum,line){return sum+(Number(line.debit)||0);},0)),credit=r2(matching.reduce(function(sum,line){return sum+(Number(line.credit)||0);},0));running=r2(running+(DEBIT_NORMAL[a.type]?(debit-credit):(credit-debit)));return {date:e.date||'',id:e.id||'',reference:financeRef(e),memo:e.memo||e.description||'',debit:debit,credit:credit,balance:running,status:csvEntryStatus(e),reversalOf:financeMovementRef(e.reversalOf)};}),closing=running;
   return {account:a,bounds:bounds,carry:carry,opening:opening,rows:chronological.slice().reverse(),closing:closing,normalDirection:DEBIT_NORMAL[a.type]?'debit':'credit'};
 }
 function exportAccountLedgerCsv(code){
   var detail=accountLedgerDetail(code),a=detail.account;if(!a)return alert('This ledger account is unavailable. Refresh Finance Books and try again.');
-  var rows=[[detail.bounds.start,a.code,a.name,a.type,'','','Opening balance',0,0,detail.opening,'Opening','']].concat(detail.rows.map(function(row){return [row.date,a.code,a.name,a.type,row.id,row.reference,row.memo,row.debit,row.credit,row.balance,row.status,row.reversalOf];}));
-  rows.push([detail.bounds.end,a.code,a.name,a.type,'','','Closing balance',0,0,detail.closing,'Closing','']);
-  csvDownload('ledger-'+a.code,['Date','Account code','Account name','Account type','Entry ID','Reference','Memo','Debit','Credit','Running balance (normal side)','Status','Reversal of'],rows,detail.bounds.start+'_to_'+detail.bounds.end);
+  var rows=[[detail.bounds.start,a.code,a.name,a.type,'','Opening balance',0,0,detail.opening,'Opening','']].concat(detail.rows.map(function(row){return [row.date,a.code,a.name,a.type,row.reference,row.memo,row.debit,row.credit,row.balance,row.status,row.reversalOf];}));
+  rows.push([detail.bounds.end,a.code,a.name,a.type,'','Closing balance',0,0,detail.closing,'Closing','']);
+  csvDownload('ledger-'+a.code,['Date','Account code','Account name','Account type','Reference','Memo','Debit','Credit','Running balance (normal side)','Status','Reversal of'],rows,detail.bounds.start+'_to_'+detail.bounds.end);
 }
 function printAccountLedger(code){
   var detail=accountLedgerDetail(code),a=detail.account;if(!a)return alert('This ledger account is unavailable. Refresh Finance Books and try again.');
-  var escapePrint=function(value){return String(value==null?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');},money=function(value){return peso(Number(value)||0);},body=detail.rows.map(function(row){return '<tr><td>'+escapePrint(row.date)+'</td><td>'+escapePrint(row.reference||row.id)+'</td><td>'+escapePrint(row.memo)+'</td><td class="num">'+(row.debit?money(row.debit):'')+'</td><td class="num">'+(row.credit?money(row.credit):'')+'</td><td class="num">'+money(row.balance)+'</td></tr>';}).join('')||'<tr><td colspan="6">No entries in this period.</td></tr>',popup=window.open('','_blank','noopener,noreferrer,width=1000,height=720');
+  var escapePrint=function(value){return String(value==null?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');},money=function(value){return peso(Number(value)||0);},body=detail.rows.map(function(row){return '<tr><td>'+escapePrint(row.date)+'</td><td>'+escapePrint(row.reference)+'</td><td>'+escapePrint(row.memo)+'</td><td class="num">'+(row.debit?money(row.debit):'')+'</td><td class="num">'+(row.credit?money(row.credit):'')+'</td><td class="num">'+money(row.balance)+'</td></tr>';}).join('')||'<tr><td colspan="6">No entries in this period.</td></tr>',popup=window.open('','_blank','noopener,noreferrer,width=1000,height=720');
   if(!popup)return alert('Allow pop-ups for Accaza Books to print this ledger.');
   popup.document.write('<!doctype html><html><head><title>Accaza ledger '+escapePrint(a.code)+'</title><style>body{font-family:Arial,sans-serif;color:#28211c;margin:28px}h1{font-size:20px;margin:0 0 5px}.meta{color:#6d6257;margin:0 0 18px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}th{background:#f5f1eb;text-transform:uppercase;font-size:11px;letter-spacing:.04em}.num{text-align:right}small{color:#6d6257}@media print{body{margin:14mm}button{display:none}}</style></head><body><h1>'+escapePrint(a.code)+' · '+escapePrint(a.name)+'</h1><p class="meta">'+escapePrint(detail.bounds.start)+' to '+escapePrint(detail.bounds.end)+' · opening balance '+money(detail.opening)+' · running balance in '+escapePrint(detail.normalDirection)+' (normal) direction</p><table><thead><tr><th>Date</th><th>Reference</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead><tbody>'+body+'</tbody></table><p class="meta">Closing balance: '+money(detail.closing)+'</p><script>window.onload=function(){window.print();};<\/script></body></html>');
   popup.document.close();
@@ -50,8 +59,8 @@ function printFinancePage(title){
   popup.document.close();
 }
 function exportTransactionsCsv(){
-  var rows=financeTransactions().map(function(e){var debit=(e.lines||[]).reduce(function(s,l){return s+(Number(l.debit)||0);},0),credit=(e.lines||[]).reduce(function(s,l){return s+(Number(l.credit)||0);},0);return [e.date||'',e.id||'',e.ref||'',e.memo||'',e.sourceType||e.source||'',csvEntryStatus(e),debit,credit,(e.lines||[]).length];});
-  csvDownload('transactions',['Date','Entry ID','Reference','Description','Source','Status','Total debit','Total credit','Lines'],rows);
+  var rows=financeTransactions().map(function(e){var debit=(e.lines||[]).reduce(function(s,l){return s+(Number(l.debit)||0);},0),credit=(e.lines||[]).reduce(function(s,l){return s+(Number(l.credit)||0);},0);return [e.date||'',financeRef(e),e.memo||'',e.sourceType||e.source||'',csvEntryStatus(e),debit,credit,(e.lines||[]).length];});
+  csvDownload('transactions',['Date','Reference','Description','Source','Status','Total debit','Total credit','Lines'],rows);
 }
 function exportProfitLossCsv(){
   var p=plData(),rows=[],push=function(section,x){rows.push([section,x.a.code||'',x.a.name||'',Number(x.bal)||0]);};p.sales.forEach(push.bind(null,'Recognized sales'));rows.push(['Total','','Net sales',p.netSales]);p.cogs.forEach(push.bind(null,'Cost of goods sold'));rows.push(['Total','','Total COGS',p.totalCogs],['Total','','Gross profit',p.gross]);p.otherIncome.forEach(push.bind(null,'Other income'));rows.push(['Total','','Total other income',p.totalOtherIncome]);p.expense.forEach(push.bind(null,'Operating expenses'));rows.push(['Total','','Total operating expenses',p.totalExp]);(p.otherExpense||[]).forEach(push.bind(null,'Other expenses'));if((p.otherExpense||[]).length)rows.push(['Total','','Total other expenses',p.totalOtherExpense]);rows.push(['Total','','Net income / (loss)',p.net]);csvDownload('profit-and-loss',['Section','Account code','Account','Amount'],rows);
@@ -71,11 +80,11 @@ function exportCashFlowCsv(){
   rows.push(['Subtotal','','','Total receipts',s.totAdd]);
   Object.keys(s.ded).sort().forEach(function(k){rows.push(['Deduction','','',k,-Math.abs(s.ded[k])]);});
   rows.push(['Subtotal','','','Total deductions',-s.totDed]);
-  s.correctionDetail.forEach(function(x){rows.push(['Balance correction',x.date,x.id,x.type,x.net]);});
+  s.correctionDetail.forEach(function(x){rows.push(['Balance correction',x.date,financeMovementRef(x.id),x.type,x.net]);});
   rows.push(['Subtotal','','','Total balance corrections (not cash receipts/payments)',s.corrections],['Statement',CF_TO,'','Calculated ending cash',r2(s.totBegin+s.totAdd-s.totDed+s.corrections)],['Statement',CF_TO,'','Ending cash balance',s.totEnd]);
   Array.from(new Set(s.keys)).forEach(function(k){rows.push(['Closing account',CF_TO,'',cfName(k),s.ending[k]||0]);});
-  s.detail.forEach(function(x){rows.push(['Cash activity',x.date,x.id,x.type,x.net]);});
-  csvDownload('cash-flow',['Section','Date','Movement ID','Description','Amount'],rows,CF_FROM+'_to_'+CF_TO);
+  s.detail.forEach(function(x){rows.push(['Cash activity',x.date,financeMovementRef(x.id),x.type,x.net]);});
+  csvDownload('cash-flow',['Section','Date','Reference','Description','Amount'],rows,CF_FROM+'_to_'+CF_TO);
 }
 function exportFinanceCsv(kind){if(window.__booksLiveLoading)return alert('Finance is still loading. Wait for the ledger to finish refreshing before downloading.');var exporters={insights:function(){if(window.AccazaExportBusinessMetrics)window.AccazaExportBusinessMetrics();},transactions:exportTransactionsCsv,journal:exportJournalCsv,ledger:exportLedgerCsv,pl:exportProfitLossCsv,bs:exportBalanceSheetCsv,cashflow:exportCashFlowCsv,tb:exportTrialBalanceCsv},run=exporters[kind];if(!run)return alert('CSV export is not available for this screen.');run();}
 function csvButton(kind){return '<button class="btn export-btn" onclick="App.exportCsv(\''+kind+'\')" title="Download the selected period as CSV">↓ Download CSV</button>';}

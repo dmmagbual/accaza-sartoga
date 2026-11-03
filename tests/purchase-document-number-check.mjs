@@ -80,7 +80,7 @@ check(bridge.includes('if(purchaseNo)return {ref:purchaseNo,'), 'The Books journ
 
 /* ---------- 4. displays: the purchase number, plus the supplier reference — never the raw key ---------- */
 const purchasesUi = read('src/admin/pos/11h-purchase-workspace.js');
-check(purchasesUi.includes("'</td><td>'+purchaseRefHtml(p,p.id)+'</td><td>'") && purchasesUi.includes("esc(purchaseRefText(p,id))") && purchasesUi.includes("esc(p.documentNo||purchaseSupplierRef(a,id)||purchaseSupplierRef(p,id)||id)"), 'Purchases history, details and advance allocations must show the purchase number first.');
+check(purchasesUi.includes("'</td><td>'+purchaseRefHtml(p,p.id)+'</td><td>'") && purchasesUi.includes("esc(purchaseRefText(p,id))") && purchasesUi.includes("esc(p.documentNo||purchaseSupplierRef(a,id)||purchaseSupplierRef(p,id)||'Not numbered yet')"), 'Purchases history, details and advance allocations must show the purchase number first.');
 check(!/esc\(p\.ref\|\|p\.documentNo/.test(purchasesUi), 'No Purchases display may put the stored reference (possibly the raw key) before the number.');
 const booksSub = read('src/books/app/40-subledgers.js');
 check((booksSub.match(/esc\(billRefLabel\(d,d\.id\)\)/g) || []).length === 2 && booksSub.includes('esc(billRefLabel(d,id))') && booksSub.includes('esc(billRefLabel(invoice,d.purchaseInvoiceId))'), 'Books Payables rows, trace list and modal must use billRefLabel.');
