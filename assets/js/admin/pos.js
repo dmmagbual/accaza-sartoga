@@ -743,7 +743,7 @@ function finalizeAdjust(id,before,delta,reason,offsetAccount){
   var after=before+delta; var cost=Number(i.cost)||0; var varianceValue=-delta*cost;  /* stock down = +COGS */
   var a=A(), adjId=uid('adj_'), mid=movementId('adjustment',adjId,id), now=Date.now();
   postMovements([{movementId:mid,itemId:id,type:reason==='wastage'?'waste':'adjustment',qty:delta,unitCost:cost,offsetAccount:offsetAccount,adjustmentNature:reason,sourceType:'inventory-adjustment',sourceId:adjId,note:reason,occurredAt:now}]).then(function(){
-    return a.set(a.ref(a.db,'inventoryAdjustments/'+adjId),{ing:id,name:i.name,unit:i.unit||'',delta:delta,before:before,after:after,reason:reason,offsetAccount:offsetAccount,unitCost:cost,varianceValue:varianceValue,movementId:mid,ts:now});
+    /* Audit SEC-05: server commit time, so a skewed or offline clock cannot reject the record after stock moved. */return a.set(a.ref(a.db,'inventoryAdjustments/'+adjId),{ing:id,name:i.name,unit:i.unit||'',delta:delta,before:before,after:after,reason:reason,offsetAccount:offsetAccount,unitCost:cost,varianceValue:varianceValue,movementId:mid,ts:{'.sv':'timestamp'},clientTs:now});
   }).then(function(){
   /* The server records the over-tolerance flag itself, already linked to this adjustment and to the
      signed-in Admin. Do not create it here: a browser-written row carried the open shift's cashier

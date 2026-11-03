@@ -290,6 +290,34 @@ try{
     await assertFails(update(ref(db,'orders/own'),{shiftId:'other'}));
   }
   for(const db of [owner,manager,staff,cashier,a])await assertFails(set(ref(db,'orderRequests/customer-a/rq_forged_123'),{orderId:'x'}));
+  // Audit SEC-03/04/05 (4 Nov 2026).
+  await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database()),{'activityLog/rule_log_seed':{ts:1,action:'seed',byUid:'owner'},'posStaff/rule_staff_existing':{name:'Y',role:'cashier'}});});
+  const nowTs=Date.now();
+  for(const db of [owner,manager,staff,cashier]){
+    await assertFails(get(ref(db,'posStaffSecrets')));
+    await assertFails(set(ref(db,'posStaffSecrets/st_x'),{pinHash:'x',pinSalt:'y'}));
+    await assertFails(update(ref(db,'activityLog/rule_log_seed'),{detail:'edited'}));
+    await assertFails(set(ref(db,'activityLog/rule_log_seed'),null));
+    await assertFails(set(ref(db,'pettyCashCounter/2026'),99));
+    await assertFails(set(ref(db,'expenses/rule_x'),{amount:1}));
+  }
+  await assertFails(set(ref(owner,'posStaff/rule_staff'),{name:'X',role:'cashier',pin:'1234'}));
+  await assertFails(update(ref(owner,'posStaff/rule_staff_existing'),{pinHash:'forged'}));
+  await assertSucceeds(set(ref(owner,'activityLog/rule_log_new'),{ts:{'.sv':'timestamp'},clientTs:nowTs,action:'test',byUid:'owner'}));
+  await assertFails(set(ref(owner,'activityLog/rule_log_spoof'),{ts:{'.sv':'timestamp'},action:'test',byUid:'someone-else'}));
+  await assertFails(set(ref(owner,'activityLog/rule_log_old'),{ts:nowTs-2*86400000,action:'test',byUid:'owner'}));
+  await assertFails(set(ref(owner,'monthlyExpenses/2026-11'),{locked:true,amounts:{rent:-5},savedAt:nowTs}));
+  await assertSucceeds(set(ref(owner,'monthlyExpenses/2026-11'),{locked:true,amounts:{rent:5000},savedAt:nowTs}));
+  await assertFails(set(ref(owner,'pettyCashReplenishments/rule_pr_old'),{amount:500,ts:nowTs-86400000}));
+  await assertFails(set(ref(owner,'pettyCashReplenishments/rule_pr_neg'),{amount:-500,ts:{'.sv':'timestamp'}}));
+  await assertSucceeds(set(ref(owner,'pettyCashReplenishments/rule_pr_ok'),{amount:500,ts:{'.sv':'timestamp'},clientTs:nowTs,source:'cash',note:'',by:'Admin',date:'2026-11-04'}));
+  await assertFails(set(ref(owner,'pettyCashReplenishments/rule_pr_ok'),null));
+  await assertFails(set(ref(owner,'pettyCashReplenishments/rule_pr_device'),{amount:500,ts:nowTs}));
+  await assertFails(update(ref(owner,'pettyCashReplenishments/rule_pr_ok'),{amount:900}));
+  await assertFails(set(ref(owner,'inventoryAdjustments/rule_adj'),{ing:'inv_milk',delta:'lots',ts:{'.sv':'timestamp'}}));
+  await assertSucceeds(set(ref(owner,'inventoryAdjustments/rule_adj_ok'),{ing:'inv_milk',delta:-2,unitCost:5,ts:{'.sv':'timestamp'},clientTs:nowTs}));
+  await assertFails(set(ref(owner,'inventoryAdjustments/rule_adj_ok'),null));
+  await assertFails(set(ref(owner,'stockReceipts/rule_sr'),{ing:'inv_milk',qty:-3,ts:nowTs}));
   await assertFails(update(ref(a,'orders/own'),{status:'Received',receivedByCustomer:true}));
   await assertFails(update(ref(owner,'orders/own'),{status:'Confirmed'}));
 

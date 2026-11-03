@@ -45,7 +45,7 @@ function init(){
   a.subscribe('posSettings',function(s){var v=s.val()||{};if(v.tolerances)toleranceCfg=Object.assign({cashPeso:20,invPct:5},v.tolerances);fixedFloatCfg=(v.fixedFloat!=null?(Number(v.fixedFloat)||0):null);if(isTab('ops'))renderOps();});
 }
 // shared hooks used by the POS script
-window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');a.set(a.ref(a.db,'activityLog/'+id),{ts:Date.now(),action:action,ref:ref||'',detail:detail||'',staff:(activeShift&&activeShift.staff)||'—'});};
+window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');/* Audit SEC-04: the log is append-only and every entry carries the signed-in login. */a.set(a.ref(a.db,'activityLog/'+id),{ts:{'.sv':'timestamp'},clientTs:Date.now(),action:String(action||'').slice(0,80),ref:String(ref||'').slice(0,200),detail:String(detail||'').slice(0,500),staff:(activeShift&&activeShift.staff)||'—',byUid:(a.currentUser&&a.currentUser.uid)||''}).catch(function(){});};
 window.__posVoid=function(oid){voidSale(oid);};window.__posRefund=function(oid){refundSale(oid);};
 function verifyPayment(oid){
   var o=ordersMap[oid];if(!o){alert('Order not found in the active list. If it was archived, restore it first to verify.');return;}
@@ -558,9 +558,11 @@ function returnSupplierPayment(id){
   var v=pettyVouchers[id];if(!v||v.transactionType!=='purchase_advance'||v.status!=='approved'||v.voided)return;var remaining=Number(v.remainingAmount!=null?v.remainingAmount:v.amount)||0;if(!(remaining>0)){alert('No unallocated balance remains.');return;}var a=A();F().run({title:'Return unallocated supplier payment',subtitle:(v.recipient||'Supplier')+' · '+peso(remaining)+' will return to Undeposited Collection.',submitLabel:'Request approval & record return',busyLabel:'Recording return…',fields:[{name:'reason',label:'Return reason / reference',type:'textarea',required:true,maxLength:300}]},function(x){return a.managerApproval('return_supplier_payment',id,remaining,x.reason).then(function(ap){return a.managePettyVoucher({action:'return',voucherId:id,reason:x.reason,approvalId:ap.approvalId});});}).then(function(){alert('Unallocated payment returned to Undeposited Collection and Finance Books.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not record return: '+((e&&e.message)||e));});
 }
 function addReplenishment(){
-  var amt=Number(fv('prAmount'))||0; if(!amt){alert('Enter an amount.');return;}
+  var amt=Number(fv('prAmount'))||0; if(!(amt>0)){alert('Enter an amount greater than zero.');return;}
   var source=fv('prSource'); var note=(fv('prNote')||'').trim(); var a=A();
-  a.set(a.ref(a.db,'pettyCashReplenishments/'+uid('pr_')),{amount:amt,source:source,note:note,by:(activeShift&&activeShift.staff)||'Admin',ts:Date.now(),date:window.AccazaDate.key()});
+  // Audit SEC-05: the entry is stamped with the server's time and saved before any drawer pay-out, so a
+  // refused write can never leave a pay-out with no Revolving Fund record behind it.
+  a.set(a.ref(a.db,'pettyCashReplenishments/'+uid('pr_')),{amount:amt,source:source,note:note,by:(activeShift&&activeShift.staff)||'Admin',ts:{'.sv':'timestamp'},clientTs:Date.now(),date:window.AccazaDate.key()}).then(function(){
   if(source==='register'){
     if(!activeShift){alert('Recorded to the Revolving Fund. No shift is open, so no register drawer pay-out was posted.');}
     else{ var po=(activeShift.payOuts||[]).slice(); var poEntry={amount:amt,reason:'Revolving Fund replenish',type:'revolving_fund_replenishment',ts:Date.now()};
@@ -568,6 +570,7 @@ function addReplenishment(){
       po.push(poEntry); a.update(a.ref(a.db,'shifts/'+activeShift.id),{payOuts:po}); a.update(a.ref(a.db,'posActiveShift'),{payOuts:po}); }
   }
   window.__posLog('petty-replenish',source,peso(amt));
+  }).catch(function(e){alert('The replenishment was NOT recorded and no drawer pay-out was posted: '+((e&&e.message)||e));});
 }
 function voucherReceipt(id,v){if(v&&v.receiptImg)return Promise.resolve(v.receiptImg);if(!v||!v.hasReceipt)return Promise.resolve('');var sourceId=v.receiptSourceVoucherId||id,sourceVoucher=sourceId!==id&&pettyVouchers[sourceId];if(sourceVoucher&&sourceVoucher.receiptImg)return Promise.resolve(sourceVoucher.receiptImg);var a=A();return a.get(a.ref(a.db,'pettyCashReceipts/'+sourceId+'/image')).then(function(s){return String(s.val()||'');}).catch(function(){return '';});}
 function safeReceiptSrc(s){s=String(s||'');return /^data:image\/(?:jpeg|png|webp);base64,/i.test(s)?s:'';}
@@ -980,7 +983,7 @@ function downloadCustomerMenuQr(){
     image.src=svgUrl;
   }catch(error){if(button){button.disabled=false;button.textContent='Download Customer QR Code';}alert('The QR image could not be created: '+((error&&error.message)||error));}
 }
-function renderPosSettings(){
+function renderPosSettings(){securePosStaffPins();
   var root=document.getElementById('posSettingsRoot');if(!root)return;
   var html='';
   html+='<div class="az-sec">Customer menu QR code</div><div class="pz-card customer-menu-qr-settings" style="margin-bottom:1rem;"><div class="customer-menu-qr-copy"><h3>General dine-in QR code</h3><p>Download and print this permanent code for customers. It opens the menu-only ordering page and sends unpaid dine-in tickets to the POS.</p><div class="customer-menu-qr-url">'+esc(CUSTOMER_MENU_QR_URL)+'</div><div class="customer-menu-qr-actions"><button class="pz-btn ok" type="button" id="customerMenuQrDownload" disabled>Preparing QR code...</button><a class="pz-btn sec" href="'+esc(CUSTOMER_MENU_QR_URL)+'" target="_blank" rel="noopener">Test customer menu</a></div><small>No table number is requested. Customers proceed to the cashier with their name and queue number.</small></div><div class="customer-menu-qr-preview" id="customerMenuQrPreview" role="status" aria-live="polite"><span>Preparing QR preview...</span></div></div>';
@@ -1045,7 +1048,10 @@ function exportDataBackup(){
     alert('Could not build the backup copy: '+((e&&e.message)||e));
   });
 }
-function addStaff(){var name=(document.getElementById('stName').value||'').trim();var pin=(document.getElementById('stPin').value||'').trim();var role=document.getElementById('stRole').value;if(!name||!pin){alert('Enter name and PIN.');return;}if(!/^[0-9]{4,6}$/.test(pin)){alert('PIN must be 4-6 digits.');return;}var a=A();a.set(a.ref(a.db,'posStaff/'+uid('st_')),{name:name,pin:pin,role:role,ts:Date.now()});document.getElementById('stName').value='';document.getElementById('stPin').value='';}
+function addStaff(){var name=(document.getElementById('stName').value||'').trim();var pin=(document.getElementById('stPin').value||'').trim();var role=document.getElementById('stRole').value;if(!name||!pin){alert('Enter name and PIN.');return;}if(!/^[0-9]{4,6}$/.test(pin)){alert('PIN must be 4-6 digits.');return;}var a=A();if(!a||!a.managePosStaffIdentity){alert('Staff service unavailable. Refresh the portal.');return;}/* Audit SEC-03: the PIN goes to the server, which stores only a salted hash out of the till's reach. */a.managePosStaffIdentity({action:'create',name:name,role:role,pin:pin}).then(function(){document.getElementById('stName').value='';document.getElementById('stPin').value='';}).catch(function(e){alert('Could not add staff: '+((e&&e.message)||e));});}
+// Audit SEC-03: move any PIN still stored on a staff row (plain or hashed) to the server-only store.
+// Runs once per page when a manager sees a row that still carries PIN fields; the server is idempotent.
+var __posPinsSecuring=false;function securePosStaffPins(){if(__posPinsSecuring)return;var a=A();if(!a||!a.managePosStaffIdentity)return;var stale=Object.keys(staffList||{}).some(function(k){var r=staffList[k]||{};return r.pin!=null||r.pinHash!=null||r.pinSalt!=null;});if(!stale)return;__posPinsSecuring=true;a.managePosStaffIdentity({action:'secure_all'}).catch(function(e){/* one attempt per page load; a non-manager is refused by the server */if(window.AccazaTelemetry&&window.AccazaTelemetry.error)window.AccazaTelemetry.error('pos_pin_secure',e);});}
 function linkStaffIdentity(id){var s=staffList[id];if(!s)return;F().run({title:'Link '+s.name+' to Firebase login',subtitle:'Enter the email used for this person’s Firebase sign-in and set their own POS PIN.',submitLabel:'Link staff login',busyLabel:'Linking…',fields:[{name:'email',label:'Firebase account email',type:'email',required:true,maxLength:320},{name:'pin',label:'New POS PIN (4–6 digits)',type:'password',required:true,maxLength:6,validate:function(v){return /^[0-9]{4,6}$/.test(v)?'':'Enter a 4–6 digit PIN.';}}]},function(v){return A().managePosStaffIdentity({staffId:id,email:v.email,pin:v.pin});}).then(function(){alert('Staff login linked. This person can now only open and use their own POS shift.');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not link staff login: '+((e&&e.message)||e));});}
 function changeStaffPin(id){
   var s=staffList[id]; if(!s)return;
@@ -1060,17 +1066,20 @@ function changeStaffPin(id){
   mask.querySelector('#cpCancel').onclick=function(){document.body.removeChild(mask);};
   mask.querySelector('#cpSubmit').onclick=function(){
     var cur=String(mask.querySelector('#cpCur').value||'').trim();
-    if(cur!==String(s.pin)){alert('Current PIN is incorrect.');return;}
     var n1=String(mask.querySelector('#cpN1').value||'').trim();
     if(!/^[0-9]{4,6}$/.test(n1)){alert('New PIN must be 4–6 digits.');return;}
     var n2=String(mask.querySelector('#cpN2').value||'').trim();
     if(n1!==n2){alert('The two PINs do not match.');return;}
-    if(Object.keys(staffList).some(function(k){return k!==id&&String(staffList[k].pin)===n1;})){alert('That PIN is already used by another staff \u2014 choose a different one.');return;}
-    var a=A();a.update(a.ref(a.db,'posStaff/'+id),{pin:n1});
-    if(window.__posLog)window.__posLog('pin-change',s.name,'');
-    document.body.removeChild(mask);
-    alert('PIN updated for '+s.name+'.');
+    var a=A();if(!a||!a.managePosStaffIdentity){alert('Staff service unavailable. Refresh the portal.');return;}
+    // Audit SEC-03: the server checks the current PIN against its stored hash and saves the new one.
+    var btn=mask.querySelector('#cpSubmit');btn.disabled=true;btn.textContent='Updating…';
+    a.managePosStaffIdentity({action:'change_pin',staffId:id,currentPin:cur,newPin:n1}).then(function(){
+      if(window.__posLog)window.__posLog('pin-change',s.name,'');
+      document.body.removeChild(mask);
+      alert('PIN updated for '+s.name+'.');
+    }).catch(function(e){btn.disabled=false;btn.textContent='Update PIN';alert(String((e&&e.message)||e));});
   };
+
 }
 
 /* ══════════ COMPANY INFORMATION (registered business identity) ══════════ */
