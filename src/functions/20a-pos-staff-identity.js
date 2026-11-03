@@ -5,6 +5,16 @@ function posStaffText(value, label, max) {
   return text;
 }
 function posPinHash(pin, salt) { return crypto.scryptSync(pin, salt, 32).toString("hex"); }
+// POS PIN secrets (audit SEC-03, 4 Nov 2026). /posStaff is readable by every till login, so a
+// 4-6 digit PIN hash stored there could be brute-forced offline. The salt and hash live in the
+// server-only /posStaffSecrets/{staffId}; a profile not yet moved still checks against its own row.
+async function posStaffPinRow(db, staffId, row) {
+  const secret = (await db.ref(`/posStaffSecrets/${staffId}`).get()).val();
+  return secret && secret.pinHash ? secret : row;
+}
+function posPinSecret(pin) { const salt = crypto.randomBytes(16).toString("hex"); return {pinSalt: salt, pinHash: posPinHash(pin, salt)}; }
+// The PIN fields a profile row must no longer carry once its secret is stored server-side.
+function posPinRowClears(staffId) { return {[`posStaff/${staffId}/pin`]: null, [`posStaff/${staffId}/pinSalt`]: null, [`posStaff/${staffId}/pinHash`]: null}; }
 function posPinValid(pin, row) {
   const value = String(pin || "").trim();
   return /^[0-9]{4,6}$/.test(value) && row && row.pinSalt && row.pinHash && crypto.timingSafeEqual(Buffer.from(posPinHash(value, row.pinSalt), "hex"), Buffer.from(row.pinHash, "hex"));
@@ -28,6 +38,49 @@ function posOpenCountMap(raw) {
 // function declaration is hoisted to module scope, so the format stays defined in one place.
 function shiftReferenceFor(shift) { return durableShiftReference(shift, shift && shift.id); }
 
+// Staff PINs are set and changed only here (audit SEC-03): the browser never writes or reads a PIN.
+//  create      add a staff profile with its PIN stored as a server-only salted hash
+//  change_pin  change a profile's PIN (manager only; the current PIN is checked when one is set)
+//  secure_all  move every remaining plain PIN or row-stored hash into /posStaffSecrets (idempotent)
+async function managePosStaffPins(db, actor, action, data) {
+  const now = Date.now(), pinOf = (value, label) => {const pin = String(value || "").trim(); if (!/^[0-9]{4,6}$/.test(pin)) throw new HttpsError("invalid-argument", `${label} must be 4 to 6 digits.`); return pin;};
+  const rows = (/* download-ok: bounded staff roster (one row per staff member) for PIN uniqueness and migration */await db.ref("/posStaff").get()).val() || {}, secretsSnap = /* download-ok: bounded PIN secrets (one row per staff member), server-only */await db.ref("/posStaffSecrets").get(), secrets = secretsSnap.val() || {};
+  const pinFor = (id) => secrets[id] && secrets[id].pinHash ? secrets[id] : rows[id];
+  const pinInUse = (pin, exceptId) => Object.keys(rows).some((id) => id !== exceptId && (posPinValid(pin, pinFor(id)) || String((rows[id] || {}).pin || "") === pin));
+  if (action === "secure_all") {
+    const writes = {}; let moved = 0;
+    for (const [id, row] of Object.entries(rows)) {
+      if (!row || typeof row !== "object") continue;
+      const plain = String(row.pin == null ? "" : row.pin).trim();
+      if (secrets[id] && secrets[id].pinHash) { if (row.pin != null || row.pinHash != null || row.pinSalt != null) {Object.assign(writes, posPinRowClears(id)); moved++;} continue; }
+      if (row.pinHash && row.pinSalt) { writes[`posStaffSecrets/${id}`] = {pinSalt: row.pinSalt, pinHash: row.pinHash, updatedAt: now, updatedBy: actor.uid, migrated: true}; Object.assign(writes, posPinRowClears(id)); moved++; continue; }
+      if (/^[0-9]{4,6}$/.test(plain)) { writes[`posStaffSecrets/${id}`] = Object.assign(posPinSecret(plain), {updatedAt: now, updatedBy: actor.uid, migrated: true}); Object.assign(writes, posPinRowClears(id)); moved++; }
+      // An unusable leftover (a malformed plain PIN, or a hash with no salt) cannot sign anyone in;
+      // clear it so the readable row holds nothing and this does not re-run on every page load.
+      else if (row.pin != null || row.pinHash != null || row.pinSalt != null) { Object.assign(writes, posPinRowClears(id)); moved++; }
+    }
+    if (moved) { writes[`operationalAudit/${now}_pos_pins_secured`] = {action: "secure_pos_staff_pins", sourceType: "posStaff", sourceId: "all", count: moved, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}; await db.ref().update(writes); }
+    return {secured: moved};
+  }
+  if (action === "create") {
+    const name = posStaffText(data.name, "Staff name", 120), role = ["cashier", "barista", "manager", "staff", "supervisor"].includes(String(data.role || "")) ? String(data.role) : "cashier", pin = pinOf(data.pin, "PIN");
+    if (pinInUse(pin, "")) throw new HttpsError("already-exists", "That PIN is already used by another staff member. Choose a different one.");
+    const id = `st_${now.toString(36)}${crypto.randomBytes(3).toString("hex")}`;
+    await db.ref().update({[`posStaff/${id}`]: {name, role, ts: now}, [`posStaffSecrets/${id}`]: Object.assign(posPinSecret(pin), {updatedAt: now, updatedBy: actor.uid}),
+      [`operationalAudit/${now}_pos_staff_create_${id}`]: {action: "create_pos_staff", sourceType: "posStaff", sourceId: id, staffName: name, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}});
+    return {staffId: id, created: true};
+  }
+  const staffId = posStaffText(data.staffId, "Staff profile", 160), row = rows[staffId];
+  if (!row) throw new HttpsError("not-found", "POS staff profile was not found.");
+  const current = pinFor(staffId), hasPin = !!((current && current.pinHash) || String(row.pin || ""));
+  if (hasPin) { const given = String(data.currentPin || "").trim(); if (!(posPinValid(given, current) || (row.pin != null && String(row.pin) === given))) throw new HttpsError("permission-denied", "Current PIN is incorrect."); }
+  const pin = pinOf(data.newPin, "New PIN");
+  if (pinInUse(pin, staffId)) throw new HttpsError("already-exists", "That PIN is already used by another staff member. Choose a different one.");
+  await db.ref().update(Object.assign({[`posStaffSecrets/${staffId}`]: Object.assign(posPinSecret(pin), {updatedAt: now, updatedBy: actor.uid})}, posPinRowClears(staffId), {
+    [`operationalAudit/${now}_pos_pin_change_${staffId}`]: {action: "change_pos_staff_pin", sourceType: "posStaff", sourceId: staffId, staffName: String(row.name || ""), actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}}));
+  return {staffId, changed: true};
+}
+
 // Owns the identity bridge between Firebase Authentication and the POS staff master.
 // A staff member may never choose another profile or send a client-selected owner ID.
 exports.managePosStaffIdentity = onCall(
@@ -35,6 +88,8 @@ exports.managePosStaffIdentity = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request), data = request.data || {};
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only a manager can link a POS staff profile.");
+    const action = String(data.action || "link");
+    if (action === "create" || action === "change_pin" || action === "secure_all") return managePosStaffPins(db, actor, action, data);
     const staffId = posStaffText(data.staffId, "Staff profile", 160), email = posStaffText(data.email, "Firebase account email", 320).toLowerCase(), pin = String(data.pin || "").trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpsError("invalid-argument", "Enter the registered Firebase account email.");
     if (!/^[0-9]{4,6}$/.test(pin)) throw new HttpsError("invalid-argument", "PIN must be 4 to 6 digits.");
@@ -43,9 +98,9 @@ exports.managePosStaffIdentity = onCall(
     if (!staffSnap.exists()) throw new HttpsError("not-found", "POS staff profile was not found.");
     if (!accountSnap.exists() || !["staff", "cashier", "manager", "admin", "owner", "superadmin"].includes(portalRoleValue(accountSnap.val()))) throw new HttpsError("failed-precondition", "That Firebase account is not an authorised staff login.");
     Object.entries(allStaffSnap.val() || {}).forEach(([id, row]) => { if (id !== staffId && row && row.accountUid === accountUid) throw new HttpsError("already-exists", "That Firebase account is already linked to another staff profile."); });
-    const now = Date.now(), salt = crypto.randomBytes(16).toString("hex"), staff = staffSnap.val() || {};
+    const now = Date.now(), secret = posPinSecret(pin), staff = staffSnap.val() || {};
     await db.ref().update({
-      [`posStaff/${staffId}/accountUid`]: accountUid, [`posStaff/${staffId}/pinSalt`]: salt, [`posStaff/${staffId}/pinHash`]: posPinHash(pin, salt), [`posStaff/${staffId}/pin`]: null,
+      [`posStaff/${staffId}/accountUid`]: accountUid, ...posPinRowClears(staffId), [`posStaffSecrets/${staffId}`]: Object.assign({}, secret, {updatedAt: now, updatedBy: actor.uid}),
       [`posStaff/${staffId}/identityLinkedAt`]: now, [`posStaff/${staffId}/identityLinkedBy`]: actor.uid,
       [`operationalAudit/${now}_pos_staff_link_${staffId}`]: {action:"link_pos_staff_identity",sourceType:"posStaff",sourceId:staffId,staffName:staff.name||"",accountUid,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}
     });
@@ -59,7 +114,7 @@ exports.openLinkedPosShift = onCall(
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["pos", "registerOps"]), data = request.data || {};
     const rows = (await db.ref("/posStaff").get()).val() || {}, matches = Object.entries(rows).filter(([, row]) => row && row.accountUid === actor.uid);
     if (matches.length !== 1) throw new HttpsError("failed-precondition", "Your Firebase login is not linked to one active POS staff profile. Ask a manager to complete the link in POS Settings.");
-    const [staffId, staff] = matches[0]; if (!posPinValid(data.pin, staff)) throw new HttpsError("permission-denied", "Your POS PIN is incorrect.");
+    const [staffId, staff] = matches[0]; if (!posPinValid(data.pin, await posStaffPinRow(db, staffId, staff))) throw new HttpsError("permission-denied", "Your POS PIN is incorrect.");
     const counts = posOpenCountMap(data.openCount), openingFloat = Number(data.openingFloat);
     if (!Number.isFinite(openingFloat) || openingFloat < 0 || openingFloat > 1000000) throw new HttpsError("invalid-argument", "Opening cash count is invalid.");
     const settings=(/* download-ok: bounded one POS settings document is required to enforce the configured register float */await db.ref("/posSettings").get()).val()||{},fixed=settings.fixedFloat==null?null:Number(settings.fixedFloat),now = Date.now(), id = `SH-${now.toString().slice(-6)}-${crypto.randomBytes(3).toString("hex")}`, rec = {id,staff:posStaffText(staff.name,"Staff name",120),staffId,accountUid:actor.uid,openingFloat:Math.round(openingFloat*100)/100,openCount:counts,drawer:counts,openAt:now,status:"open",floatMode:fixed==null?"opening-count":"fixed",configuredFloat:fixed,openedByUid:actor.uid,schemaVersion:2};

@@ -37,7 +37,7 @@ function downloadCustomerMenuQr(){
     image.src=svgUrl;
   }catch(error){if(button){button.disabled=false;button.textContent='Download Customer QR Code';}alert('The QR image could not be created: '+((error&&error.message)||error));}
 }
-function renderPosSettings(){
+function renderPosSettings(){securePosStaffPins();
   var root=document.getElementById('posSettingsRoot');if(!root)return;
   var html='';
   html+='<div class="az-sec">Customer menu QR code</div><div class="pz-card customer-menu-qr-settings" style="margin-bottom:1rem;"><div class="customer-menu-qr-copy"><h3>General dine-in QR code</h3><p>Download and print this permanent code for customers. It opens the menu-only ordering page and sends unpaid dine-in tickets to the POS.</p><div class="customer-menu-qr-url">'+esc(CUSTOMER_MENU_QR_URL)+'</div><div class="customer-menu-qr-actions"><button class="pz-btn ok" type="button" id="customerMenuQrDownload" disabled>Preparing QR code...</button><a class="pz-btn sec" href="'+esc(CUSTOMER_MENU_QR_URL)+'" target="_blank" rel="noopener">Test customer menu</a></div><small>No table number is requested. Customers proceed to the cashier with their name and queue number.</small></div><div class="customer-menu-qr-preview" id="customerMenuQrPreview" role="status" aria-live="polite"><span>Preparing QR preview...</span></div></div>';
@@ -102,7 +102,10 @@ function exportDataBackup(){
     alert('Could not build the backup copy: '+((e&&e.message)||e));
   });
 }
-function addStaff(){var name=(document.getElementById('stName').value||'').trim();var pin=(document.getElementById('stPin').value||'').trim();var role=document.getElementById('stRole').value;if(!name||!pin){alert('Enter name and PIN.');return;}if(!/^[0-9]{4,6}$/.test(pin)){alert('PIN must be 4-6 digits.');return;}var a=A();a.set(a.ref(a.db,'posStaff/'+uid('st_')),{name:name,pin:pin,role:role,ts:Date.now()});document.getElementById('stName').value='';document.getElementById('stPin').value='';}
+function addStaff(){var name=(document.getElementById('stName').value||'').trim();var pin=(document.getElementById('stPin').value||'').trim();var role=document.getElementById('stRole').value;if(!name||!pin){alert('Enter name and PIN.');return;}if(!/^[0-9]{4,6}$/.test(pin)){alert('PIN must be 4-6 digits.');return;}var a=A();if(!a||!a.managePosStaffIdentity){alert('Staff service unavailable. Refresh the portal.');return;}/* Audit SEC-03: the PIN goes to the server, which stores only a salted hash out of the till's reach. */a.managePosStaffIdentity({action:'create',name:name,role:role,pin:pin}).then(function(){document.getElementById('stName').value='';document.getElementById('stPin').value='';}).catch(function(e){alert('Could not add staff: '+((e&&e.message)||e));});}
+// Audit SEC-03: move any PIN still stored on a staff row (plain or hashed) to the server-only store.
+// Runs once per page when a manager sees a row that still carries PIN fields; the server is idempotent.
+var __posPinsSecuring=false;function securePosStaffPins(){if(__posPinsSecuring)return;var a=A();if(!a||!a.managePosStaffIdentity)return;var stale=Object.keys(staffList||{}).some(function(k){var r=staffList[k]||{};return r.pin!=null||r.pinHash!=null||r.pinSalt!=null;});if(!stale)return;__posPinsSecuring=true;a.managePosStaffIdentity({action:'secure_all'}).catch(function(e){/* one attempt per page load; a non-manager is refused by the server */if(window.AccazaTelemetry&&window.AccazaTelemetry.error)window.AccazaTelemetry.error('pos_pin_secure',e);});}
 function linkStaffIdentity(id){var s=staffList[id];if(!s)return;F().run({title:'Link '+s.name+' to Firebase login',subtitle:'Enter the email used for this person’s Firebase sign-in and set their own POS PIN.',submitLabel:'Link staff login',busyLabel:'Linking…',fields:[{name:'email',label:'Firebase account email',type:'email',required:true,maxLength:320},{name:'pin',label:'New POS PIN (4–6 digits)',type:'password',required:true,maxLength:6,validate:function(v){return /^[0-9]{4,6}$/.test(v)?'':'Enter a 4–6 digit PIN.';}}]},function(v){return A().managePosStaffIdentity({staffId:id,email:v.email,pin:v.pin});}).then(function(){alert('Staff login linked. This person can now only open and use their own POS shift.');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not link staff login: '+((e&&e.message)||e));});}
 function changeStaffPin(id){
   var s=staffList[id]; if(!s)return;
@@ -117,15 +120,18 @@ function changeStaffPin(id){
   mask.querySelector('#cpCancel').onclick=function(){document.body.removeChild(mask);};
   mask.querySelector('#cpSubmit').onclick=function(){
     var cur=String(mask.querySelector('#cpCur').value||'').trim();
-    if(cur!==String(s.pin)){alert('Current PIN is incorrect.');return;}
     var n1=String(mask.querySelector('#cpN1').value||'').trim();
     if(!/^[0-9]{4,6}$/.test(n1)){alert('New PIN must be 4–6 digits.');return;}
     var n2=String(mask.querySelector('#cpN2').value||'').trim();
     if(n1!==n2){alert('The two PINs do not match.');return;}
-    if(Object.keys(staffList).some(function(k){return k!==id&&String(staffList[k].pin)===n1;})){alert('That PIN is already used by another staff \u2014 choose a different one.');return;}
-    var a=A();a.update(a.ref(a.db,'posStaff/'+id),{pin:n1});
-    if(window.__posLog)window.__posLog('pin-change',s.name,'');
-    document.body.removeChild(mask);
-    alert('PIN updated for '+s.name+'.');
+    var a=A();if(!a||!a.managePosStaffIdentity){alert('Staff service unavailable. Refresh the portal.');return;}
+    // Audit SEC-03: the server checks the current PIN against its stored hash and saves the new one.
+    var btn=mask.querySelector('#cpSubmit');btn.disabled=true;btn.textContent='Updating…';
+    a.managePosStaffIdentity({action:'change_pin',staffId:id,currentPin:cur,newPin:n1}).then(function(){
+      if(window.__posLog)window.__posLog('pin-change',s.name,'');
+      document.body.removeChild(mask);
+      alert('PIN updated for '+s.name+'.');
+    }).catch(function(e){btn.disabled=false;btn.textContent='Update PIN';alert(String((e&&e.message)||e));});
   };
+
 }

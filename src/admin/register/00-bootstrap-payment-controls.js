@@ -45,7 +45,7 @@ function init(){
   a.subscribe('posSettings',function(s){var v=s.val()||{};if(v.tolerances)toleranceCfg=Object.assign({cashPeso:20,invPct:5},v.tolerances);fixedFloatCfg=(v.fixedFloat!=null?(Number(v.fixedFloat)||0):null);if(isTab('ops'))renderOps();});
 }
 // shared hooks used by the POS script
-window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');a.set(a.ref(a.db,'activityLog/'+id),{ts:Date.now(),action:action,ref:ref||'',detail:detail||'',staff:(activeShift&&activeShift.staff)||'—'});};
+window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');/* Audit SEC-04: the log is append-only and every entry carries the signed-in login. */a.set(a.ref(a.db,'activityLog/'+id),{ts:{'.sv':'timestamp'},clientTs:Date.now(),action:String(action||'').slice(0,80),ref:String(ref||'').slice(0,200),detail:String(detail||'').slice(0,500),staff:(activeShift&&activeShift.staff)||'—',byUid:(a.currentUser&&a.currentUser.uid)||''}).catch(function(){});};
 window.__posVoid=function(oid){voidSale(oid);};window.__posRefund=function(oid){refundSale(oid);};
 function verifyPayment(oid){
   var o=ordersMap[oid];if(!o){alert('Order not found in the active list. If it was archived, restore it first to verify.');return;}

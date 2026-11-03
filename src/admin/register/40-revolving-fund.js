@@ -180,9 +180,11 @@ function returnSupplierPayment(id){
   var v=pettyVouchers[id];if(!v||v.transactionType!=='purchase_advance'||v.status!=='approved'||v.voided)return;var remaining=Number(v.remainingAmount!=null?v.remainingAmount:v.amount)||0;if(!(remaining>0)){alert('No unallocated balance remains.');return;}var a=A();F().run({title:'Return unallocated supplier payment',subtitle:(v.recipient||'Supplier')+' · '+peso(remaining)+' will return to Undeposited Collection.',submitLabel:'Request approval & record return',busyLabel:'Recording return…',fields:[{name:'reason',label:'Return reason / reference',type:'textarea',required:true,maxLength:300}]},function(x){return a.managerApproval('return_supplier_payment',id,remaining,x.reason).then(function(ap){return a.managePettyVoucher({action:'return',voucherId:id,reason:x.reason,approvalId:ap.approvalId});});}).then(function(){alert('Unallocated payment returned to Undeposited Collection and Finance Books.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not record return: '+((e&&e.message)||e));});
 }
 function addReplenishment(){
-  var amt=Number(fv('prAmount'))||0; if(!amt){alert('Enter an amount.');return;}
+  var amt=Number(fv('prAmount'))||0; if(!(amt>0)){alert('Enter an amount greater than zero.');return;}
   var source=fv('prSource'); var note=(fv('prNote')||'').trim(); var a=A();
-  a.set(a.ref(a.db,'pettyCashReplenishments/'+uid('pr_')),{amount:amt,source:source,note:note,by:(activeShift&&activeShift.staff)||'Admin',ts:Date.now(),date:window.AccazaDate.key()});
+  // Audit SEC-05: the entry is stamped with the server's time and saved before any drawer pay-out, so a
+  // refused write can never leave a pay-out with no Revolving Fund record behind it.
+  a.set(a.ref(a.db,'pettyCashReplenishments/'+uid('pr_')),{amount:amt,source:source,note:note,by:(activeShift&&activeShift.staff)||'Admin',ts:{'.sv':'timestamp'},clientTs:Date.now(),date:window.AccazaDate.key()}).then(function(){
   if(source==='register'){
     if(!activeShift){alert('Recorded to the Revolving Fund. No shift is open, so no register drawer pay-out was posted.');}
     else{ var po=(activeShift.payOuts||[]).slice(); var poEntry={amount:amt,reason:'Revolving Fund replenish',type:'revolving_fund_replenishment',ts:Date.now()};
@@ -190,6 +192,7 @@ function addReplenishment(){
       po.push(poEntry); a.update(a.ref(a.db,'shifts/'+activeShift.id),{payOuts:po}); a.update(a.ref(a.db,'posActiveShift'),{payOuts:po}); }
   }
   window.__posLog('petty-replenish',source,peso(amt));
+  }).catch(function(e){alert('The replenishment was NOT recorded and no drawer pay-out was posted: '+((e&&e.message)||e));});
 }
 function voucherReceipt(id,v){if(v&&v.receiptImg)return Promise.resolve(v.receiptImg);if(!v||!v.hasReceipt)return Promise.resolve('');var sourceId=v.receiptSourceVoucherId||id,sourceVoucher=sourceId!==id&&pettyVouchers[sourceId];if(sourceVoucher&&sourceVoucher.receiptImg)return Promise.resolve(sourceVoucher.receiptImg);var a=A();return a.get(a.ref(a.db,'pettyCashReceipts/'+sourceId+'/image')).then(function(s){return String(s.val()||'');}).catch(function(){return '';});}
 function safeReceiptSrc(s){s=String(s||'');return /^data:image\/(?:jpeg|png|webp);base64,/i.test(s)?s:'';}

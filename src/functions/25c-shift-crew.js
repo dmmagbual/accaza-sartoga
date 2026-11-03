@@ -31,7 +31,7 @@ exports.managePosShiftCrew=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_A
     if(active.id!==shiftId||active.status==='closed'||shift.status!=='open')throw new HttpsError('failed-precondition','Only the open shift can be joined.');
     if(!shift.accountUid||shift.accountUid===actor.uid)return {shiftId,owner:true};
     const {staffId,row}=await linkedPosStaff(db,actor.uid);
-    if(!posPinValid(data.pin,row))throw new HttpsError('permission-denied','Your POS PIN is incorrect.');
+    if(!posPinValid(data.pin,await posStaffPinRow(db,staffId,row)))throw new HttpsError('permission-denied','Your POS PIN is incorrect.');
     const member={uid:actor.uid,staffId,staff:posStaffText(row.name,'Staff name',120),joinedBy:actor.uid};
     let created=false;
     const result=await crewRef.child(actor.uid).transaction(current=>{const next=ShiftCrew.joinRecord(current,member,now);created=next!==current;return next;},undefined,false);
