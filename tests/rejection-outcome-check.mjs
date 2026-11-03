@@ -1,7 +1,8 @@
 // Website-order rejection outcome (Danilo, Nov 2026). Staff must say what happens to the
 // customer's money when rejecting a website order: "payment not found" or "refund due".
 // A refund still owed keeps the order live in Register Ops until a manager records the
-// payback; nothing posts, because a rejected order never posted a sale.
+// payback. The callable itself posts nothing; onOrderRejectionFinancial clears 2030 (see
+// tests/audit-money-fixes-check.mjs).
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -92,7 +93,7 @@ vm.runInContext(archiveSource.slice(archiveSource.indexOf('const ORDER_ARCHIVE_S
   assert.equal((await check(notFound)).ok, true, 'payment not found replaces the payment review');
 }
 
-// ---- 4. record_rejection_refund: manager only, idempotent, posts nothing ----
+// ---- 4. record_rejection_refund: manager only, idempotent; the 2030 posting is the trigger's job ----
 const adjustments = fs.readFileSync('src/functions/43g-order-adjustments.js', 'utf8');
 const block = adjustments.slice(adjustments.indexOf('    if (data.action === "record_rejection_refund") {'), adjustments.indexOf('    if (data.action === "recognize_unverified_sale")'));
 assert.ok(block.length > 100 && !/commitFinancial|cfLedger|financialMovements/.test(block), 'recording a rejection refund must not post');
@@ -130,4 +131,4 @@ assert.ok(/data-online-reject[\s\S]{0,300}window\.__rejectWebsiteOrder\(id,o\)/.
 assert.ok(!/status:'Rejected',expectedStatus:o\.status/.test(pos), 'POS must not reject without an outcome');
 assert.ok(/this\.value==='Rejected'&&website\?window\.__rejectWebsiteOrder/.test(adminOrders), 'Admin Orders status select must ask for the outcome');
 assert.ok(/rejectionOutcome:v\.outcome/.test(adminOrders) && /'payment_not_found'/.test(adminOrders) && /'refund_due'/.test(adminOrders));
-console.log('PASS: rejecting a website order records payment-not-found or refund-due; a refund owed stays in Register Ops until a manager records it paid, then the order archives, with no posting.');
+console.log('PASS: rejecting a website order records payment-not-found or refund-due; a refund owed stays in Register Ops until a manager records it paid, then the order archives; the callable itself posts nothing (onOrderRejectionFinancial posts the 2030 entry).');

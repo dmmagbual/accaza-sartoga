@@ -43,7 +43,7 @@ function recordRejectionRefund(oid){
   var o=ordersMap[oid],a=A();
   if(!o||!o.rejection||o.rejection.outcome!=='refund_due'||o.rejection.refundStatus==='paid'){alert('This order has no refund owed.');return;}
   if(!window.AccazaFormDialog||!a.processOrderAdjustment){alert('Refund service unavailable. Refresh the portal.');return;}
-  window.AccazaFormDialog.run({title:'Record refund paid · '+oid,subtitle:'Records that '+peso(o.rejection.refundAmount)+' was sent back to '+(o.name||'the customer')+' (paid by '+(o.payment||'e-payment')+', payment '+String(o.paymentStatus||'pending').replace('_',' ')+'). No Finance Books entry: this order never posted a sale. Manager only.',submitLabel:'Record refund paid',busyLabel:'Recording…',fields:[
+  window.AccazaFormDialog.run({title:'Record refund paid · '+oid,subtitle:'Records that '+peso(o.rejection.refundAmount)+' was sent back to '+(o.name||'the customer')+' (paid by '+(o.payment||'e-payment')+', payment '+String(o.paymentStatus||'pending').replace('_',' ')+'). Finance Books clears 2030 Customer Refund Payable from the account the refund is sent from. Manager only.',submitLabel:'Record refund paid',busyLabel:'Recording…',fields:[
     // No cash option: a till payout would leave the drawer short with no paid-out record.
     {name:'method',label:'Refund sent by',type:'select',required:true,value:'',options:[{value:'',label:'Choose…'},'GCash','Maya','Bank transfer']},
     {name:'reference',label:'Refund reference',type:'text',required:true,maxLength:120,placeholder:'Transfer reference number'}

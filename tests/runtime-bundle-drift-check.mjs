@@ -46,6 +46,8 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageStaffMessa
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('notifyOnContactMessage')+1,0,'updateBooksMonthlyNet');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('apIntegrityBaseline')+1,0,'backfillPurchaseDocumentNumbers');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageAccountingPeriod'),0,'manageSupplier');
+// 3 Nov 2026: refund-due rejections post to 2030 (onOrderRejectionFinancial, after processOrderAdjustment).
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('processOrderAdjustment')+1,0,'onOrderRejectionFinancial');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageOrderArchive'),0,'managePosStaffIdentity','openLinkedPosShift');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('autoCompleteReadyOnlineOrders')+1,0,'sweepOrderArchive');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('openLinkedPosShift')+1,0,'managePortalAccount');

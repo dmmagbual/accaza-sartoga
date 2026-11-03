@@ -112,8 +112,8 @@ exports.processOrderAdjustment = onCall(
       return withPaymentDecisionLock(db, o.id, actor, () => prepareActivePaymentReview(db, o.id, actor));
     }
     if (data.action === "record_rejection_refund") {
-      // A website order rejected with "refund due" (Nov 2026). No sale was ever posted for it,
-      // so this records the payback for the audit trail and releases the order; it posts nothing.
+      // A website order rejected with "refund due" (Nov 2026). No sale was posted for it; the refund
+      // due sits in 2030, and onOrderRejectionFinancial clears it when this records the refund paid.
       if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only a manager can record that a refund was paid.");
       const paidAlready = o.rejection && o.rejection.outcome === "refund_due" && o.rejection.refundStatus === "paid";
       if (paidAlready) return {orderId: o.id, duplicate: true};
@@ -135,7 +135,7 @@ exports.processOrderAdjustment = onCall(
       const updated = Object.assign({}, o, {rejection}), activeShift = (await db.ref("/posActiveShift").get()).val() || null;
       await db.ref().update({
         [`activeOrders/${o.id}`]: shouldProjectOrder(updated, activeShift) ? activeOrderProjection(updated) : null,
-        [`operationalAudit/${now}_rejection_refund_${o.id}`]: operationalAuditRecord("record_rejection_refund", "order", o.id, actor, {amount: Financial.money(rejection.refundAmount), method, reference, accounting: "No posting: the rejected order never posted a sale."}),
+        [`operationalAudit/${now}_rejection_refund_${o.id}`]: operationalAuditRecord("record_rejection_refund", "order", o.id, actor, {amount: Financial.money(rejection.refundAmount), method, reference, accounting: "Clears 2030 Customer Change / Refund Payable (posted by onOrderRejectionFinancial)."}),
       });
       return {orderId: o.id, refunded: true, amount: Financial.money(rejection.refundAmount)};
     }
@@ -184,7 +184,7 @@ exports.processOrderAdjustment = onCall(
       if(!claim.committed||claimValue.orderId!==o.id){if(claimValue.status==="posted")return{duplicate:true,correctionId:claimValue.correctionId,refundAmount:Number(claimValue.refundAmount)||0,correctedOrderTotal:Number(claimValue.correctedOrderTotal)||0};throw new HttpsError("aborted","This correction request is already being processed.");}
       const locked=await db.ref(`/orders/${o.id}`).transaction((current)=>{if(current==null)return null;if(current.archivePending||current.preparationStatus!=="not_prepared"||current.preparationStartedAt||current.completedOrderCorrectionId||(current.correctionPending&&current.correctionPending!==requestId))return;return Object.assign({},current,{correctionPending:requestId,correctionPendingAt:now});},undefined,false);
       if(!locked.committed||!locked.snapshot.exists()){await commandRef.transaction((current)=>current&&current.status==="processing"?null:current,undefined,false);throw new HttpsError("aborted","The order changed or preparation started. Refresh before trying again.");}
-      if(refund>0){const shifted=await db.ref(`/shifts/${o.shiftId}`).transaction((row)=>OfflineSync.applyDrawerDelta(row,requestId,drawerDelta,now,actor),undefined,false);if(!shifted.committed||!shifted.snapshot.exists())throw new HttpsError("failed-precondition","The drawer no longer has enough cash for this refund.");await db.ref("/posActiveShift").transaction((row)=>row&&row.id===o.shiftId?OfflineSync.applyDrawerDelta(row,requestId,drawerDelta,now,actor):row,undefined,false);}
+      if(refund>0){const shifted=await db.ref(`/shifts/${o.shiftId}`).transaction((row)=>OfflineSync.applyDrawerDelta(row,requestId,drawerDelta,now,actor),undefined,false);if(!shifted.committed||!shifted.snapshot.exists())throw new HttpsError("failed-precondition","The order's shift is closed or missing, so the refund cannot come from its drawer.");await db.ref("/posActiveShift").transaction((row)=>row&&row.id===o.shiftId?OfflineSync.applyDrawerDelta(row,requestId,drawerDelta,now,actor):row,undefined,false);}
       await applyCompletedOrderCorrectionInventory(db,o,plan,token,now,actor);
       const initiatedByStaff=financeText(active.staff,100),correctedMeta=correctionPlanMetadata(plan,now),updated=Object.assign({},o,{correctedOrderId:correctionId,completedOrderCorrectionId:correctionId,correctedOrderTotal:correctedTotal,correctedLineItems:priced.lines,correctedItems:correctionItemText(priced.lines),correctedPackages:priced.packages,correctedExtraCost:priced.extraCost,correctedAt:now,correctedBy:actor.uid,correctionInitiatedByStaff:initiatedByStaff,correctionReason:reason,correctionCustomerAcknowledgement:acknowledgement,correctionApprovalId:correctionApproval.id,correctionApprovedBy:approvedBy,correctionApprovedByUid:correctionApproval.record.approvedBy,correctionApprovedRole:correctionApproval.record.approvedRole,correctionReviewStatus:"manager_approved",preparationStatus:"not_prepared",refundAmount:refund,refundPayments:refund>0?Object.assign({},o.refundPayments||{},{Cash:refund}):(o.refundPayments||{}),refunded:refund>0,refundedAt:refund>0?now:(o.refundedAt||null),refundedBy:refund>0?actor.uid:(o.refundedBy||""),refundReason:refund>0?reason:(o.refundReason||""),cashRefundApprovalId:refundApproval?refundApproval.id:(o.cashRefundApprovalId||""),cashRefundApprovedBy:refundApproval?(refundApproval.record.approvedName||refundApproval.record.approvedEmail||refundApproval.record.approvedRole):(o.cashRefundApprovedBy||""),cashRefundApprovedByUid:refundApproval?refundApproval.record.approvedBy:(o.cashRefundApprovedByUid||""),cashRefundReviewStatus:refund>0?"manager_approved":(o.cashRefundReviewStatus||""),cashRefundShiftId:refund>0?o.shiftId:(o.cashRefundShiftId||""),correctedInventoryUsage:correctedMeta.inventoryUsage,correctionInventoryToken:token,correctedCogsSnapshot:correctedMeta.cogsSnapshot,correctedCogsCategorySnapshot:correctedMeta.cogsCategorySnapshot,correctedCogsAccountSnapshot:correctedMeta.cogsAccountSnapshot,correctedCogsCovered:correctedMeta.cogsCovered,correctionPending:null});
       const correctedUncosted=Array.isArray(plan.uncostedLines)?plan.uncostedLines:[],uncostedVariant=`cor_${token.slice(0,8)}`;updated.costPendingLines=correctedUncosted.length||null;
@@ -238,5 +238,122 @@ exports.processOrderAdjustment = onCall(
     if (data.action === "void") writes[`paymentVerificationQueue/${o.id}`] = null;
     if (data.restock === true) {writes[`${found.node}/${o.id}/inventoryReversalRequested`] = true; writes[`${found.node}/${o.id}/inventoryReversalReason`] = reason;}
     movement.occurredAt = data.action === "void" ? (Date.parse(`${financeDate(data.accountingDate)}T00:00:00+08:00`) || now) : now; movement.actorName = actor.role; if (data.approvalId) movement.approvalId=financeText(data.approvalId,160); addOrderCashWrites(writes, movement, movementId, o, actor); const committed = await commitFinancial(db, movementId, movement, actor, writes); return {movementId, duplicate: committed.duplicate, amount:movement.amount, correctedOrderTotal:movement.correctedOrderTotal, refundShiftId:movement.refundShiftId};
+  },
+);
+
+// Refund-due rejections in the books (Danilo, 3 Nov 2026: keep it Xero-simple). Rejecting a paid
+// website order with "refund due" records the customer's money in the account it came in to and
+// owes it back through 2030 Customer Change / Refund Payable (an open customer payable, so the
+// daily-close control still reconciles 2030). Recording the refund paid clears 2030 from the
+// account it was sent from. Reopening an unpaid refund-due order reverses the entry so the later
+// sale posts once. The trigger acts on the order's current rejection, not on the event alone, so a
+// late or retried event cannot post for a rejection that has since been reopened. Every movement
+// id is fixed by the rejection's own timestamp, so redelivery posts nothing twice.
+function rejectionKeys(orderId, rejection) {
+  const id = financeKey(orderId, "Order ID"), at = Number(rejection && rejection.at) || 0;
+  return {id, at, payableId: `rejection_refund_${id}_${at}`, dueId: `rejection_due_${id}_${at}`, paidId: `rejection_paid_${id}_${at}`, reversalId: `rejection_due_reversal_${id}_${at}`};
+}
+function sameRefundDue(a, b) { return !!(a && b && a.outcome === "refund_due" && b.outcome === "refund_due" && Number(a.at) === Number(b.at)); }
+async function rejectionPostingTime(db, at) { return at && await periodOpenFor(db, at) ? at : Date.now(); }
+function rejectionCashRows(writes, prefix, sources, dir, category, order, movementId, movement, actor, date) {
+  sources.forEach((row, index) => {if (row.accountId) writes[`cfLedger/${prefix}_${index}`] = cashLedgerRecord({date, accountId: row.accountId, dir, category, amount: row.amount, party: order.name || "Online customer", ref: order.id, method: row.method, auto: true}, movementId, movement, actor);});
+}
+async function postRejectionRefundDue(db, order, rejection, actor) {
+  const k = rejectionKeys(order.id, rejection);
+  if ((await db.ref(`/financialMovements/${k.dueId}`).get()).exists()) return {duplicate: true};
+  if ((await db.ref(`/financialMovements/${k.reversalId}`).get()).exists()) return {skipped: true};
+  const accounts = (await db.ref("/cfAccounts").get()).val() || {}, amount = Financial.money(rejection.refundAmount != null ? rejection.refundAmount : order.total);
+  const due = Financial.rejectionRefundDuePosting(order, k.payableId, amount, accounts);
+  const occurredAt = await rejectionPostingTime(db, k.at), date = financeDateFromTimestamp(occurredAt);
+  const movement = Financial.movement("customer_refund_due", "order_rejection", k.id, due.lines, {occurredAt, actorName: financeText(rejection.byRole || "Orders", 60), reference: k.id, amount, payableId: k.payableId, refundSources: due.sources, controlReason: "Website order rejected: refund due to customer"});
+  const writes = {[`payables/${k.payableId}`]: {party: financeText(order.name || "Online customer", 120), type: "customer_change_refund", amount, remainingAmount: amount, paidAmount: 0, date, ref: k.id, status: "open", movementId: k.dueId, liabilityAccount: due.liability, sourceType: "order_rejection", sourceId: k.id, reason: "Website order rejected: refund due", ts: Date.now(), createdBy: financeText(rejection.byUid || actor.uid, 160), schemaVersion: 2}};
+  rejectionCashRows(writes, `rejdue_${k.id}_${k.at}`, due.sources, "in", "Rejected order · refund due", order, k.dueId, movement, actor, date);
+  return commitFinancial(db, k.dueId, movement, actor, writes);
+}
+async function postRejectionRefundPaid(db, order, rejection, actor) {
+  const k = rejectionKeys(order.id, rejection);
+  if ((await db.ref(`/financialMovements/${k.paidId}`).get()).exists()) return {duplicate: true};
+  const original = (await db.ref(`/financialMovements/${k.dueId}`).get()).val(), payable = (await db.ref(`/payables/${k.payableId}`).get()).val();
+  if (!original) throw new Error(`Refund due for rejected order ${k.id} is not posted yet.`);
+  // Already paid through Cash Payments, or closed in Books: nothing is left to clear here.
+  if (!payable || payable.status !== "open") return {skipped: true};
+  const amount = Financial.money(original.amount), remaining = Financial.money(payable.remainingAmount != null ? payable.remainingAmount : payable.amount);
+  if (Math.abs(remaining - amount) > .009) {logger.warn("Rejection refund partly paid elsewhere; remainder left open", {orderId: k.id, remaining}); return {skipped: true};}
+  if (!(await claimRejectionPayable(db, k, k.paidId, amount))) return {skipped: true};
+  // The refund clears what the receipt actually debited, unless staff sent it by another method that maps to an account.
+  const accounts = (await db.ref("/cfAccounts").get()).val() || {}, method = financeText(rejection.refundMethod, 40), reference = financeText(rejection.refundReference, 120);
+  const recorded = Array.isArray(original.refundSources) && original.refundSources.length ? original.refundSources : (original.lines || []).filter((row) => Number(row.debit) > 0).map((row) => ({account: row.account, accountId: String(row.account || "").indexOf("asset:cash_account:") === 0 ? String(row.account).split(":")[2] : "", amount: Financial.money(row.debit), method: ""}));
+  // Same method: the account the receipt used. Another method: its mapped account, or review
+  // (unmapped) when nothing maps, never a silent credit to the wallet the money came in to.
+  const sources = recorded.map((row) => {const same = !method || (row.method && Financial.methodKey(row.method) === Financial.methodKey(method)); if (same) return row; const other = Financial.accountForMethod(method, accounts); return other ? Object.assign({}, row, {accountId: other, account: `asset:cash_account:${other}`, method}) : Object.assign({}, row, {accountId: "", account: `asset:unmapped_payment:${method.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, method});});
+  const liability = ((original.lines || []).find((row) => Number(row.credit) > 0) || {}).account || `liability:customer_change_refund:${k.payableId}`;
+  const occurredAt = await rejectionPostingTime(db, Number(rejection.refundPaidAt) || 0), date = financeDateFromTimestamp(occurredAt);
+  const lines = Financial.rejectionRefundPaidPosting({liability, amount, sources}, `Refund sent · ${method}${reference ? ` · ${reference}` : ""}`);
+  const movement = Financial.movement("customer_change_refunded", "order_rejection", k.id, lines, {occurredAt, actorName: financeText(rejection.refundPaidByRole || "Manager", 60), reference: reference || k.id, amount, payableId: k.payableId});
+  const writes = {[`payables/${k.payableId}/status`]: "paid", [`payables/${k.payableId}/remainingAmount`]: 0, [`payables/${k.payableId}/paidAmount`]: amount, [`payables/${k.payableId}/settlementMovementId`]: k.paidId, [`payables/${k.payableId}/paidAt`]: occurredAt, [`payables/${k.payableId}/settlingBy`]: null, [`payables/${k.payableId}/settlingAt`]: null};
+  rejectionCashRows(writes, `rejpaid_${k.id}_${k.at}`, sources, "out", "Customer refund paid · rejected order", order, k.paidId, movement, actor, date);
+  try { return await commitFinancial(db, k.paidId, movement, actor, writes); } catch (error) { await releaseRejectionPayable(db, k, k.paidId); throw error; }
+}
+// One settlement at a time: the payable is claimed (open → settling) before the trigger pays or
+// reverses it, so a second path that checks the claim cannot settle the same refund twice.
+async function claimRejectionPayable(db, k, claimId, amount) {
+  const result = await db.ref(`/payables/${k.payableId}`).transaction((row) => {
+    if (row == null) return row;
+    const left = Financial.money(row.remainingAmount != null ? row.remainingAmount : row.amount);
+    if (row.status !== "open" || Math.abs(left - amount) > .009) return;
+    return Object.assign({}, row, {status: "settling", settlingBy: claimId, settlingAt: Date.now()});
+  }, undefined, false);
+  return !!(result.committed && result.snapshot.val() && result.snapshot.val().settlingBy === claimId);
+}
+async function releaseRejectionPayable(db, k, claimId) {
+  await db.ref(`/payables/${k.payableId}`).transaction((row) => row && row.status === "settling" && row.settlingBy === claimId ? Object.assign({}, row, {status: "open", settlingBy: null, settlingAt: null}) : row, undefined, false);
+}
+async function reverseRejectionRefundDue(db, order, rejection, actor) {
+  const k = rejectionKeys(order.id, rejection);
+  if ((await db.ref(`/financialMovements/${k.reversalId}`).get()).exists()) return {duplicate: true};
+  const original = (await db.ref(`/financialMovements/${k.dueId}`).get()).val();
+  if (!original) return {skipped: true};
+  const payable = (await db.ref(`/payables/${k.payableId}`).get()).val() || {};
+  const remaining = Financial.money(payable.remainingAmount != null ? payable.remainingAmount : payable.amount);
+  // A refund partly paid through Cash Payments cannot simply be undone; stop and alert instead.
+  if (payable.status !== "open" || Math.abs(remaining - Financial.money(original.amount)) > .009 || !(await claimRejectionPayable(db, k, k.reversalId, Financial.money(original.amount)))) throw new Error(`Rejected order ${k.id} was reopened after part of its refund was paid. Review 2030 before completing it.`);
+  const reversal = Financial.reverseMovement(Object.assign({id: k.dueId}, original), "customer_refund_due_reversed", "Rejected order reopened: refund due reversed");
+  reversal.occurredAt = Date.now(); reversal.sourceType = "order_rejection"; reversal.sourceId = k.id; reversal.payableId = k.payableId;
+  const date = financeDateFromTimestamp(reversal.occurredAt), writes = {[`payables/${k.payableId}/status`]: "reversed", [`payables/${k.payableId}/remainingAmount`]: 0, [`payables/${k.payableId}/reversalMovementId`]: k.reversalId, [`payables/${k.payableId}/settlingBy`]: null, [`payables/${k.payableId}/settlingAt`]: null};
+  const sources = (original.lines || []).filter((row) => Number(row.debit) > 0 && String(row.account || "").indexOf("asset:cash_account:") === 0).map((row) => ({accountId: String(row.account).split(":")[2], amount: Financial.money(row.debit), method: ""}));
+  rejectionCashRows(writes, `rejrev_${k.id}_${k.at}`, sources, "out", "Rejected order reopened · refund due reversed", order, k.reversalId, reversal, actor, date);
+  try { return await commitFinancial(db, k.reversalId, reversal, actor, writes); } catch (error) { await releaseRejectionPayable(db, k, k.reversalId); throw error; }
+}
+// The order's current rejection: live, or archived once it has left /orders.
+async function currentRejectedOrder(db, orderId) {
+  const live = (await db.ref(`/orders/${orderId}`).get()).val();
+  if (live) return {order: Object.assign({id: orderId}, live), archived: false};
+  const archived = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
+  return archived ? {order: Object.assign({id: orderId}, archived), archived: true} : null;
+}
+exports.onOrderRejectionFinancial = onValueWritten(
+  {ref: "/orders/{orderId}/rejection", region: ORDER_REGION, retry: true},
+  async (event) => {
+    const before = event.data.before.val() || null, after = event.data.after.val() || null, orderId = event.params.orderId;
+    if (!(before && before.outcome === "refund_due") && !(after && after.outcome === "refund_due")) return;
+    const db = getDatabase(), actor = {uid: "server", role: "server"}, found = await currentRejectedOrder(db, orderId);
+    if (!found) return;
+    const current = found.order.rejection || null;
+    // An earlier refund due this order no longer carries (reopened, or replaced): reverse it.
+    // An archived order keeps its rejection, so archiving is never mistaken for a reopen.
+    if (before && before.outcome === "refund_due" && !sameRefundDue(before, current)) {
+      // Reopening is refused once the refund is paid; if one gets through, stop and alert, because
+      // the later sale would book money the customer already has back.
+      if (before.refundStatus === "paid") throw new Error(`Rejected order ${orderId} was reopened after its refund was paid. Review it before completing the sale.`);
+      await reverseRejectionRefundDue(db, found.order, before, actor);
+    }
+    // Post only what the order currently carries, never a stale event's copy.
+    if (!(current && current.outcome === "refund_due")) return;
+    if (!Number(current.at)) {logger.error("Refund-due rejection has no timestamp; not posted", {orderId}); return;}
+    await postRejectionRefundDue(db, found.order, current, actor);
+    // Re-check after posting: if the order was reopened meanwhile, undo at once.
+    const after2 = await currentRejectedOrder(db, orderId), now2 = after2 && after2.order.rejection;
+    if (!sameRefundDue(current, now2)) {await reverseRejectionRefundDue(db, found.order, current, actor); return;}
+    if (now2.refundStatus === "paid") await postRejectionRefundPaid(db, after2.order, now2, actor);
   },
 );

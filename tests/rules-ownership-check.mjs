@@ -147,6 +147,9 @@ try{
     await assertFails(get(ref(db,'shiftCrews/rule-crew')));
     await assertFails(set(ref(db,'posSyncAlerts/pos_rule_alert'),{state:'dismissed'}));
     await assertFails(get(ref(db,'posSyncAlerts')));
+    // POS total checks (D-01) are written by the server only and read through Operations.
+    await assertFails(set(ref(db,'posTotalChecks/POS-RULE-1'),{orderId:'POS-RULE-1',at:1}));
+    await assertFails(get(ref(db,'posTotalChecks')));
     // Sales without a recipe (24 Sep 2026): the flags and cost corrections are server-only.
     await assertFails(get(ref(db,'uncostedSales')));
     await assertFails(set(ref(db,'uncostedSales/POS-X__sale_0'),{status:'resolved'}));
