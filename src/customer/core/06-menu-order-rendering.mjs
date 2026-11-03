@@ -56,7 +56,7 @@ function renderOrderSection(){
       +'<span class="item-cat">'+(ok?getCatLabel(i.cat):'Not Available')+'</span>'
       +'<span class="item-prices">'+formatPrice(i)+'</span></div>'
       +'<div class="item-row-right">'
-      +(cartQty>0?'<span style="font-size:0.78rem;font-weight:600;color:var(--bl);background:rgba(176,141,87,0.1);padding:0.2rem 0.5rem;border-radius:999px;">'+cartQty+' in cart</span>':'')
+      +(cartQty>0?'<span style="font-size:0.78rem;font-weight:600;color:var(--bl-ink);background:rgba(176,141,87,0.1);padding:0.2rem 0.5rem;border-radius:999px;">'+cartQty+' in cart</span>':'')
       +'<button class="qty-btn" style="background:var(--bd);color:#fff;border-color:var(--bd);" data-key="'+i.key+'">+</button>'
       +'</div></div>';
   }).join('');

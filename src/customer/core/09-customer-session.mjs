@@ -44,16 +44,18 @@ window.placeOrder=async function(){
   const _sig=phone+'|'+itemsArr.join('~')+'|'+total;
   var _persist=(function(){try{var v=localStorage.getItem('accaza_lastsig');if(!v)return null;var ix=v.lastIndexOf('@@');return {sig:v.slice(0,ix),t:parseInt(v.slice(ix+2))||0};}catch(e){return null;}})();
   if((window._lastOrderSig===_sig&&Date.now()-(window._lastOrderTime||0)<30000)||(_persist&&_persist.sig===_sig&&Date.now()-_persist.t<30000)){alert('Looks like you just placed this exact order — please try again after 30 seconds.');return;}
+  // The receiving account the customer chose is sent as a stable row key. The server resolves and
+  // validates it against the payment settings, so the order posts to the bank the customer
+  // actually paid into. A row is only sent when the shop linked it; otherwise the order carries
+  // no choice and the server keeps its previous resolution.
+  var chosenRow=paymentType==='bank'?(paymentRow||''):paymentType==='maya'?(paymentSettings.mayaAccountId?'maya':''):(paymentSettings.gcashAccountId?'gcash':'');
+  // Validate before taking the in-flight lock: a return after the lock (inside the try,
+  // with no finally) would leave the button disabled on "Placing order…" until reload.
+  if(paymentType==='bank'){var choiceBox=document.getElementById('bankChoice');if(choiceBox&&choiceBox.style.display!=='none'&&!chosenRow){alert('Please choose the bank you transferred to.');return;}}
   window._placingOrder=true;
   const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
   try{
     await ensureCustomerAuth(true);
-    // The receiving account the customer chose is sent as a stable row key. The server resolves and
-    // validates it against the payment settings, so the order posts to the bank the customer
-    // actually paid into. A row is only sent when the shop linked it; otherwise the order carries
-    // no choice and the server keeps its previous resolution.
-    var chosenRow=paymentType==='bank'?(paymentRow||''):paymentType==='maya'?(paymentSettings.mayaAccountId?'maya':''):(paymentSettings.gcashAccountId?'gcash':'');
-    if(paymentType==='bank'){var choiceBox=document.getElementById('bankChoice');if(choiceBox&&choiceBox.style.display!=='none'&&!chosenRow){alert('Please choose the bank you transferred to.');return;}}
     var orderPayload={name:name,phone:phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',paymentRow:chosenRow,contact:document.getElementById('custContact').value.trim(),contactMethod:contactMethod,notes:document.getElementById('custNotes').value.trim(),proof:proofSrc,lineItems:lineItemsArr,expectedTotal:total};
     var placed;
     try{placed=await createOnlineOrderCall(orderPayload);}catch(firstError){

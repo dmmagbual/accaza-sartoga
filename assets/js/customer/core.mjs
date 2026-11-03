@@ -742,7 +742,7 @@ function renderOrderSection(){
       +'<span class="item-cat">'+(ok?getCatLabel(i.cat):'Not Available')+'</span>'
       +'<span class="item-prices">'+formatPrice(i)+'</span></div>'
       +'<div class="item-row-right">'
-      +(cartQty>0?'<span style="font-size:0.78rem;font-weight:600;color:var(--bl);background:rgba(176,141,87,0.1);padding:0.2rem 0.5rem;border-radius:999px;">'+cartQty+' in cart</span>':'')
+      +(cartQty>0?'<span style="font-size:0.78rem;font-weight:600;color:var(--bl-ink);background:rgba(176,141,87,0.1);padding:0.2rem 0.5rem;border-radius:999px;">'+cartQty+' in cart</span>':'')
       +'<button class="qty-btn" style="background:var(--bd);color:#fff;border-color:var(--bd);" data-key="'+i.key+'">+</button>'
       +'</div></div>';
   }).join('');
@@ -870,7 +870,7 @@ function updateCartDisplay(){
       +'<div style="font-size:0.75rem;color:var(--tl);">₱'+item.unitTotal.toLocaleString()+' each</div></div>'
       +'<div style="display:flex;align-items:center;gap:0.4rem;margin-left:0.5rem;">'
       +(item.pkgId?'<span style="font-size:0.8rem;color:var(--tl);">Qty '+item.qty+'</span><button data-removepkg="'+item.pkgId+'" title="Remove package" style="border:1px solid #c0392b;background:#fff;color:#c0392b;border-radius:6px;padding:0.2rem 0.4rem;cursor:pointer;">Remove</button>':'<button data-cartkey="'+k+'" data-delta="-1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">−</button><span style="font-size:0.85rem;font-weight:500;min-width:18px;text-align:center;">'+item.qty+'</span><button data-cartkey="'+k+'" data-delta="1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">+</button>')
-      +'<span style="font-size:0.85rem;font-weight:500;color:var(--bl);min-width:50px;text-align:right;">₱'+line.toLocaleString()+'</span>'
+      +'<span style="font-size:0.85rem;font-weight:500;color:var(--bl-ink);min-width:50px;text-align:right;">₱'+line.toLocaleString()+'</span>'
       +'</div></div></div>';
   }).join('');
   var pkgExtra=(window.__custPkgs||[]).reduce(function(s,p){return s+(Number(p.extraCost)||0);},0);if(pkgExtra){total+=pkgExtra;box.innerHTML+='<div style="display:flex;justify-content:space-between;padding:0.55rem 0;color:var(--bd);font-size:0.82rem;"><span>Package extra charges</span><strong>₱'+pkgExtra.toLocaleString()+'</strong></div>';}
@@ -978,16 +978,18 @@ window.placeOrder=async function(){
   const _sig=phone+'|'+itemsArr.join('~')+'|'+total;
   var _persist=(function(){try{var v=localStorage.getItem('accaza_lastsig');if(!v)return null;var ix=v.lastIndexOf('@@');return {sig:v.slice(0,ix),t:parseInt(v.slice(ix+2))||0};}catch(e){return null;}})();
   if((window._lastOrderSig===_sig&&Date.now()-(window._lastOrderTime||0)<30000)||(_persist&&_persist.sig===_sig&&Date.now()-_persist.t<30000)){alert('Looks like you just placed this exact order — please try again after 30 seconds.');return;}
+  // The receiving account the customer chose is sent as a stable row key. The server resolves and
+  // validates it against the payment settings, so the order posts to the bank the customer
+  // actually paid into. A row is only sent when the shop linked it; otherwise the order carries
+  // no choice and the server keeps its previous resolution.
+  var chosenRow=paymentType==='bank'?(paymentRow||''):paymentType==='maya'?(paymentSettings.mayaAccountId?'maya':''):(paymentSettings.gcashAccountId?'gcash':'');
+  // Validate before taking the in-flight lock: a return after the lock (inside the try,
+  // with no finally) would leave the button disabled on "Placing order…" until reload.
+  if(paymentType==='bank'){var choiceBox=document.getElementById('bankChoice');if(choiceBox&&choiceBox.style.display!=='none'&&!chosenRow){alert('Please choose the bank you transferred to.');return;}}
   window._placingOrder=true;
   const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
   try{
     await ensureCustomerAuth(true);
-    // The receiving account the customer chose is sent as a stable row key. The server resolves and
-    // validates it against the payment settings, so the order posts to the bank the customer
-    // actually paid into. A row is only sent when the shop linked it; otherwise the order carries
-    // no choice and the server keeps its previous resolution.
-    var chosenRow=paymentType==='bank'?(paymentRow||''):paymentType==='maya'?(paymentSettings.mayaAccountId?'maya':''):(paymentSettings.gcashAccountId?'gcash':'');
-    if(paymentType==='bank'){var choiceBox=document.getElementById('bankChoice');if(choiceBox&&choiceBox.style.display!=='none'&&!chosenRow){alert('Please choose the bank you transferred to.');return;}}
     var orderPayload={name:name,phone:phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',paymentRow:chosenRow,contact:document.getElementById('custContact').value.trim(),contactMethod:contactMethod,notes:document.getElementById('custNotes').value.trim(),proof:proofSrc,lineItems:lineItemsArr,expectedTotal:total};
     var placed;
     try{placed=await createOnlineOrderCall(orderPayload);}catch(firstError){
@@ -1068,7 +1070,7 @@ function renderCustomerOrders(){
       +'<p style="font-size:0.82rem;color:'+s.color+';line-height:1.5;">'+_msg+'</p></div>'
       +'<div style="padding:1rem 1.25rem;background:#ece4d8;text-align:center;">'
       +(o.status==='Ready'?'<p style="font-size:0.95rem;font-weight:700;color:#155724;margin-bottom:.55rem;">'+(isDelivery?'🛵 Ready for your courier':'🏠 Your order is ready — for pick-up!')+'</p><button data-orderid="'+escHtml(o.id)+'" class="confirm-recv-btn" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;width:100%;">✅ Yes, I Received My Order</button>'
-        :'<p style="font-size:0.82rem;color:var(--tl);">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>')
+        :o.status==='Rejected'?'<p style="font-size:0.82rem;color:var(--tm);">This order is closed. It will drop off this list automatically.</p>':'<p style="font-size:0.82rem;color:var(--tl);">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>')
       +'</div></div>';
   }).join('')+'<p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.25rem;">🔥 Your order status updates automatically — no refresh needed!</p>';
   el.querySelectorAll('.confirm-recv-btn').forEach(function(btn){
@@ -1333,6 +1335,16 @@ setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},
     if (e.key === 'ArrowRight') shiftLightbox(1);
   });
 })();
+// Keyboard activation for non-button controls marked role="button" (proof upload box,
+// gallery cards): Enter or Space acts like a click, as on a native button. A real button
+// nested inside (e.g. "Remove" in the upload box) keeps its own native behaviour.
+document.addEventListener('keydown', function(e) {
+  var t = e.target;
+  if ((e.key !== 'Enter' && e.key !== ' ') || e.repeat || !t || !t.getAttribute || t.tagName === 'BUTTON') return;
+  if (t.getAttribute('role') !== 'button' || !t.hasAttribute('tabindex')) return;
+  e.preventDefault();
+  t.click();
+});
 // ── Hamburger menu
 window.toggleNav = function() {
   var nl = document.querySelector('.nav-links');

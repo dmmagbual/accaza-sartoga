@@ -22,7 +22,7 @@ function cashMove(dir){
   };
 }
 function pendingPanel(){
-  var all=Object.keys(ordersMap).map(function(k){return Object.assign({id:k},ordersMap[k]);}).filter(function(o){return !o.voided&&['grabfood','foodpanda'].indexOf(o.channel)<0;}).sort(function(a,b){return (a.timestamp||0)-(b.timestamp||0);}),list=all.filter(function(o){return o.paymentStatus==='pending';}),review=all.filter(function(o){return o.paymentStatus==='cashier_verified';});
+  var all=Object.keys(ordersMap).map(function(k){return Object.assign({id:k},ordersMap[k]);}).filter(function(o){return !o.voided&&['grabfood','foodpanda'].indexOf(o.channel)<0;}).sort(function(a,b){return (a.timestamp||0)-(b.timestamp||0);}),list=all.filter(function(o){return o.paymentStatus==='pending'&&!((o.source==='online'||o.channel==='online')&&o.status==='Rejected'&&!o.shiftId&&o.posCaptured!==true);}),review=all.filter(function(o){return o.paymentStatus==='cashier_verified';});
   var tot=list.reduce(function(s,o){return s+(Number(o.total)||0);},0);
   var h='<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:#8a6d1b;">⏳ Payments to verify</span><span style="font-weight:700;color:#8a6d1b;">'+peso(tot)+' · '+list.length+'</span></div>';

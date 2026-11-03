@@ -20,7 +20,7 @@ function renderCustomerOrders(){
       +'<p style="font-size:0.82rem;color:'+s.color+';line-height:1.5;">'+_msg+'</p></div>'
       +'<div style="padding:1rem 1.25rem;background:#ece4d8;text-align:center;">'
       +(o.status==='Ready'?'<p style="font-size:0.95rem;font-weight:700;color:#155724;margin-bottom:.55rem;">'+(isDelivery?'🛵 Ready for your courier':'🏠 Your order is ready — for pick-up!')+'</p><button data-orderid="'+escHtml(o.id)+'" class="confirm-recv-btn" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;width:100%;">✅ Yes, I Received My Order</button>'
-        :'<p style="font-size:0.82rem;color:var(--tl);">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>')
+        :o.status==='Rejected'?'<p style="font-size:0.82rem;color:var(--tm);">This order is closed. It will drop off this list automatically.</p>':'<p style="font-size:0.82rem;color:var(--tl);">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>')
       +'</div></div>';
   }).join('')+'<p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.25rem;">🔥 Your order status updates automatically — no refresh needed!</p>';
   el.querySelectorAll('.confirm-recv-btn').forEach(function(btn){

@@ -31,6 +31,12 @@ function cleanText(value, max) {return String(value == null ? "" : value).replac
 function money(value) {return Math.round((Number(value) || 0) * 100) / 100;}
 
 function isOnlineOrder(order) {return !!order && (order.source === "online" || order.channel === "online");}
+// A website order rejected before staff accepted it into a POS shift. No sale was taken, so
+// its never-verified customer proof leaves nothing to review: it must not hold the order in
+// the live list or block the archive the way an unverified payment on a real sale does.
+function rejectedBeforeCapture(order) {
+  return isOnlineOrder(order) && String(order.status || "") === "Rejected" && order.voided !== true && !order.shiftId && order.posCaptured !== true && ["", "pending"].includes(String(order.paymentStatus || ""));
+}
 function isServiceChannelOrder(order) {return !!order && order.source === "pos" && SERVICE_CHANNELS.has(String(order.channel || "instore").toLowerCase());}
 function fullyRefunded(order) {const refund = money(order && order.refundAmount);return refund > 0 && refund >= money(order.total) - 0.009;}
 function serviceState(order) {return String((order && order.service && order.service.state) || "");}
@@ -249,4 +255,4 @@ async function manageOrderServiceCommand(options) {
   return applyAction(options, order, action, requestId, {reason: data.reason, note: data.note, believedStage: data.believedStage}, now);
 }
 
-module.exports = {SERVICE_VERSION, MANAGER_ROLES, initialService, needsService, keepsOrderLive, isOnlineOrder, isServiceChannelOrder, fullyRefunded, transition, manageOrderServiceCommand};
+module.exports = {SERVICE_VERSION, MANAGER_ROLES, initialService, needsService, keepsOrderLive, isOnlineOrder, rejectedBeforeCapture, isServiceChannelOrder, fullyRefunded, transition, manageOrderServiceCommand};
