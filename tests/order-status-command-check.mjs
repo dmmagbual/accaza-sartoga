@@ -30,7 +30,8 @@ assert.equal(first.duplicate,false);assert.equal(db.data.orders.one.status,'Read
 assert.equal(Object.keys(db.data.orders.one.statusHistory).length,1);assert.equal(Object.keys(db.data.operationalAudit).length,1);
 const duplicate=await run(db,{orderId:'one',status:'Ready',expectedStatus:'Pending',requestId:'req_one'});
 assert.equal(duplicate.duplicate,true);assert.equal(Object.keys(db.data.orders.one.statusHistory).length,1);assert.equal(Object.keys(db.data.operationalAudit).length,1);
-await run(db,{orderId:'one',status:'Rejected',expectedStatus:'Ready',requestId:'req_one_next'});
+await assert.rejects(run(db,{orderId:'one',status:'Rejected',expectedStatus:'Ready',requestId:'req_one_nooutcome'}),/payment not found, or refund due/);
+await run(db,{orderId:'one',status:'Rejected',expectedStatus:'Ready',requestId:'req_one_next',rejectionOutcome:'refund_due'});
 const delayedReplay=await run(db,{orderId:'one',status:'Ready',requestId:'req_one'});
 assert.equal(delayedReplay.duplicate,true);assert.equal(db.data.orders.one.status,'Rejected');
 

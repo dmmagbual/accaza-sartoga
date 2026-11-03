@@ -44,6 +44,8 @@ function renderOps(){
   wireCrewPanel(root);
   root.querySelectorAll('[data-verify]').forEach(function(b){b.onclick=function(){window.__posVerify(b.getAttribute('data-verify'));};});
   root.querySelectorAll('[data-validate]').forEach(function(b){b.onclick=function(){validatePayment(b.getAttribute('data-validate'));};});
+  root.querySelectorAll('[data-rejection-refund]').forEach(function(b){b.onclick=function(){recordRejectionRefund(b.getAttribute('data-rejection-refund'));};});
+  root.querySelectorAll('[data-rejection-outcome]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-rejection-outcome');if(!window.__rejectWebsiteOrder){alert('Reject service unavailable. Refresh the portal.');return;}window.__rejectWebsiteOrder(id,ordersMap[id]).catch(function(e){alert('Could not record the outcome: '+((e&&e.message)||e));});};});
   var _al=document.getElementById('opsArchiveLog'); if(_al)_al.onclick=archiveOldActivity;
   var _lt=document.getElementById('opsLogToggle'); if(_lt)_lt.onclick=function(){logCollapsed=!logCollapsed;var b=document.getElementById('opsLogBody');if(b)b.style.display=logCollapsed?'none':'';_lt.innerHTML=(logCollapsed?'▸':'▾')+' Activity log <span style="font-weight:400;color:var(--tl);font-size:0.78rem;">('+acts.length+')</span>';};
   var _cs=document.getElementById('opsCardShift'); if(_cs){_cs.onchange=function(){cardShiftId=this.value;renderShiftCard();};renderShiftCard();}

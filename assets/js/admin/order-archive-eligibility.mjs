@@ -13,9 +13,12 @@ export function orderArchiveBlock(o,ctx){
   if(o.voided!==true&&st==='not_collected'&&!(o.service&&o.service.reviewedAt))return{ok:false,reason:'serving_queue',message:'Marked not collected and waiting for a manager review. Review it in POS, then archive.'};
   // Same exemption as rejectedBeforeCapture() in functions/lib/order-service.js: a website order
   // rejected before POS acceptance took no sale, so its unverified proof has nothing to review.
-  var rejectedUncaptured=online&&status==='Rejected'&&o.voided!==true&&!o.shiftId&&o.posCaptured!==true;
-  if(o.paymentStatus==='pending'&&!rejectedUncaptured)return{ok:false,reason:'payment_review',message:'Payment not verified yet. Verify the e-payment (check the reference in the actual GCash, Maya or bank account) or record it as not received before archiving.'};
-  if(o.paymentStatus==='cashier_verified')return{ok:false,reason:'payment_review',message:'The cashier verified this payment; a manager must validate it before it can be archived.'};
+  var rj=online&&status==='Rejected'&&o.voided!==true?(o.rejection||null):null,rejectedUncaptured=online&&status==='Rejected'&&o.voided!==true&&!o.shiftId&&o.posCaptured!==true&&['','pending'].indexOf(String(o.paymentStatus||''))>-1;
+  // Same rule as rejectionState(): a refund still owed holds the order; a chosen outcome replaces the payment review.
+  if(rj&&rj.outcome==='refund_due'&&rj.refundStatus!=='paid')return{ok:false,reason:'refund_owed',message:'A refund is still owed to the customer. Record it as paid in Register Ops first.'};
+  var released=rj?(rj.outcome==='payment_not_found'||rj.refundStatus==='paid'):rejectedUncaptured;
+  if(o.paymentStatus==='pending'&&!released)return{ok:false,reason:'payment_review',message:'Payment not verified yet. Verify the e-payment (check the reference in the actual GCash, Maya or bank account) or record it as not received before archiving.'};
+  if(o.paymentStatus==='cashier_verified'&&!released)return{ok:false,reason:'payment_review',message:'The cashier verified this payment; a manager must validate it before it can be archived.'};
   if(!o.shiftId&&o.source==='pos'&&!(o.enteredVia==='payout-rekey'&&o.catchup===true))return{ok:false,reason:'shift_missing',message:'This till order is not linked to a POS shift, so it cannot be archived. Report it to the owner for review.'};
   return{ok:true,reason:'',message:''};
 }

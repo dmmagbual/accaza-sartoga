@@ -178,6 +178,14 @@ try{
   }
   await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database()),{'orders/rule-usage-none':null,'orders/rule-usage-set':null});});
   await assertFails(update(ref(owner,'orders/own'),{costCorrectionTotal:1}));
+  // The rejection outcome and refund record are server-only: staff cannot create or alter them.
+  await assertFails(update(ref(owner,'orders/own'),{rejection:{outcome:'payment_not_found'}}));
+  await assertFails(update(ref(owner,'orders/own/rejection'),{refundStatus:'paid'}));
+  await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database(),'orders/own'),{rejection:{outcome:'refund_due',refundStatus:'owed',refundAmount:1}});});
+  await assertFails(update(ref(owner,'orders/own'),{rejection:null}));
+  await assertFails(update(ref(owner,'orders/own'),{'rejection/refundStatus':'paid'}));
+  await assertSucceeds(update(ref(owner,'orders/own'),{notes:'still editable'}));
+  await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database(),'orders/own'),{rejection:null,notes:null});});
 
   await assertSucceeds(get(ref(a,'orders/own')));
   await assertFails(get(ref(b,'orders/own')));

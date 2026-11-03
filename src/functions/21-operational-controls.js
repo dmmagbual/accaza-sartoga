@@ -23,6 +23,7 @@ const ORDER_ARCHIVE_REFUSAL = {
   not_final: "Only completed, received, rejected, or voided orders can be archived.",
   serving_queue: "This order is still in the serving queue. Mark it served or not collected first.",
   payment_review: "Verify this payment first: a manager has not validated this e-payment yet.",
+  refund_owed: "A refund is still owed. Record it as paid in Register Ops first.",
   inventory_reversal: "This order is still waiting for its inventory reversal.",
   platform_unsettled: "This platform receivable is still unsettled.",
   posting_incomplete: "The order is still posting to inventory or Finance Books.",
@@ -80,7 +81,8 @@ async function orderArchiveCheck(db, orderId, options = {}) {
   if (!ORDER_ARCHIVE_FINAL_STATUSES.includes(String(order.status || "")) && order.voided !== true) return {ok: false, reason: "not_final"};
   if (OrderService.keepsOrderLive(order)) return {ok: false, reason: "serving_queue"};
   // Unverified e-payments stay in the verification queue (manual and automatic archive alike).
-  if (["pending", "cashier_verified"].includes(String(order.paymentStatus || "")) && !OrderService.rejectedBeforeCapture(order)) return {ok: false, reason: "payment_review"};
+  const paymentHold = OrderService.paymentHoldReason(order);
+  if (paymentHold) return {ok: false, reason: paymentHold};
   if (options.strict) {
     // Reuse the live-projection rule instead of a second guess: an order the
     // register or the manager validation queue still shows - an electronic
