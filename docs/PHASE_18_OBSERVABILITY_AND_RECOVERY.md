@@ -2,7 +2,11 @@
 
 Phase 18 turns the existing hourly health evaluation into a deduplicated management alert. Recovery pointer: `backup/phase18-pre-observability-recovery-20260831`.
 
-## Escalation policy
+## Current alerting (updated 4 Nov 2026)
+
+Staff push escalation was retired on 27 Sep 2026: the hourly evaluation still records health under `systemHealth/productionMonitor` and logs `notification: "disabled"`, but sends no push. Critical production alerts reach the owner by SMS and email through Google Cloud Monitoring, defined in `ops/monitoring/alert-policies.json` and applied by `tools/apply-monitoring-alerts.ps1` to every enabled "Danilo*" notification channel: background task stopped (dead letter), daily backup failed, server function out of memory, finance safety guard tripped, POS sale not saved, server functions failing (5xx), and staff device refused by App Check. The escalation policy below describes the retired push design and is kept as history.
+
+## Escalation policy (retired push design, history)
 
 - A first warning is sent to management immediately.
 - A new critical state, severity increase, or changed critical signal is sent immediately.

@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,loadFirebaseMessaging,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=750";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=751";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
-import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=750";
+import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=751";
 import{archiveOutcome}from"./order-display.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=750";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=751";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -14,7 +14,7 @@ import{createCustomerOrderTracker}from"./customer-order-tracker.mjs";
 import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
 import{sortArchivedOrders,summarizeArchivedOrders}from"./archive-order-sort.mjs";
-import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=750";
+import{createPaymentAccountLinks}from"./payment-account-links.mjs?v=751";
 const paymentAccountLinks=createPaymentAccountLinks(()=>overviewCashAccounts||{});
 
 const {getPaymentProof:getPaymentProofCall,getCurrentCashBalances:getCurrentCashBalancesCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,manageFixedAsset:manageFixedAssetCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,manageAccountingPeriod:manageAccountingPeriodCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,reopenDiscrepancy:reopenDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,setUndepositedOpeningBalance:setUndepositedOpeningBalanceCall,repairPettyVoucherFinancial:repairPettyVoucherFinancialCall,retireRevolvingFund:retireRevolvingFundCall,repairClosedShiftTurnover:repairClosedShiftTurnoverCall,repairShiftDeclaredTips:repairShiftDeclaredTipsCall,repairReversedPayoutDeposit:repairReversedPayoutDepositCall,reconcileUndepositedCustody:reconcileUndepositedCustodyCall,runFinancialClose:runFinancialCloseCall,archiveActivityLog:archiveActivityLogCall}=callables;
@@ -767,42 +767,10 @@ window.notifyCustomer=function(oid){
   else{t('Message copied to clipboard','ok');}
 };
 function _hashSig(s){var h=0,i;for(i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return (h>>>0).toString(36);}
-window.placeOrder=async function(){
-  if(window._placingOrder)return;
-  const name=document.getElementById('custName').value.trim(),phone=document.getElementById('custPhone').value.trim();
-  if(!Object.keys(cart).length){alert('Please add at least one item.');return;}
-  if(!name||!phone){alert('Please enter your name and phone number.');return;}
-  if(orderType==='delivery'&&!document.getElementById('deliveryAddr').value.trim()){alert('Please enter your delivery address.');return;}
-  if(!document.getElementById('paymentProof').files[0]){alert('Please attach your proof of payment.');return;}
-  const proofSrc=document.getElementById('proofImg').src;
-  const total=Object.values(cart).reduce((s,c)=>s+c.qty*c.unitTotal,0);
-  const itemsArr=Object.values(cart).map(c=>c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty);
-  const lineItemsArr=Object.values(cart).map(c=>({itemKey:c.itemKey||null,name:c.name,size:c.size||null,optLabels:c.optLabels||[],qty:c.qty,unitTotal:c.unitTotal}));
-  const _sig=phone+'|'+itemsArr.join('~')+'|'+total;
-  var _persist=(function(){try{var v=localStorage.getItem('accaza_lastsig');if(!v)return null;var ix=v.lastIndexOf('@@');return {sig:v.slice(0,ix),t:parseInt(v.slice(ix+2))||0};}catch(e){return null;}})();
-  if((window._lastOrderSig===_sig&&Date.now()-(window._lastOrderTime||0)<30000)||(_persist&&_persist.sig===_sig&&Date.now()-_persist.t<30000)){alert('Looks like you just placed this exact order — please try again after 30 seconds.');return;}
-  window._placingOrder=true;
-  const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
-  try{
-    var _sigKey=phone.replace(/[^0-9]/g,'')+'_'+_hashSig(_sig);
-    var _lock=await runTransaction(ref(db,'orderLocks/'+_sigKey),function(cur){var now=Date.now();if(cur&&(now-(cur.t||0)<90000))return;return {t:Date.now(),id:'pending'};});
-    if(_lock&&_lock.committed===false){window._placingOrder=false;_btn.disabled=false;_btn.style.opacity='1';_btn.textContent='Place Order';alert('This looks like a duplicate of an order you just placed. If it is intentional, please wait a minute and try again.');return;}
-  }catch(_le){/* offline or transaction error: allow order to proceed */}
-  const orderId='ORD-'+Date.now().toString().slice(-6);
-  const newOrder={id:orderId,name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod,items:itemsArr.join(', '),total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',receivedByCustomer:false,time:new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now(),proof:proofSrc,lineItems:lineItemsArr,source:'online'};
-  try{
-    await set(ref(db,'orders/'+orderId),newOrder);
-    try{ if(isAppMode()){ var _u=getAppUser(); var _ph=(_u&&_u.phone)||phone; var _k=_ph.replace(/[^0-9]/g,''); if(_k){ var _snap=await get(ref(db,'appCustomers/'+_k)); var _c=_snap.val()||{}; await update(ref(db,'appCustomers/'+_k),{name:(_u&&_u.name)||name,phone:_ph,orders:(_c.orders||0)+1,firstSeen:_c.firstSeen||Date.now(),lastOrder:Date.now(),lastOrderId:orderId}); } } }catch(_e){}
-    window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';try{localStorage.setItem('accaza_lastsig',_sig+'@@'+Date.now());}catch(e){}
-    customerOrderTracker.addOrderId(orderId);
-    document.getElementById('displayOrderId').textContent=orderId;document.getElementById('orderConfirm').style.display='block';
-    document.querySelector('.btn-place-order').disabled=true;document.querySelector('.btn-place-order').style.opacity='0.5';
-    cart={};updateCartDisplay();renderOrderSection();renderCustomerOrders();
-    document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';
-    removeProof({stopPropagation:function(){}});
-    setTimeout(function(){var b=document.querySelector('.btn-place-order');b.disabled=false;b.style.opacity='1';b.textContent='Place Order';document.getElementById('orderConfirm').style.display='none';},5000);
-  }catch(e){window._placingOrder=false;_btn.disabled=false;_btn.style.opacity='1';_btn.textContent='Place Order';alert('Could not place order: '+e.message);}
-};
+// Audit A-14 (4 Nov 2026): Admin no longer has its own checkout. The old copy priced the order in
+// the browser and wrote /orders directly; orders are now server-only, and customers order on the
+// website, which uses the server's createOnlineOrder (server pricing, proof, invoice, projections).
+window.placeOrder=async function(){alert('Orders are placed on the Accaza website or rung up in POS.');};
 window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}if(confirm('Reset your order?')){cart={};updateCartDisplay();renderOrderSection();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';setType('pickup');(function(){var gBtn=document.getElementById('btnGcash');var mBtn=document.getElementById('btnMaya');var bBtn=document.getElementById('btnBank');var first=gBtn&&gBtn.style.display!=='none'?'gcash':mBtn&&mBtn.style.display!=='none'?'maya':'bank';setPayment(first);})();document.getElementById('orderConfirm').style.display='none';document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';}};
 
 function renderCustomerOrders(){return customerOrderTracker.render();}

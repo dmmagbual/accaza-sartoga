@@ -80,6 +80,8 @@ It restores every node, reads the whole database back, re-fingerprints it and re
 
 ## 7. Step 5 — Record evidence & close the manifest item
 
+Evidence location (4 Nov 2026): the drill's evidence is the vault backup named in the drill log (its `db-backups/...` path and SHA-256) plus the verify and restore output recorded in the log below. `restore-drill-backup.json` is only a local working copy, is not committed, and is not the evidence for any drill. Accaza has one operator, so the independent second reviewer is an owner-accepted gap rather than a completed control.
+
 - Save the console output of Steps 4 and 6 (or screenshots) into your operations log per `OPERATIONS_RELEASE_RUNBOOK.md`.
 - In `release-manifest.json`, move `backupRestoreTest` from pending to satisfied, recording the drill date and the verified `dataSha256`. Re-run `npm run test:release` and confirm the pending list shrinks by one. Commit that as its own small change (build-marker rules do not apply — no app asset changed).
 - Tear down: `Ctrl+C` the emulator (Option A), or wipe the staging RTDB (Option B). Delete `restore-drill-backup.json` locally when done.
