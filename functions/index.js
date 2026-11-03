@@ -6672,6 +6672,15 @@ exports.createOnlineOrder = onCall(
     const uid = request.auth.uid;
     const input = request.data || {};
     const db = getDatabase();
+    // Idempotency (audit C-02, 4 Nov 2026): the browser sends one request key per checkout and keeps
+    // it across retries. A retry after a lost response returns the order already saved instead of
+    // creating a second order, proof and invoice number. The key is claimed before any work.
+    const requestId = /^[A-Za-z0-9_-]{8,64}$/.test(String(input.requestId || "")) ? String(input.requestId) : "";
+    const requestRef = requestId ? db.ref(`/orderRequests/${uid}/${requestId}`) : null;
+    if (requestRef) {
+      const prior = (await requestRef.get()).val();
+      if (prior && prior.orderId) return {orderId: prior.orderId, total: money(prior.total), duplicate: true};
+    }
     await enforceOrderRateLimit(db, uid);
     const shift = await readActiveShiftHead(db);
     if (!shift || shift.status === "closed") throw new HttpsError("failed-precondition", "Online orders are closed right now. Please try again when the shop is accepting orders.");
@@ -6708,11 +6717,27 @@ exports.createOnlineOrder = onCall(
     const signature = crypto.createHash("sha256").update(JSON.stringify({uid, type: orderType, lines: priced.lines, total: finalTotal})).digest("hex");
     const lockRef = db.ref(`/orderLocks/${uid}/${signature}`);
     const now = Date.now();
+    if (requestRef) {
+      // Claimed before the duplicate lock, so a crashed attempt never holds both. A pending claim
+      // left by a request that failed before saving expires after two minutes.
+      const claim = await requestRef.transaction((current) => (current && (current.orderId || now - Number(current.at || 0) < 120000) ? undefined : {state: "pending", at: now}), undefined, false);
+      if (!claim.committed) {
+        const held = claim.snapshot.val() || {};
+        if (held.orderId) return {orderId: held.orderId, total: money(held.total), duplicate: true};
+        throw new HttpsError("already-exists", "This order is still being saved. Wait a moment, then check your order tracker.");
+      }
     const lock = await lockRef.transaction((current) => {
       if (current && now - Number(current.t || 0) < ORDER_LOCK_MS) return;
       return {t: now};
     });
-    if (!lock.committed) throw new HttpsError("already-exists", "This exact order was already submitted. Wait a minute before submitting it again.");
+    if (!lock.committed) {
+      // The same order inside the lock window: hand back the order already saved, if there is one.
+      const held = (await lockRef.get()).val();
+      if (requestRef) { try { await requestRef.remove(); } catch (ignored) {} }
+      if (held && held.id) return {orderId: held.id, total: finalTotal, duplicate: true};
+      throw new HttpsError("already-exists", "This exact order was already submitted. Wait a minute before submitting it again.");
+    }
+    }
     let orderId = "OO-" + shortRefCode(now);
     for (let i = 1; i < 8 && (await db.ref("/orders/" + orderId).get()).exists(); i++) orderId = "OO-" + shortRefCode(now + i);
     const nowDate = new Date(now);
@@ -6732,7 +6757,7 @@ exports.createOnlineOrder = onCall(
     const chosen = paymentRow
       ? Financial.receivingAccountForCustomerChoice(payment, paymentRow, paymentSettings, accountsMap)
       : (Financial.receivingAccountForMethodFallback(payment, paymentSettings, posSettings.payMethods, accountsMap) || {});
-    if (chosen.error) throw new HttpsError("failed-precondition", chosen.error);
+    if (chosen.error) { try { await lockRef.remove(); } catch (ignored) {} if (requestRef) { try { await requestRef.remove(); } catch (ignored) {} } throw new HttpsError("failed-precondition", chosen.error); }
     const receiving = chosen.id ? chosen : null;
     const order = {
       id: orderId, ownerUid: uid, name, phone, type: orderType, address, payment, paymentAccountName: receiving ? receiving.name : "", contact, contactMethod,
@@ -6758,10 +6783,15 @@ exports.createOnlineOrder = onCall(
       });
       const invoiceStamp = await ShiftHandover.stampInvoice(db, order);
       order.invoiceNumber = invoiceStamp.invoiceNumber; order.invoiceSeq = invoiceStamp.invoiceSeq; order.cumulativeGrandTotalCents = invoiceStamp.cumulativeGrandTotalCents;
-      await db.ref().update({[`orders/${orderId}`]: order, [`activeOrders/${orderId}`]: activeOrderProjection(order), [`customerOrders/${uid}/${orderId}`]: {createdAt: now, status: "Pending"}});
+      await db.ref().update(Object.assign({[`orders/${orderId}`]: order, [`activeOrders/${orderId}`]: activeOrderProjection(order), [`customerOrders/${uid}/${orderId}`]: {createdAt: now, status: "Pending"}}, requestRef ? {[`orderRequests/${uid}/${requestId}`]: {state: "done", orderId, total: finalTotal, at: now}} : {}));
     } catch (error) {
+      // An error after the write may still have committed it: then the order exists and is returned
+      // as saved, rather than deleting its proof and letting a retry create a second order.
+      let saved = false; try { saved = (await db.ref(`/orders/${orderId}`).get()).exists(); } catch (ignored) {}
+      if (saved) { logger.warn("createOnlineOrder write reported an error but the order exists", {uid, orderId, error: String(error)}); return {orderId, total: finalTotal}; }
       try { await proofFile.delete({ignoreNotFound: true}); } catch (ignored) {}
       try { await lockRef.remove(); } catch (ignored) {}
+      if (requestRef) { try { await requestRef.remove(); } catch (ignored) {} }
       logger.error("createOnlineOrder proof/order write failed", {uid, orderId, error: String(error)});
       throw new HttpsError("internal", "Order could not be saved. Please try again.");
     }

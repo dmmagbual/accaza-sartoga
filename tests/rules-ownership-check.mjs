@@ -160,18 +160,18 @@ try{
   await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database()),{
     'orders/rule-usage-none':{id:'rule-usage-none',status:'Completed',total:100,timestamp:1},
     'orders/rule-usage-set':{id:'rule-usage-set',status:'Completed',total:100,timestamp:1,inventoryDeducted:true,inventoryUsage:{inv_milk:0.2,inv_cup:1},costCorrections:{c1:{amount:1}},refundPayments:{r1:{amount:5}}}});});
-  await assertSucceeds(update(ref(cashier,'orders/rule-usage-none'),{staffNote:'table 4'}));
+  await assertFails(update(ref(cashier,'orders/rule-usage-none'),{staffNote:'table 4'}));
   await assertFails(update(ref(cashier,'orders/rule-usage-none'),{inventoryUsage:{inv_milk:1}}));
   await assertFails(update(ref(cashier,'orders/rule-usage-set'),{staffNote:'table 4'}));
   await assertFails(update(ref(cashier,'orders/rule-usage-set'),{'inventoryUsage/inv_milk':null}));
   await assertFails(update(ref(cashier,'orders/rule-usage-set'),{inventoryUsage:null}));
-  await assertSucceeds(update(ref(owner,'orders/rule-usage-set'),{staffNote:'table 4'}));
+  await assertFails(update(ref(owner,'orders/rule-usage-set'),{staffNote:'table 4'}));
   // Staff may not remove a server-only collection from an order that holds one.
   await env.withSecurityRulesDisabled(async c=>{await set(ref(c.database(),'orders/rule-refunded'),{id:'rule-refunded',status:'Completed',total:100,timestamp:1,refundHistory:{h1:{amount:5}}});});
   await assertFails(update(ref(cashier,'orders/rule-refunded'),{refundHistory:null}));
   await assertFails(update(ref(cashier,'orders/rule-refunded'),{'refundHistory/h1':null}));
   await assertFails(update(ref(cashier,'orders/rule-refunded'),{staffNote:'x'}));
-  await assertSucceeds(update(ref(owner,'orders/rule-refunded'),{staffNote:'x'}));
+  await assertFails(update(ref(owner,'orders/rule-refunded'),{staffNote:'x'}));
   await env.withSecurityRulesDisabled(async c=>{await set(ref(c.database(),'orders/rule-refunded'),null);});
   for(const db of [owner,cashier]){
     await assertFails(update(ref(db,'orders/rule-usage-set'),{'costCorrections/c2':{amount:1}}));
@@ -187,7 +187,7 @@ try{
   await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database(),'orders/own'),{rejection:{outcome:'refund_due',refundStatus:'owed',refundAmount:1}});});
   await assertFails(update(ref(owner,'orders/own'),{rejection:null}));
   await assertFails(update(ref(owner,'orders/own'),{'rejection/refundStatus':'paid'}));
-  await assertSucceeds(update(ref(owner,'orders/own'),{notes:'still editable'}));
+  await assertFails(update(ref(owner,'orders/own'),{notes:'still editable'}));
   await env.withSecurityRulesDisabled(async c=>{await update(ref(c.database(),'orders/own'),{rejection:null,notes:null});});
 
   await assertSucceeds(get(ref(a,'orders/own')));
@@ -281,6 +281,15 @@ try{
   await assertFails(set(ref(owner,'staffMessageReceipts/forged/owner'),{userUid:'owner',readAt:3}));
 
   await assertFails(set(ref(a,'orders/forged'),{id:'forged',ownerUid:'customer-a',source:'online',status:'Pending',total:1}));
+  // Orders are server-only (audit D-06/A-14, 4 Nov 2026): no browser, staff or owner, may create or
+  // change one, so a total, line, time or shift cannot be rewritten outside the server commands.
+  for(const db of [owner,manager,staff,cashier]){
+    await assertFails(set(ref(db,'orders/POS-FORGED-1'),{id:'POS-FORGED-1',status:'Completed',total:1,timestamp:1}));
+    await assertFails(update(ref(db,'orders/own'),{total:1}));
+    await assertFails(update(ref(db,'orders/own'),{timestamp:2}));
+    await assertFails(update(ref(db,'orders/own'),{shiftId:'other'}));
+  }
+  for(const db of [owner,manager,staff,cashier,a])await assertFails(set(ref(db,'orderRequests/customer-a/rq_forged_123'),{orderId:'x'}));
   await assertFails(update(ref(a,'orders/own'),{status:'Received',receivedByCustomer:true}));
   await assertFails(update(ref(owner,'orders/own'),{status:'Confirmed'}));
 

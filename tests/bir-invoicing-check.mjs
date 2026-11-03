@@ -38,7 +38,7 @@ check(offlineSync.indexOf('Handover.stampInvoice(db, durableOrder)') < offlineSy
 /* ── 2. Online orders join the same series ── */
 must(ordersCreate, 'ShiftHandover.stampInvoice(db, order)', 'the online-order create path must stamp the same sequential invoice series.');
 must(ordersCreate, 'order.invoiceNumber = invoiceStamp.invoiceNumber', 'the online order must store the stamped invoice number.');
-check(ordersCreate.indexOf('ShiftHandover.stampInvoice(db, order)') < ordersCreate.indexOf('await db.ref().update({[`orders/${orderId}`]: order'), 'online-order numbering must complete before the create write.');
+check(ordersCreate.indexOf('ShiftHandover.stampInvoice(db, order)') < ordersCreate.indexOf('await db.ref().update(Object.assign({[`orders/${orderId}`]: order'), 'online-order numbering must complete before the create write.');
 
 /* ── 3. PTU flows from tax settings into every order snapshot ── */
 must(taxSettings, 'const next = {mode, structure, vatRate, percentageRate, inclusive, effectiveAt, tin, branchCode, ptu, requirements', 'setTaxSettings must accept and store the BIR permit-to-use (PTU) number on the tax settings record.');

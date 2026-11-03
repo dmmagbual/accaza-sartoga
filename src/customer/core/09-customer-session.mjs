@@ -52,11 +52,15 @@ window.placeOrder=async function(){
   // Validate before taking the in-flight lock: a return after the lock (inside the try,
   // with no finally) would leave the button disabled on "Placing order…" until reload.
   if(paymentType==='bank'){var choiceBox=document.getElementById('bankChoice');if(choiceBox&&choiceBox.style.display!=='none'&&!chosenRow){alert('Please choose the bank you transferred to.');return;}}
+  // One request key per checkout (audit C-02): a retry of the same order after a lost response
+  // sends the same key, so the server returns the order it already saved instead of a second one.
+  var _reqId=(function(){var key='accaza_order_request';try{var v=JSON.parse(sessionStorage.getItem(key)||'null');if(v&&v.sig===_sig&&Date.now()-Number(v.t||0)<1800000&&/^[A-Za-z0-9_-]{8,64}$/.test(v.id))return v.id;}catch(e){}var id='rq_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,12);try{sessionStorage.setItem(key,JSON.stringify({sig:_sig,id:id,t:Date.now()}));}catch(e){}return id;})();
   window._placingOrder=true;
   const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
   try{
     await ensureCustomerAuth(true);
     var orderPayload={name:name,phone:phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',paymentRow:chosenRow,contact:document.getElementById('custContact').value.trim(),contactMethod:contactMethod,notes:document.getElementById('custNotes').value.trim(),proof:proofSrc,lineItems:lineItemsArr,expectedTotal:total};
+    orderPayload.requestId=_reqId;
     var placed;
     try{placed=await createOnlineOrderCall(orderPayload);}catch(firstError){
       if(String(firstError&&firstError.code).indexOf('unauthenticated')<0)throw firstError;
@@ -64,7 +68,7 @@ window.placeOrder=async function(){
       placed=await createOnlineOrderCall(orderPayload);
     }
     var orderId=placed&&placed.data&&placed.data.orderId;if(!orderId)throw new Error('Server did not return an order number.');
-    window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';try{localStorage.setItem('accaza_lastsig',_sig+'@@'+Date.now());}catch(e){}
+    window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';try{sessionStorage.removeItem('accaza_order_request');}catch(e){}try{localStorage.setItem('accaza_lastsig',_sig+'@@'+Date.now());}catch(e){}
     if(myOrderIds.indexOf(orderId)<0)myOrderIds.push(orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));if(window.__subscribeMyOrders)window.__subscribeMyOrders();
     document.getElementById('displayOrderId').textContent=orderId;document.getElementById('orderConfirm').style.display='block';
     document.querySelector('.btn-place-order').disabled=true;document.querySelector('.btn-place-order').style.opacity='0.5';
