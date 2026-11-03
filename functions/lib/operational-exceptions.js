@@ -27,6 +27,9 @@ const CLEARING_RESIDUAL_THRESHOLD = 50;
 // Dead-lettered background events stay on the live exception list for this long.
 const DEAD_LETTER_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 function round2(n) {return Math.round((Number(n) || 0) * 100) / 100;}
+const TOTAL_CHECK_WINDOW_MS = 7 * 86400000;
+const DENOM_LABELS = {b1000: "₱1,000 note", b500: "₱500 note", b200: "₱200 note", b100: "₱100 note", b50: "₱50 note", p20: "₱20", c10: "₱10 coin", c5: "₱5 coin", c1: "₱1 coin", c25: "25¢ coin", c10s: "10¢ coin", c5s: "5¢ coin"};
+function drawerCountShortfalls(drawer) {return Object.keys(drawer || {}).filter((key) => Number(drawer[key]) < 0).map((key) => ({key, count: Number(drawer[key]), label: DENOM_LABELS[key] || key}));}
 // Authoritative per-code balances from the Books General Ledger (/books/journal),
 // where the POS semantic->chart-code mapping is already applied. Handles daily
 // summary nodes (net map) and single journal entries (lines array), so the number
@@ -218,6 +221,12 @@ function buildOperationalExceptions(input, now = Date.now()) {
   // Shift crew safeguards: a POS sale the server refused is money in the drawer with no
   // sale behind it until management recovers or dismisses it; a handed-over shift has no
   // final Z report until management reconciles it.
+  // Till count rule (Danilo, 3 Nov 2026): a sale always updates the note/coin count, so a count
+  // below zero means the POS count is out of date. It clears itself once the drawer is recounted.
+  drawerCountShortfalls(input.activeShiftDrawer).forEach((row) => exceptions.push(item("drawer_count_negative", "warning", `drawer_count_${row.key}`, `POS drawer count shows ${row.count} × ${row.label}`, "The cash already moved, so the sale was kept. The POS count is out of date: recount the drawer in Register Ops.", now, "ops")));
+  // POS total check (D-01, flag only): the sale was accepted and posted at its charged total; the
+  // lines, discount or tax did not add up to it. Shown for seven days; the order keeps totalCheck.
+  rows(input.posTotalChecks).forEach((row) => {if (now - Number(row.at || 0) > TOTAL_CHECK_WINDOW_MS) return;exceptions.push(item("pos_total_check", "warning", `pos_total_${row.id}`, `POS sale ${row.orderId || row.id} total does not match its lines`, `Charged ₱${round2(row.total).toFixed(2)}; lines, discount and tax give ₱${round2(row.expectedTotal).toFixed(2)} (difference ₱${round2(row.difference).toFixed(2)}). Review the sale; it is already posted at the charged total.`, Number(row.at || 0), "ops"));});
   rows(input.posSyncAlerts).forEach((alert) => {if (alert.state !== "open") return;exceptions.push(item("pos_sale_rejected", "critical", alert.id, `POS sale ${alert.orderId || alert.id} was not saved`, `${String(alert.message || "The server refused this sale.").slice(0, 200)} Recover or dismiss it in Register Ops → Sales needing recovery.`, Number(alert.lastAt || alert.firstAt || 0), "ops"));});
   // Payments awaiting verification are deliberately NOT listed here (Danilo, 1 Nov 2026): the
   // register already shows every open payment in Register → Payments awaiting verification, so one
@@ -281,4 +290,4 @@ function buildOperationalExceptions(input, now = Date.now()) {
   const rank = {critical: 0, warning: 1};exceptions.sort((a, b) => (rank[a.severity] - rank[b.severity]) || (b.at - a.at));
   return {generatedAt: now, scanned: {activeOrders: active.length, recentOrders: orders.length, offlineSyncs: offline.length, custodyRecords: custody.length}, counts: {critical: exceptions.filter((x) => x.severity === "critical").length, warning: exceptions.filter((x) => x.severity === "warning").length, total: exceptions.length}, exceptions: exceptions.slice(0, 100)};
 }
-module.exports = {buildOperationalExceptions, DEAD_LETTER_WINDOW_MS, CLEARING_ACCOUNTS, CLEARING_RESIDUAL_THRESHOLD, clearingBalancesFromJournal, clearingBalancesFromMonthlyNet, paymentRoutingIssues, cashLedgerCoverageIssues};
+module.exports = {buildOperationalExceptions, drawerCountShortfalls, TOTAL_CHECK_WINDOW_MS, DEAD_LETTER_WINDOW_MS, CLEARING_ACCOUNTS, CLEARING_RESIDUAL_THRESHOLD, clearingBalancesFromJournal, clearingBalancesFromMonthlyNet, paymentRoutingIssues, cashLedgerCoverageIssues};

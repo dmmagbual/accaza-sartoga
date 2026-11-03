@@ -153,6 +153,14 @@ exports.mirrorPosMovementToBooks = onValueCreated(
   },
 );
 
+// The date COGS posts on: the sale movement's date (which already follows the open-month rule), or
+// the sale time when the sale has not posted yet. Deterministic, so a redelivery lands in the same
+// bucket; a cost already in its sale-date bucket stays there.
+async function cogsPostingTime(db, order, orderId) {
+  const legacy = await db.ref(`/books/journal/${BooksBridge.cogsLegacyBucketKey(order)}/sources/cogs_${orderId}`).get();
+  if (legacy.exists()) return 0;
+  return BooksBridge.cogsPostedAt(false, (await db.ref(`/financialMovements/sale_${orderId}/occurredAt`).get()).val());
+}
 // COGS leg: when an order's COGS snapshot is written, fold Dr COGS / Cr Inventory
 // into the same daily-summary-per-channel entry. Idempotent via sources[cogs_<orderId>].
 exports.mirrorPosCogsToBooks = onValueWritten(
@@ -168,7 +176,8 @@ exports.mirrorPosCogsToBooks = onValueWritten(
     // Inventory items are needed only for legacy orders without an account snapshot, and then
     // only the ingredients on the order.
     const categories = (await db.ref("/posSettings/invCategories").get()).val() || {};
-    const mv = await readCatalogKeyed(db, ["inventory"], (maps) => BooksBridge.cogsMovement(order, orderId, maps.inventory, categories));
+    const postedAt = await cogsPostingTime(db, order, orderId);
+    const mv = await readCatalogKeyed(db, ["inventory"], (maps) => BooksBridge.cogsMovement(order, orderId, maps.inventory, categories, postedAt));
     if (!mv.lines.length) return;
     const bucket = BooksBridge.bucketFor(mv);
     const ref = db.ref(`/books/journal/${bucket.key}`);
@@ -211,10 +220,12 @@ exports.ensureBooksJournal = onCall(
       else singles[bucket.key] = Object.assign(BooksBridge.buildSingle(mv, cashMap, context).entry, {createdAt: Date.now(), rebuiltAt: Date.now()});
     });
     let cogsPosted = 0, cogsReversed = 0, missingCogs = 0;
+    const priorJournal = journalSnap.val() || {};
     Object.keys(allOrders).forEach((id) => {
       const order = allOrders[id] || {};
       const inv = inventorySnap.val() || {}, cats = categoriesSnap.val() || {};
-      const cogs = BooksBridge.cogsMovement(order, id, inv, cats);
+      const legacyBucket = priorJournal[BooksBridge.cogsLegacyBucketKey(order)], inSaleDate = !!(legacyBucket && legacyBucket.sources && legacyBucket.sources[`cogs_${id}`]);
+      const cogs = BooksBridge.cogsMovement(order, id, inv, cats, BooksBridge.cogsPostedAt(inSaleDate, movements[`sale_${id}`] && movements[`sale_${id}`].occurredAt));
       // Lines sold without a recipe are tracked in /uncostedSales and costed by their own linked
       // correction entry, so they are not unposted historical COGS. A recognized sale that still has
       // no COGS is a genuine gap to review.
@@ -224,7 +235,7 @@ exports.ensureBooksJournal = onCall(
       const reversal = BooksBridge.cogsReversalMovement(order, id, inv, cats);
       if (reversal) { const bucket = BooksBridge.bucketFor(reversal); daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, reversal, cashMap); cogsReversed++; }
     });
-    const existing = journalSnap.val() || {}, writes = {};
+    const existing = priorJournal, writes = {};
     let journalWrites = 0, journalUnchanged = 0;
     Object.keys(existing).forEach((key) => {
       const entry=existing[key]||{};

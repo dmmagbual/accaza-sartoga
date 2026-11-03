@@ -42,11 +42,34 @@ function validatePaymentReconciliation(raw, money) {
   }
   return {payments, paid, refund};
 }
+// POS total check (D-01, Danilo 3 Nov 2026: flag only). The till already took the money, so the sale
+// posts at its charged total whatever this finds. It recomputes the charged total from what the
+// device sent - lines (plus QR package extras), discount, loyalty discount, VAT-exclusive add-on
+// and whole-peso cash rounding - and reports a difference for a manager to review. Platform sales
+// are priced by the platform and are not checked here.
+function posTotalCheck(raw, total, lines) {
+  const m = (v) => Math.round((Number(v) || 0) * 100) / 100;
+  const linesTotal = m((lines || []).reduce((sum, row) => sum + (Number(row && row.qty) || 0) * (Number(row && row.unitTotal) || 0), 0));
+  const packages = Array.isArray(raw && raw.packages) ? raw.packages : Object.values((raw && raw.packages) || {});
+  const packageExtra = m(packages.reduce((sum, row) => sum + (Number(row && row.extraCost) || 0), 0));
+  const subtotal = raw && raw.subtotal != null ? m(raw.subtotal) : linesTotal;
+  const linesOk = Math.abs(subtotal - linesTotal) <= .01 || Math.abs(subtotal - linesTotal - packageExtra) <= .01;
+  const base = Math.max(0, m(subtotal - m(raw && raw.discount) - m(raw && raw.loyaltyDiscount)));
+  const tax = raw && raw.tax;
+  const add = tax && tax.inclusive === false && Number(tax.rate) > 0 ? Math.round((base - Math.min(base, m(raw.vatExemptSales))) * Number(tax.rate)) / 100 : 0;
+  const expectedTotal = m(base + add), difference = m(m(total) - expectedTotal);
+  // Cash rounding moves a total to the nearest whole peso, at most 50 centavos.
+  const ok = linesOk && Math.abs(difference) <= .51;
+  return {ok, linesTotal, subtotal, expectedTotal, difference, linesOk};
+}
 function applyDrawerDelta(row, transactionId, delta, now, actor) {
   if (!row || typeof row !== "object") return row;
   if(row.status==='closed')return;
   const applied = Object.assign({}, row.offlineSyncApplied || {});if (applied[transactionId]) return row;
-  const drawer = Object.assign({}, row.drawer || {});for(const key of Object.keys(delta)){const next=Number(drawer[key]||0)+delta[key];if(next<0)return;drawer[key]=next;}
+  // Till count rule (Danilo, 3 Nov 2026): the cash already moved, so the note/coin count always
+  // takes the sale. A count below zero means the POS count is out of date; Operations shows a
+  // recount task until the drawer is recounted. The sale is never refused over the count.
+  const drawer = Object.assign({}, row.drawer || {});for(const key of Object.keys(delta)){drawer[key]=Number(drawer[key]||0)+delta[key];}
   applied[transactionId] = {at: now, by: actor.uid};return Object.assign({}, row, {drawer, offlineSyncApplied: applied});
 }
 // A dedicated gate avoids transacting the entire (frequently updated) shift.
@@ -213,15 +236,15 @@ async function syncOfflinePosSaleCommand(ctx) {
   // serving queue. Management recovery of a past shift's sale is history, so it is not queued.
   delete order.service; if (!existing && !ctx.recovery && !lateClosed) order.service = OrderService.initialService(raw, now);
   const prepared=!existing&&ctx.prepareOrder?await ctx.prepareOrder(order,now):{order},durableOrder=prepared&&prepared.order||order;
-  let shiftResult;if(prepaid&&!existing){const reservation=await db.ref(`/offlinePosSync/${transactionId}`).transaction((row)=>{if(row&&row.orderId&&row.orderId!==orderId)return;return row||{orderId,shiftId,state:"refund-reserved",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid};},undefined,false);if(!reservation.committed)throw new HttpsError("already-exists","This POS transaction is already linked to another order.");shiftResult=await db.ref(`/shifts/${shiftId}`).transaction((row)=>applyDrawerDelta(row,transactionId,delta,now,actor),undefined,false);if(!shiftResult.committed||!shiftResult.snapshot.exists())throw new HttpsError("failed-precondition","The drawer no longer has enough cash for this refund. Recheck the denominations.");}
-  if (!existing){const stamp=await Handover.stampInvoice(db, durableOrder);durableOrder.invoiceNumber=stamp.invoiceNumber;durableOrder.invoiceSeq=stamp.invoiceSeq;durableOrder.cumulativeGrandTotalCents=stamp.cumulativeGrandTotalCents;const writes={[`orders/${orderId}`]:durableOrder,[`activeOrders/${orderId}`]:activeOrderProjection(durableOrder),[`offlinePosSync/${transactionId}`]:{orderId,shiftId,state:"order-written",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid}};if(prepaid)writes[`operationalAudit/${now}_precompletion_cash_refund_${orderId}`]={action:"complete_instore_prepaid_cash_refund",sourceType:"order",sourceId:orderId,amount:prepaid.amount,confirmedElectronicAmount:prepaid.paidAmount,correctedOrderTotal:total,reason:prepaid.reason,customerAcknowledgement:prepaid.customerAcknowledgement,shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};if(qrTicket){writes[`archivedQrTickets/${qrTicket.id}`]=Object.assign({},qrTicket,{status:"converted",saleOrderId:orderId,saleTransactionId:transactionId,convertedAt:now,convertedBy:actor.uid,archivedAt:now});writes[`activeQrTickets/${qrTicket.id}`]=null;writes[`operationalAudit/${now}_qr_convert_${qrTicket.id}`]={action:"convert_qr_order_to_pos_sale",sourceType:"qrOrderTicket",sourceId:qrTicket.id,queueNumber:qrTicket.queueNumber,orderId,transactionId,amount:total,originalTicketTotal:Number(qrTicket.total)||0,shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};}if(prepared&&prepared.inventoryPlan)writes[`orderInventoryPlans/${orderId}`]=prepared.inventoryPlan;await db.ref().update(writes);qrSaleSaved=!!qrTicket;}
+  let shiftResult;if(prepaid&&!existing){const reservation=await db.ref(`/offlinePosSync/${transactionId}`).transaction((row)=>{if(row&&row.orderId&&row.orderId!==orderId)return;return row||{orderId,shiftId,state:"refund-reserved",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid};},undefined,false);if(!reservation.committed)throw new HttpsError("already-exists","This POS transaction is already linked to another order.");}
+  if (!existing){const stamp=await Handover.stampInvoice(db, durableOrder);durableOrder.invoiceNumber=stamp.invoiceNumber;durableOrder.invoiceSeq=stamp.invoiceSeq;durableOrder.cumulativeGrandTotalCents=stamp.cumulativeGrandTotalCents;const writes={[`orders/${orderId}`]:durableOrder,[`activeOrders/${orderId}`]:activeOrderProjection(durableOrder),[`offlinePosSync/${transactionId}`]:{orderId,shiftId,state:"order-written",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid}};if(prepaid)writes[`operationalAudit/${now}_precompletion_cash_refund_${orderId}`]={action:"complete_instore_prepaid_cash_refund",sourceType:"order",sourceId:orderId,amount:prepaid.amount,confirmedElectronicAmount:prepaid.paidAmount,correctedOrderTotal:total,reason:prepaid.reason,customerAcknowledgement:prepaid.customerAcknowledgement,shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};if(qrTicket){writes[`archivedQrTickets/${qrTicket.id}`]=Object.assign({},qrTicket,{status:"converted",saleOrderId:orderId,saleTransactionId:transactionId,convertedAt:now,convertedBy:actor.uid,archivedAt:now});writes[`activeQrTickets/${qrTicket.id}`]=null;writes[`operationalAudit/${now}_qr_convert_${qrTicket.id}`]={action:"convert_qr_order_to_pos_sale",sourceType:"qrOrderTicket",sourceId:qrTicket.id,queueNumber:qrTicket.queueNumber,orderId,transactionId,amount:total,originalTicketTotal:Number(qrTicket.total)||0,shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};}if(prepared&&prepared.inventoryPlan)writes[`orderInventoryPlans/${orderId}`]=prepared.inventoryPlan;if(!platform&&channel==="instore"){const check=posTotalCheck(raw,total,lines);if(!check.ok){const flagged={total,expectedTotal:check.expectedTotal,linesTotal:check.linesTotal,subtotal:check.subtotal,difference:check.difference,at:now,schemaVersion:1};durableOrder.totalCheck=flagged;writes[`orders/${orderId}`]=durableOrder;writes[`posTotalChecks/${orderId}`]=Object.assign({orderId,shiftId,transactionId,actorUid:actor.uid},flagged);}}await db.ref().update(writes);qrSaleSaved=!!qrTicket;}
   if(!shiftResult&&lateClosed){await db.ref(`/shifts/${shiftId}/lateRecoveredSales/${transactionId}`).update({orderId,at:now,by:(ctx.recovery&&ctx.recovery.managerUid)||actor.uid});shiftResult={committed:true,snapshot:{exists:()=>true}};}
   if(!shiftResult)shiftResult = await db.ref(`/shifts/${shiftId}`).transaction((row) => applyDrawerDelta(row, transactionId, delta, now, actor), undefined, false);
-  if (!shiftResult.committed || !shiftResult.snapshot.exists()) throw new HttpsError("failed-precondition", "The sale shift no longer exists. Keep this transaction pending and contact a manager.");
+  if (!shiftResult.committed || !shiftResult.snapshot.exists()) throw new HttpsError("failed-precondition", "The sale's shift is closed or missing, so its drawer could not be updated. Keep this transaction pending and contact a manager.");
   await db.ref("/posActiveShift").transaction((row) => row && row.id === shiftId ? applyDrawerDelta(row, transactionId, delta, now, actor) : row, undefined, false);
   await db.ref(`/offlinePosSync/${transactionId}`).update({state: "synced", syncedAt: now, updatedAt: now});
   if(handover)await db.ref(`/shiftHandovers/${shiftId}/commands/${transactionId}`).update({syncedAt:now,lastError:""});
   return {transactionId, orderId, syncedAt: now, duplicate: !!existing};
   } finally {if(qrGateRef&&!qrSaleSaved)await qrGateRef.transaction((row)=>row&&row.status==="converting"&&row.conversionTransactionId===transactionId?Object.assign({},row,{status:"claimed",conversionTransactionId:null,conversionStartedAt:null}):row,undefined,false);await releaseShiftSync(db,shiftId,transactionId,syncToken);}
 }
-module.exports={POS_DENOM_KEYS,offlineTxnKey,offlineDrawerDelta,drawerDeltaValue,validatePaymentReconciliation,applyDrawerDelta,recoveryContext,endShiftCrew,recordSyncAlert,resolveSyncAlert,syncOfflinePosSaleCommand};
+module.exports={POS_DENOM_KEYS,posTotalCheck,offlineTxnKey,offlineDrawerDelta,drawerDeltaValue,validatePaymentReconciliation,applyDrawerDelta,recoveryContext,endShiftCrew,recordSyncAlert,resolveSyncAlert,syncOfflinePosSaleCommand};

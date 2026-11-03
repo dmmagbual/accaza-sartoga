@@ -295,11 +295,19 @@ function cogsLines(order, inventory, categories){
 }
 
 /* Pseudo-movement so COGS folds into the same daily-summary-per-channel entry as the sale. */
-function cogsMovement(order, orderId, inventory, categories){
+// COGS posts on the same date as its sale (D-04, 3 Nov 2026). A sale whose month was already closed
+// posts in the open month; its cost follows it, so revenue and COGS stay in the same P&L month.
+// postedAt is the sale movement's occurredAt when known; otherwise the order's own sale time.
+// A cost already folded into its sale-date bucket stays there (cogsPostedAt), so a re-fired mirror
+// can never add it to a second day and a Books rebuild never moves history out of a closed month.
+function cogsSaleTime(order) { return Number(order && (order.completedAt || order.receivedAt || order.occurredAt || order.timestamp)) || 0; }
+function cogsLegacyBucketKey(order) { return bucketFor({sourceType: "order", channel: String((order && order.channel) || "instore").toLowerCase(), occurredAt: cogsSaleTime(order) || Date.now()}).key; }
+function cogsPostedAt(alreadyInSaleDateBucket, saleMovementAt) { return alreadyInSaleDateBucket ? 0 : Number(saleMovementAt) || 0; }
+function cogsMovement(order, orderId, inventory, categories, postedAt){
   return {
     id: "cogs_" + orderId, type: "order_cogs", sourceType: "order",
     channel: String((order && order.channel) || "instore").toLowerCase(),
-    occurredAt: Number(order && (order.completedAt || order.receivedAt || order.occurredAt || order.timestamp)) || Date.now(),
+    occurredAt: Number(postedAt) || Number(order && (order.completedAt || order.receivedAt || order.occurredAt || order.timestamp)) || Date.now(),
     lines: cogsLines(order, inventory, categories)
   };
 }
@@ -378,4 +386,4 @@ function inventoryReconciliationSnapshot(inventory,journal){
   return{rows:rows,totalStock:r2(rows.reduce(function(sum,row){return sum+row.stockValue;},0)),totalBooks:r2(rows.reduce(function(sum,row){return sum+row.booksValue;},0)),totalDifference:totalDifference,clearingBalance:r2(books["1290"]),unmapped:unmapped};
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, fullyVoidedSourceIds, includeInRecognizedBooks, includeInAuthoritativeBooks, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, cogsReversalMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue, inventoryReconciliationSnapshot, openingRebalanceLines};
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, fullyVoidedSourceIds, includeInRecognizedBooks, includeInAuthoritativeBooks, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, cogsLegacyBucketKey, cogsPostedAt, cogsReversalMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue, inventoryReconciliationSnapshot, openingRebalanceLines};

@@ -421,6 +421,33 @@ function reversalPosting(order, amount, kind, accounts, settlementPayments, tax)
   assertBalanced(lines);
   return {type: kind === "void" ? "order_void" : "order_refund", sourceType: "order", sourceId: safe(order.id), channel, amount: value, lines, cashEntries, warnings, tax: taxStamp, settlementPayments: Array.isArray(settlementPayments) ? settlementPayments : []};
 }
+// Website order rejected with "refund due" (Danilo, 3 Nov 2026: keep it Xero-simple). No sale
+// exists, but the customer's money is in the shop's bank or wallet, so it is recorded there and
+// owed back through 2030 Customer Change / Refund Payable. Paying the refund clears 2030 from the
+// same account the money came in to; a manager can still pay it from another account through
+// Cash Payments against the same payable.
+function rejectionRefundSources(order, amount, accounts) {
+  amount = money(amount);
+  const rows = paymentRows(order).filter((row) => row.method.toLowerCase() !== "cash" && row.amount > 0);
+  const paid = money(rows.reduce((sum, row) => sum + row.amount, 0));
+  const use = rows.length && Math.abs(paid - amount) <= .009 ? rows : [Object.assign({}, rows[0] || {method: safe(order && order.payment) || "Unknown"}, {amount})];
+  return use.map((row) => {
+    const accountId = accountForPayment(row, accounts || {});
+    return {accountId, account: accountId ? `asset:cash_account:${accountId}` : `asset:unmapped_payment:${safe(row.method).toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, amount: money(row.amount), method: safe(row.method)};
+  });
+}
+function rejectionRefundDuePosting(order, payableId, amount, accounts) {
+  amount = money(amount); if (!(amount > 0)) throw new Error("A refund due must be more than zero.");
+  const sources = rejectionRefundSources(order, amount, accounts), liability = `liability:customer_change_refund:${safe(payableId)}`;
+  const lines = sources.map((row) => line(row.account, row.amount, 0, `Payment received for rejected order · ${row.method}`)).concat([line(liability, 0, amount, "Refund due to customer for rejected order")]);
+  assertBalanced(lines);
+  return {lines, sources, liability, amount};
+}
+function rejectionRefundPaidPosting(due, label) {
+  const lines = [line(due.liability, due.amount, 0, "Customer refund paid")].concat(due.sources.map((row) => line(row.account, 0, row.amount, label || `Refund sent · ${row.method}`)));
+  assertBalanced(lines);
+  return lines;
+}
 function movement(type, sourceType, sourceId, lines, extra) {
   assertBalanced(lines); return Object.assign({type: safe(type), sourceType: safe(sourceType), sourceId: safe(sourceId), amount: totals(lines).debit, lines, warnings: []}, extra || {});
 }
@@ -565,4 +592,4 @@ function payableSettledAmount(row) {
 }
 function payableHasSettlement(row) { return !!row && (row.status === "paid" || payableSettledAmount(row) > 0.009); }
 
-module.exports = {PAYMENT_VERIFICATION_ACCOUNT, UNPAID_SALES_LOSS_ACCOUNT, paymentAwaitingVerification, recognizedSale, unpaidAmount, verificationClearing, verificationBalance, verificationPosting, paymentReviewPosting, unpaidSalePosting, payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, methodKey, line, totals, assertBalanced, accountForMethod,accountForPayment,receivingAccountForMethodFallback,receivingAccountForCustomerChoice,receivingAccountForRow,accountNumber,accountForNumber,customerPaymentRow,CUSTOMER_PAYMENT_ROWS,METHOD_FOR_CUSTOMER_ROW,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};
+module.exports = {rejectionRefundSources, rejectionRefundDuePosting, rejectionRefundPaidPosting, PAYMENT_VERIFICATION_ACCOUNT, UNPAID_SALES_LOSS_ACCOUNT, paymentAwaitingVerification, recognizedSale, unpaidAmount, verificationClearing, verificationBalance, verificationPosting, paymentReviewPosting, unpaidSalePosting, payableSettledAmount, payableHasSettlement, BALANCE_EPSILON, money, safe, methodKey, line, totals, assertBalanced, accountForMethod,accountForPayment,receivingAccountForMethodFallback,receivingAccountForCustomerChoice,receivingAccountForRow,accountNumber,accountForNumber,customerPaymentRow,CUSTOMER_PAYMENT_ROWS,METHOD_FOR_CUSTOMER_ROW,unmappedOrderPayments, effectiveTaxFor, taxSplit, orderTaxBase, orderExemptSales, orderOutputVat, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting, quarterlyTaxFigures, quarterCloseGate};
