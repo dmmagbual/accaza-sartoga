@@ -46,4 +46,34 @@ for(const b of closure){
   const leaked=[...names].filter(n=>Object.prototype.hasOwnProperty.call(ctx,n));
   assert.deepEqual(leaked,[],`${b.target}: section functions leaked outside the closure: ${leaked.slice(0,10).join(', ')}`);
 }
+// Stranded helpers (3 Nov 2026). A function defined in one sealed admin bundle is invisible in the
+// others. The 30 Aug split left num() in the POS bundle while the Register shift review kept calling
+// it, so "Review live cash" threw and did nothing for two months. Every call a bundle makes to a
+// helper that only another bundle defines must fail here. A call behind typeof X==='function' is a
+// deliberate optional dependency and is reported separately below.
+{
+  // Callers: every admin bundle. Definers: the sealed (closure) admin bundles; a non-closure
+  // bundle's functions are page globals and visible everywhere.
+  const adminBundles=bundles.filter(b=>b.source.startsWith('src/admin/'));
+  const adminClosures=closure.filter(b=>b.source.startsWith('src/admin/'));
+  const code=s=>s.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'').replace(/'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"/g,'""');
+  const text=b=>sectionsOf(b.source).map(n=>fs.readFileSync(path.join(root,b.source,n),'utf8')).join('\n');
+  const own=b=>new Set([...text(b).matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(|\b(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=/g)].map(m=>m[1]||m[2]));
+  const stranded=[],guarded=[];
+  for(const b of adminBundles){
+    const mine=own(b),body=code(text(b));
+    for(const o of adminClosures){
+      if(o===b)continue;
+      for(const m of text(o).matchAll(/^function\s+([A-Za-z_$][\w$]*)\s*\(/gm)){
+        const n=m[1],re=n.replace(/\$/g,'\\$');
+        if(mine.has(n)||!new RegExp(`(?<![.\\w$])${re}\\s*\\(`).test(body))continue;
+        (new RegExp(`typeof\\s+${re}\\s*===?\\s*""`).test(body)?guarded:stranded).push(`${b.source} calls ${n}() defined only in ${o.source}`);
+      }
+    }
+  }
+  assert.deepEqual(stranded,[],`helpers called across sealed bundles (define them in the calling bundle):\n${stranded.join('\n')}`);
+  // A typeof guard hides the miss instead of fixing it: re-key a missed platform order once read
+  // channelRate() from the POS bundle this way and never showed its commission hint.
+  assert.deepEqual([...new Set(guarded)],[],`cross-bundle helpers hidden behind typeof (share them instead):\n${[...new Set(guarded)].join('\n')}`);
+}
 console.log(`PASS bundle closure: ${closure.map(b=>b.target).join(', ')} keep every section inside their closure`);

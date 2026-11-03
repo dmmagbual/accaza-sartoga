@@ -105,3 +105,47 @@ console.log('cash change check passed');
   assert.doesNotMatch(rules,/newData\.child\('openCount'\)\.val\(\) === data\.child\('openCount'\)\.val\(\) && newData\.child\('floatMode'\)/);
 }
 console.log('opening drawer count: denominations ok');
+
+// Shift review drawer by denomination (3 Nov 2026): totals in centavos, blank and bad counts ignored.
+{
+  const src=read('src/admin/register/90-shift-review-export.js');
+  const body=src.slice(src.indexOf('function shiftDrawerBreakdown'),src.indexOf('function shiftDrawerCardHtml'));
+  const peso=(n)=>'P'+Number(n).toFixed(2);
+  const {shiftDrawerBreakdown,shiftDrawerDiff,shiftDrawerDiffText}=new Function('DENOMS','peso',body+'\nreturn {shiftDrawerBreakdown,shiftDrawerDiff,shiftDrawerDiffText};')(DENOMS.map((d)=>({k:d.k,v:d.v,lbl:d.k})),peso);
+  assert.equal(shiftDrawerBreakdown({}),null);
+  assert.equal(shiftDrawerBreakdown({drawer:{}}),null);
+  assert.equal(shiftDrawerBreakdown({drawer:{b100:0,c1:-3}}),null);
+  const b=shiftDrawerBreakdown({drawer:{b1000:3,b100:4,b50:12,c25:3,c10s:1,c5s:1,c1:-2,p20:'x',c5:Infinity}});
+  assert.equal(b.total,4000.9);
+  assert.deepEqual(b.rows.map((r)=>[r.label,r.count,r.amount]),[['b1000',3,3000],['b100',4,400],['b50',12,600],['c25',3,0.75],['c10s',1,0.1],['c5s',1,0.05]]);
+  assert.equal(shiftDrawerDiff(b,{expectedCash:4000}),90);
+  assert.equal(shiftDrawerDiffText(90),'Over P0.90');
+  assert.equal(shiftDrawerDiffText(shiftDrawerDiff({total:6815},{expectedCash:6815})),'Matches');
+  assert.equal(shiftDrawerDiffText(shiftDrawerDiff({total:0.3},{expectedCash:0.1+0.2})),'Matches');
+  assert.equal(shiftDrawerDiffText(-400000),'Short P4000.00');
+  const reg=read('src/admin/register/00-bootstrap-payment-controls.js');
+  assert.match(reg,/^function num\(n\)/m,'the Register bundle must define its own num()');
+  assert.match(read('src/admin/register/60-operations-shift-review.js'),/try\{openShiftReview\(\);\}catch\(e\)\{shiftReviewFailed/);
+}
+console.log('shift review drawer breakdown ok');
+
+// Platform commission defaults (3 Nov 2026): one shared list, loaded on every admin page, equal to the
+// POS copy, so the re-key hint in platform payout reconciliation shows the real rate.
+{
+  const m={exports:{}};
+  vm.runInThisContext('(function(module){'+read('assets/js/shared/platform-channels.js')+'\n})')(m);
+  const P=m.exports;
+  const pos=read('src/admin/pos/00-shared-state.js').match(/var POS_CHANNELS=(\[[^\n]*\]);/);
+  assert.ok(pos,'POS_CHANNELS not found');
+  assert.deepEqual(P.CHANNELS,new Function('return '+pos[1])(),'shared platform defaults must equal POS_CHANNELS');
+  assert.equal(P.rate('grabfood',null),0.25);
+  assert.equal(P.rate('foodpanda',{foodpanda:{rate:0.28}}),0.28);
+  assert.equal(P.rate('foodpanda',{foodpanda:{rate:'x'}}),0.30);
+  assert.equal(P.rate('instore',null),0);
+  assert.match(read('admin.html'),/shared\/platform-channels\.js/);
+  assert.match(read('sw.js'),/\/assets\/js\/shared\/platform-channels\.js/);
+  const rk=read('src/admin/analytics/40-platform-payout-reconciliation.js');
+  assert.doesNotMatch(rk,/channelRate\(/);
+  assert.match(rk,/commissionRate:rate/);
+}
+console.log('platform commission defaults ok');
