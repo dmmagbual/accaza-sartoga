@@ -1,4 +1,6 @@
 
+// Audit A-08: the P&L compares two months, so it depends on records from the start of the previous month.
+if(typeof window!=='undefined')(window.AccazaReportStart=window.AccazaReportStart||{}).pnl=function(){return Date.parse(prevMonthKey(pnlMonth||monthKey(Date.now()))+'-01T00:00:00+08:00');};
 function renderPnl(){
   var root=document.getElementById('pnlRoot');if(!root)return;
   if(!pnlMonth)pnlMonth=monthKey(Date.now());
@@ -73,4 +75,4 @@ function renderPnl(){
   var reB=document.getElementById('reopenBtn');if(reB)reB.onclick=function(){if(!confirm('Re-open '+monthLabel(pnlMonth)+' to amend the figures?'))return;var a=A();a.update(a.ref(a.db,'monthlyExpenses/'+pnlMonth),{locked:false}).then(function(){renderPnl();});};
   root.querySelectorAll('[data-itemdel]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-itemdel');if(!confirm('Remove "'+(expItems[id]?expItems[id].name:'')+'" from the item list? It is removed from every month.'))return;var a=A();a.remove(a.ref(a.db,'expenseItems/'+id));};});
 }
-function exportPnl(cur,prev,pmk,ids){exportPnlCsv(cur,prev,pmk,ids,{monthLabel:monthLabel,pnlMonth:pnlMonth,varAccounts:varAccounts,PNL_OPEX_LINES:PNL_OPEX_LINES});}
+function exportPnl(cur,prev,pmk,ids){exportPnlCsv(cur,prev,pmk,ids,{coverage:(window.AccazaReportCoverage&&window.AccazaReportCoverage('pnl')||{}).text||'',monthLabel:monthLabel,pnlMonth:pnlMonth,varAccounts:varAccounts,PNL_OPEX_LINES:PNL_OPEX_LINES});}

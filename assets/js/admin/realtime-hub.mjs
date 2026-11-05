@@ -1,5 +1,5 @@
 import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=562';
-import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=754';
+import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=755';
 // One managed subscription per path. Sales reports combine indexed date queries;
 // POS-critical paths stay live and back-office paths attach only when needed.
 const HISTORY_BOUNDS={
@@ -83,6 +83,8 @@ function createSubscriptionHub(database,ops){
   // queries change with the selected dates. Neither is worth keeping when unused.
   function LINGER_OK(path){return path!=='archivedOrders'&&!(salesPath(path)&&reportPeriod());}
   function reportPeriod(scope){scope=scope||activeScope;return typeof window!=='undefined'&&window.AccazaAdminPeriods&&window.AccazaAdminPeriods.get&&['dashboard','saleshistory','analytics'].indexOf(scope)>-1?window.AccazaAdminPeriods.get('sales'):null;}
+  // Audit A-08: the earliest loaded record time, so a report can say how far back its figures reach.
+  function oldestLoaded(e,s){var min=0;if(!e||!s)return 0;[e.older,e.live].forEach(function(rows){Object.keys(rows||{}).forEach(function(k){var v=Number(rows[k]&&rows[k][s.field])||0;if(v>0&&(!min||v<min))min=v;});});return min;}
   function salesPath(path){return path==='orders'||path==='archivedOrders';}
   function selectedPeriod(scope){scope=scope||activeScope;var p=reportPeriod(scope);if(p&&scope==='analytics')return Object.assign({},p,{startAt:p.startAt-(p.endAt-p.startAt+1)});return p;}
   // The query a bounded path uses for a scope. Switching between tabs that need the same
@@ -254,7 +256,7 @@ function createSubscriptionHub(database,ops){
       rollingStops.add(stop);return stop;
     },
     whenReady:function(paths){var key=reportPeriod()&&periodKey(reportPeriod()),scope=activeScope;return new Promise(function(resolve,reject){var started=Date.now();function check(){if(activeScope!==scope||key!==(reportPeriod()&&periodKey(reportPeriod())))return reject(new Error('The reporting period changed. Apply the current selection again.'));var list=paths.map(function(path){return entries[path];}),bad=list.find(function(e){return e&&e.error;});if(bad)return reject(bad.error);if(list.every(function(e){return e&&!e.loading&&e.last;}))return resolve(true);if(Date.now()-started>30000)return reject(new Error('The selected report is still loading. Check your connection and retry.'));setTimeout(check,80);}check();});},
-    historyStatus:function(path){var e=entries[path],s=HISTORY_BOUNDS[path];return {bounded:!!s,ready:!!(e&&e.last&&!e.loading&&!e.error),loading:!!(e&&e.loading),error:e&&e.error,periodKey:e&&e.periodKey,loaded:e?Object.keys(Object.assign({},e.older||{},e.live||{})).length:0,hasOlder:e?e.hasOlder:false,cached:!!(e&&e.historyCached),stale:!!(e&&e.historyStale),updatedAt:Number(e&&e.historyUpdatedAt)||0};},stats:function(){var attached=Object.keys(entries).filter(function(k){return !!entries[k].unsub;});return {authorized:authorized,activeScope:activeScope,attached:attached,attachedCount:attached.length,registeredPaths:Object.keys(entries).length};}
+    historyStatus:function(path){var e=entries[path],s=HISTORY_BOUNDS[path];return {bounded:!!s,ready:!!(e&&e.last&&!e.loading&&!e.error),loading:!!(e&&e.loading),error:e&&e.error,periodKey:e&&e.periodKey,loaded:e?Object.keys(Object.assign({},e.older||{},e.live||{})).length:0,hasOlder:e?e.hasOlder:false,cached:!!(e&&e.historyCached),stale:!!(e&&e.historyStale),updatedAt:Number(e&&e.historyUpdatedAt)||0,oldestAt:oldestLoaded(e,s)};},stats:function(){var attached=Object.keys(entries).filter(function(k){return !!entries[k].unsub;});return {authorized:authorized,activeScope:activeScope,attached:attached,attachedCount:attached.length,registeredPaths:Object.keys(entries).length};}
   };
 }
 

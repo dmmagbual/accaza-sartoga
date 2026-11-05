@@ -1,7 +1,7 @@
 // Profit & Loss CSV export. Read-only: builds the download from figures already calculated and posts nothing.
 export function exportPnlCsv(cur,prev,pmk,ids,d){
   var monthLabel=d.monthLabel,pnlMonth=d.pnlMonth,varAccounts=d.varAccounts,PNL_OPEX_LINES=d.PNL_OPEX_LINES;
-  var rows=[['Accaza Profit & Loss',monthLabel(pnlMonth)],[''],['Line','This month','Last month ('+monthLabel(pmk)+')']];
+  var rows=[['Accaza Profit & Loss',monthLabel(pnlMonth)]];if(d.coverage)rows.push(['Data coverage',d.coverage]);/* audit A-08 */rows.push([''],['Line','This month','Last month ('+monthLabel(pmk)+')']);
   function er(label,c,p){rows.push([label,(Number(c)||0).toFixed(2),(Number(p)||0).toFixed(2)]);}
   function rc(x,kind){var t=0;varAccounts().forEach(function(ac){if(ac.type==='revenue')return;var hit=kind==='ads'?/advert|marketing|promo/i.test(ac.name||''):kind==='delivery'?/deliver|logistic|rider/i.test(ac.name||''):(!/advert|marketing|promo|deliver|logistic|rider/i.test(ac.name||''));if(hit)t+=Number((x.reconBy||{})[ac.id])||0;});return t;}
   rows.push(['REVENUE','','']);er('  In-store sales',cur.revenueByChannel.instore,prev.revenueByChannel.instore);er('  Online orders – Grab',cur.revenueByChannel.grabfood,prev.revenueByChannel.grabfood);er('  Online orders – Foodpanda',cur.revenueByChannel.foodpanda,prev.revenueByChannel.foodpanda);er('  Other online orders',cur.revenueByChannel.online,prev.revenueByChannel.online);er('  Less: Restaurant-funded customer discounts',-cur.customerDiscounts,-prev.customerDiscounts);er('TOTAL NET REVENUE',cur.revenue,prev.revenue);

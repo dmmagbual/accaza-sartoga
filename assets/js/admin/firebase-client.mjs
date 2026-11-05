@@ -35,6 +35,7 @@ callableNames.unshift('postBatchCard','reverseBatchCard','checkBakingMapping');
 callableNames.unshift('manageLoyaltyCurrency');
 callableNames.unshift('managePosShiftCrew','managePosSaleRecovery');
 callableNames.unshift('manageUncostedSales');
+callableNames.unshift('getAuditRegisters');
 callableNames.unshift('manageOrderService');
 callableNames.unshift('repairShiftDeclaredTips');
 callableNames.unshift('repairReversalAccountingDate');

@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 754,
+    "admin": 755,
     "books": 165,
     "customer": 105,
-    "serviceWorkerCache": 756
+    "serviceWorkerCache": 757
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -352,6 +352,7 @@
     "resolvePendingShiftHandovers",
     "onShiftEndResolveEarlierHandovers",
     "manageUncostedSales",
+    "getAuditRegisters",
     "manageOrderService",
     "askAccazaAI",
     "manageAccazaAiKnowledge",

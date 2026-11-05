@@ -6,7 +6,7 @@ Use this map to find *where to look*, then confirm in the source it points to. I
 
 Screens and server code connect through the Realtime Database rather than through imports: a screen writes a record or calls a callable, and a Cloud Function that watches that record reacts. Sources are the `src/functions/` sections that `npm run build:runtime` joins into `functions/index.js`; search the file for `exports.<name>` to find a function.
 
-Inventory: 38 database triggers, 117 callables, 6 scheduled jobs, 0 backup markers. Generated from `src/functions/` and `functions/lib/`.
+Inventory: 38 database triggers, 118 callables, 6 scheduled jobs, 0 backup markers. Generated from `src/functions/` and `functions/lib/`.
 
 ## 1. Money paths
 
@@ -453,6 +453,7 @@ Database node → every Cloud Function whose code (or helpers) writes it. Browse
 | `ensureInventoryLedger` | `inventory`, `inventoryAccounting`, `inventoryBalances`, `inventoryMovements`, `systemMaintenance/inventoryLedgerInitializedAt` | `adminPerms`, `admins`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/50-inventory.js` |
 | `ensureShiftReference` | `cashCustody`, `shifts` | `adminPerms`, `admins`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/40-sales-finance.js` |
 | `finalizeLoyaltyRedemption` | `loyaltyRewards`, `loyaltyStats/redemptionCostByReward` | `adminPerms`, `admins`, `loyaltyStats/redemptionsByCashier`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/26-loyalty.js` |
+| `getAuditRegisters` | — | `adminPerms`, `admins`, `menuPriceHistory`, `posInvoiceVoided`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/24b-audit-registers.js` |
 | `getCurrentCashBalances` | `cashBalanceSummaryPending`, `cashFlowDaily`, `cashFlowMonthly`, `cashFlowOpenings` | `adminPerms`, `admins`, `financialMovements`, `posActiveShift`, `posSettings`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/23-cash-balance-summary.js` |
 | `getDragonQuest` | — | `appCustomers`, `dragonQuestConfig/activeSeasonId`, `dragonQuestEnrollments`, `dragonQuestMissions`, `dragonQuestSeasons`, `loyaltyMembers` | `src/functions/26b-dragon-quest.js` |
 | `getLoyaltyMemberCard` | — | `loyaltyBalances`, `loyaltyMembers`, `loyaltyRewardCatalog`, `loyaltyRewards` | `src/functions/26-loyalty.js` |

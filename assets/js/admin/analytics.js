@@ -344,6 +344,8 @@ function loadFinancialClose(d){var key='daily_'+d;if(financialCloseLoading[key]|
 function wireFinancialClose(d){var a=A(),run=document.getElementById('drRunClose'),cert=document.getElementById('drCertifyClose');if(run)run.onclick=function(){financialCloseLoading['daily_'+d]=true;renderDailyReport();a.runFinancialClose({closeType:'DAILY_CLOSE',businessDate:d}).then(function(r){var x=(r&&r.data)||r||{};financialCloseState['daily_'+d]=x;alert(x.status==='EXCEPTIONS_OPEN'?'Close completed with '+(x.exceptions||[]).length+' exception(s). Certification remains blocked.':'Daily close reconciled. Review timing items, then certify.');}).catch(function(e){alert('Could not run close: '+((e&&e.message)||e));}).finally(function(){financialCloseLoading['daily_'+d]=false;renderDailyReport();});};if(cert)cert.onclick=function(){var row=financialCloseState['daily_'+d];window.AccazaFormDialog.run({title:'Certify Daily Financial Close',subtitle:d+' · revision '+row.revision+'. Certification locks this snapshot; later Finance activity reopens it for a new revision.',submitLabel:'Approve & certify',busyLabel:'Certifying…',fields:[{name:'reason',label:'Certification note',type:'textarea',required:true,maxLength:500},{name:'confirmed',label:'I reviewed the Admin, Finance, cash custody, inventory, AP/AR and timing-item controls',type:'checkbox',required:true}]},function(v){return a.managerApproval('certify_financial_close','daily_'+d,null,v.reason).then(function(ap){return a.runFinancialClose({action:'certify',closeType:'DAILY_CLOSE',businessDate:d,reason:v.reason,approvalId:ap.approvalId});});}).then(function(r){var x=(r&&r.data)||r||{};financialCloseState['daily_'+d]=Object.assign({},row,{status:'CERTIFIED',certification:x.certification});alert('Daily close certified.');renderDailyReport();}).catch(function(e){/* Audit A-17: errors inside the dialog show there; anything after it is shown, never swallowed */if(e&&e.code==='cancelled')return;alert('Something went wrong after this step: '+((e&&e.message)||e)+'\nCheck the record before trying again.');});};document.querySelectorAll('[data-dr-shift-close]').forEach(function(button){button.onclick=function(){var id=this.getAttribute('data-dr-shift-close');if(!id)return;var b=this;b.disabled=true;b.textContent='Reconciling…';a.runFinancialClose({closeType:'SHIFT_CLOSE',businessDate:d,shiftId:id}).then(function(r){var x=(r&&r.data)||r||{};alert('Shift close '+closeStatusLabel(x.status)+' · '+(x.exceptions||[]).length+' exception(s).');}).catch(function(e){alert('Could not run shift close: '+((e&&e.message)||e));}).finally(function(){b.disabled=false;b.textContent='Run shift reconciliation';});};});}
 // Channel of a sale for the Daily Report. Platform tags win; POS-keyed = in-store; anything else (website orders, no shiftId) = online.
 function drChannel(o){if(o.channel==='grabfood'||o.channel==='foodpanda')return o.channel;if(o.source==='pos'||o.channel==='instore')return 'instore';return 'online';}
+// Audit A-08: the daily report depends on records from the start of its trading day (Manila).
+if(typeof window!=='undefined')(window.AccazaReportStart=window.AccazaReportStart||{}).dailyreport=function(){var d=window.__dailyDate;return d?Date.parse(d+'T00:00:00+08:00'):0;};
 function renderDailyReport(){
   var root=document.getElementById('dailyReportRoot'); if(!root)return;
   var d=window.__dailyDate||tsToDate(Date.now()); window.__dailyDate=d;
@@ -440,8 +442,10 @@ function renderDailyReport(){
     wireFinancialClose(d);
     var X={chan:chan,byMethod:byMethod,items:items,txns:txns,payouts:payouts,refundsTot:refundsTot,netTot:netTot,payoutTot:payoutTot,shiftRows:shiftRows,reconciliation:reconciliation};
     var di=document.getElementById('drDate'); if(di)di.onchange=function(){window.__dailyDate=this.value||d;renderDailyReport();};
-    var pr=document.getElementById('drPrint'); if(pr)pr.onclick=function(){printDailyReport(d,X);};
-    var ex=document.getElementById('drExcel'); if(ex)ex.onclick=function(){exportDailyXlsx(d,X);};
+    // Audit A-08: the print and the Excel file carry the same data coverage stamp as the screen.
+    function drCoverage(){var c=window.AccazaReportCoverage&&window.AccazaReportCoverage('dailyreport');X.coverage=c?c.text:'';return X;}
+    var pr=document.getElementById('drPrint'); if(pr)pr.onclick=function(){printDailyReport(d,drCoverage());};
+    var ex=document.getElementById('drExcel'); if(ex)ex.onclick=function(){exportDailyXlsx(d,drCoverage());};
     root.querySelectorAll('[data-dr-target]').forEach(function(button){button.onclick=function(){var target=document.getElementById(this.getAttribute('data-dr-target'));if(!target)return;root.querySelectorAll('.dr-detail-card.focused').forEach(function(card){card.classList.remove('focused');});target.classList.add('focused');target.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(function(){target.classList.remove('focused');},1800);};});
   }
 }
@@ -846,6 +850,8 @@ function renderPayouts(){
   root.querySelectorAll('[data-acdel]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-acdel');if(!confirm('Remove this variance account? Past settled payouts keep their figures.'))return;var a5=A();a5.remove(a5.ref(a5.db,'platformVarAccounts/'+id));};});
 }
 
+// Audit A-08: the P&L compares two months, so it depends on records from the start of the previous month.
+if(typeof window!=='undefined')(window.AccazaReportStart=window.AccazaReportStart||{}).pnl=function(){return Date.parse(prevMonthKey(pnlMonth||monthKey(Date.now()))+'-01T00:00:00+08:00');};
 function renderPnl(){
   var root=document.getElementById('pnlRoot');if(!root)return;
   if(!pnlMonth)pnlMonth=monthKey(Date.now());
@@ -920,7 +926,7 @@ function renderPnl(){
   var reB=document.getElementById('reopenBtn');if(reB)reB.onclick=function(){if(!confirm('Re-open '+monthLabel(pnlMonth)+' to amend the figures?'))return;var a=A();a.update(a.ref(a.db,'monthlyExpenses/'+pnlMonth),{locked:false}).then(function(){renderPnl();});};
   root.querySelectorAll('[data-itemdel]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-itemdel');if(!confirm('Remove "'+(expItems[id]?expItems[id].name:'')+'" from the item list? It is removed from every month.'))return;var a=A();a.remove(a.ref(a.db,'expenseItems/'+id));};});
 }
-function exportPnl(cur,prev,pmk,ids){exportPnlCsv(cur,prev,pmk,ids,{monthLabel:monthLabel,pnlMonth:pnlMonth,varAccounts:varAccounts,PNL_OPEX_LINES:PNL_OPEX_LINES});}
+function exportPnl(cur,prev,pmk,ids){exportPnlCsv(cur,prev,pmk,ids,{coverage:(window.AccazaReportCoverage&&window.AccazaReportCoverage('pnl')||{}).text||'',monthLabel:monthLabel,pnlMonth:pnlMonth,varAccounts:varAccounts,PNL_OPEX_LINES:PNL_OPEX_LINES});}
 
 /* ══════════ STOCK VALUE / STOCK CARD ══════════ */
 function svRange(){var f=svFrom,t=svTo;if(!f&&!t){t=businessDate(Date.now());f=t.slice(0,7)+'-01';}return {f:f||'',t:t||''};}
