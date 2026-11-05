@@ -1,5 +1,6 @@
 "use strict";
 const { BALANCE_EPSILON } = require("./financial");
+const References = require("./references");
 /* ============================================================
    Accaza Books — POS → journal bridge (server side)
    Maps POS financialMovements (see ./financial.js) into Accaza
@@ -235,8 +236,10 @@ function buildSingle(mv, cashMap, context) {
   const purchaseText=purchaseJournalText(mv,context);
   return {
     entry: {
-      id: b.key, date: b.date, ref: purchaseText?purchaseText.ref:String(mv.documentNo || (mv.revision ? mv.reference || mv.sourceId || mv.id : mv.sourceId || mv.id) || ""),
-      memo: purchaseText?purchaseText.memo:mv.revision?String(mv.memo||""):cashVoucherText(mv)||`POS ${String(mv.type || "movement").replace(/_/g, " ")}${mv.sourceId ? " · " + mv.sourceId : ""}`,
+      id: b.key, date: b.date, // One reference per document (3 Nov 2026): a journal is named by its own number or its source
+      // document. Internal keys (pinv_, sale_, SH-<digits>-) are never stored as its reference or memo.
+      ref: purchaseText?purchaseText.ref:(References.text(mv.documentNo) || (mv.revision ? References.text(mv.reference) : "") || References.text(mv.sourceId) || ""),
+      memo: purchaseText?purchaseText.memo:mv.revision?String(mv.memo||""):cashVoucherText(mv)||`POS ${String(mv.type || "movement").replace(/_/g, " ")}${References.text(mv.sourceId) ? " · " + References.text(mv.sourceId) : ""}`,
       lines: lines.map((l) => ({code: l.code, debit: l.debit, credit: l.credit})),
       sources: {[mv.id]: true}, source: "pos-bridge", sourceType: String(mv.sourceType || ""), sourceId: String(mv.sourceId || ""),
       reversalOf: String(mv.reversalOf || ""), reversedByMovementId: String(mv.reversedByMovementId || ""),

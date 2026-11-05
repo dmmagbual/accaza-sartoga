@@ -61,7 +61,7 @@ async function redatePurchase(db, actor, invoiceId, invoice, data, reason, now) 
     const before = {}, after = {}, movementIds = [];
     for (const m of moves) {
       const key = financeKey(m.id, "Movement ID"), [journalSnap, ledgerSnap] = await Promise.all([db.ref(`/books/journal/${key}`).get(), db.ref(`/cfLedger/fm_${key}`).get()]), journal = journalSnap.val(), ledger = ledgerSnap.val();
-      if (!journal || journal.sourceId !== String(m.movement.sourceId || "")) throw new HttpsError("failed-precondition", `The Finance Books journal for ${key} is missing or points elsewhere. Refresh Books and try again.`);
+      if (!journal || journal.sourceId !== String(m.movement.sourceId || "")) throw new HttpsError("failed-precondition", `The Finance Books journal ${References.text(m.movement&&m.movement.documentNo)||"for this purchase"} is missing or points elsewhere. Refresh Books and try again.`);
       if (ledger && (ledger.bankReconciled === true || ledger.reconciled === true || ledger.reconciledAt || ledger.bankReconciliationId || ledger.statementId)) throw new HttpsError("failed-precondition", "The payment of this purchase is bank-reconciled. Reopen that bank reconciliation before changing the date.");
       const occurredAt = m.at + shift;
       writes[`financialMovements/${key}`] = Object.assign({}, m.movement, {occurredAt, accountingDate: newDate, accountingDateRevision: nextRevision, accountingDateReason: reason, accountingDateUpdatedAt: now, accountingDateUpdatedBy: actor.uid});

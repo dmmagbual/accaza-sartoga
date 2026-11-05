@@ -45,7 +45,8 @@ function init(){
   a.subscribe('posSettings',function(s){var v=s.val()||{};if(v.tolerances)toleranceCfg=Object.assign({cashPeso:20,invPct:5},v.tolerances);fixedFloatCfg=(v.fixedFloat!=null?(Number(v.fixedFloat)||0):null);if(isTab('ops'))renderOps();});
 }
 // shared hooks used by the POS script
-window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');/* Audit SEC-04: the log is append-only and every entry carries the signed-in login. */a.set(a.ref(a.db,'activityLog/'+id),{ts:{'.sv':'timestamp'},clientTs:Date.now(),action:String(action||'').slice(0,80),ref:String(ref||'').slice(0,200),detail:String(detail||'').slice(0,500),staff:(activeShift&&activeShift.staff)||'—',byUid:(a.currentUser&&a.currentUser.uid)||''}).catch(function(){});};
+// ref stays the stable link; refLabel is the business reference people read (shift events log the shift reference).
+window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');/* Audit SEC-04: the log is append-only and every entry carries the signed-in login. */var entry={ts:{'.sv':'timestamp'},clientTs:Date.now(),action:String(action||'').slice(0,80),ref:String(ref||'').slice(0,200),detail:String(detail||'').slice(0,500),staff:(activeShift&&activeShift.staff)||'—',byUid:(a.currentUser&&a.currentUser.uid)||''};var shift=ref&&((activeShift&&activeShift.id===ref)?activeShift:shiftsMap[ref]),label=shift?String(shift.shiftReference||'').trim().slice(0,120):'';if(label)entry.refLabel=label;a.set(a.ref(a.db,'activityLog/'+id),entry).catch(function(){});};
 window.__posVoid=function(oid){voidSale(oid);};window.__posRefund=function(oid){refundSale(oid);};
 function verifyPayment(oid){
   var o=ordersMap[oid];if(!o){alert('Order not found in the active list. If it was archived, restore it first to verify.');return;}
@@ -831,7 +832,7 @@ function renderOps(){
 // can recognise. Always present the server-issued `shiftReference`; when a shift has
 // none yet, ask the server to issue a durable one and label the gap in plain words.
 // Activity log entries for shift events stored the shift key; show the shift reference instead.
-function activityRefLabel(x){var ref=String(x&&x.ref||'');if(!ref)return '';if(shiftsMap[ref]||(activeShift&&activeShift.id===ref))return shiftReferenceLabel(Object.assign({id:ref},shiftsMap[ref]||activeShift),true);return window.AccazaRef?AccazaRef.text(ref):ref;}
+function activityRefLabel(x){var stored=window.AccazaRef?AccazaRef.text(x&&x.refLabel):String(x&&x.refLabel||'');if(stored)return stored;var ref=String(x&&x.ref||'');if(!ref)return '';if(shiftsMap[ref]||(activeShift&&activeShift.id===ref))return shiftReferenceLabel(Object.assign({id:ref},shiftsMap[ref]||activeShift),true);return window.AccazaRef?AccazaRef.text(ref):ref;}
 function shiftReferenceLabel(shift,quiet){
   if(!shift)return '—';
   var known=String(shift.shiftReference||'').trim();
