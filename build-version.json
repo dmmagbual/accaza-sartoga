@@ -3,6 +3,6 @@
   "builds": {
     "admin": 755,
     "books": 165,
-    "customer": 105
+    "customer": 106
   }
 }

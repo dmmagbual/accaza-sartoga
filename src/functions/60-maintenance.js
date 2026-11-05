@@ -85,6 +85,22 @@ exports.pruneEphemeralNodes = onSchedule(
     const counters = /* download-ok: bounded pruned by this daily job to three business days per member */(await db.ref("/loyaltyDailyCounters").get()).val() || {};
     Object.keys(counters).forEach((memberId) => Object.keys(counters[memberId] || {}).forEach((day) => { if (day < counterCutoff) mark(`loyaltyDailyCounters/${memberId}/${day}`); }));
 
+    // Retention of the two duplicate-protection registers (owner decision, 5 Nov 2026).
+    const ORDER_REQUEST_KEEP_DAYS = 90, PAYMENT_REFERENCE_KEEP_DAYS = 396;
+    // orderRequests/{uid}/{requestId} = {state, orderId?, at}: the website checkout replay key (audit C-02).
+    // A browser retries within minutes, so a key older than 90 days protects nothing.
+    const requestCutoff = now - ORDER_REQUEST_KEEP_DAYS * DAY;
+    const requests = /* download-ok: bounded pruned by this daily job to 90 days of website orders */(await db.ref("/orderRequests").get()).val() || {};
+    Object.keys(requests).forEach((uid) => Object.keys(requests[uid] || {}).forEach((rid) => {
+      const row = requests[uid][rid];
+      if (Number(row && row.at || 0) < requestCutoff) mark(`orderRequests/${uid}/${rid}`);
+    }));
+    // paymentReferenceClaims/{method_ref} = {orderId, at}: the first sale to use an e-payment reference (audit D-09).
+    // Kept 13 months, so a reference reused within a full year plus the next BIR quarter is still flagged.
+    const claimCutoff = now - PAYMENT_REFERENCE_KEEP_DAYS * DAY;
+    const staleClaims = (await db.ref("/paymentReferenceClaims").orderByChild("at").endAt(claimCutoff).limitToFirst(5000).get()).val() || {};
+    Object.keys(staleClaims).forEach((key) => { const at = Number(staleClaims[key] && staleClaims[key].at || 0); if (at > 0 && at < claimCutoff) mark(`paymentReferenceClaims/${key}`); });
+
     const paths = Object.keys(deletions);
     for (let i = 0; i < paths.length; i += 400) {
       const chunk = {};

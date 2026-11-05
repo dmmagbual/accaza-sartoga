@@ -89,7 +89,7 @@
     "posSyncAlerts": { ".indexOn": "state", ".read": false, ".write": false },
     "posTotalChecks": { ".indexOn": "at", ".read": false, ".write": false },
     "posPaymentReferenceChecks": { ".indexOn": "at", ".read": false, ".write": false },
-    "paymentReferenceClaims": { ".read": false, ".write": false },
+    "paymentReferenceClaims": { ".indexOn": "at", ".read": false, ".write": false },
     // Cancelled invoice numbers and menu price history: server only; read through getAuditRegisters.
     "posInvoiceVoided": { ".indexOn": "at", ".read": false, ".write": false },
     "menuPriceHistory": { ".read": false, ".write": false },
