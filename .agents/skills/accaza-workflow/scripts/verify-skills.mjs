@@ -104,7 +104,7 @@ const tokenEfficiencyContract = [
   'after two similar failures',
   'If token use is high',
   'pass them wholesale to agents',
-  'the relevant diff and tests',
+  'the relevant diff and test results',
   'Never weaken a financial, inventory, security, POS, authorization, audit or verification control',
   'npm run test:ci:quiet',
   'Never paste full test logs',
@@ -126,18 +126,19 @@ const claudeInstructions = files.get(resolve(root, 'CLAUDE.md')) ?? '';
 if (agentsInstructions.replace(/\r\n/g, '\n') !== claudeInstructions.replace(/\r\n/g, '\n')) {
   errors.push('AGENTS.md and CLAUDE.md compact core drift');
 }
-for (const title of ['Mandatory specialists', 'Delivery and efficiency']) {
+for (const title of ['Specialists', 'Delivery and efficiency']) {
   const agentsSection = instructionSection(agentsInstructions, title);
   const claudeSection = instructionSection(claudeInstructions, title);
   if (!agentsSection || !claudeSection) errors.push(`Missing synchronized instruction section: ${title}`);
   else if (agentsSection !== claudeSection) errors.push(`Instruction section drift: ${title}`);
 }
 for (const term of [
-  'Finance/inventory changes require Bookkeeper & Controller; add Database Optimizer',
-  'Authentication, authorization, roles, permissions or approvals require Identity & Access Engineer',
-  'Material architecture requires Software Architect',
-  'material UI requires Frontend Developer',
-  'Material completed implementations require Code Reviewer before final handoff when they change money, inventory, COGS, postings, permissions/approvals, database schema/rules/queries or POS checkout, or when an approved plan requires it',
+  'Default: no specialists; every change gets a self-review of the final diff',
+  'One Code Reviewer pass, before final handoff, when the diff changes money, inventory, COGS, postings, permissions/approvals, database schema/rules/queries or POS checkout, or when an approved plan requires it',
+  'Bookkeeper & Controller when a change alters which accounts post, posting amounts or signs, posting/period dates, tax, COGS or inventory valuation, or any accounting treatment',
+  'Identity & Access Engineer for authentication, authorization, role, permission or approval changes',
+  'Normally no more than two specialist passes per task',
+  'Generated bundles are build outputs: read, search and edit their `src/` sources',
 ]) {
   for (const [name, text] of [['AGENTS.md', agentsInstructions], ['CLAUDE.md', claudeInstructions]]) {
     if (!text.includes(term)) errors.push(`Mandatory specialist routing missing in ${name}: ${term}`);

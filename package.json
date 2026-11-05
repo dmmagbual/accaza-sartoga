@@ -101,7 +101,7 @@
     "test:e2e": "playwright test",
     "test:rules": "firebase emulators:exec --only database,firestore \"node tests/rules-ownership-check.mjs && node tests/firestore-rules-check.mjs\"",
     "test:safety": "node tests/repository-safety-check.mjs",
-    "test:release": "npm run test:seo && node tests/release-readiness-check.mjs",
+    "test:release": "npm run test:seo && node tests/release-readiness-check.mjs && node .agents/skills/accaza-workflow/scripts/verify-skills.mjs",
     "test:analytics-split-modules": "node tests/analytics-split-modules-check.mjs",
     "test:active-order-channel": "node tests/active-order-channel-check.mjs",
     "test:ci": "npm test && npm run test:release && npm run test:safety && npm run test:rules && npm run test:e2e",
