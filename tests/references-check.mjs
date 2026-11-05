@@ -70,4 +70,21 @@ assert.equal(R.exception({control: 'unbalanced_movement', sourceId: 'mv_unknown'
 assert.equal(R.exception({control: 'supplier_advances_control', sourceId: 'supplier_advances'}), '');
 assert.equal(R.exception({control: 'cash_custody', sourceId: 'undeposited'}), 'undeposited');
 
+// Stored references win; older memo text loses its key fragments; the server copy never drifts.
+assert.equal(R.exception({control: 'cash_variance', sourceId: 'SH-999999-ffffff', sourceReference: 'SH-MAY-FFFFFF'}), 'SH-MAY-FFFFFF');
+assert.equal(R.clean('POS purchase invoice · pinv_lq2x9abc'), 'POS purchase invoice');
+assert.equal(R.clean('Reverse · SH-566003-61b3d7 · Cash over'), 'Reverse · Cash over');
+assert.equal(R.clean('Supplier INV 4471 · PUR-2026-0012'), 'Supplier INV 4471 · PUR-2026-0012');
+assert.equal(fs.readFileSync(new URL('../functions/lib/references.js', import.meta.url), 'utf8'), fs.readFileSync(new URL('../assets/js/shared/references.js', import.meta.url), 'utf8'), 'browser and server reference helpers must stay identical');
+const server = (await import('node:module')).createRequire(import.meta.url)('../functions/lib/references.js');
+assert.equal(server.custody({shiftId: 'SH-1', shiftReference: 'SH-ALEX-61B3D7'}), 'SH-ALEX-61B3D7', 'the server copy loads as CommonJS');
+
+// System Health names sales by order number, never by the offline queue key.
+const requireCjs = (await import('node:module')).createRequire(import.meta.url);
+const Ops = requireCjs('../functions/lib/operational-exceptions.js');
+const now = Date.now(), ops = Ops.buildOperationalExceptions({now, offlinePosSync: {pos_tx_1: {state: 'pending', createdAt: now - 3600000}, pos_tx_2: {state: 'pending', orderId: 'POS-ABC123', createdAt: now - 3600000}}, posSyncAlerts: {pos_tx_3: {state: 'open', lastAt: now}}});
+const titles = ops.exceptions.map((x) => x.title || x.label || x.summary || '').join(' | ');
+assert.ok(!/pos_tx_/.test(titles), `System Health titles must not show offline queue keys: ${titles}`);
+assert.ok(/POS-ABC123/.test(titles), 'System Health names the sale by its order number when known');
+
 console.log('PASS: references show business numbers (shift, purchase, voucher, bill, journal, sale) and never database keys');

@@ -67,7 +67,7 @@ function renderOps(){
 // can recognise. Always present the server-issued `shiftReference`; when a shift has
 // none yet, ask the server to issue a durable one and label the gap in plain words.
 // Activity log entries for shift events stored the shift key; show the shift reference instead.
-function activityRefLabel(x){var ref=String(x&&x.ref||'');if(!ref)return '';if(shiftsMap[ref]||(activeShift&&activeShift.id===ref))return shiftReferenceLabel(Object.assign({id:ref},shiftsMap[ref]||activeShift),true);return window.AccazaRef?AccazaRef.text(ref):ref;}
+function activityRefLabel(x){var stored=window.AccazaRef?AccazaRef.text(x&&x.refLabel):String(x&&x.refLabel||'');if(stored)return stored;var ref=String(x&&x.ref||'');if(!ref)return '';if(shiftsMap[ref]||(activeShift&&activeShift.id===ref))return shiftReferenceLabel(Object.assign({id:ref},shiftsMap[ref]||activeShift),true);return window.AccazaRef?AccazaRef.text(ref):ref;}
 function shiftReferenceLabel(shift,quiet){
   if(!shift)return '—';
   var known=String(shift.shiftReference||'').trim();

@@ -12,7 +12,8 @@
      shown. Cash discrepancies and cash custody are labelled by their shift's reference.
      A journal with no number of its own is labelled by its source document.
      Screens hand this helper the record they hold; lookups use only data already loaded on
-     the page (provide()), so labelling adds no database reads. */
+     the page (provide()), so labelling adds no database reads. The server keeps a byte-identical
+     copy at functions/lib/references.js for error messages, alerts and stored labels. */
   var PENDING='Reference pending';
   var SOURCE_LABELS={order:'Sale',qrOrderTicket:'Sale',historicalOrderArchive:'Sale',order_correction:'Sale correction',order_reversal:'Sale reversal',orderCostCorrection:'Cost correction',order_cost_correction:'Cost correction',order_cost_correction_reversal:'Cost correction reversal',
     shift:'Shift',cashCustody:'Cash awaiting deposit',discrepancy:'Cash discrepancy',registerFloat:'Register float',registerFloatChange:'Register float',
@@ -78,11 +79,15 @@
   // A Finance close-control exception names its source by ID only; the control says what it is.
   var EXCEPTION_SOURCES={cash_variance:'shift',shift_open:'shift',cogs_missing:'order',inventory_marker:'order',inventory_missing:'order',sales_amount:'order',sales_duplicate:'order',sales_missing:'order',sales_cutoff:'order',uncosted_sale:'order',payment_verification_negative:'order',payable_balance_out_of_range:'payable',purchase_posting:'purchaseInvoice',platform_settlement:'platformPayout',sales_orphan:'movement',unbalanced_movement:'movement'};
   function exception(x){
-    x=x||{};var type=EXCEPTION_SOURCES[str(x.control)],id=str(x.sourceId);
+    x=x||{};var type=EXCEPTION_SOURCES[str(x.control)],id=str(x.sourceId),stored=text(x.sourceReference);
+    if(stored)return stored;
     if(!id)return '';
     if(type==='movement')return movementById(id)||'Journal';
     if(type)return forSource(type,id,x);
     return text(id);
   }
-  return {PENDING:PENDING,isKey:isKey,exception:exception,text:text,first:first,provide:provide,lookup:lookup,shift:shift,shiftById:shiftById,custody:custody,discrepancy:discrepancy,bill:bill,purchase:purchase,voucher:voucher,payout:payout,sourceLabel:sourceLabel,forSource:forSource,movement:movement,movementById:movementById,journal:journal};
+  // Older memos and labels were built as "POS sale · sale_POS-..." or "Reverse · pinv_...":
+  // drop any " · "-separated part that is an internal key, keep everything people wrote.
+  function clean(value){var s=str(value);if(!s)return '';return s.split(/\s+·\s+/).filter(function(part){return !isKey(part);}).join(' · ');}
+  return {PENDING:PENDING,isKey:isKey,clean:clean,exception:exception,text:text,first:first,provide:provide,lookup:lookup,shift:shift,shiftById:shiftById,custody:custody,discrepancy:discrepancy,bill:bill,purchase:purchase,voucher:voucher,payout:payout,sourceLabel:sourceLabel,forSource:forSource,movement:movement,movementById:movementById,journal:journal};
 });

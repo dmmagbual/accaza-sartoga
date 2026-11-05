@@ -49,8 +49,10 @@ must(src, 'catch (error) { record.documentNo = ""; }', 'a counter failure must n
 check(src.indexOf('record.documentNo = await nextDocumentNumber') > src.indexOf('if (existing.exists()) return {duplicate: true'),
   'numbering must happen after the idempotency check, or a replayed posting burns a number.');
 
-must(read('functions/lib/books-bridge.js'), 'String(mv.documentNo || (mv.revision ? mv.reference || mv.sourceId || mv.id : mv.sourceId || mv.id) || "")',
-  'the journal must prefer the document number and keep the id as the last-resort fallback.');
+// 3 Nov 2026 (Danilo): one reference per document. A journal without a number is named by its
+// source document; the movement ID is internal and is never stored as its reference.
+must(read('functions/lib/books-bridge.js'), 'ref: purchaseText?purchaseText.ref:(References.text(mv.documentNo) || (mv.revision ? References.text(mv.reference) : "") || References.text(mv.sourceId) || ""),',
+  'the journal must prefer the document number, then its source document, and never fall back to an internal key.');
 
 /* The id itself must not be touched — it is the join and idempotency key. */
 check(!src.includes('movementId = `${prefix}'), 'the movement id must never be rebuilt from the document number.');

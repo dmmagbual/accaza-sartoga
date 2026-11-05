@@ -47,6 +47,9 @@ const OrderStatus = require("./lib/order-status");
 const OrderService = require("./lib/order-service");
 const SupplierMaster = require("./lib/supplier-master");
 const OperationalExceptions = require("./lib/operational-exceptions");
+// One reference per document (3 Nov 2026): messages and stored labels name documents by their
+// business reference, never by database key. Byte-identical to assets/js/shared/references.js.
+const References = require("./lib/references");
 const BooksBridge = require("./lib/books-bridge");
 const BankLedgerLink = require("./lib/bank-ledger-link");
 const FinancialClose = require("./lib/financial-close");

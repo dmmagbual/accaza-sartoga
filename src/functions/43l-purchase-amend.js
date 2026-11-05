@@ -47,14 +47,14 @@ async function amendCustodyPlan(db, invoice, payment, oldTotal, totalDelta, move
   const used = [];
   for (const id of Object.keys(net)) {
     const key = financeKey(id, "Custody ID"), row = (await db.ref(`/cashCustody/${key}`).get()).val();
-    if (!row) throw new HttpsError("failed-precondition", `The cash custody row ${key} that paid this purchase is missing. Repair Undeposited Collection before amending.`);
+    if (!row) throw new HttpsError("failed-precondition", "The cash awaiting deposit that paid this purchase is missing. Repair Undeposited Collection before amending.");
     used.push({id, key, row});
   }
   used.sort((a, b) => Number(b.row.closedAt || 0) - Number(a.row.closedAt || 0) || BackupDelta.keyCompare(b.id, a.id));
   for (const {id, key, row} of used) {
     if (need < 0.005) break;
     const restore = Financial.money(Math.min(need, net[id])), paid = Financial.money(Number(row.paidOutAmount || 0) - restore), remaining = Financial.money(Number(row.remaining != null ? row.remaining : row.amount) + restore);
-    if (paid < -0.009) throw new HttpsError("failed-precondition", `The cash custody row ${key} does not show this purchase's payment, so the difference can't be put back. Repair Undeposited Collection first.`);
+    if (paid < -0.009) throw new HttpsError("failed-precondition", `The cash awaiting deposit for ${References.custody(row)} does not show this purchase's payment, so the difference can't be put back. Repair Undeposited Collection first.`);
     Object.assign(writes, {[`cashCustody/${key}/remaining`]: remaining, [`cashCustody/${key}/paidOutAmount`]: Math.max(0, paid), [`cashCustody/${key}/status`]: "awaiting_deposit", [`cashCustody/${key}/lastPaymentReversalAt`]: Date.now(), [`cashCustody/${key}/lastPaymentReversalMovementId`]: movementId});
     // A row the deposit path dropped from the open index must be listed again, or the cash is invisible to the pool.
     writes[`cashCustodyOpenIndex/${key}`] = remaining > 0 ? cashCustodyProjection(key, Object.assign({}, row, {remaining, paidOutAmount: Math.max(0, paid), status: "awaiting_deposit"})) : null;

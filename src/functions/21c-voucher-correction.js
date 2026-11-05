@@ -183,7 +183,7 @@ async function voidReplaceLegacyPettyVoucher(db, actor, data, id, voucher, next)
   if (!(originalPaid > 0)) throw new HttpsError("failed-precondition", "The original posting does not show an outflow from the voucher's bank account.");
   for (let index = 0; index < legacyIds.length; index += 1) {
     const movement = movementSnaps[index + 1].val(), movementId = legacyIds[index];
-    if (!movement || !Array.isArray(movement.lines) || !BooksBridge.linesBalanced(movement.lines) || movement.sourceType !== "pettyVoucher" || financeText(movement.sourceId,160) !== id) throw new HttpsError("failed-precondition", `Legacy correction ${movementId} is missing, unbalanced, or belongs to another voucher.`);
+    if (!movement || !Array.isArray(movement.lines) || !BooksBridge.linesBalanced(movement.lines) || movement.sourceType !== "pettyVoucher" || financeText(movement.sourceId,160) !== id) throw new HttpsError("failed-precondition", "The legacy correction journal for this voucher is missing, unbalanced, or belongs to another voucher.");
     const nets = legacyMovementAccountNets(movement);
     if (Object.values(nets).some((value) => Math.abs(Financial.money(value)) > 0.009)) throw new HttpsError("failed-precondition", "A legacy correction changed an account balance. Automatic replacement stopped so Finance Books, bank and custody can be reconciled manually.");
   }

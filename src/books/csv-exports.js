@@ -5,6 +5,8 @@
 function financeRef(e){return window.AccazaRef?window.AccazaRef.journal(e):String(e&&(e.ref||e.reference)||'');}
 function financeMovementRef(id){if(!id)return '';return (window.AccazaRef&&window.AccazaRef.movementById(id))||'Journal';}
 function financeCustodyRef(c){var R=window.AccazaRef;c=c||{};return R?(R.first(c.shiftReference,c.reference)||String(c.staff||'')||R.custody(c)):String(c.shiftReference||c.reference||c.staff||'');}
+// Journal text without internal key fragments (older memos read "POS purchase · pinv_...").
+function financeMemo(v){return window.AccazaRef?window.AccazaRef.clean(v):String(v==null?'':v);}
 function refText(v,fallback){return window.AccazaRef?window.AccazaRef.text(v,fallback):String(v==null?'':v);}
 // Finance Books holds journals, bills, purchases, custody, discrepancies and payouts; the shared
 // reference helper reads them from here, so labelling adds no database reads.
@@ -24,20 +26,20 @@ function csvDownload(name,headers,rows,range){
 function csvEntryStatus(e){return e.voided?'Voided':e.reversalOf?'Reversal':e.correctsMovementId?'Correction replacement':e.reversedByMovementId?'Corrected / reversed':'Posted';}
 function financeTransactions(){return ENTRIES().filter(entryInPeriod).slice().sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''))||String(b.id||'').localeCompare(String(a.id||''));});}
 function exportJournalCsv(){
-  var rows=[];financeTransactions().forEach(function(e){(e.lines||[]).forEach(function(l){rows.push([e.date||'',financeRef(e),e.memo||'',csvEntryStatus(e),e.sourceType||e.source||'',l.code||'',accName(l.code)||'',Number(l.debit)||0,Number(l.credit)||0,financeMovementRef(e.reversalOf),financeMovementRef(e.correctsMovementId)]);});});
+  var rows=[];financeTransactions().forEach(function(e){(e.lines||[]).forEach(function(l){rows.push([e.date||'',financeRef(e),financeMemo(e.memo),csvEntryStatus(e),e.sourceType||e.source||'',l.code||'',accName(l.code)||'',Number(l.debit)||0,Number(l.credit)||0,financeMovementRef(e.reversalOf),financeMovementRef(e.correctsMovementId)]);});});
   csvDownload('journal',['Date','Reference','Memo','Status','Source','Account code','Account name','Debit','Credit','Reversal of','Corrects journal'],rows);
 }
 function exportLedgerCsv(){
   var running={},rows=[],entries=ENTRIES().filter(entryInPeriod).slice().sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.id||'').localeCompare(String(b.id||''));});
   var bounds=periodBounds(),before=ENTRIES().filter(function(e){return e.date&&String(e.date).slice(0,10)<bounds.start;});
   DB.accounts.forEach(function(a){running[a.code]=isBalanceSheetType(a.type)?normalBalanceFor(a.code,before):0;rows.push([bounds.start,a.code,a.name,a.type,'','Opening balance',0,0,running[a.code],'Opening']);});
-  entries.forEach(function(e){(e.lines||[]).forEach(function(l){var code=l.code||'',account=acc(code),net=(Number(l.debit)||0)-(Number(l.credit)||0);running[code]=r2((running[code]||0)+(DEBIT_NORMAL[account&&account.type]?net:-net));rows.push([e.date||'',code,accName(code)||'',account&&account.type||'',financeRef(e),e.memo||'',Number(l.debit)||0,Number(l.credit)||0,running[code],csvEntryStatus(e)]);});});
+  entries.forEach(function(e){(e.lines||[]).forEach(function(l){var code=l.code||'',account=acc(code),net=(Number(l.debit)||0)-(Number(l.credit)||0);running[code]=r2((running[code]||0)+(DEBIT_NORMAL[account&&account.type]?net:-net));rows.push([e.date||'',code,accName(code)||'',account&&account.type||'',financeRef(e),financeMemo(e.memo),Number(l.debit)||0,Number(l.credit)||0,running[code],csvEntryStatus(e)]);});});
   DB.accounts.forEach(function(a){rows.push([bounds.end,a.code,a.name,a.type,'','Closing balance',0,0,running[a.code]||0,'Closing']);});
   csvDownload('general-ledger',['Date','Account code','Account name','Account type','Reference','Memo','Debit','Credit','Running balance (normal side)','Status'],rows);
 }
 function accountLedgerDetail(code){
   var a=acc(code),bounds=periodBounds(),carry=isBalanceSheetType(a&&a.type),allThroughEnd=entriesThroughPeriodEnd().filter(function(e){return (e.lines||[]).some(function(line){return line.code===code;});}),entries=(carry?allThroughEnd.filter(entryInPeriod):entriesInPeriod().filter(function(e){return (e.lines||[]).some(function(line){return line.code===code;});})),opening=carry?normalBalanceFor(code,allThroughEnd.filter(function(e){return String(e&&e.date||'').slice(0,10)<bounds.start;})):0,running=opening;
-  var chronological=entries.slice().sort(function(x,y){return String(x.date||'').localeCompare(String(y.date||''))||String(x.id||'').localeCompare(String(y.id||''));}).map(function(e){var matching=(e.lines||[]).filter(function(x){return x.code===code;}),debit=r2(matching.reduce(function(sum,line){return sum+(Number(line.debit)||0);},0)),credit=r2(matching.reduce(function(sum,line){return sum+(Number(line.credit)||0);},0));running=r2(running+(DEBIT_NORMAL[a.type]?(debit-credit):(credit-debit)));return {date:e.date||'',id:e.id||'',reference:financeRef(e),memo:e.memo||e.description||'',debit:debit,credit:credit,balance:running,status:csvEntryStatus(e),reversalOf:financeMovementRef(e.reversalOf)};}),closing=running;
+  var chronological=entries.slice().sort(function(x,y){return String(x.date||'').localeCompare(String(y.date||''))||String(x.id||'').localeCompare(String(y.id||''));}).map(function(e){var matching=(e.lines||[]).filter(function(x){return x.code===code;}),debit=r2(matching.reduce(function(sum,line){return sum+(Number(line.debit)||0);},0)),credit=r2(matching.reduce(function(sum,line){return sum+(Number(line.credit)||0);},0));running=r2(running+(DEBIT_NORMAL[a.type]?(debit-credit):(credit-debit)));return {date:e.date||'',id:e.id||'',reference:financeRef(e),memo:financeMemo(e.memo||e.description),debit:debit,credit:credit,balance:running,status:csvEntryStatus(e),reversalOf:financeMovementRef(e.reversalOf)};}),closing=running;
   return {account:a,bounds:bounds,carry:carry,opening:opening,rows:chronological.slice().reverse(),closing:closing,normalDirection:DEBIT_NORMAL[a.type]?'debit':'credit'};
 }
 function exportAccountLedgerCsv(code){
@@ -59,7 +61,7 @@ function printFinancePage(title){
   popup.document.close();
 }
 function exportTransactionsCsv(){
-  var rows=financeTransactions().map(function(e){var debit=(e.lines||[]).reduce(function(s,l){return s+(Number(l.debit)||0);},0),credit=(e.lines||[]).reduce(function(s,l){return s+(Number(l.credit)||0);},0);return [e.date||'',financeRef(e),e.memo||'',e.sourceType||e.source||'',csvEntryStatus(e),debit,credit,(e.lines||[]).length];});
+  var rows=financeTransactions().map(function(e){var debit=(e.lines||[]).reduce(function(s,l){return s+(Number(l.debit)||0);},0),credit=(e.lines||[]).reduce(function(s,l){return s+(Number(l.credit)||0);},0);return [e.date||'',financeRef(e),financeMemo(e.memo),e.sourceType||e.source||'',csvEntryStatus(e),debit,credit,(e.lines||[]).length];});
   csvDownload('transactions',['Date','Reference','Description','Source','Status','Total debit','Total credit','Lines'],rows);
 }
 function exportProfitLossCsv(){
