@@ -88,6 +88,10 @@
     "shiftCrews": { ".read": false, ".write": false },
     "posSyncAlerts": { ".indexOn": "state", ".read": false, ".write": false },
     "posTotalChecks": { ".indexOn": "at", ".read": false, ".write": false },
+    "posPaymentReferenceChecks": { ".indexOn": "at", ".read": false, ".write": false },
+    "paymentReferenceClaims": { ".read": false, ".write": false },
+    "posInvoiceVoided": { ".indexOn": "at", ".read": false, ".write": false },
+    "menuPriceHistory": { ".read": false, ".write": false },
     // Sale lines sold without a usable recipe, awaiting a manager's cost correction. Server only;
     // read through manageUncostedSales.
     "uncostedSales": { ".indexOn": ["status", "orderId"], ".read": false, ".write": false },

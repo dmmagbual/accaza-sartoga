@@ -523,13 +523,14 @@ exports.createOnlineOrder = onCall(
     order.proofContentType = proof.contentType;
     order.proofBytes = proof.bytes.length;
     order.proofStorageVersion = 1;
+    let invoiceStamp = null;
     try {
       await proofFile.save(proof.bytes, {
         resumable: false,
         validation: "crc32c",
         metadata: {contentType: proof.contentType, cacheControl: "private, max-age=0, no-store", metadata: {orderId, ownerUid: uid}},
       });
-      const invoiceStamp = await ShiftHandover.stampInvoice(db, order);
+      invoiceStamp = await ShiftHandover.stampInvoice(db, order);
       order.invoiceNumber = invoiceStamp.invoiceNumber; order.invoiceSeq = invoiceStamp.invoiceSeq; order.cumulativeGrandTotalCents = invoiceStamp.cumulativeGrandTotalCents;
       await db.ref().update(Object.assign({[`orders/${orderId}`]: order, [`activeOrders/${orderId}`]: activeOrderProjection(order), [`customerOrders/${uid}/${orderId}`]: {createdAt: now, status: "Pending"}}, requestRef ? {[`orderRequests/${uid}/${requestId}`]: {state: "done", orderId, total: finalTotal, at: now}} : {}));
     } catch (error) {
@@ -537,6 +538,8 @@ exports.createOnlineOrder = onCall(
       // as saved, rather than deleting its proof and letting a retry create a second order.
       let saved = false; try { saved = (await db.ref(`/orders/${orderId}`).get()).exists(); } catch (ignored) {}
       if (saved) { logger.warn("createOnlineOrder write reported an error but the order exists", {uid, orderId, error: String(error)}); return {orderId, total: finalTotal}; }
+      // The order was not saved: its stamped number is recorded as cancelled (audit C-17).
+      if (invoiceStamp) { try { await ShiftHandover.recordVoidedInvoice(db, invoiceStamp, orderId, "online_order_not_saved", Date.now()); } catch (ignored) {} }
       try { await proofFile.delete({ignoreNotFound: true}); } catch (ignored) {}
       try { await lockRef.remove(); } catch (ignored) {}
       if (requestRef) { try { await requestRef.remove(); } catch (ignored) {} }

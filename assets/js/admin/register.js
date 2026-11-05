@@ -208,7 +208,9 @@ function computeZ(shift,sourceOrders){
   // Imprest: cashier retains the fixed float, remits the rest. Grab/Panda + non-cash tenders never entered cashSales, so they're already out of the cash line.
   z.retainedFloat=(fixedFloatCfg!=null?fixedFloatCfg:(Number(shift.openingFloat)||0));
   z.availableForHandover=Math.round((z.expectedCash+z.payOuts-z.retainedFloat)*100)/100;
-  z.cashToSettle=Math.round((z.expectedCash-z.retainedFloat)*100)/100;
+  // Audit A-07 (4 Nov 2026): the same rule as the close and the server (shift-handover.js cashSnapshot):
+  // cash to settle never goes below zero; a drawer under the float is a float shortfall, shown separately.
+  z.cashToSettle=Math.max(0,Math.round((z.expectedCash-z.retainedFloat)*100)/100);z.expectedFloatShortfall=Math.max(0,Math.round((z.retainedFloat-z.expectedCash)*100)/100);
   z.floatMismatch=(fixedFloatCfg!=null&&fixedFloatCfg>0&&Math.abs((Number(shift.openingFloat)||0)-fixedFloatCfg)>0.001);
   return z;
 }

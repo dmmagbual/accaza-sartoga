@@ -1467,7 +1467,7 @@ exports.getOperationalExceptions = onCall(
 
 async function scanOperationalExceptions(db, now) {
     const days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
-    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, paymentSettingsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, uncostedSnap, closeFollowUpSnap, aiHealthTodaySnap, aiHealthYesterdaySnap, booksChartSnap, cashAccountMapSnap, activeDrawerSnap, posTotalCheckSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref("/payment").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),db.ref("/uncostedSales").orderByChild("status").equalTo("open").limitToFirst(200).get(),db.ref("/shiftCloseFollowUps").orderByChild("state").equalTo("open").limitToFirst(50).get(),db.ref(`/accazaAiProviderHealth/${days[0]}`).get(),db.ref(`/accazaAiProviderHealth/${days[1]}`).get(),/* download-ok: bounded chart of accounts (about 90 rows) for the bank-account coverage check */db.ref("/booksChart").get(),db.ref("/books/config/cashAccountMap").get(),db.ref("/posActiveShift/drawer").get(),db.ref("/posTotalChecks").orderByChild("at").startAt(now - OperationalExceptions.TOTAL_CHECK_WINDOW_MS).limitToLast(50).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, paymentSettingsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, uncostedSnap, closeFollowUpSnap, aiHealthTodaySnap, aiHealthYesterdaySnap, booksChartSnap, cashAccountMapSnap, activeDrawerSnap, posTotalCheckSnap, posPaymentRefSnap, posInvoiceVoidedSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref("/payment").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),db.ref("/uncostedSales").orderByChild("status").equalTo("open").limitToFirst(200).get(),db.ref("/shiftCloseFollowUps").orderByChild("state").equalTo("open").limitToFirst(50).get(),db.ref(`/accazaAiProviderHealth/${days[0]}`).get(),db.ref(`/accazaAiProviderHealth/${days[1]}`).get(),/* download-ok: bounded chart of accounts (about 90 rows) for the bank-account coverage check */db.ref("/booksChart").get(),db.ref("/books/config/cashAccountMap").get(),db.ref("/posActiveShift/drawer").get(),db.ref("/posTotalChecks").orderByChild("at").startAt(now - OperationalExceptions.TOTAL_CHECK_WINDOW_MS).limitToLast(50).get(),db.ref("/posPaymentReferenceChecks").orderByChild("at").startAt(now - OperationalExceptions.TOTAL_CHECK_WINDOW_MS).limitToLast(50).get(),db.ref("/posInvoiceVoided").orderByChild("at").startAt(now - OperationalExceptions.TOTAL_CHECK_WINDOW_MS).limitToLast(50).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
     let booksMonthlyNet = booksMonthlyNetSnap.val() || {};
     if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
@@ -1477,7 +1477,7 @@ async function scanOperationalExceptions(db, now) {
     await verifyOpenDeadLetters(db, deadLetters, now);
     const paymentQueueSnap = /* download-ok: bounded complete open control subledger; truncation could falsely reconcile 1060 */await db.ref("/paymentVerificationQueue").get();
     const accountingPeriodsSnap = await db.ref("/accountingPeriods").orderByChild("updatedAt").limitToLast(120).get();
-    return OperationalExceptions.buildOperationalExceptions({paymentVerificationQueue: paymentQueueSnap.val() || {}, accountingPeriods: accountingPeriodsSnap.val() || {}, activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, booksChart: booksChartSnap.val() || {}, cashAccountMap: cashAccountMapSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, activeShiftDrawer: activeDrawerSnap.val() || {}, posTotalChecks: posTotalCheckSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
+    return OperationalExceptions.buildOperationalExceptions({paymentVerificationQueue: paymentQueueSnap.val() || {}, accountingPeriods: accountingPeriodsSnap.val() || {}, activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, booksChart: booksChartSnap.val() || {}, cashAccountMap: cashAccountMapSnap.val() || {}, paymentSettings: paymentSettingsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, activeShiftDrawer: activeDrawerSnap.val() || {}, posTotalChecks: posTotalCheckSnap.val() || {}, posPaymentReferenceChecks: posPaymentRefSnap.val() || {}, posInvoiceVoided: posInvoiceVoidedSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
 }
 
 
@@ -4456,8 +4456,26 @@ exports.updateCashBalanceSummary = onValueWritten(
 // uncapped burst of freshly created revisions is what failed the production deploy (Oct 2026:
 // the catalog-version triggers failed every attempt). Bumping a version marker needs at most a
 // couple of instances, so the ceiling costs nothing and removes that burst.
+// Menu price history (audit R-09, 4 Nov 2026): every change to an item's price fields (price, priceS,
+// priceM, priceL, ...) is kept under /menuPriceHistory/{itemId}, with the old and new value, the time and
+// the signed-in account that saved it. Keyed by the event id, so a redelivery records nothing twice.
+function menuPriceChanges(before,after){
+  var out={},b=before&&typeof before==='object'?before:{},a=after&&typeof after==='object'?after:{};
+  Object.keys(Object.assign({},b,a)).forEach(function(itemId){
+    var x=b[itemId]&&typeof b[itemId]==='object'?b[itemId]:{},y=a[itemId]&&typeof a[itemId]==='object'?a[itemId]:{},fields={};
+    Object.keys(Object.assign({},x,y)).forEach(function(k){if(!/^price/i.test(k))return;var val=function(v){if(v==null)return null;var num=Number(v);return Number.isFinite(num)?num:String(v).slice(0,40);},o=val(x[k]),n=val(y[k]);if(o!==n)fields[k]={from:o,to:n};});
+    if(Object.keys(fields).length)out[itemId]={name:String(y.name||x.name||'').slice(0,120),fields:fields,removed:!b[itemId]?false:!a[itemId]};
+  });
+  return out;
+}
 function bumpPublicCatalogVersion(source){
-  return async function(){
+  return async function(event){
+    if(source==='menuItems'&&event&&event.data){
+      var changes=menuPriceChanges(event.data.before&&event.data.before.val(),event.data.after&&event.data.after.val()),writes={},key=String(event.id||Date.now()).replace(/[.#$\[\]\/]/g,'_').slice(0,120),at=Date.now();
+      Object.keys(changes).forEach(function(itemId){writes['menuPriceHistory/'+itemId+'/'+key]=Object.assign({at:at,byUid:event.authId||null,byType:event.authType||null},changes[itemId]);});
+      // History never blocks the catalog version bump below.
+      if(Object.keys(writes).length){try{await getDatabase().ref().update(writes);}catch(error){console.warn('menu price history write failed',String(error));}}
+    }
     await getDatabase().ref('/publicCatalogVersion').transaction(function(current){
       var previous=current&&typeof current==='object'?current:{};
       return{schemaVersion:1,version:(Number(previous.version)||0)+1,changedAt:Date.now(),source:source};
@@ -6830,13 +6848,14 @@ exports.createOnlineOrder = onCall(
     order.proofContentType = proof.contentType;
     order.proofBytes = proof.bytes.length;
     order.proofStorageVersion = 1;
+    let invoiceStamp = null;
     try {
       await proofFile.save(proof.bytes, {
         resumable: false,
         validation: "crc32c",
         metadata: {contentType: proof.contentType, cacheControl: "private, max-age=0, no-store", metadata: {orderId, ownerUid: uid}},
       });
-      const invoiceStamp = await ShiftHandover.stampInvoice(db, order);
+      invoiceStamp = await ShiftHandover.stampInvoice(db, order);
       order.invoiceNumber = invoiceStamp.invoiceNumber; order.invoiceSeq = invoiceStamp.invoiceSeq; order.cumulativeGrandTotalCents = invoiceStamp.cumulativeGrandTotalCents;
       await db.ref().update(Object.assign({[`orders/${orderId}`]: order, [`activeOrders/${orderId}`]: activeOrderProjection(order), [`customerOrders/${uid}/${orderId}`]: {createdAt: now, status: "Pending"}}, requestRef ? {[`orderRequests/${uid}/${requestId}`]: {state: "done", orderId, total: finalTotal, at: now}} : {}));
     } catch (error) {
@@ -6844,6 +6863,8 @@ exports.createOnlineOrder = onCall(
       // as saved, rather than deleting its proof and letting a retry create a second order.
       let saved = false; try { saved = (await db.ref(`/orders/${orderId}`).get()).exists(); } catch (ignored) {}
       if (saved) { logger.warn("createOnlineOrder write reported an error but the order exists", {uid, orderId, error: String(error)}); return {orderId, total: finalTotal}; }
+      // The order was not saved: its stamped number is recorded as cancelled (audit C-17).
+      if (invoiceStamp) { try { await ShiftHandover.recordVoidedInvoice(db, invoiceStamp, orderId, "online_order_not_saved", Date.now()); } catch (ignored) {} }
       try { await proofFile.delete({ignoreNotFound: true}); } catch (ignored) {}
       try { await lockRef.remove(); } catch (ignored) {}
       if (requestRef) { try { await requestRef.remove(); } catch (ignored) {} }
@@ -7451,7 +7472,7 @@ function addOrderCashWrites(writes, movement, movementId, order, actor) {
 
 async function postPreCompletionCashRefund(db, order, actor) {
   const refund=Financial.money(order&&order.preCompletionCashRefund&&order.preCompletionCashRefund.amount);if(!(refund>0))return{skipped:true};
-  const id=financeKey(order.id,"Order ID"),movementId=`precompletion_cash_refund_${id}`,liability=`liability:customer_change_refund:${id}`,now=Number(order.refundedAt||order.timestamp||Date.now());
+  const id=financeKey(order.id,"Order ID"),movementId=`precompletion_cash_refund_${id}`,liability=`liability:customer_change_refund:${id}`,now=await openPostingTime(db,order.refundedAt||order.timestamp);
   const movement=Financial.movement("customer_change_refunded","order",id,[Financial.line(liability,refund,0,"Clear confirmed customer overpayment"),Financial.line("asset:register_cash",0,refund,"Cash returned before POS completion")],{occurredAt:now,actorName:order.staff||"POS",reference:id,shiftId:order.shiftId,controlReason:"Electronic payment was confirmed before the in-store order was corrected and completed."});
   const detail=order.preCompletionCashRefund||{},writes={[`payables/${movementId}`]:{party:financeText(order.name||"Walk-in",120),type:"customer_change_refund",amount:refund,remainingAmount:0,paidAmount:refund,date:financeDateFromTimestamp(now),ref:id,status:"paid",movementId:`sale_${id}`,settlementMovementId:movementId,liabilityAccount:liability,sourceType:"order",sourceId:id,shiftId:order.shiftId,reason:financeText(detail.reason,300),customerAcknowledgement:financeText(detail.customerAcknowledgement,160),ts:now,createdBy:order.cashierVerifiedBy||actor.uid,schemaVersion:2}};
   return commitFinancial(db,movementId,movement,actor,writes);
@@ -7492,12 +7513,12 @@ exports.onOrderFinancialPosting = onValueWritten(
     const beforeRefund = Financial.money(before.refundAmount), afterRefund = Financial.money(order.refundAmount);
     if (afterRefund > beforeRefund) {
       const delta = Financial.money(afterRefund - beforeRefund), saleTime = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now()), movement = Financial.reversalPosting(order, delta, "refund", accounts, null, Financial.effectiveTaxFor(taxSettings, saleTime));
-      movement.occurredAt = Number(order.refundedAt || Date.now()); movement.actorName = order.refundedBy || order.staff || "Refund";
+      movement.occurredAt = await openPostingTime(db, order.refundedAt); if (order.refundedAt && movement.occurredAt !== Number(order.refundedAt)) movement.originalRefundDate = financeDateFromTimestamp(order.refundedAt || Date.now()); movement.actorName = order.refundedBy || order.staff || "Refund";
       const movementId = `refund_${order.id}_${Math.round(afterRefund * 100)}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes);
     }
     if (order.voided === true && before.voided !== true) {
       const remaining = Financial.money(Math.max(0, Financial.money(order.total) - afterRefund));
-      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = (order.voidAccountingDate && Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`)) || Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {[`paymentVerificationQueue/${financeKey(order.id, "Order ID")}`]: null}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
+      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = await openPostingTime(db, (order.voidAccountingDate && Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`)) || Number(order.voidedAt || Date.now())); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {[`paymentVerificationQueue/${financeKey(order.id, "Order ID")}`]: null}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
     }
   },
 );
@@ -10258,6 +10279,9 @@ function paymentVerificationQueueRow(order, clearing, movementId, occurredAt) {
     references: direct.map((row) => financeText(row.ref, 120)).filter(Boolean).join(", "), movementId, createdAt: Date.now(), schemaVersion: 1,
   };
 }
+// Open-month posting time (audit D-05): a refund, void or pre-completion refund dated in a month that
+// has since closed posts today in the open month, like a late sale; the original date is kept on it.
+async function openPostingTime(db, at) { const t = Number(at) || Date.now(); return (await periodOpenFor(db, t)) ? t : Date.now(); }
 async function periodOpenFor(db, at) {
   try { await assertAccountingPeriodOpen(db, at, "posting"); return true; } catch (error) { if (error && error.code === "failed-precondition") return false; throw error; }
 }

@@ -424,7 +424,7 @@ function addOrderCashWrites(writes, movement, movementId, order, actor) {
 
 async function postPreCompletionCashRefund(db, order, actor) {
   const refund=Financial.money(order&&order.preCompletionCashRefund&&order.preCompletionCashRefund.amount);if(!(refund>0))return{skipped:true};
-  const id=financeKey(order.id,"Order ID"),movementId=`precompletion_cash_refund_${id}`,liability=`liability:customer_change_refund:${id}`,now=Number(order.refundedAt||order.timestamp||Date.now());
+  const id=financeKey(order.id,"Order ID"),movementId=`precompletion_cash_refund_${id}`,liability=`liability:customer_change_refund:${id}`,now=await openPostingTime(db,order.refundedAt||order.timestamp);
   const movement=Financial.movement("customer_change_refunded","order",id,[Financial.line(liability,refund,0,"Clear confirmed customer overpayment"),Financial.line("asset:register_cash",0,refund,"Cash returned before POS completion")],{occurredAt:now,actorName:order.staff||"POS",reference:id,shiftId:order.shiftId,controlReason:"Electronic payment was confirmed before the in-store order was corrected and completed."});
   const detail=order.preCompletionCashRefund||{},writes={[`payables/${movementId}`]:{party:financeText(order.name||"Walk-in",120),type:"customer_change_refund",amount:refund,remainingAmount:0,paidAmount:refund,date:financeDateFromTimestamp(now),ref:id,status:"paid",movementId:`sale_${id}`,settlementMovementId:movementId,liabilityAccount:liability,sourceType:"order",sourceId:id,shiftId:order.shiftId,reason:financeText(detail.reason,300),customerAcknowledgement:financeText(detail.customerAcknowledgement,160),ts:now,createdBy:order.cashierVerifiedBy||actor.uid,schemaVersion:2}};
   return commitFinancial(db,movementId,movement,actor,writes);
@@ -465,12 +465,12 @@ exports.onOrderFinancialPosting = onValueWritten(
     const beforeRefund = Financial.money(before.refundAmount), afterRefund = Financial.money(order.refundAmount);
     if (afterRefund > beforeRefund) {
       const delta = Financial.money(afterRefund - beforeRefund), saleTime = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now()), movement = Financial.reversalPosting(order, delta, "refund", accounts, null, Financial.effectiveTaxFor(taxSettings, saleTime));
-      movement.occurredAt = Number(order.refundedAt || Date.now()); movement.actorName = order.refundedBy || order.staff || "Refund";
+      movement.occurredAt = await openPostingTime(db, order.refundedAt); if (order.refundedAt && movement.occurredAt !== Number(order.refundedAt)) movement.originalRefundDate = financeDateFromTimestamp(order.refundedAt || Date.now()); movement.actorName = order.refundedBy || order.staff || "Refund";
       const movementId = `refund_${order.id}_${Math.round(afterRefund * 100)}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes);
     }
     if (order.voided === true && before.voided !== true) {
       const remaining = Financial.money(Math.max(0, Financial.money(order.total) - afterRefund));
-      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = (order.voidAccountingDate && Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`)) || Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {[`paymentVerificationQueue/${financeKey(order.id, "Order ID")}`]: null}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
+      if (remaining > 0) { const movement = await fullOrderVoidMovement(db, order, accounts, null, taxSettings); if (movement) { movement.occurredAt = await openPostingTime(db, (order.voidAccountingDate && Date.parse(`${order.voidAccountingDate}T00:00:00+08:00`)) || Number(order.voidedAt || Date.now())); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {[`paymentVerificationQueue/${financeKey(order.id, "Order ID")}`]: null}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); } }
     }
   },
 );
