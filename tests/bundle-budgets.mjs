@@ -19,7 +19,7 @@ export const BUDGET_WARN_ROOM=0.025;
 // Any tracked runtime script at or above this size must have a ceiling below.
 export const BUDGET_COVERAGE_MIN_BYTES=10000;
 // Modules carved out of a guarded bundle keep a ceiling whatever their size.
-export const SPLIT_MODULES=Object.freeze(['assets/js/admin/chart-axes.mjs','assets/js/admin/daily-report-output.mjs','assets/js/admin/payout-audit.mjs','assets/js/admin/pnl-export.mjs','assets/js/admin/order-archive-panel.mjs','assets/js/admin/order-archive-eligibility.mjs','assets/js/admin/order-display.mjs','assets/js/admin/order-card-parts.mjs','assets/js/admin/payment-account-links.mjs','assets/js/admin/baking.js','assets/js/admin/baking-print.js','assets/js/admin/accaza-ai-manager.js','assets/js/customer/chatbot.mjs','assets/js/books/subledgers.js','assets/js/books/controlled-transactions.js']);
+export const SPLIT_MODULES=Object.freeze(['assets/js/customer/public-reviews.mjs','assets/js/admin/order-rejection-dialog.mjs','assets/js/admin/chart-axes.mjs','assets/js/admin/daily-report-output.mjs','assets/js/admin/payout-audit.mjs','assets/js/admin/pnl-export.mjs','assets/js/admin/order-archive-panel.mjs','assets/js/admin/order-archive-eligibility.mjs','assets/js/admin/order-display.mjs','assets/js/admin/order-card-parts.mjs','assets/js/admin/payment-account-links.mjs','assets/js/admin/baking.js','assets/js/admin/baking-print.js','assets/js/admin/accaza-ai-manager.js','assets/js/customer/chatbot.mjs','assets/js/books/subledgers.js','assets/js/books/controlled-transactions.js']);
 export const usableBudget=(maximum,reserve=0)=>maximum-reserve;
 export const budgetState=(bytes,maximum,reserve=0)=>{
   const usable=usableBudget(maximum,reserve);
@@ -92,6 +92,7 @@ export const BUNDLE_BUDGETS=Object.freeze({
 // the annual accountant export. One-shot reads only (taxSettings, companyInfo,
 // taxReturns history); no standing listener. Re-baselined under the budget policy to
 // ~5% above the reviewed 265,488 bytes.
+'assets/js/admin/register-tax.js':36000, // split from register.js 5 Nov 2026: Tax Compliance (owner-only) loads with its own tab; measured 31,865 source bytes
 'assets/js/admin/register.js':319400, // reviewed 304,100; re-based 1 Nov 2026 (admin 733): the 300,000 review point was passed by 4,100 bytes after builds 728/731/732 added cashier features (verified-payment hold, in-page confirm, exact change and drawer recount). Trim cannot restore it -- no section declares an unreachable function and comments are only 9.7 KB (3.2%) -- and the helper-migration split is still deferred (reverted 13 Oct 2026; see docs/plans/register-bundle-headroom.md), so under the budget policy above the ceiling is set ~5% above the reviewed size. The bundle is generated from fifteen INTERDEPENDENT sections -- eager sections call helpers defined in the same or a later file (60-operations-shift-review calls shiftSales and openShiftReview from 90-shift-review-export; the always-on discrepancies subscription calls updateDiscBadge and discList from 30-discrepancy-controls) -- so a split is not a build-config change but a helper migration across the cashier's screen.
   // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.
@@ -155,6 +156,7 @@ export const BUNDLE_BUDGETS=Object.freeze({
   'assets/js/admin/accaza-ai-manager.js':8500, // 16 Oct 2026 split from accaza-ai.js (Operations Manual editor, Log issue); reviewed 8,004
   'assets/js/admin/packages.js':17500, // reviewed 16,576
   'assets/js/admin/admin-orders.mjs':15100, // reviewed 12,831 (29 Oct 2026): archive eligibility split out; order cards and bulk-archive results remain
+  'assets/js/admin/order-rejection-dialog.mjs':2600, // split from admin-orders.mjs 5 Nov 2026 (website rejection with payment outcome), measured 2,046
   'assets/js/admin/order-archive-eligibility.mjs':3900, // reviewed 2,999; client explanation mirrors server archive protections
   'assets/js/shared/sales-authority.js':11500, // reviewed 10,1xx (29 Oct 2026): shared sale recognition now counts unverified sales and the unpaid-sale reversal
   'assets/js/admin/order-card-parts.mjs':4200, // reviewed 3,595; payment badge, verification policy, item list
@@ -173,5 +175,6 @@ export const BUNDLE_BUDGETS=Object.freeze({
   'assets/js/admin/order-archive-panel.mjs':5600, // reviewed 5,278
   'assets/js/admin/chart-axes.mjs':1400, // reviewed 1,254; admin 703 carved the chart axis helpers out of overview-insights.mjs
   'assets/js/admin/payment-account-links.mjs':4900, // reviewed 4,586; admin 675 moved it out of core.mjs to keep that guarded bundle inside its budget
+  'assets/js/customer/public-reviews.mjs':4800, // split from customer core 5 Nov 2026 (public reviews), measured ~4,150
   'assets/js/customer/chatbot.mjs':6100, // reviewed 5,717
 });

@@ -7,7 +7,8 @@ const root=process.cwd();
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const subscriptions=read('src/customer/core/04-realtime-subscriptions.mjs');
 const reservations=read('src/customer/core/11-reservations.mjs');
-const reviews=read('src/customer/core/14-public-reviews.mjs');
+// Public reviews moved to their own module on 5 Nov 2026 (customer core byte room).
+const reviews=read('assets/js/customer/public-reviews.mjs');
 const startup=read('src/customer/core/16-startup-ui.mjs');
 const customer=read('assets/js/customer/core.mjs');
 
@@ -57,10 +58,10 @@ for(const marker of [
 ])if(!reservations.includes(marker))throw new Error(`Calendar loading-state safeguard missing: ${marker}`);
 for(const marker of [
   'window.__loadPublicReviews=async function()',
-  'get(query(reviewsRef,orderByKey(),limitToLast(20)))',
+  'deps.get(deps.query(deps.reviewsRef,deps.orderByKey(),deps.limitToLast(20)))',
   '_publicReviewsLoaded||_publicReviewsLoading'
 ])if(!reviews.includes(marker))throw new Error(`Bounded public review read safeguard missing: ${marker}`);
-if(reviews.includes('set(reviewsRef,DEFAULT_PUBLIC_REVIEWS)'))throw new Error('Anonymous public review fallback must remain display-only');
+if(/set\((deps\.)?reviewsRef/.test(reviews))throw new Error('Anonymous public review fallback must remain display-only');
 for(const marker of [
   "defer('reserve',function(){renderCustomerCalendar();})",
   "defer('reviews',function(){if(window.__loadPublicReviews)window.__loadPublicReviews();})",
@@ -68,7 +69,7 @@ for(const marker of [
 ])if(!startup.includes(marker))throw new Error(`Deferred public read trigger missing: ${marker}`);
 for(const marker of [
   "query(calBlocksRef,orderByKey(),startAt(monthPrefix+'01'),endAt(monthPrefix+String(lastDay).padStart(2,'0')))",
-  'get(query(reviewsRef,orderByKey(),limitToLast(20))',
+  'installPublicReviews({get,query,reviewsRef,orderByKey,limitToLast,escHtml})',
   "defer('reviews'",
   'publicCatalogVersionRef'
 ])if(!customer.includes(marker))throw new Error(`Generated customer runtime is missing scoped public read behavior: ${marker}`);

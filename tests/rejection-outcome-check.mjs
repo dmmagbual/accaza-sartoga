@@ -130,5 +130,7 @@ const pos = fs.readFileSync('src/admin/pos/50a-register-shell.js', 'utf8'), admi
 assert.ok(/data-online-reject[\s\S]{0,300}window\.__rejectWebsiteOrder\(id,o\)/.test(pos), 'POS Online Orders reject must ask for the outcome');
 assert.ok(!/status:'Rejected',expectedStatus:o\.status/.test(pos), 'POS must not reject without an outcome');
 assert.ok(/this\.value==='Rejected'&&website\?window\.__rejectWebsiteOrder/.test(adminOrders), 'Admin Orders status select must ask for the outcome');
-assert.ok(/rejectionOutcome:v\.outcome/.test(adminOrders) && /'payment_not_found'/.test(adminOrders) && /'refund_due'/.test(adminOrders));
+// The rejection dialog lives in its own module since 5 Nov 2026 (admin-orders byte room).
+const rejectDialog = fs.readFileSync('assets/js/admin/order-rejection-dialog.mjs', 'utf8');
+assert.ok(/installWebsiteOrderRejection\(/.test(adminOrders) && /rejectionOutcome:v\.outcome/.test(rejectDialog) && /'payment_not_found'/.test(rejectDialog) && /'refund_due'/.test(rejectDialog), 'the rejection dialog must ask payment-not-found or refund-due');
 console.log('PASS: rejecting a website order records payment-not-found or refund-due; a refund owed stays in Register Ops until a manager records it paid, then the order archives; the callable itself posts nothing (onOrderRejectionFinancial posts the 2030 entry).');

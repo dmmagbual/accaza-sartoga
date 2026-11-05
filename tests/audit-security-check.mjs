@@ -38,12 +38,14 @@ const manager = {uid: 'm1', role: 'manager'};
   assert.equal((await ctx.managePosStaffPins(db, manager, 'secure_all', {})).secured, 0, 'running again changes nothing');
   assert.ok(ctx.posPinValid('2222', await ctx.posStaffPinRow(db, 'st_rowhash', db.state.posStaff.st_rowhash)), 'the shift and crew checks read the secret');
   // Create: hash only; a PIN already in use is refused.
-  await assert.rejects(ctx.managePosStaffPins(db, manager, 'create', {name: 'Jo', role: 'cashier', pin: '1111'}), /already used/);
   const made = await ctx.managePosStaffPins(db, manager, 'create', {name: 'Jo', role: 'cashier', pin: '3333'});
   assert.equal(db.state.posStaff[made.staffId].pin, undefined); assert.ok(ctx.posPinValid('3333', db.state.posStaffSecrets[made.staffId]));
   // Change: the current PIN must match the stored hash.
   await assert.rejects(ctx.managePosStaffPins(db, manager, 'change_pin', {staffId: 'st_plain', currentPin: '9999', newPin: '4444'}), /Current PIN is incorrect/);
-  await assert.rejects(ctx.managePosStaffPins(db, manager, 'change_pin', {staffId: 'st_plain', currentPin: '1111', newPin: '2222'}), /already used/);
+  const dup = await ctx.managePosStaffPins(db, manager, 'create', {name: 'Mo', role: 'cashier', pin: '1111'});
+  assert.ok(dup.created, 'PINs need not be unique (each works only with its own login), so nothing reveals another profile\'s PIN');
+  await ctx.managePosStaffPins(db, manager, 'remove', {staffId: dup.staffId});
+  assert.deepEqual([db.state.posStaff[dup.staffId], db.state.posStaffSecrets[dup.staffId]], [undefined, undefined], 'removing a profile also removes its stored PIN');
   await ctx.managePosStaffPins(db, manager, 'change_pin', {staffId: 'st_plain', currentPin: '1111', newPin: '4444'});
   assert.ok(ctx.posPinValid('4444', db.state.posStaffSecrets.st_plain) && !ctx.posPinValid('1111', db.state.posStaffSecrets.st_plain), 'the new PIN replaces the old one');
   assert.equal(Object.values(db.state.operationalAudit).filter((r) => r.action === 'change_pos_staff_pin').length, 1, 'a PIN change is audited');
@@ -56,7 +58,7 @@ const manager = {uid: 'm1', role: 'manager'};
   assert.ok(/posPinValid\(data\.pin,await posStaffPinRow\(db,staffId,row\)\)/.test(crew), 'joining a crew checks the secret');
   const staffUi = fs.readFileSync('src/admin/register/70-settings-staff.js', 'utf8');
   assert.ok(!/pin:pin,role|update\(a\.ref\(a\.db,'posStaff\/'\+id\),\{pin:|String\(s\.pin\)/.test(staffUi), 'the browser no longer writes or compares a PIN');
-  assert.ok(/action:'create'/.test(staffUi) && /action:'change_pin'/.test(staffUi) && /action:'secure_all'/.test(staffUi), 'staff settings use the server commands');
+  assert.ok(/action:'create'/.test(staffUi) && /action:'change_pin'/.test(staffUi) && /action:'secure_all'/.test(staffUi) && /action:'remove'/.test(staffUi) && !/a\.remove\(a\.ref\(a\.db,'posStaff\//.test(staffUi), 'staff settings use the server commands');
 }
 
 // ---------- SEC-04 / SEC-05: rules shape ----------

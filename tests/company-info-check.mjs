@@ -31,7 +31,7 @@ assert.ok(workspace.includes('id="tab-companyinfo"') && workspace.includes('id="
 assert.ok(workspace.includes('id="tab-taxcompliance"') && workspace.includes('id="taxComplianceRoot"'), 'Tax Compliance needs its own tab panel and root');
 
 // --- 2. Lazy loading and staff hiding --------------------------------------
-assert.ok(/companyinfo:\['pos','register'\]/.test(loader) && /taxcompliance:\['pos','register'\]/.test(loader), 'Both new tabs must lazy-load the register bundle like POS Settings');
+assert.ok(/companyinfo:\['pos','register'\]/.test(loader) && /taxcompliance:\['pos','register','registertax'\]/.test(loader), 'Both new tabs must lazy-load the register bundle like POS Settings (Tax Compliance also loads its own split bundle)');
 assert.ok(/companyinfo:'companyInfoRoot'/.test(loader) && /taxcompliance:'taxComplianceRoot'/.test(loader), 'Both new tabs must declare their render roots');
 const alwaysHide = (core.match(/var _permAlwaysHide=(\[[^\]]*\]);/) || [])[1] || '';
 assert.ok(alwaysHide.includes("'companyinfo'") && alwaysHide.includes("'taxcompliance'"), 'Company Information and Tax Compliance must stay owner-only — never grantable to staff');

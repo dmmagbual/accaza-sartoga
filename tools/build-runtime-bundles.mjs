@@ -5,7 +5,9 @@ import {BUDGET_WARN_ROOM,BUNDLE_BUDGETS,BUNDLE_HARD_RESERVES,budgetState,isHardL
 const root=process.cwd();
 const bundles=[
   {source:'src/admin/pos',target:'assets/js/admin/pos.js'},
-  {source:'src/admin/register',target:'assets/js/admin/register.js'},
+  {source:'src/admin/register',target:'assets/js/admin/register.js',exclude:['72-tax-compliance.js']},
+  // Tax Compliance is owner-only and rarely opened, so it loads only with its own tab (5 Nov 2026).
+  {source:'src/admin/register',target:'assets/js/admin/register-tax.js',include:['72-tax-compliance.js']},
   {source:'src/admin/rewards',target:'assets/js/admin/rewards.js'},
   {source:'src/admin/analytics',target:'assets/js/admin/analytics.js'},
   {source:'src/admin/finance',target:'assets/js/admin/finance.js'},

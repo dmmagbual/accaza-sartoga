@@ -2,6 +2,7 @@ import{callables}from"./firebase-client.mjs";
 import{orderChannel,orderChannelLabel}from"./order-display.mjs";
 import{verificationPolicy,paymentState,orderItemsHtml}from"./order-card-parts.mjs";
 import{orderArchiveBlock}from"./order-archive-eligibility.mjs";
+import{installWebsiteOrderRejection}from"./order-rejection-dialog.mjs";
 
 export function shouldAlertOrder(o){return !!o&&o.source!=='pos'&&['Pending','Confirmed','Preparing','Ready'].includes(String(o.status||'Pending'));}
 
@@ -10,19 +11,8 @@ function createOrderAdmin(deps){
   function commandId(){try{return 'status_'+crypto.randomUUID().replace(/-/g,'_');}catch(_e){return 'status_'+Date.now()+'_'+Math.random().toString(36).slice(2);}}
   function updateStatus(oid,status,control){var order=deps.getOrders()[oid]||{},expected=String(order.status||'Pending'),oldText=control&&control.textContent;if(control){control.disabled=true;if(control.tagName==='BUTTON')control.textContent='Processing…';}return callables.updateOrderStatus({orderId:oid,status:status,expectedStatus:expected,requestId:commandId()}).then(function(result){(window.accazaToast||function(){})('Order '+status,'ok');return result;}).catch(function(error){alert('Could not update order: '+((error&&error.message)||error));throw error;}).finally(function(){if(control){control.disabled=false;if(control.tagName==='BUTTON')control.textContent=oldText;}});}
   window.__markOrderCompleted=function(oid,control){return updateStatus(oid,'Completed',control);};
-  // Rejecting a website order asks what happens to the customer's money (Danilo, Nov 2026).
-  // Resolves null when staff cancel; the server refuses a website rejection without an outcome.
-  window.__rejectWebsiteOrder=function(oid,order){
-    order=order||deps.getOrders()[oid]||{};
-    if(!window.AccazaFormDialog)return Promise.reject(new Error('Form service unavailable. Refresh the portal.'));
-    var total=(Math.round((Number(order.total)||0)*100)/100).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}),verified=['cashier_verified','manager_validated','confirmed'].indexOf(order.paymentStatus)>-1,options=[{value:'',label:'Choose…'}];
-    // A payment already verified as received can only be refunded (the server enforces this too).
-    if(!verified)options.push({value:'payment_not_found',label:'Payment not found in our account'});
-    options.push({value:'refund_due',label:'Customer paid: refund due (₱'+total+')'});
-    return window.AccazaFormDialog.run({title:'Reject order '+oid,subtitle:(verified?'This payment was verified as received, so the customer must be refunded. ':'')+'The customer sees this on their order tracker.',submitLabel:'Reject order',busyLabel:'Rejecting…',fields:[{name:'outcome',label:'Customer payment',type:'select',required:true,value:'',options:options,help:'Refund due keeps the order in Register Ops until a manager records the refund as paid.'}]},function(v){
-      return callables.updateOrderStatus({orderId:oid,status:'Rejected',expectedStatus:String(order.status||'Pending'),requestId:commandId(),rejectionOutcome:v.outcome});
-    }).then(function(result){(window.accazaToast||function(){})('Order rejected','ok');return result||true;},function(error){if(String((error&&error.message)||error).indexOf('cancelled')>-1)return null;throw error;});
-  };
+  // Website order rejection dialog: see order-rejection-dialog.mjs.
+  installWebsiteOrderRejection({getOrders:function(){return deps.getOrders();},commandId:commandId});
   function orderStatusCtl(o,orderKey){
     var oid=escHtml(orderKey||o.id);if(o.voided)return '';
     if((o.source==='online'||o.channel==='online')&&!o.shiftId){var verifyAction=o.paymentStatus==='pending'?'<button data-verify="'+oid+'" class="order-action verify">'+(verificationPolicy(o)==='manager_only'?'Manager verify':'Cashier verify')+'</button>':'';return verifyAction+'<span class="order-payment-state pending">Use POS → Online Orders to accept into shift</span>';}
