@@ -19,7 +19,7 @@ export const BUDGET_WARN_ROOM=0.025;
 // Any tracked runtime script at or above this size must have a ceiling below.
 export const BUDGET_COVERAGE_MIN_BYTES=10000;
 // Modules carved out of a guarded bundle keep a ceiling whatever their size.
-export const SPLIT_MODULES=Object.freeze(['assets/js/admin/audit-registers.mjs','assets/js/admin/report-coverage.mjs','assets/js/customer/public-reviews.mjs','assets/js/admin/order-rejection-dialog.mjs','assets/js/admin/chart-axes.mjs','assets/js/admin/daily-report-output.mjs','assets/js/admin/payout-audit.mjs','assets/js/admin/pnl-export.mjs','assets/js/admin/order-archive-panel.mjs','assets/js/admin/order-archive-eligibility.mjs','assets/js/admin/order-display.mjs','assets/js/admin/order-card-parts.mjs','assets/js/admin/payment-account-links.mjs','assets/js/admin/baking.js','assets/js/admin/baking-print.js','assets/js/admin/accaza-ai-manager.js','assets/js/customer/chatbot.mjs','assets/js/books/subledgers.js','assets/js/books/controlled-transactions.js']);
+export const SPLIT_MODULES=Object.freeze(['assets/js/customer/feedback.mjs','assets/js/admin/audit-registers.mjs','assets/js/admin/report-coverage.mjs','assets/js/customer/public-reviews.mjs','assets/js/admin/order-rejection-dialog.mjs','assets/js/admin/chart-axes.mjs','assets/js/admin/daily-report-output.mjs','assets/js/admin/payout-audit.mjs','assets/js/admin/pnl-export.mjs','assets/js/admin/order-archive-panel.mjs','assets/js/admin/order-archive-eligibility.mjs','assets/js/admin/order-display.mjs','assets/js/admin/order-card-parts.mjs','assets/js/admin/payment-account-links.mjs','assets/js/admin/baking.js','assets/js/admin/baking-print.js','assets/js/admin/accaza-ai-manager.js','assets/js/customer/chatbot.mjs','assets/js/books/subledgers.js','assets/js/books/controlled-transactions.js']);
 export const usableBudget=(maximum,reserve=0)=>maximum-reserve;
 export const budgetState=(bytes,maximum,reserve=0)=>{
   const usable=usableBudget(maximum,reserve);
@@ -177,6 +177,7 @@ export const BUNDLE_BUDGETS=Object.freeze({
   'assets/js/admin/order-archive-panel.mjs':5600, // reviewed 5,278
   'assets/js/admin/chart-axes.mjs':1400, // reviewed 1,254; admin 703 carved the chart axis helpers out of overview-insights.mjs
   'assets/js/admin/payment-account-links.mjs':4900, // reviewed 4,586; admin 675 moved it out of core.mjs to keep that guarded bundle inside its budget
+  'assets/js/customer/feedback.mjs':3600, // split from customer core 5 Nov 2026 (contact and feedback forms)
   'assets/js/customer/public-reviews.mjs':4800, // split from customer core 5 Nov 2026 (public reviews), measured ~4,150
   'assets/js/customer/chatbot.mjs':6100, // reviewed 5,717
 });
