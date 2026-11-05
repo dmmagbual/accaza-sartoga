@@ -30,6 +30,9 @@ function paymentVerificationQueueRow(order, clearing, movementId, occurredAt) {
     references: direct.map((row) => financeText(row.ref, 120)).filter(Boolean).join(", "), movementId, createdAt: Date.now(), schemaVersion: 1,
   };
 }
+// Open-month posting time (audit D-05): a refund, void or pre-completion refund dated in a month that
+// has since closed posts today in the open month, like a late sale; the original date is kept on it.
+async function openPostingTime(db, at) { const t = Number(at) || Date.now(); return (await periodOpenFor(db, t)) ? t : Date.now(); }
 async function periodOpenFor(db, at) {
   try { await assertAccountingPeriodOpen(db, at, "posting"); return true; } catch (error) { if (error && error.code === "failed-precondition") return false; throw error; }
 }

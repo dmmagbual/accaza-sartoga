@@ -66,7 +66,7 @@ assert.deepEqual(O.applyDrawerDelta({drawer: {b100: 0}}, 't', {b500: 1, b100: -4
 // ---------- D-03: a prepaid cash refund writes its order before the drawer moves ----------
 {
   const src = fs.readFileSync('functions/lib/offline-sync.js', 'utf8');
-  const prepaidBlock = src.slice(src.indexOf('let shiftResult;if(prepaid&&!existing)'), src.indexOf('if (!existing){const stamp'));
+  const prepaidBlock = src.slice(src.indexOf('let shiftResult;if(prepaid&&!existing)'), src.indexOf('if (!existing){', src.indexOf('let shiftResult;if(prepaid&&!existing)')));
   assert.ok(prepaidBlock.length > 50 && !/applyDrawerDelta/.test(prepaidBlock), 'the refund drawer change must not run before the order write');
 }
 

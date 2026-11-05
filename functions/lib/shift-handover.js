@@ -79,7 +79,16 @@ async function stampInvoice(db,order){
   });
   if(!result.committed)throw new Error('Invoice counter is busy. Sync the sale again.');
   const state=result.snapshot.val()||{};
-  return {invoiceNumber:'SI-'+String(Number(state.seq)||0).padStart(6,'0'),invoiceSeq:Number(state.seq)||0,cumulativeGrandTotalCents:Number(state.grandTotalCents)||0};
+  return {invoiceNumber:'SI-'+String(Number(state.seq)||0).padStart(6,'0'),invoiceSeq:Number(state.seq)||0,cumulativeGrandTotalCents:Number(state.grandTotalCents)||0,amountCents:amount};
+}
+// A stamped number whose order was never saved (audit D-15/C-17, 4 Nov 2026). The counter and the
+// non-resettable grand total cannot be wound back safely, so the number is recorded as cancelled with
+// its amount: the SI series and the grand total both reconcile to saved invoices plus this list.
+async function recordVoidedInvoice(db,stamp,sourceId,reason,at){
+  if(!stamp||!stamp.invoiceNumber)return null;
+  const row={invoiceNumber:stamp.invoiceNumber,invoiceSeq:Number(stamp.invoiceSeq)||0,amountCents:Number(stamp.amountCents)||0,cumulativeGrandTotalCents:Number(stamp.cumulativeGrandTotalCents)||0,sourceId:String(sourceId||'').slice(0,160),reason:String(reason||'').slice(0,80),at:Number(at)||Date.now(),includedInGrandTotal:true,schemaVersion:1};
+  await db.ref(`/posInvoiceVoided/${stamp.invoiceNumber}`).set(row);
+  return row;
 }
 // Only recognized server orders enter the final report. The original handover count
 // and time remain immutable; delayed sales change the final reconciliation only.
@@ -124,4 +133,4 @@ function provisionalReport(shift,orders,handover,openItems){
   }
   return {...report(shift,merged,handover),status:'provisional',closeMode:'provisional_handover',openItems:openItems||{}};
 }
-module.exports={cents,countCash,digest,storedForm,commandDigest,sameCommand,commandOf,sealCommands,cashSnapshot,stampInvoice,report,provisionalReport,reportKey};
+module.exports={cents,countCash,digest,storedForm,commandDigest,sameCommand,commandOf,sealCommands,cashSnapshot,stampInvoice,recordVoidedInvoice,report,provisionalReport,reportKey};
