@@ -55,3 +55,6 @@ restore-drill-backup.json
 # Off-site data copies downloaded from the Admin backup button — live business data. NEVER commit.
 accaza-data-*.json
 BACKUP FOLDER/
+
+# Audit packs built by `npm run audit:pack` (copies of a commit for an outside auditor).
+audit-pack/
