@@ -89,7 +89,7 @@ check(purchasesUi.includes("ref:purchaseSupplierRef(inv,inv.id),"), 'A corrected
 check(purchasesUi.includes("function purchaseAdvanceRegisterHtml(){var rows=allPurchaseAdvances().filter(function(x){return x.status!=='cancelled'&&x.remaining>0.005;});"), 'Payments pending inventory allocation must list only advances that still hold unallocated cash; a fully allocated advance is not pending.');
 check(purchasesUi.includes("'</td><td>'+purchaseActionsMenu(p,actions)+'</td></tr>';") && purchasesUi.includes('<details class="purchase-actions">') && read('src/admin/pos/20-purchasing.js').includes("root.querySelectorAll('details.purchase-actions')"), 'Purchase history must group its actions in one Actions menu that keeps the existing button hooks.');
 const posting = read('src/admin/pos/20a-purchase-posting.js');
-check(posting.includes("effectiveRef=(P.ref||'').trim()||(P.pay==='pending'?('PENDING-'+invoiceId):'');") && !posting.includes("('PENDING-'+invoiceId):invoiceId)"), 'A new purchase must never store its internal key as the supplier reference.');
+check(posting.includes("effectiveRef=(P.ref||'').trim();") && !posting.includes("('PENDING-'+invoiceId):invoiceId)"), 'A new purchase must never store its internal key as the supplier reference.');
 
 /* ---------- 5. the backfill: Super-Admin only, idempotent, registered, wired ---------- */
 const backfill = read('src/functions/44c-purchase-doc-numbers.js');

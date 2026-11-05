@@ -13,7 +13,9 @@ function purchUpdatePrev(){
 }
 function postPurchases(){
   if(window.__purchPosting)return; var P=window.__purch; if(!P)return;
-  if(P.pay==='none')P.pay='pending';
+  /* No payment option is preselected and "Invoice pending" (2090 GRNI) is retired for new purchases (5 Nov 2026):
+     an unpaid delivery is a normal supplier bill (On account), as in Xero/QuickBooks. Checked before any stock posts. */
+  if(['paid','account','owner_funded','advance'].indexOf(P.pay)<0){alert('Choose how this purchase is settled: Paid now, On account, Paid personally by owner/partner, or Apply supplier advance. Not paid yet? Choose On account.');return;}
   var masterSupplier=purchaseSupplierById(P.supplierId);if(!masterSupplier){alert('Select an active supplier from the shared supplier database.');return;}P.supplier=masterSupplier.name;
   var lines=P.lines.filter(function(ln){return (ln.mode==='asset'?(ln.assetName||'').trim():ln.mode==='expense'?(ln.expenseDescription||'').trim():(ln.mode==='new'?(ln.newName||'').trim():ln.ing))&&(Number(ln.qty)||0)>0;});
   if(!lines.length){alert('Add at least one line with an item and a quantity.');return;}
@@ -34,11 +36,11 @@ function postPurchases(){
   if(P.pay==='advance'&&!openPurchaseAdvances(P.supplierId,P.supplier).some(function(x){return x.id===P.advanceId;})){alert('The selected advance is unavailable or belongs to another supplier. Refresh and select the correct supplier advance.');return;}
   if(P.pay==='owner_funded'&&!(P.ownerName||'').trim()){alert('Enter the owner or partner who paid personally.');return;}
   if(P.pay==='owner_funded'&&!(A()&&A().postFinancialCommand)){alert('Owner/partner funding service is not ready. Refresh the portal and try again.');return;}
-  if((P.pay==='account'||P.pay==='pending')&&!(A()&&A().reconcilePurchasePayable)){ alert('Purchase liability service is not ready. Refresh the portal and try again.'); return; }
+  if(P.pay==='account'&&!(A()&&A().reconcilePurchasePayable)){ alert('Purchase liability service is not ready. Refresh the portal and try again.'); return; }
   /* a "new" line whose name already exists (or repeats within this invoice) blends into that item — no duplicate SKU */
   var byName={}; ings().forEach(function(x){byName[uNorm(x.name)]=x.id;});
   window.__purchPosting=true;
-  var a=A(); var invoiceId=P.invoiceId||(P.invoiceId=uid('pinv_')); var date=P.date||window.AccazaDate.key(), effectiveRef=(P.ref||'').trim()||(P.pay==='pending'?('PENDING-'+invoiceId):''); /* blank = no supplier reference; the server gives the purchase its PUR number when it is entered */
+  var a=A(); var invoiceId=P.invoiceId||(P.invoiceId=uid('pinv_')); var date=P.date||window.AccazaDate.key(), effectiveRef=(P.ref||'').trim(); /* blank = no supplier reference; the server gives the purchase its PUR number when it is entered */
   var updates={}, seedUpdates={}, invTotal=0, receiptIds=[], invoiceLines=[], agg={}, newByName={}, newSkuByKey={};
   lines.forEach(function(ln,lineIndex){
     if(ln.mode==='asset'){var ac=purchCalc(ln),assetQty=Number(ln.qty)||0;invTotal+=ac.lineTotal;invoiceLines.push({lineType:'fixed_asset',itemName:(ln.assetName||'').trim(),assetCategory:ln.assetCategory==='furniture'?'furniture':'equipment',qty:assetQty,unit:'asset',unitCost:Math.round((ac.lineTotal/assetQty)*100)/100,total:ac.lineTotal,usefulLifeMonths:Math.round(Number(ln.assetLifeMonths)||0),depreciationMethod:'straight-line',salvagePerUnit:Math.round((Number(ln.assetSalvage)||0)*100)/100,inServiceDate:ln.assetInServiceDate||date,location:(ln.assetLocation||'').trim(),custodian:(ln.assetCustodian||'').trim()});return;}
@@ -83,13 +85,13 @@ function postPurchases(){
     if(P.pay==='paid'&&window.__cf&&window.__cf.postOut)return window.__cf.postOut({commandId:'purchase_cash_'+invoiceId,date:date,accountId:P.acct,amount:invTotal,party:(P.supplier||'').trim()||'Supplier',ref:effectiveRef,category:'Purchases',source:'purchase',linkId:invoiceId,note:lines.length+' item(s) received'});
     if(P.pay==='owner_funded'&&a.postFinancialCommand)return a.postFinancialCommand({action:'purchase_owner_funded',commandId:'purchase_owner_'+invoiceId,invoiceId:invoiceId,date:date,ownerName:(P.ownerName||'').trim(),ownerTreatment:P.ownerTreatment==='reimburse'?'reimburse':'capital'});
     if(P.pay==='advance'&&window.__cf&&window.__cf.postOut)return window.__cf.postOut({commandId:'purchase_cash_'+invoiceId,date:date,accountId:'',advanceId:P.advanceId,amount:invTotal,party:(P.supplier||'').trim()||'Supplier',ref:effectiveRef,category:'Purchases',source:'purchase',linkId:invoiceId,note:lines.length+' item(s) received from purchase cash advance'});
-    if(P.pay==='account'||P.pay==='pending')return a.reconcilePurchasePayable({invoiceId:invoiceId,due:P.pay==='account'?(P.due||''):''});
+    if(P.pay==='account')return a.reconcilePurchasePayable({invoiceId:invoiceId,due:P.due||''});
     return null;
   }).then(function(){
     if(invoiceLines.some(function(x){return x.lineType==='fixed_asset';})){if(!a.manageFixedAsset)throw new Error('Fixed Asset registration service is unavailable. Refresh and retry this purchase.');return a.manageFixedAsset({action:'register_purchase',commandId:'fa_purchase_'+invoiceId,invoiceId:invoiceId});}
     return null;
   }).then(function(){
-    if(window.__posLog)window.__posLog('purchase',(P.supplier||'Supplier'),lines.length+' line(s) · '+peso(invTotal)+(P.pay==='paid'?' · paid':P.pay==='owner_funded'?' · paid personally by '+(P.ownerName||'owner/partner')+' · '+(P.ownerTreatment==='reimburse'?'reimburse later':'capital contribution'):P.pay==='account'?' · on account':' · invoice pending'));
+    if(window.__posLog)window.__posLog('purchase',(P.supplier||'Supplier'),lines.length+' line(s) · '+peso(invTotal)+(P.pay==='paid'?' · paid':P.pay==='owner_funded'?' · paid personally by '+(P.ownerName||'owner/partner')+' · '+(P.ownerTreatment==='reimburse'?'reimburse later':'capital contribution'):P.pay==='account'?' · on account':' · supplier advance'));
     window.__purchPosting=false; window.__purch=null; renderPurchases();
     var m=document.getElementById('purMsg'); if(m)m.textContent='✓ Posted '+lines.length+' purchase line(s), invoice total '+peso(invTotal)+' at '+new Date().toLocaleTimeString();
     alert('Purchase posted. Stock, expense, and fixed-asset treatments were linked to the same Finance Books entry. ✅');

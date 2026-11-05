@@ -27,6 +27,25 @@ for (const file of ['assets/js/admin/pos.js', 'src/admin/pos/20-purchasing.js'])
   must(s, "if(P.pay!=='paid')P.acct='';if(P.pay!=='advance')P.advanceId='';if(P.pay!=='account')P.due='';",
     `${file}: changing the settlement option must clear the fields belonging to the option being left.`);
 }
+/* Invoice pending retired for new purchases (5 Nov 2026). It was preselected on every new
+   purchase, so an unpaid delivery silently went to 2090 Unrecorded Payables Clearing and could not
+   be paid until a second "Finalize invoice" step. A new purchase is now Paid now, On account,
+   Paid personally by owner/partner, or Apply supplier advance; nothing is preselected and the
+   choice is checked before any stock posts. Legacy provisional purchases keep Finalize invoice. */
+{
+  const ws = read('src/admin/pos/11h-purchase-workspace.js'), pur = read('src/admin/pos/20-purchasing.js'), post = read('src/admin/pos/20a-purchase-posting.js'), posBundle = read('assets/js/admin/pos.js');
+  for (const [file, s] of [['src/admin/pos/20-purchasing.js', pur], ['assets/js/admin/pos.js', posBundle]])
+    if (/name="ppay"[^>]*value="pending"/.test(s)) failures.push(`${file}: new purchases must not offer an "Invoice pending" payment option.`);
+  if (!ws.includes("description:'',pay:'',acct:''")) failures.push('A new purchase must start with no payment option selected.');
+  if (!ws.includes("pay:(inv.payMode==='none'||inv.payMode==='pending')?'':")) failures.push('A corrected re-entry of a pending/legacy purchase must ask for a payment option again.');
+  const guard = "if(['paid','account','owner_funded','advance'].indexOf(P.pay)<0){alert(";
+  const fn = post.slice(post.indexOf('function postPurchases('));
+  const g = fn.indexOf(guard), firstPost = fn.indexOf('postMovements(');
+  if (g < 0) failures.push('postPurchases() must refuse a purchase whose payment option is not one of the four allowed.');
+  else if (firstPost < 0 || g > firstPost || g > fn.indexOf('purchaseSupplierById(')) failures.push('The payment-option check must run before the supplier check and before any stock movement posts.');
+  if (/P\.pay==='pending'/.test(post)) failures.push('postPurchases() must not keep a code path for new "pending" purchases.');
+  if (!pur.includes('data-purchase-finalize')) failures.push('Legacy provisional purchases must keep their Finalize invoice action.');
+}
 /* The single-item Receive Stock dialog (src/admin/pos/11g-stock-receiving.js) lost its last
    caller on 10 Aug 2026 and was deleted on 6 Oct 2026. Deliveries are received only through the
    Purchases workspace, which the checks above cover. */
