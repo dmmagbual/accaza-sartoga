@@ -53,7 +53,7 @@ function renderPosSettings(){securePosStaffPins();
   root.innerHTML=html;
   var sa=document.getElementById('stAdd');if(sa)sa.onclick=addStaff;
   root.querySelectorAll('[data-stlink]').forEach(function(b){b.onclick=function(){linkStaffIdentity(b.getAttribute('data-stlink'));};});
-  root.querySelectorAll('[data-stdel]').forEach(function(b){b.onclick=function(){if(confirm('Remove this staff?')){var a=A();a.remove(a.ref(a.db,'posStaff/'+b.getAttribute('data-stdel')));}};});
+  root.querySelectorAll('[data-stdel]').forEach(function(b){b.onclick=function(){if(confirm('Remove this staff?')){var a=A();/* removes the profile and its stored PIN on the server */a.managePosStaffIdentity({action:'remove',staffId:b.getAttribute('data-stdel')}).catch(function(e){alert('Could not remove staff: '+((e&&e.message)||e));});}};});
   var rc=document.getElementById('opsRound');if(rc){var a=A();a.get(a.ref(a.db,'posSettings/cashRounding')).then(function(s){rc.checked=!!s.val();});rc.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{cashRounding:rc.checked});};}
   var dt=document.getElementById('opsDenom');if(dt){var a2=A();a2.get(a2.ref(a2.db,'posSettings')).then(function(s){var v=s.val()||{};dt.checked=!!v.denomTracking;});dt.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{denomTracking:dt.checked});};}
   var to=document.getElementById('opsTotalOnly');if(to){var a3=A();a3.get(a3.ref(a3.db,'posSettings')).then(function(s){var v=s.val()||{};to.checked=!!v.reconcileTotalOnly;});to.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{reconcileTotalOnly:to.checked});};}

@@ -101,9 +101,14 @@ async function reverseUncostedCostCorrections(db, orderId, order, type) {
   await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, metadata);
 }
 
-async function readOpenUncostedRows(db) {
-  const [open, applying] = await Promise.all(["open", "applying"].map((status) => db.ref("/uncostedSales").orderByChild("status").equalTo(status).limitToFirst(UNCOSTED_LIST_LIMIT).get()));
-  return Object.assign({}, open.val() || {}, applying.val() || {});
+// Audit A-06 (5 Nov 2026): one extra row per status tells whether the list was cut off, so a manager
+// never reviews a partial list believing it is complete.
+async function readOpenUncostedRows(db, withFlag) {
+  const [open, applying] = await Promise.all(["open", "applying"].map((status) => db.ref("/uncostedSales").orderByChild("status").equalTo(status).limitToFirst(UNCOSTED_LIST_LIMIT + 1).get()));
+  const truncated = [open, applying].some((snap) => Object.keys(snap.val() || {}).length > UNCOSTED_LIST_LIMIT);
+  const rows = {};
+  [open, applying].forEach((snap) => Object.keys(snap.val() || {}).slice(0, UNCOSTED_LIST_LIMIT).forEach((id) => { rows[id] = snap.val()[id]; }));
+  return withFlag ? {rows, truncated} : rows;
 }
 
 // Cost each open row of one item against the current recipe.
@@ -235,8 +240,10 @@ exports.manageUncostedSales = onCall(
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["recipes", "inventory"]), data = request.data || {};
     const action = financeText(data.action, 40) || "list", manager = UNCOSTED_MANAGER_ROLES.includes(actor.role);
     if (action === "list") {
-      const rows = await readOpenUncostedRows(db), groups = UncostedSales.summarize(rows);
-      return {groups, openCount: groups.reduce((sum, group) => sum + group.count, 0), canResolve: manager, scanFrom: UNCOSTED_SCAN_FIRST_DATE};
+      const read = await readOpenUncostedRows(db, true), groups = UncostedSales.summarize(read.rows);
+      return {groups, openCount: groups.reduce((sum, group) => sum + group.count, 0), truncated: read.truncated, listLimit: UNCOSTED_LIST_LIMIT,
+        saleValue: Math.round(groups.reduce((sum, group) => sum + (Number(group.saleValue) || 0), 0) * 100) / 100, unvaluedCount: groups.reduce((sum, group) => sum + (Number(group.unvaluedCount) || 0), 0),
+        canResolve: manager, scanFrom: UNCOSTED_SCAN_FIRST_DATE};
     }
     const itemKey = financeText(data.itemKey, 160);
     if (action === "preview") {

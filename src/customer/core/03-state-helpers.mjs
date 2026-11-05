@@ -1,5 +1,5 @@
 
-let categoriesMap={},menuItemsMap={},packagesMap={},adminResMap={},reviewsMap={},availability={},cart={},categoriesListCache=null,menuItemsListCache=null,catalogRenderPending=false;
+let categoriesMap={},menuItemsMap={},packagesMap={},adminResMap={},availability={},cart={},categoriesListCache=null,menuItemsListCache=null,catalogRenderPending=false;
 function canOrder(){return navigator.onLine&&publicOrdersOpen&&customerLiveConnected&&!!auth.currentUser&&!customerAuthProblem;}
 function syncPlaceOrderButton(){
   var button=document.querySelector('.btn-place-order');if(!button||window._placingOrder)return;

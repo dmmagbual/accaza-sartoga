@@ -40,13 +40,15 @@ function shiftReferenceFor(shift) { return durableShiftReference(shift, shift &&
 
 // Staff PINs are set and changed only here (audit SEC-03): the browser never writes or reads a PIN.
 //  create      add a staff profile with its PIN stored as a server-only salted hash
+//  remove      delete a staff profile together with its stored PIN
+//  A PIN only works with its owner's own login, so PINs need not be unique: no uniqueness check
+//  (which would tell a manager that some profile uses a PIN, and could race).
 //  change_pin  change a profile's PIN (manager only; the current PIN is checked when one is set)
 //  secure_all  move every remaining plain PIN or row-stored hash into /posStaffSecrets (idempotent)
 async function managePosStaffPins(db, actor, action, data) {
   const now = Date.now(), pinOf = (value, label) => {const pin = String(value || "").trim(); if (!/^[0-9]{4,6}$/.test(pin)) throw new HttpsError("invalid-argument", `${label} must be 4 to 6 digits.`); return pin;};
   const rows = (/* download-ok: bounded staff roster (one row per staff member) for PIN uniqueness and migration */await db.ref("/posStaff").get()).val() || {}, secretsSnap = /* download-ok: bounded PIN secrets (one row per staff member), server-only */await db.ref("/posStaffSecrets").get(), secrets = secretsSnap.val() || {};
   const pinFor = (id) => secrets[id] && secrets[id].pinHash ? secrets[id] : rows[id];
-  const pinInUse = (pin, exceptId) => Object.keys(rows).some((id) => id !== exceptId && (posPinValid(pin, pinFor(id)) || String((rows[id] || {}).pin || "") === pin));
   if (action === "secure_all") {
     const writes = {}; let moved = 0;
     for (const [id, row] of Object.entries(rows)) {
@@ -64,7 +66,6 @@ async function managePosStaffPins(db, actor, action, data) {
   }
   if (action === "create") {
     const name = posStaffText(data.name, "Staff name", 120), role = ["cashier", "barista", "manager", "staff", "supervisor"].includes(String(data.role || "")) ? String(data.role) : "cashier", pin = pinOf(data.pin, "PIN");
-    if (pinInUse(pin, "")) throw new HttpsError("already-exists", "That PIN is already used by another staff member. Choose a different one.");
     const id = `st_${now.toString(36)}${crypto.randomBytes(3).toString("hex")}`;
     await db.ref().update({[`posStaff/${id}`]: {name, role, ts: now}, [`posStaffSecrets/${id}`]: Object.assign(posPinSecret(pin), {updatedAt: now, updatedBy: actor.uid}),
       [`operationalAudit/${now}_pos_staff_create_${id}`]: {action: "create_pos_staff", sourceType: "posStaff", sourceId: id, staffName: name, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}});
@@ -72,10 +73,14 @@ async function managePosStaffPins(db, actor, action, data) {
   }
   const staffId = posStaffText(data.staffId, "Staff profile", 160), row = rows[staffId];
   if (!row) throw new HttpsError("not-found", "POS staff profile was not found.");
+  if (action === "remove") {
+    await db.ref().update({[`posStaff/${staffId}`]: null, [`posStaffSecrets/${staffId}`]: null,
+      [`operationalAudit/${now}_pos_staff_remove_${staffId}`]: {action: "remove_pos_staff", sourceType: "posStaff", sourceId: staffId, staffName: String(row.name || ""), accountUid: String(row.accountUid || ""), actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}});
+    return {staffId, removed: true};
+  }
   const current = pinFor(staffId), hasPin = !!((current && current.pinHash) || String(row.pin || ""));
   if (hasPin) { const given = String(data.currentPin || "").trim(); if (!(posPinValid(given, current) || (row.pin != null && String(row.pin) === given))) throw new HttpsError("permission-denied", "Current PIN is incorrect."); }
   const pin = pinOf(data.newPin, "New PIN");
-  if (pinInUse(pin, staffId)) throw new HttpsError("already-exists", "That PIN is already used by another staff member. Choose a different one.");
   await db.ref().update(Object.assign({[`posStaffSecrets/${staffId}`]: Object.assign(posPinSecret(pin), {updatedAt: now, updatedBy: actor.uid})}, posPinRowClears(staffId), {
     [`operationalAudit/${now}_pos_pin_change_${staffId}`]: {action: "change_pos_staff_pin", sourceType: "posStaff", sourceId: staffId, staffName: String(row.name || ""), actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}}));
   return {staffId, changed: true};
@@ -89,7 +94,7 @@ exports.managePosStaffIdentity = onCall(
     const db = getDatabase(), actor = await requirePortalUser(db, request), data = request.data || {};
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only a manager can link a POS staff profile.");
     const action = String(data.action || "link");
-    if (action === "create" || action === "change_pin" || action === "secure_all") return managePosStaffPins(db, actor, action, data);
+    if (action === "create" || action === "change_pin" || action === "secure_all" || action === "remove") return managePosStaffPins(db, actor, action, data);
     const staffId = posStaffText(data.staffId, "Staff profile", 160), email = posStaffText(data.email, "Firebase account email", 320).toLowerCase(), pin = String(data.pin || "").trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpsError("invalid-argument", "Enter the registered Firebase account email.");
     if (!/^[0-9]{4,6}$/.test(pin)) throw new HttpsError("invalid-argument", "PIN must be 4 to 6 digits.");

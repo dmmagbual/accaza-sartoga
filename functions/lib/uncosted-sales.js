@@ -95,14 +95,17 @@ function rowId(orderId, variant, lineIndex) { return `${text(orderId, 120)}__${t
 
 function registerRows(input) {
   const order = input.order || {}, orderId = text(input.orderId || order.id, 120), variant = text(input.variant || "sale", 30), rows = {};
+  const orderLines = Array.isArray(order.lineItems) ? order.lineItems : Object.values(order.lineItems || {});
   (input.lines || []).forEach((line) => {
-    const id = rowId(orderId, variant, line.lineIndex);
+    const id = rowId(orderId, variant, line.lineIndex), sold = orderLines[Number(line.lineIndex) || 0] || null;
     rows[id] = {
       id, orderId, variant, lineIndex: Number(line.lineIndex) || 0, itemKey: text(line.itemKey, 160), itemName: text(line.itemName, 160),
       size: text(line.size, 8), qty: n(line.qty), optLabels: Array.isArray(line.optLabels) ? line.optLabels : [],
       reason: REASON_LABELS[line.reason] ? line.reason : "missing_recipe", codes: Array.isArray(line.codes) ? line.codes : [], message: text(line.message, 240),
       shiftId: text(order.shiftId, 120), channel: text(order.channel || "instore", 30),
       occurredAt: n(order.completedAt || order.receivedAt || order.timestamp) || n(input.now),
+      // Audit D-12 (5 Nov 2026): the line's sale value, so the close pack can state revenue with no cost.
+      saleValue: sold ? Math.round(n(sold.qty) * n(sold.unitTotal) * 100) / 100 : 0,
       businessDate: text(input.businessDate, 10), status: "open", createdAt: n(input.now), schemaVersion: SCHEMA_VERSION,
     };
   });
@@ -147,8 +150,9 @@ function summarize(rows) {
     const row = rows[id] || {};
     if (row.status !== "open" && row.status !== "applying") return;
     const key = row.itemKey || "__unknown";
-    const group = groups[key] || (groups[key] = {itemKey: row.itemKey || "", itemName: row.itemName || "Unknown item", count: 0, qty: 0, firstAt: 0, lastAt: 0, reasons: {}, rows: []});
+    const group = groups[key] || (groups[key] = {itemKey: row.itemKey || "", itemName: row.itemName || "Unknown item", count: 0, qty: 0, saleValue: 0, unvaluedCount: 0, firstAt: 0, lastAt: 0, reasons: {}, rows: []});
     group.count++; group.qty = q6(group.qty + n(row.qty));
+    if (row.saleValue != null) group.saleValue = Math.round((group.saleValue + n(row.saleValue)) * 100) / 100; else group.unvaluedCount++;
     const at = n(row.occurredAt);
     if (at && (!group.firstAt || at < group.firstAt)) group.firstAt = at;
     if (at > group.lastAt) group.lastAt = at;
