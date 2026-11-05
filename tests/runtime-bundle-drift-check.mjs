@@ -116,6 +116,8 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('prepareQuarterly
 // Oct 2026: a void re-dated to its sale date can return stock for an archived order, so the
 // inventory reversal has a second trigger on /archivedOrders (same handler, same idempotency).
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('onOrderInventoryReversal')+1,0,'onArchivedOrderInventoryReversal');
+// Read-only audit registers: menu price history and cancelled invoice numbers (5 Nov 2026).
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('updatePublicCatalogVersionOnPackages')+1,0,'getAuditRegisters');
 const functionsSource=fs.readFileSync(path.join(root,'functions/index.js'),'utf8');
 if(!functionsSource.includes('"x-goog-api-key":key')||functionsSource.includes('generateContent?key='))throw new Error('Accaza AI must authenticate Gemini requests with the current x-goog-api-key header, not a URL query key.');
 if(!functionsSource.includes('const ACCAZA_AI_QUERY_ROLES = ["owner","superadmin","admin","manager","cashier"]')||!functionsSource.includes('ACCAZA_AI_QUERY_ROLES.includes(actor.role)'))throw new Error('Accaza AI must authorize cashiers through the server-side query-role allowlist.');

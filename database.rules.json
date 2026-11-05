@@ -90,6 +90,7 @@
     "posTotalChecks": { ".indexOn": "at", ".read": false, ".write": false },
     "posPaymentReferenceChecks": { ".indexOn": "at", ".read": false, ".write": false },
     "paymentReferenceClaims": { ".read": false, ".write": false },
+    // Cancelled invoice numbers and menu price history: server only; read through getAuditRegisters.
     "posInvoiceVoided": { ".indexOn": "at", ".read": false, ".write": false },
     "menuPriceHistory": { ".read": false, ".write": false },
     // Sale lines sold without a usable recipe, awaiting a manager's cost correction. Server only;

@@ -1,7 +1,8 @@
 
 function renderTaxCompliance(){
   var root=document.getElementById('taxComplianceRoot');if(!root)return;
-  root.innerHTML='<div id="taxCardBox"></div><div id="taxReturnsBox"></div>';
+  // Cancelled invoice numbers (audit C-17): read only, loaded when opened (assets/js/admin/audit-registers.mjs).
+  root.innerHTML='<div id="taxCardBox"></div><div id="taxReturnsBox"></div><div class="az-sec">Cancelled invoice numbers</div><div class="pz-card" style="margin-bottom:1rem;"><p class="az-note" style="margin:0 0 0.6rem;">An invoice number is cancelled when it was issued but its sale was not saved. It keeps its place in the series and in the running grand total, so the series has no gaps. Keep this list with your BIR records.</p><button class="pz-btn sec" data-audit-register="cancelled_invoices" data-audit-target="taxCancelledList">Show cancelled invoices</button><div id="taxCancelledList"></div></div>';
   wireTaxCard();
   wireTaxReturns();
 }

@@ -97,6 +97,7 @@ export const GATED = {
   "43g-order-adjustments:processOrderAdjustment": "requirePortalPermission",
   "43h-platform-catchup:recordPlatformCatchup": "requirePortalPermission",
   "43i-uncosted-sales:manageUncostedSales": "requirePortalPermission",
+  "24b-audit-registers:getAuditRegisters": "requirePortalPermission",
   "43j-order-service:manageOrderService": "requirePortalPermission",
   "44-reconciliation:ensureFinancialLedger": "requirePortalPermission",
   "44-reconciliation:repairFinanceDates": "requirePortalPermission",
