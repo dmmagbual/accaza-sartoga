@@ -49,6 +49,20 @@ function voucherLedgerRowLocked(row) {
   return !!row && (row.bankReconciled === true || row.reconciled === true || !!row.reconciledAt || !!row.bankReconciliationId);
 }
 
+function voucherPostedPayment(movement, funding) {
+  return Financial.money((movement.lines || []).reduce((sum, line) => sum + (line.account === funding.account ? Number(line.credit || 0) - Number(line.debit || 0) : 0), 0));
+}
+
+function assertLoanVoucherPosting(id, voucher, movement, paid) {
+  if (movement.sourceType !== "pettyVoucher" || movement.sourceId !== id ||
+    !["loan_repayment", "petty_cash_payment_correction"].includes(movement.type) ||
+    !Number.isFinite(Number(movement.occurredAt)) || Number(movement.occurredAt) <= 0 ||
+    financeDateFromTimestamp(movement.occurredAt) !== financeText(voucher.date, 10) || paid !== Financial.money(voucher.amount) ||
+    !BooksBridge.linesBalanced(movement.lines)) {
+    throw new HttpsError("failed-precondition", "The loan repayment posting does not match this voucher. Reconcile it in Finance Books before continuing.");
+  }
+}
+
 // Commits several financial movements in ONE multi-path update: all are posted or none is.
 // Same guarantees as commitFinancial (period lock, document numbers, per-movement claims,
 // custody-delta check, unsafe-update guard) for a correction that spans two dates.
@@ -222,10 +236,14 @@ async function voidReplaceLegacyPettyVoucher(db, actor, data, id, voucher, next)
 
 async function correctApprovedPettyVoucher(db, actor, data, id, voucher, next, custodyClaims) {
   const now = Date.now(), type = financeText(voucher.transactionType, 40) || "expense";
-  if (VOUCHER_CONTROLLED_TYPES.includes(type) || voucher.conversionMovementId) throw new HttpsError("failed-precondition", "Loan repayments, staff advances and customer refunds cannot be edited in place. Void with approval and record a correcting entry.");
+  const loanDateOnly = type === "loan_repayment";
+  if (!loanDateOnly && (VOUCHER_CONTROLLED_TYPES.includes(type) || voucher.conversionMovementId)) throw new HttpsError("failed-precondition", "This payment cannot be edited in place. Void with approval and record a correcting entry.");
   const funding = advanceFundingAccount(voucher);
   const before = {date: financeText(voucher.date, 10), amount: Financial.money(voucher.amount), category: financeText(voucher.category, 80), payee: financeText(voucher.recipient || voucher.requesterName, 160), supplierId: financeText(voucher.supplierId, 160), purpose: financeText(voucher.purpose, 300), approverName: financeText(voucher.approverName, 160)};
   const after = {date: assertVoucherDateNotFuture(data.date || before.date, now), amount: next.amount, category: next.category, payee: next.payee, supplierId: next.supplierId, purpose: next.purpose, approverName: next.approverName};
+  const correctedAt = cashPaymentOccurredAt({date: after.date});
+  if (loanDateOnly && financeDateFromTimestamp(correctedAt) !== after.date) throw new HttpsError("invalid-argument", "Enter a real calendar date for the loan repayment.");
+  if (loanDateOnly && Object.keys(before).some((key) => key !== "date" && before[key] !== after[key])) throw new HttpsError("invalid-argument", "Only the payment date can be changed on an approved loan repayment.");
   const financialChange = after.date !== before.date || Math.abs(after.amount - before.amount) > 0.009 || after.category !== before.category || after.payee !== before.payee || after.purpose !== before.purpose || after.approverName !== before.approverName || (type === "purchase_advance" && after.supplierId !== before.supplierId);
   const anyChange = financialChange || after.payee !== before.payee || after.purpose !== before.purpose || after.approverName !== before.approverName;
   if (!anyChange) throw new HttpsError("invalid-argument", "Nothing was changed on this cash voucher.");
@@ -241,7 +259,8 @@ async function correctApprovedPettyVoucher(db, actor, data, id, voucher, next, c
   if (selfApproved && approvedRole !== "superadmin") {await db.ref().update(approval.usedWrites); throw new HttpsError("permission-denied", "A cash voucher correction must be approved by a different manager account (only a Super Admin may approve their own correction).");}
   if (after.date.slice(0, 7) !== before.date.slice(0, 7) && !["superadmin", "admin"].includes(approvedRole)) {await db.ref().update(approval.usedWrites); throw new HttpsError("permission-denied", "Moving a cash voucher to another month needs Admin or Super Admin approval.");}
   const writes = Object.assign({}, approval.usedWrites), base = `pettyCashVouchers/${id}`;
-  Object.assign(writes, {[`${base}/date`]: after.date, [`${base}/amount`]: after.amount, [`${base}/category`]: after.category, [`${base}/supplierId`]: after.supplierId, [`${base}/supplierName`]: type === "purchase_advance" ? after.payee : "", [`${base}/requesterName`]: after.payee, [`${base}/recipient`]: after.payee, [`${base}/purpose`]: after.purpose, [`${base}/approverName`]: after.approverName, [`${base}/correctionRevision`]: rev, [`${base}/lastCorrectedAt`]: now, [`${base}/lastCorrectionReason`]: next.reason, [`${base}/lastCorrectedBy`]: approvedBy, [`${base}/lastCorrectedByUid`]: actor.uid, [`${base}/lastCorrectionApprovalId`]: approval.id});
+  Object.assign(writes, {[`${base}/date`]: after.date, [`${base}/correctionRevision`]: rev, [`${base}/lastCorrectedAt`]: now, [`${base}/lastCorrectionReason`]: next.reason, [`${base}/lastCorrectedBy`]: approvedBy, [`${base}/lastCorrectedByUid`]: actor.uid, [`${base}/lastCorrectionApprovalId`]: approval.id});
+  if (!loanDateOnly) Object.assign(writes, {[`${base}/amount`]: after.amount, [`${base}/category`]: after.category, [`${base}/supplierId`]: after.supplierId, [`${base}/supplierName`]: type === "purchase_advance" ? after.payee : "", [`${base}/requesterName`]: after.payee, [`${base}/recipient`]: after.payee, [`${base}/purpose`]: after.purpose, [`${base}/approverName`]: after.approverName});
   if (type === "purchase_advance") {writes[`${base}/allocatedAmount`] = next.allocated; writes[`${base}/remainingAmount`] = Financial.money(after.amount - next.allocated); writes[`${base}/allocationStatus`] = next.allocated > 0 ? (after.amount - next.allocated > 0 ? "partially_allocated" : "fully_allocated") : "unallocated";}
   const record = {rev, before, after, reason: next.reason, approvalId: approval.id, approvedBy, approvedRole, selfApproved, requestedBy: actor.uid, at: now, financial: financialChange};
   if (!financialChange) {
@@ -251,22 +270,25 @@ async function correctApprovedPettyVoucher(db, actor, data, id, voucher, next, c
     return {voucherId: id, action: "correct", revision: rev, financial: false, selfApproved};
   }
   const effective = await voucherEffectivePosting(db, id, voucher);
+  const paidBefore = voucherPostedPayment(effective.movement, funding);
+  if (!(paidBefore > 0)) throw new HttpsError("failed-precondition", "The voucher's current posting does not pay from its funding account. Void with approval and record a new voucher.");
+  if (loanDateOnly) assertLoanVoucherPosting(id, voucher, effective.movement, paidBefore);
   const reverseId = `petty_corr_${id}_r${rev}_rev`, postId = `petty_corr_${id}_r${rev}_post`;
   const detail = {actorName: approvedBy, approvalId: approval.id, voucherNo: financeText(voucher.voucherNo, 60), payee: after.payee, purpose: after.purpose, correctionRevision: rev, correctionReason: next.reason, fundingAccountId: funding.id || "undeposited"};
   const reversal = Financial.reverseMovement(effective.movement, "petty_cash_payment_correction_reversal", `Correction ${rev} reverses`);
   Object.assign(reversal, detail, {category: before.category, reversesMovementId: effective.movementId});
   const nextVoucher = Object.assign({}, voucher, {amount: after.amount, category: after.category, recipient: after.payee, requesterName: after.payee, purpose: after.purpose});
   const posting = type === "purchase_advance" ? {account: `asset:purchase_cash_advance:${id}`, label: after.payee || "Supplier payment pending allocation"} : revolvingFundPosting(nextVoucher);
-  const correctedAt = cashPaymentOccurredAt({date: after.date});
-  const corrected = Financial.movement("petty_cash_payment_correction", "pettyVoucher", id, [Financial.line(posting.account, after.amount, 0, posting.label), Financial.line(funding.account, 0, after.amount, funding.kind === "undeposited" ? "Paid from Undeposited Collection" : "Paid from selected cash account")], Object.assign({}, detail, {occurredAt: correctedAt, category: after.category, correctsMovementId: effective.movementId}));
-  const fundingNet = (lines) => Financial.money((lines || []).reduce((sum, line) => sum + (line.account === funding.account ? Number(line.debit || 0) - Number(line.credit || 0) : 0), 0));
-  const paidBefore = Financial.money(-fundingNet(effective.movement.lines));
-  if (!(paidBefore > 0)) throw new HttpsError("failed-precondition", "The voucher's current posting does not pay from its funding account. Void with approval and record a new voucher.");
+  const correctedLines = loanDateOnly ? effective.movement.lines : [
+    Financial.line(posting.account, after.amount, 0, posting.label),
+    Financial.line(funding.account, 0, after.amount, funding.kind === "undeposited" ? "Paid from Undeposited Collection" : "Paid from selected cash account"),
+  ];
+  const corrected = Financial.movement("petty_cash_payment_correction", "pettyVoucher", id, correctedLines, Object.assign({}, detail, {occurredAt: correctedAt, category: after.category, correctsMovementId: effective.movementId}));
   if (funding.kind === "account") {
     const accountId = funding.id;
     const ledger = (await db.ref("/cfLedger").orderByChild("linkId").equalTo(id).limitToLast(100).get()).val() || {}, rows = Object.values(ledger), effectiveRows = rows.filter((row) => financeText(row && row.movementId, 160) === effective.movementId);
     if (rows.length >= 100) throw new HttpsError("failed-precondition", "This voucher has too many bank-register amendments to correct safely. Review it in Finance Books and use a controlled void.");
-    if (rows.some(voucherLedgerRowLocked)) throw new HttpsError("failed-precondition", `This payment or an earlier correction is already reconciled to the ${funding.kind === "cash_on_hand" ? "cash-register control" : "bank statement"}. Un-reconcile it first, or void with approval and record a new voucher.`);
+    if (rows.some((row) => voucherLedgerRowLocked(row) || (loanDateOnly && row && row.statementId))) throw new HttpsError("failed-precondition", `This payment or an earlier correction is already reconciled to the ${funding.kind === "cash_on_hand" ? "cash-register control" : "bank statement"}. Un-reconcile it first, or void with approval and record a new voucher.`);
     const oldDate = financeDateFromTimestamp(Number(effective.movement.occurredAt) || now);
     if (effectiveRows.length !== 1 || effectiveRows[0].accountId !== accountId || effectiveRows[0].dir !== "out" || Math.abs(Financial.money(effectiveRows[0].amount) - paidBefore) > 0.009 || financeText(effectiveRows[0].date, 10) !== oldDate) throw new HttpsError("failed-precondition", `The voucher's ${funding.kind === "cash_on_hand" ? "cash-register" : "bank-register"} entry is missing or does not match Finance Books. Repair the original cash-payment register link before correcting this voucher.`);
     writes[`cfLedger/fm_${reverseId}`] = cashLedgerRecord({date: oldDate, accountId, dir: "in", category: "Cash voucher correction (reversal)", amount: paidBefore, party: before.payee, ref: financeText(voucher.voucherNo, 60)}, reverseId, Object.assign({}, reversal, {sourceType: "pettyVoucher", sourceId: id}), actor);
@@ -277,6 +299,25 @@ async function correctApprovedPettyVoucher(db, actor, data, id, voucher, next, c
     await claimCustodyPool(db, postId, custodyClaims);
     const [cashControl, openRows] = await Promise.all([currentCashBalances(db, now), openCustodyRows(db)]), custodyTotal = Financial.money(Object.values(openRows).reduce((sum, row) => sum + Number(row && row.remaining || 0), 0)), booksTotal = Financial.money(Number(cashControl.balances && cashControl.balances.undepositedCents || 0) / 100);
     if (Math.abs(custodyTotal - booksTotal) > 0.009) throw new HttpsError("failed-precondition", `Undeposited Collection must be reconciled before correcting this voucher. Custody is ${custodyTotal.toFixed(2)} and Finance Books is ${booksTotal.toFixed(2)}.`);
+    if (loanDateOnly) {
+      custodyAllocations = effective.movement.custodyAllocations || {};
+      const entries = Object.entries(custodyAllocations);
+      if (entries.length > 500 || entries.some(([, amount]) => !(Number(amount) > 0)) ||
+        Financial.money(entries.reduce((sum, [, amount]) => sum + Number(amount), 0)) !== paidBefore) {
+        throw new HttpsError("failed-precondition", "The cash collections that funded this loan payment could not be verified.");
+      }
+      // Keep historical custody in step with the GL across both posting dates.
+      reversal.custodyRestoredAllocations = custodyAllocations;
+      if (after.date < before.date) {
+        for (let offset = 0; offset < entries.length; offset += 25) {
+          const collected = await Promise.all(entries.slice(offset, offset + 25).map(async ([custodyId]) =>
+            (await db.ref(`/cashCustody/${financeKey(custodyId, "Custody ID")}/closedAt`).get()).val()));
+          if (collected.some((timestamp) => !(Number(timestamp) > 0) || financeDateFromTimestamp(timestamp) > after.date)) {
+            throw new HttpsError("failed-precondition", "The loan payment cannot be dated before the cash that funded it was collected.");
+          }
+        }
+      }
+    }
     const delta = Financial.money(after.amount - paidBefore);
     if (delta > 0) {
       const out = await poolCustodyOutflow(db, delta);

@@ -106,10 +106,10 @@ const fx = loadFunctions(db, {now: NOW, expose: ['voucherChangeFingerprint'], li
 const F = fx.exports, fingerprint = fx.internal.voucherChangeFingerprint;
 const val = async (p) => (await db.ref(p).get()).val();
 let approvals = 0;
-async function approve(voucherId, change, {by = 'super_uid', role = 'superadmin', name = 'SuperdaD'} = {}) {
+async function approve(voucherId, change, {by = 'super_uid', role = 'superadmin', name = 'SuperdaD', approvedAt = NOW} = {}) {
   const id = `approval_t${++approvals}`;
   const bound = Object.assign({approverName: '', reason: 'Wrong date entered'}, change);
-  await db.ref(`financialApprovals/${id}`).set({action: 'correct_petty_voucher', sourceId: voucherId, amount: bound.amount, approvedBy: by, approvedRole: role, approvedName: name, approvedAt: NOW, expiresAt: NOW + 300000, changeHash: fingerprint(voucherId, bound)});
+  await db.ref(`financialApprovals/${id}`).set({action: 'correct_petty_voucher', sourceId: voucherId, amount: bound.amount, approvedBy: by, approvedRole: role, approvedName: name, approvedAt, expiresAt: approvedAt + 300000, changeHash: fingerprint(voucherId, bound)});
   return id;
 }
 async function approveLegacy(voucherId, change, {by = 'super_uid', role = 'superadmin', name = 'SuperdaD'} = {}) {
@@ -288,7 +288,93 @@ const beforeVoid = await val('pettyCashVouchers/V_BANK'), afterVoid = Object.ass
 await F.onPettyVoucherFinancial({params: {voucherId: 'V_BANK'}, data: {before: {val: () => beforeVoid}, after: {val: () => afterVoid}}});
 assert.deepEqual(await bankGlVsRegister('acc_bank'), [0, 0], 'voiding a corrected bank voucher clears both the GL and bank register');
 
-/* 13. Screens. */
+/* 13. Approved loan repayment date correction preserves the exact split and funding. */
+const loanNow = at('2026-11-06'), loanId = 'V_LOAN', loanAmount = 3218.22, oldLoanDate = '2026-11-02', newLoanDate = '2026-10-02';
+const loanFx = loadFunctions(db, {now: loanNow, expose: ['reversalApprovalFingerprint'], libOverrides: {'./lib/write-safety': writeSafety}});
+const loanChange = {expectedRev: 0, date: newLoanDate, amount: loanAmount, category: 'loan_repayment', payee: 'Loan repayment', supplierId: '', purpose: 'Monthly loan repayment', approverName: '', reason: 'Wrong date entered'};
+const loan = bankVoucher({voucherNo: 'PV-202611-0009', amount: loanAmount, date: oldLoanDate, transactionType: 'loan_repayment', category: loanChange.category, recipient: loanChange.payee, requesterName: loanChange.payee, purpose: loanChange.purpose, conversionMovementId: 'controlled_pending', debitAccountCode: '2300', interestAccountCode: '6079', interestAmount: 218.22});
+const loanLines = [L('coa:2300', 3000, 0), L('coa:6079', 218.22, 0), L('asset:cash_account:acc_bank', 0, loanAmount)];
+const originalLoanMovement = {type: 'loan_repayment', sourceType: 'pettyVoucher', sourceId: loanId, occurredAt: at(oldLoanDate), lines: loanLines};
+await db.ref(`pettyCashVouchers/${loanId}`).set(loan);
+await db.ref(`financialMovements/petty_${loanId}`).set(originalLoanMovement);
+const loanLedgerPath = `cfLedger/fm_petty_${loanId}`;
+await db.ref(loanLedgerPath).set({accountId: 'acc_bank', dir: 'out', amount: loanAmount, date: oldLoanDate, movementId: `petty_${loanId}`, linkId: loanId, statementId: 'nov-statement'});
+const loanCall = (data) => loanFx.exports.managePettyVoucher({auth: {uid: 'super_uid', token: {}}, data: {voucherId: loanId, ...data}});
+const loanCorrect = (change, approvalId) => loanCall({...change, action: 'correct', approvalId});
+const loanApproval = (opts = {}) => approve(loanId, loanChange, {approvedAt: loanNow, ...opts});
+await refused(loanCorrect({...loanChange, amount: 3000}), /Only the payment date/, 'an approved loan edit refuses other fields');
+await refused(loanCorrect({...loanChange, date: '2026-09-31'}), /real calendar date/, 'a loan edit refuses dates that would roll into a different month');
+await refused(loanCorrect(loanChange, await loanApproval({by: 'mgr_uid', role: 'manager'})), /needs Admin or Super Admin/, 'a loan moving across months needs Admin approval');
+await db.ref('accountingPeriods/2026-10').set({status: 'closed'});
+await refused(loanCorrect(loanChange, await loanApproval()), /closed/i, 'a loan cannot be backdated into a closed month');
+await db.ref('accountingPeriods/2026-10').set(null);
+await refused(loanCorrect(loanChange, await loanApproval()), /already reconciled/, 'a statement-linked bank payment cannot be moved');
+await db.ref(`${loanLedgerPath}/statementId`).set(null);
+const editLoanApprovalId = await loanApproval();
+const loanResult = await loanCorrect(loanChange, editLoanApprovalId);
+const loanReversal = await val(`financialMovements/${loanResult.reversalMovementId}`);
+const loanRepost = await val(`financialMovements/${loanResult.movementId}`);
+assert.equal(loanReversal.occurredAt, at(oldLoanDate));
+assert.equal(loanRepost.occurredAt, at(newLoanDate));
+assert.deepEqual(loanRepost.lines, loanLines);
+assert.deepEqual(await val(`financialMovements/petty_${loanId}`), originalLoanMovement, 'the original loan posting stays intact');
+assert.deepEqual(loanReversal.lines.map(({account, debit, credit}) => [account, debit, credit]), loanLines.map(({account, debit, credit}) => [account, credit, debit]));
+const editedLoan = await val(`pettyCashVouchers/${loanId}`);
+for (const [field, value] of Object.entries(loan)) assert.deepEqual(editedLoan[field], field === 'date' ? newLoanDate : value);
+for (const [movementId, date, dir] of [[loanResult.reversalMovementId, oldLoanDate, 'in'], [loanResult.movementId, newLoanDate, 'out']]) {
+  const row = await val(`cfLedger/fm_${movementId}`);
+  assert.deepEqual([row.date, row.dir, row.amount, row.accountId], [date, dir, loanAmount, 'acc_bank']);
+}
+await refused(loanCorrect(loanChange, editLoanApprovalId), /Nothing was changed/, 'retry cannot repost an already applied date correction');
+const voidLoan = {action: 'void', accountingDate: '2026-11-06', reason: 'Duplicate payment', amount: loanAmount, approvalId: 'loan_void_approval'};
+await db.ref(`financialApprovals/${voidLoan.approvalId}`).set({
+  action: 'void_petty_voucher', sourceId: loanId, amount: loanAmount, approvedBy: 'mgr_uid', approvedRole: 'manager', approvedName: 'Manager', approvedAt: loanNow, expiresAt: loanNow + 300000,
+  changeHash: loanFx.internal.reversalApprovalFingerprint('void_petty_voucher', loanId, voidLoan),
+});
+await loanCall(voidLoan);
+const voidedLoanMovement = await val(`financialMovements/petty_void_${loanId}`);
+assert.equal(voidedLoanMovement.reversesMovementId, loanResult.movementId, 'void reverses the effective loan posting');
+assert.deepEqual(voidedLoanMovement.lines, loanReversal.lines.map((line, i) => ({...line, label: 'Void controlled cash payment · ' + loanLines[i].label})));
+assert.equal(await val(`pettyCashVouchers/${loanId}/status`), 'reversed');
+
+const poolAccount = 'asset:cash_awaiting_deposit', poolCustodyId = 'C_LOAN', poolRemaining = 1781.78;
+const poolLoan = {...loan, fundingAccountId: 'undeposited', cashCustodyAllocations: {[poolCustodyId]: loanAmount}};
+const poolLoanMovement = {...originalLoanMovement, lines: [...loanLines.slice(0, 2), L(poolAccount, 0, loanAmount)], custodyAllocations: poolLoan.cashCustodyAllocations};
+const poolCustody = {id: poolCustodyId, amount: 5000, remaining: poolRemaining, paidOutAmount: loanAmount, closedAt: at('2026-10-05')};
+const poolDb = createFakeDatabase({
+  admins: world().admins,
+  pettyCashVouchers: {[loanId]: poolLoan},
+  cashBalanceSummary: {meta: {schemaVersion: 4, complete: true}, balances: {undepositedCents: 178178}},
+  undepositedPageIndexMeta: {schemaVersion: 1, complete: true},
+  cashCustody: {[poolCustodyId]: poolCustody},
+  cashCustodyOpenIndex: {[poolCustodyId]: poolCustody},
+  financialMovements: {
+    [`petty_${loanId}`]: poolLoanMovement,
+    collected: {type: 'opening_balance', occurredAt: at('2026-10-01'), lines: [L(poolAccount, 5000, 0), L('equity:opening_balance', 0, 5000)]},
+  },
+}, {rules});
+const poolFx = loadFunctions(poolDb, {now: loanNow, libOverrides: {'./lib/write-safety': writeSafety}}).exports;
+const correctPoolLoan = async () => {
+  const approvalId = await loanApproval();
+  const path = `financialApprovals/${approvalId}`;
+  await poolDb.ref(path).set(await val(path));
+  return poolFx.managePettyVoucher({auth: {uid: 'super_uid', token: {}}, data: {...loanChange, voucherId: loanId, action: 'correct', approvalId}});
+};
+await refused(correctPoolLoan(), /before the cash that funded it/, 'cannot backdate an Undeposited loan ahead of its collections');
+await poolDb.ref(`cashCustody/${poolCustodyId}/closedAt`).set(at('2026-10-01'));
+await poolDb.ref(`cashCustodyOpenIndex/${poolCustodyId}/closedAt`).set(at('2026-10-01'));
+const poolResult = await correctPoolLoan();
+const poolMovements = (await poolDb.ref('financialMovements').get()).val(), loanCustody = (await poolDb.ref('cashCustody').get()).val();
+assert.equal(loanCustody[poolCustodyId].remaining, poolRemaining);
+assert.deepEqual(poolMovements[poolResult.movementId].custodyAllocations, poolLoan.cashCustodyAllocations);
+assert.deepEqual(poolMovements[poolResult.reversalMovementId].custodyRestoredAllocations, poolLoan.cashCustodyAllocations);
+const FinancialClose = createRequire(import.meta.url)('../functions/lib/financial-close.js');
+for (const date of ['2026-10-01', '2026-10-02', '2026-11-02']) {
+  const close = FinancialClose.buildClose({businessDate: date, cutoff: at(date) + 1000, financialMovements: poolMovements, cashCustody: loanCustody});
+  assert.equal(close.controlTotals.cashCustodyDifference, 0, `custody matches Books at the ${date} close`);
+}
+
+/* 14. Screens. */
 const fund = read('src/admin/register/40-revolving-fund.js'), approval = read('assets/js/admin/manager-approval.mjs');
 assert.ok(fund.includes("fields.push({name:'date',label:'Payment date',type:'date',required:true,max:today,value:v.date||today,validate:noFuture"), 'Edit offers the date on approved vouchers too, never in the future');
 assert.ok(fund.includes("{change:change,requireIndependent:authz.role!=='superadmin'}"), 'Edit asks a different approver for every role except Super Admin');

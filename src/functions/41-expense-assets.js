@@ -68,18 +68,35 @@ async function postControlledPettyVoucher(db,id,before,after,actor) {
   if(!isVoid&&after&&advanceFundingAccount(after).kind==="undeposited")return withCustodyPool(db,`petty_${id}`,()=>postControlledPettyVoucherUnlocked(db,id,before,after,actor));
   return postControlledPettyVoucherUnlocked(db,id,before,after,actor);
 }
-async function postControlledPettyVoucherUnlocked(db,id,before,after,actor) {
+async function postControlledPettyVoucherUnlocked(db,id,before,after,actor,extraWrites = {}) {
   const value=Financial.money(after.amount),type=financeText(after.transactionType,40),isRefund=type==="customer_refund",funding=advanceFundingAccount(after),posting=revolvingFundPosting(after),booksChart=(type==="loan_repayment"||type==="staff_advance"?await ensureBooksChart(db):null),now=Date.now(),isVoid=after.voided===true&&before.voided!==true;
   if(!(value>0)||(!isVoid&&after.status!=="approved")||(isVoid&&after.status!=="reversed"))return false;
   const movementId=isVoid?`petty_void_${id}`:`petty_${id}`;
   if((await db.ref(`/financialMovements/${movementId}`).get()).exists())return true;
-  let writes={},custodyOut={writes:{},allocations:{},shortfall:0},lines=[],payable=null;
+  let writes=Object.assign({},extraWrites),custodyOut={writes:{},allocations:{},shortfall:0},lines=[],payable=null,reversesMovementId="";
   if(!isVoid&&funding.kind==="undeposited"){custodyOut=await poolCustodyOutflow(db,value);if(custodyOut.shortfall>0.009)throw new HttpsError("failed-precondition",`Cash payment exceeds available Undeposited Collection by ${custodyOut.shortfall.toFixed(2)}.`);Object.assign(writes,custodyOut.writes);}
   if(isRefund){payable=(await db.ref(`/payables/${financeKey(after.payableId,"Customer refund payable ID")}`).get()).val();if(!payable||payable.type!=="customer_change_refund")throw new HttpsError("failed-precondition","The linked customer refund payable is missing.");const current=Financial.money(payable.remainingAmount!=null?payable.remainingAmount:payable.amount),next=Financial.money(isVoid?current+value:current-value);if(!isVoid&&payable.status!=="open")throw new HttpsError("failed-precondition","The linked customer refund payable is no longer open.");if(!isVoid&&value>current+0.009)throw new HttpsError("failed-precondition","The refund payment exceeds the payable's remaining balance.");if(isVoid&&next>Financial.money(payable.amount)+0.009)throw new HttpsError("failed-precondition","Reversing this refund would exceed the original payable.");const liability=payable.liabilityAccount||`liability:customer_change_refund:${after.payableId}`,asset=funding.account;lines=isVoid?[Financial.line(asset,value,0,"Reverse customer refund"),Financial.line(liability,0,value,"Restore customer refund payable")]:[Financial.line(liability,value,0,"Customer change / refund paid"),Financial.line(asset,0,value,"Customer change / refund paid")];writes[`payables/${after.payableId}/status`]=isVoid?(next>0?"open":"paid"):(next>0?"open":"paid");writes[`payables/${after.payableId}/remainingAmount`]=next;writes[`payables/${after.payableId}/paidAmount`]=Financial.money(Number(payable.paidAmount||0)+(isVoid?-value:value));writes[`payables/${after.payableId}/settlements/${id}/status`]=isVoid?"reversed":"posted";writes[`payables/${after.payableId}/settlements/${id}/amount`]=value;writes[`payables/${after.payableId}/settlements/${id}/movementId`]=movementId;writes[`payables/${after.payableId}/settlements/${id}/accountId`]=funding.id;writes[`payablePayments/${id}`]={payableId:after.payableId,amount:value,date:after.date,reference:after.voucherNo,movementId,status:isVoid?"reversed":"posted",ts:now,createdBy:actor.uid};if(payable.discrepancyId){writes[`discrepancies/${payable.discrepancyId}/refundPaidAmount`]=Financial.money(Number(payable.paidAmount||0)+(isVoid?-value:value));writes[`discrepancies/${payable.discrepancyId}/refundRemainingAmount`]=next;writes[`discrepancies/${payable.discrepancyId}/financialStatus`]=next>0?"partially_refunded":"refunded";}}
-  else {const original=isVoid?(await db.ref(`/financialMovements/petty_${id}`).get()).val():null;if(isVoid&&(!original||!Array.isArray(original.lines)))throw new HttpsError("failed-precondition","The original controlled cash payment movement is missing.");const debit=isVoid?Financial.reverseMovement(Object.assign({id:`petty_${id}`},original),posting.movementType+"_void","Void controlled cash payment").lines:pettyDebitLines(after,posting,value,booksChart);lines=isVoid?debit:debit.concat([Financial.line(funding.account,0,value,"Paid from selected funding account")]);}
+  else if (isVoid) {
+    const correctedLoan = type === "loan_repayment" && before.effectivePosting;
+    const originalId = `petty_${id}`;
+    let original;
+    if (correctedLoan) {
+      const effective = await voucherEffectivePosting(db, id, before);
+      original = effective.movement;
+      assertLoanVoucherPosting(id, before, original, voucherPostedPayment(original, funding));
+      reversesMovementId = effective.movementId;
+    } else {
+      original = (await db.ref(`/financialMovements/${originalId}`).get()).val();
+      if (!original || !Array.isArray(original.lines)) throw new HttpsError("failed-precondition", "The original controlled cash payment movement is missing.");
+    }
+    lines = Financial.reverseMovement(original, posting.movementType + "_void", "Void controlled cash payment").lines;
+  } else {
+    lines = pettyDebitLines(after,posting,value,booksChart).concat([Financial.line(funding.account,0,value,"Paid from selected funding account")]);
+  }
   const reversalOccurredAt=cashVoucherReversalOccurredAt(after);
   if(isVoid&&funding.kind==="undeposited")Object.assign(writes,poolCustodyInflowRecord(movementId,value,isRefund?"Customer refund reversed":"Controlled cash payment reversed",reversalOccurredAt,movementId));
   const movement=Financial.movement(isVoid?(isRefund?"customer_change_refund_reversed":posting.movementType+"_void"):(isRefund?"customer_change_refunded":posting.movementType),"pettyVoucher",id,lines,{occurredAt:isVoid?reversalOccurredAt:cashPaymentOccurredAt(after),actorName:after.approvedBy||actor.role,voucherNo:financeText(after.voucherNo,60),payee:financeText(after.recipient||after.requesterName,160),purpose:financeText(after.purpose,300),fundingAccountId:funding.id||"undeposited",custodyAllocations:custodyOut.allocations});
+  if (reversesMovementId) movement.reversesMovementId = reversesMovementId;
   if(funding.kind!=="undeposited")writes[`cfLedger/fm_${movementId}`]=cashLedgerRecord({date:isVoid?financeDateFromTimestamp(reversalOccurredAt):financeText(after.date,10),accountId:funding.id,dir:isVoid?"in":"out",category:isRefund?"Customer refund payable":posting.label,amount:value,party:financeText(after.recipient||after.requesterName,160),ref:financeText(after.voucherNo,60)},movementId,movement,actor);
   await commitFinancial(db,movementId,movement,actor,Object.assign({},writes,funding.kind==="undeposited"?{[`pettyCashVouchers/${id}/cashCustodyStatus`]:isVoid?"restored":"allocated",[`pettyCashVouchers/${id}/cashCustodyAllocations`]:custodyOut.allocations||{}}:{}));return true;
 }
