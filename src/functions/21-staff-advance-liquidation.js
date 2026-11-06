@@ -15,6 +15,7 @@ exports.managePettyVoucher = onCall(
       const replacingLegacy = action === "void_replace_legacy";
       if (replacingLegacy && voucher.voided === true && voucher.replacedByVoucherId) {const replacement=(await db.ref(`/pettyCashVouchers/${financeKey(voucher.replacedByVoucherId,"Replacement voucher ID")}`).get()).val()||{};return{voucherId:id,replacementVoucherId:voucher.replacedByVoucherId,replacementVoucherNo:financeText(replacement.voucherNo||voucher.replacedByVoucherNo,60),action,duplicate:true};}
       if (!["pending", "approved"].includes(voucher.status) || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active pending or approved cash payment can be edited.");
+      if (voucher.transactionType === "loan_repayment" && voucher.status !== "approved") throw new HttpsError("failed-precondition", "Only an approved loan repayment supports a date correction.");
       if (replacingLegacy && (voucher.status !== "approved" || !voucher.correctionMovementIds || voucher.effectivePosting)) throw new HttpsError("failed-precondition", "Guided void and replace is only for an active voucher corrected under the earlier method.");
       if (voucher.returnedAt) throw new HttpsError("failed-precondition", "A returned supplier payment cannot be edited. Record a new correcting payment instead.");
       const nextAmount = Financial.money(data.amount), nextPurpose = financeText(data.purpose, 300), nextApprover = financeText(data.approverName, 160), reason = financeText(data.reason, 500), type = financeText(voucher.transactionType, 40) || "expense", selectedSupplier=type==="purchase_advance"?await requireActiveSupplier(db,data.supplierId,data.payee):null,nextPayee=selectedSupplier?selectedSupplier.name:financeText(data.payee,160),nextSupplierId=selectedSupplier?selectedSupplier.id:"";
@@ -161,6 +162,16 @@ exports.managePettyVoucher = onCall(
     const issuedVoucherNo = action === "approve" ? await cashVoucherNumber(db, voucher, id) : "";
     const approval = await claimManagerApproval(db, data, approvalAction, id, value, `${approvalAction}_${id}`, null, approvalExpectedChangeHash);
     const approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
+    if (action === "void" && voucher.transactionType === "loan_repayment" && voucher.effectivePosting) {
+      const reversalAccountingTimestamp = cashPaymentOccurredAt({date: reversalAccountingDate});
+      const voidFields = {voided: true, status: "reversed", voidReason: reason, voidedBy: approvedBy, voidedByUid: approval.record.approvedBy, voidedAt: now, reversalAccountingDate, reversalAccountingTimestamp, voidApprovalId: approval.id};
+      const writes = Object.assign({}, approval.usedWrites, {
+        [`operationalAudit/${now}_${id}`]: operationalAuditRecord("void_petty_voucher", "pettyVoucher", id, actor, {approvalId: approval.id, amount: value, reversalAccountingDate, processedAt: now, evidenceType: hasReceipt ? "receipt" : "manager_reviewed_explanation", explanation: financeText(voucher.purpose, 300)}),
+      });
+      for (const [field, fieldValue] of Object.entries(voidFields)) writes[`pettyCashVouchers/${id}/${field}`] = fieldValue;
+      await postControlledPettyVoucherUnlocked(db, id, voucher, Object.assign({}, voucher, voidFields), actor, writes);
+      return {voucherId: id, action, at: now};
+    }
     if (action === "approve") {
       const requesterName = financeText(voucher.requesterName, 160).toLowerCase();
       const managerNames = [approval.record.approvedName, String(approval.record.approvedEmail || "").split("@")[0]].map((x) => financeText(x, 160).toLowerCase()).filter(Boolean);
