@@ -4,7 +4,13 @@ import{verificationPolicy,paymentState,orderItemsHtml}from"./order-card-parts.mj
 import{orderArchiveBlock}from"./order-archive-eligibility.mjs";
 import{installWebsiteOrderRejection}from"./order-rejection-dialog.mjs";
 
-export function shouldAlertOrder(o){return !!o&&o.source!=='pos'&&['Pending','Confirmed','Preparing','Ready'].includes(String(o.status||'Pending'));}
+export function shouldAlertOrder(o,startedAt,now){
+  const clockSkewMs=60_000;
+  return !!o&&!o.voided&&(o.source==='online'||(!o.source&&o.channel==='online'))
+    &&['Pending','Confirmed','Preparing','Ready'].includes(o.status)
+    &&Number.isSafeInteger(o.timestamp)&&o.timestamp>0
+    &&o.timestamp>=startedAt-clockSkewMs&&o.timestamp<=now+clockSkewMs;
+}
 
 function createOrderAdmin(deps){
   const escHtml=deps.escHtml,safeImageSrc=deps.safeImageSrc;

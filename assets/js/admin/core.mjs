@@ -3,9 +3,9 @@ import{createSubscriptionHub}from"./realtime-hub.mjs?v=758";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
-import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=758";
+import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=759";
 import{archiveOutcome}from"./order-display.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=758";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=759";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -180,7 +180,8 @@ function getItemOptionGroups(item){
 
 let overviewCashAccounts={},categoriesMap={},menuItemsMap={},adminOrdersMap={},overviewOrdersMap={},archivedOrdersMap={},feedbacksMap={},reviewsMap={},availability={},cart={},overviewOrdersLoaded=false,archivedOrdersLoaded=false,overviewCatType={};
 let optionGroupsMap={},ogLoaded=false,optSeedStarted=false,itemOptMigrated=false;
-let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
+let orderAlertsStartedAt=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
+const seenOrderIds=new Set();
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp';
 let adminLoggedIn=false;
 let chatOpen=false,chatStarted=false;
@@ -413,15 +414,18 @@ window.ackNewOrders=function(){
 function checkMyReadyOrders(){return customerOrderTracker.checkReady();}
 (function(){var un=function(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}document.removeEventListener('touchstart',un);document.removeEventListener('click',un);};document.addEventListener('touchstart',un,{passive:true});document.addEventListener('click',un);})();
 subscriptionHub.subscribe('activeOrders',snap=>{
-  var prevIds=knownOrderIds;
   var previousOrders=adminOrdersMap;
   adminOrdersMap=snap.val()||{};
-  var ids=Object.keys(adminOrdersMap);
-  if(prevIds&&(adminLoggedIn||staffLoggedIn)){
-    var fresh=ids.filter(function(id){return prevIds.indexOf(id)===-1;}).map(function(id){return adminOrdersMap[id];}).filter(shouldAlertOrder);
-    if(fresh.length){notifyNewOrders(fresh);if(window.AccazaTelemetry)fresh.forEach(function(o){var age=Date.now()-Number(o.timestamp||Date.now());window.AccazaTelemetry.metric('realtime_order_arrival',Math.max(0,age),true);});}
+  const now=Date.now();
+  const initial=orderAlertsStartedAt===null;
+  if(initial)orderAlertsStartedAt=now;
+  const fresh=[];
+  for(const [id,order] of Object.entries(adminOrdersMap)){
+    if(seenOrderIds.has(id))continue;
+    seenOrderIds.add(id);
+    if(!initial&&(adminLoggedIn||staffLoggedIn)&&shouldAlertOrder(order,orderAlertsStartedAt,now))fresh.push(order);
   }
-  knownOrderIds=ids;
+  if(fresh.length){notifyNewOrders(fresh);if(window.AccazaTelemetry)fresh.forEach(function(o){window.AccazaTelemetry.metric('realtime_order_arrival',Math.max(0,now-o.timestamp),true);});}
   if(adminLoggedIn||staffLoggedIn){var ot=document.getElementById('tab-orders'),dt=document.getElementById('tab-dashboard'),ct=document.getElementById('tab-appcustomers');if(ot&&ot.style.display!=='none')patchOrderCards(previousOrders,adminOrdersMap);if(dt&&dt.style.display!=='none')renderDashboard();if(ct&&ct.style.display!=='none')renderAppCustomers();}
   updateStats();renderCustomerOrders();checkMyReadyOrders();
 });

@@ -40,11 +40,35 @@ assert(core.includes("subscriptionHub.activate('availability');renderAvailabilit
 assert(core.includes('ogLoaded=true')&&catalogAdmin.includes('optionsReady()')&&catalogAdmin.includes('Loading options…'),'Menu Availability must distinguish an option-group load in progress from a confirmed empty database node');
 assert(core.includes('var d=snap.val()||{}')&&core.includes('Object.keys(d).length'),'Cached option-group snapshots must not require Firebase-only snapshot methods');
 assert(core.includes('if(adminLoggedIn){renderOptionManager();renderAvailabilityAdmin();}'),'Loaded option groups must rebuild Menu Availability item checklists on every manager device');
-const alertSource=(adminOrders.match(/function shouldAlertOrder\(o\)\{[^}]+\}/)||[])[0];
-assert(alertSource&&core.includes('.filter(shouldAlertOrder)'),'New-order ringing must use one tested actionable-order policy');
+const alertSource=(adminOrders.match(/function shouldAlertOrder\([^)]*\)\{[^}]+\}/)||[])[0];
+assert(alertSource,'New-order ringing must use one tested actionable-order policy');
 const shouldAlertOrder=Function(alertSource+';return shouldAlertOrder')();
-assert(shouldAlertOrder({source:'online',status:'Pending'})&&shouldAlertOrder({source:'online',status:'Ready'}),'Actionable online orders must still ring');
-for(const order of [{source:'online',status:'Completed'},{source:'online',status:'Received'},{source:'online',status:'Rejected'},{source:'pos',status:'Pending'}])assert(!shouldAlertOrder(order),'Completed, received, rejected, and POS hydration must never ring');
+const startedAt=1_800_000_000_000;
+const websiteOrder={source:'online',channel:'online',status:'Pending',timestamp:startedAt+1000};
+assert(shouldAlertOrder(websiteOrder,startedAt,startedAt+1000)&&shouldAlertOrder({...websiteOrder,source:undefined,status:'Ready'},startedAt,startedAt+1000),'Actionable online orders must still ring');
+for(const overrides of [
+  {status:'Completed'},{status:'Received'},{status:'Rejected'},{status:undefined},
+  {source:'pos'},{source:undefined,channel:'grabfood'},{voided:true},
+  {timestamp:undefined},{timestamp:0},{timestamp:startedAt-60001},{timestamp:startedAt+61001}
+])assert(!shouldAlertOrder({...websiteOrder,...overrides},startedAt,startedAt+1000),'Ineligible order must never ring: '+JSON.stringify(overrides));
+
+const alertState=core.match(/let orderAlertsStartedAt[^\n]+\nconst seenOrderIds[^\n]+/)[0];
+const alertListener=core.slice(core.indexOf("subscriptionHub.subscribe('activeOrders'"),core.indexOf("subscriptionHub.subscribe('orders'"));
+const runOrderSnapshots=Function('snapshots','startedAt',alertSource+alertState+`
+  let adminOrdersMap={}, now=startedAt;
+  const adminLoggedIn=true, staffLoggedIn=false, window={}, document={getElementById(){}};
+  const Date={now:()=>now}, notified=[];
+  const updateStats=()=>{}, renderCustomerOrders=()=>{}, checkMyReadyOrders=()=>{};
+  const notifyNewOrders=orders=>notified.push(...orders.map(o=>o.id));
+  const subscriptionHub={subscribe(path, callback){
+    for(const rows of snapshots){callback({val:()=>rows});now+=1000;}
+  }};
+`+alertListener+'return notified;');
+const partialRows=Object.fromEntries(Array.from({length:28},(_,i)=>['partial-'+i,{paymentVerification:{verifiedAt:startedAt},projectionVersion:2}]));
+const existing={...websiteOrder,id:'existing',timestamp:startedAt-1000};
+const restored={...websiteOrder,id:'restored',timestamp:startedAt-3600000};
+const arrived={...websiteOrder,id:'arrived'};
+assert(runOrderSnapshots([{existing},{...partialRows,restored},{existing,arrived},{},{arrived}],startedAt).join(',')==='arrived','Initial orders, partial rows, and restored history must stay quiet, and a genuine arrival must ring only once');
 const priorStorage=globalThis.localStorage,priorError=console.error,storage={accaza_admin_master_v2:JSON.stringify({version:'old',optionGroups:{temperature:{name:'Temperature'}}})};
 globalThis.localStorage={getItem:k=>storage[k]||null,setItem:(k,v)=>{storage[k]=v;},removeItem:k=>{delete storage[k];}};
 console.error=()=>{};
