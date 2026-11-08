@@ -12,7 +12,8 @@ import {loadFunctions} from './helpers/functions-sandbox.mjs';
 const require = createRequire(import.meta.url);
 const Financial = require('../functions/lib/financial.js');
 const realWriteSafety = require('../functions/lib/write-safety.js');
-const writeSafety = {...realWriteSafety, safeAtomicUpdate: (database, writes) => realWriteSafety.safeAtomicUpdate(database, structuredClone(writes))};
+let beforeAtomicUpdate = null;
+const writeSafety = {...realWriteSafety, safeAtomicUpdate: async (database, writes) => { if (beforeAtomicUpdate) await beforeAtomicUpdate(database, writes); return realWriteSafety.safeAtomicUpdate(database, structuredClone(writes)); }};
 const NOW = Date.parse('2026-10-29T15:00:00+08:00'), SALE_AT = Date.parse('2026-10-27T10:00:00+08:00');
 const sale = (id, extra = {}) => Object.assign({id, source: 'pos', channel: 'instore', status: 'Completed', paymentStatus: 'pending', shiftId: 'SH-A', staff: 'Rya', syncedByUid: 'till_uid', payment: 'Bank Transfer', payments: [{method: 'Bank Transfer', amount: 560, ref: 'BT-1'}], subtotal: 560, total: 560, completedAt: SALE_AT, timestamp: SALE_AT, cogsSnapshot: 200, cogsCategorySnapshot: {beverage: 200}, inventoryDeducted: true}, extra);
 const approval = (action, sourceId, amount, by = 'mgr2_uid', role = 'manager') => ({action, sourceId, amount, approvedBy: by, approvedRole: role, approvedEmail: `${by}@example.test`, expiresAt: NOW + 600000});
@@ -137,8 +138,20 @@ assert.equal(lines(chosen, 'asset:cash_account:bdo'), 0);}
 // 4. Separation of duties: the sale's cashier or crew cannot verify; a super admin can (flagged).
 await assert.rejects(fx.processOrderAdjustment(req({action: 'manager_validate_payment', orderId: 'POS-S1', approvalId: 'AP_SELF'})), /cannot verify or reject its payment/);
 assert.equal((await read('financialApprovals/AP_SELF')).usedAt, undefined, 'a refused verifier does not use up the approval');
+beforeAtomicUpdate = async (database, writes) => {
+  if (!writes['financialMovements/payver_POS-S1']) return;
+  beforeAtomicUpdate = null;
+  const order = (await database.ref('orders/POS-S1').get()).val();
+  await database.ref('archivedOrders/POS-S1').set({...order, status: 'Archived', prevStatus: 'Completed'});
+  await database.ref('orders/POS-S1').remove();
+  await database.ref('activeOrders/POS-S1').remove();
+};
 await fx.processOrderAdjustment(req({action: 'manager_validate_payment', orderId: 'POS-S1', approvalId: 'AP_SA'}));
-assert.equal((await read('orders/POS-S1/paymentVerification')).selfCheck, true, 'a super admin self-check is flagged');
+assert.equal((await read('financialMovements/payver_POS-S1/paymentVerification')).selfCheck, true, 'a super admin self-check is retained with the financial movement');
+assert.equal(await read('orders/POS-S1'), null, 'settlement does not recreate an order archived during the financial commit');
+assert.equal(await read('activeOrders/POS-S1'), null, 'settlement does not recreate its live projection');
+await fx.processOrderAdjustment(req({action: 'manager_validate_payment', orderId: 'POS-S1', approvalId: 'AP_SA'}));
+assert.equal(Object.keys(await read('financialMovements')).filter(id => id === 'payver_POS-S1').length, 1, 'retry keeps one settlement movement');
 
 // 5. Payment not received (credit note + stock write-off): revenue and tax reversed, 1060 cleared, cost to 6120.
 await assert.rejects(fx.processOrderAdjustment(req({action: 'refund', orderId: 'POS-N1', amount: 100, reason: 'test', approvalId: 'none'})), /Verify this payment first/);
