@@ -150,7 +150,10 @@ async function settleVerifiedPayment(db, orderId, actor) {
   if (order.paymentApprovalId) movement.approvalId = financeText(order.paymentApprovalId, 160);
   const writes = {[`paymentVerificationQueue/${id}`]: null};
   addOrderCashWrites(writes, movement, movementId, order, actor);
-  writes[`${found.node}/${id}/paymentVerification`] = {amount: clearing, receivingAccountId: financeText(order.paymentReceivingAccountId, 160) || null, movementId, verifiedAt: now, verifiedBy: financeText(order.managerValidatedBy || order.cashierVerifiedBy, 160), selfCheck: order.paymentSelfCheck === true};
+  // The order can move to the archive while this financial commit is being prepared.
+  // A child write to the old path would recreate an incomplete order after that move.
+  // Keep the verification evidence at a stable, source-linked path in the same commit.
+  movement.paymentVerification = {amount: clearing, receivingAccountId: financeText(order.paymentReceivingAccountId, 160) || null, movementId, verifiedAt: now, verifiedBy: financeText(order.managerValidatedBy || order.cashierVerifiedBy, 160), selfCheck: order.paymentSelfCheck === true};
   writes[`operationalAudit/${now}_payment_verified_${id}`] = operationalAuditRecord("verify_payment_posting", "order", id, actor, {movementId, amount: clearing, selfCheck: order.paymentSelfCheck === true, approvalId: order.paymentApprovalId || null});
   return commitFinancial(db, movementId, movement, actor, writes);
 }
