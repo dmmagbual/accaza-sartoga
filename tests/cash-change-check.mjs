@@ -22,6 +22,12 @@ assert.equal(r.ok,true); assert.deepEqual(r.denoms,{p20:1,c10:1});
 // Largest-first used to fail here: P60 from one P50 and three P20s.
 r=plan(60,{b50:1,p20:3});
 assert.equal(r.ok,true); assert.deepEqual(r.denoms,{p20:3});
+// Prefer larger bills while preserving exact change and availability.
+r=plan(265,{b100:2,b50:1,p20:3,c10:1,c5:1});
+assert.equal(r.ok,true); assert.deepEqual(r.denoms,{b100:2,b50:1,c10:1,c5:1});
+// The closest attainable amount takes priority when exact change is unavailable.
+r=plan(65,{b50:1,p20:3,c1:3});
+assert.equal(r.ok,false); assert.equal(r.short,2); assert.deepEqual(r.denoms,{p20:3,c1:3});
 // Centavos: 30c from one 25c and three 10c must use the 10c coins.
 r=plan(0.30,{c25:1,c10s:3});
 assert.equal(r.ok,true); assert.deepEqual(r.denoms,{c10s:3});
