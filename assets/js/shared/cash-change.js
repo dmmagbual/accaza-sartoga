@@ -7,8 +7,8 @@
   /* Accaza - which notes and coins to hand back as change (1 Nov 2026).
      The till used to try the biggest note first and give up when that left an amount it could not
      make: P60 from one P50 and three P20s came back "no exact change". plan() looks at every
-     combination the drawer holds and returns an exact one when any exists (not always the fewest
-     pieces). Amounts are whole 5-centavo steps so 25c/10c/5c coins never drift. When no exact combination exists it returns the closest
+     combination the drawer holds and returns an exact one when any exists, preferring larger
+     denominations where possible. Amounts are whole 5-centavo steps so 25c/10c/5c coins never drift. When no exact combination exists it returns the closest
      amount below and how much is still short, the same shape the POS already understood. */
   var DENOMS=[
     {k:'b1000',v:1000,lbl:'₱1000'},{k:'b500',v:500,lbl:'₱500'},{k:'b200',v:200,lbl:'₱200'},{k:'b100',v:100,lbl:'₱100'},{k:'b50',v:50,lbl:'₱50'},{k:'p20',v:20,lbl:'₱20'},
@@ -25,16 +25,28 @@
     if(!(cents>0))return {denoms:{},ok:true,short:0};
     var target=Math.floor(cents/UNIT),odd=cents-target*UNIT;
     if(target>MAX_UNITS)return greedy(cents,avail);
-    var reach=new Uint8Array(target+1),via=new Int8Array(target+1).fill(-1),used=new Uint32Array(target+1);
-    reach[0]=1;
-    // Each denomination extends amounts already reachable by a run of at most "have" pieces;
-    // following via[] back from any amount never uses more pieces than the drawer holds.
+    // Suffix reachability permits larger denominations wherever the remaining drawer can
+    // still make the best attainable amount, including when exact change is impossible.
+    var suffix=new Array(DENOMS.length+1);
+    suffix[DENOMS.length]=new Uint8Array(target+1);suffix[DENOMS.length][0]=1;
+    for(var i=DENOMS.length-1;i>=0;i--){
+      var step=Math.round(DENOMS[i].v*100)/UNIT,have=count(avail&&avail[DENOMS[i].k]);
+      var prev=suffix[i+1],reach=new Uint8Array(prev),run=new Uint32Array(target+1);
+      if(have&&step<=target){
+        for(var v=step;v<=target;v++){
+          if(reach[v]||!reach[v-step])continue;
+          var n=run[v-step]+1;if(n<=have){reach[v]=1;run[v]=n;}
+        }
+      }
+      suffix[i]=reach;
+    }
+    var best=target;while(best>0&&!suffix[0][best])best--;
+    var give={},left=best;
     DENOMS.forEach(function(d,i){
-      var step=Math.round(d.v*100)/UNIT,have=count(avail&&avail[d.k]);if(!have||step>target)return;
-      for(var v=step;v<=target;v++){if(reach[v]||!reach[v-step])continue;var run=via[v-step]===i?used[v-step]+1:1;if(run>have)continue;reach[v]=1;via[v]=i;used[v]=run;}
+      var step=Math.round(d.v*100)/UNIT,use=Math.min(Math.floor(left/step),count(avail&&avail[d.k]));
+      while(use>0&&!suffix[i+1][left-use*step])use--;
+      if(use>0){give[d.k]=use;left-=use*step;}
     });
-    var best=target;while(best>0&&!reach[best])best--;
-    var give={},v=best;while(v>0){var d=DENOMS[via[v]];give[d.k]=(give[d.k]||0)+1;v-=Math.round(d.v*100)/UNIT;}
     var short=(target-best)*UNIT+odd;
     return {denoms:give,ok:short===0,short:short/100};
   }
