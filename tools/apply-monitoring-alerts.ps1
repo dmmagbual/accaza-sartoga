@@ -48,6 +48,7 @@ foreach ($def in $spec.policies) {
   $json = $body | ConvertTo-Json -Depth 8
   if ($DryRun) { Write-Output "DRY RUN $($def.displayName)"; continue }
   $current = $existing[$def.displayName]
+  if (-not $current -and $def.previousDisplayName) { $current = $existing[$def.previousDisplayName] }
   if ($current) {
     $mask = "displayName,severity,combiner,enabled,documentation,conditions,alertStrategy,notificationChannels"
     $res = Invoke-RestMethod -Method Patch -Headers $h -ContentType "application/json; charset=utf-8" -Uri "https://monitoring.googleapis.com/v3/$($current.name)?updateMask=$mask" -Body ([Text.Encoding]::UTF8.GetBytes($json))

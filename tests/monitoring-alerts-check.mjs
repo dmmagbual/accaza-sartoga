@@ -54,11 +54,13 @@ const applier = read('tools/apply-monitoring-alerts.ps1');
 assert.ok(applier.includes('$def.kind -eq "metricThreshold"') && applier.includes('conditionThreshold') && applier.includes('notificationPrompts = @("OPENED", "CLOSED")'), 'the apply script must build a rate condition and announce recovery');
 for (const p of spec.policies.filter((x) => x.kind !== 'metricThreshold')) assert.ok(p.labelExtractors, `${p.displayName} is a log alert and needs label extractors`);
 
-// Staff device refused by App Check (28 Oct 2026): firebase-functions logs every callable's token
-// verification with this label; a signed-in caller with a MISSING/INVALID App Check token is refused
-// only where enforceAppCheck is true. Every callable that is exempt or on the monitor-mode order flag
-// must be excluded by service name, or the owner would be texted for calls that were never refused.
-const refused = byName['Accaza CRITICAL - Staff device refused by App Check'].filter;
+// Token verification alone does not establish enforcement or refusal. Preserve the signal while
+// making its uncertainty explicit, and update the existing policy instead of creating a duplicate.
+const appCheckPolicy = byName['Accaza CRITICAL - Staff App Check token issue'];
+assert.equal(appCheckPolicy.previousDisplayName, 'Accaza CRITICAL - Staff device refused by App Check');
+assert.ok(applier.includes('$existing[$def.previousDisplayName]'));
+assert.match(appCheckPolicy.doc, /does not establish whether the request was refused/);
+const refused = appCheckPolicy.filter;
 assert.match(refused, /firebase-log-type"="callable-request-verification"/);
 assert.match(refused, /verifications\.auth="VALID"/);
 const notEnforced = [...built.matchAll(/exports\.(\w+) = onCall\(\s*\{[^}]*enforceAppCheck: (?:false|ENFORCE_APP_CHECK_ORDERS)\b/g)].map((m) => m[1].toLowerCase());

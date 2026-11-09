@@ -71,7 +71,8 @@
       "doc": "More than 10 server requests per 5 minutes have failed for 10 minutes across Accaza's Cloud Functions. On 23 Oct 2026 a Google-side fault made every fresh function start fail for 85 minutes; it wrote no error text, so no log alert fired.\n\n**Do now:** Tell staff to keep ringing sales on the till (it queues them) and not to log out or clear the POS app. Purchases will show balances as unavailable, not zero. Check Cloud Run > Logs for status 500 by service. You get a second message when it clears."
     },
     {
-      "displayName": "Accaza CRITICAL - Staff device refused by App Check",
+      "displayName": "Accaza CRITICAL - Staff App Check token issue",
+      "previousDisplayName": "Accaza CRITICAL - Staff device refused by App Check",
       "severity": "CRITICAL",
       "filter": "labels.\"firebase-log-type\"=\"callable-request-verification\" AND jsonPayload.verifications.auth=\"VALID\" AND (jsonPayload.verifications.app=\"MISSING\" OR jsonPayload.verifications.app=\"INVALID\") AND NOT resource.labels.service_name=(\"recordclienttelemetry\" OR \"createonlineorder\" OR \"confirmorderreceived\" OR \"createqrorderticket\")",
       "labelExtractors": {
@@ -79,8 +80,8 @@
         "app": "EXTRACT(jsonPayload.verifications.app)"
       },
       "rateLimit": "1800s",
-      "subject": "Accaza: staff device refused by App Check",
-      "doc": "A signed-in staff device called the server without a valid App Check token and was refused (staff enforcement is on since 28 Oct 2026). Till sales stay queued on the device and are not lost, but they cannot sync and the shift cannot close until this clears.\n\n**Do now:** on that device press Ctrl+Shift+R, sign in again and press Retry in the sync queue. Turn off any ad blocker for accazacoffee.com. If two devices are refused, or a reload does not fix it, roll back: set ENFORCE_APP_CHECK back to \"false\" in src/functions/00-app-check-flags.js and merge (APP_CHECK_ENFORCEMENT_RUNBOOK.md section 5)."
+      "subject": "Accaza: staff App Check token issue",
+      "doc": "A signed-in request reached the named function with a missing or invalid App Check token. This log alone does not establish whether the request was refused. Check the function, request outcome and device before declaring an outage.\n\n**Do now:** If a till is affected, check for an active shift and queued sales. Preserve the original browser profile and queue; do not reload, sign out or clear browser data during an active shift. Investigate the device and request logs, then verify any queued sales sync on the original device."
     }
   ]
 }
