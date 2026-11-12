@@ -54,8 +54,5 @@ enabled = false
 [plugins."computer-use@openai-bundled"]
 enabled = false
 
-[mcp_servers.taste_skill]
-enabled = false
-
 [mcp_servers.node_repl]
 enabled = false
