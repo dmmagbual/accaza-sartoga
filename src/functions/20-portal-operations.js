@@ -34,10 +34,11 @@ function cachedOperationalResult(row) {return row && row.result && typeof row.re
 function emptyOperationalResult() {return {generatedAt: 0, scanned: {activeOrders: 0, recentOrders: 0, offlineSyncs: 0, custodyRecords: 0}, counts: {critical: 0, warning: 0, total: 0}, exceptions: [], manualOnly: true};}
 async function pauseOperationalCache(ms) {await new Promise((resolve) => setTimeout(resolve, ms));}
 
-async function getCachedOperationalExceptions(db, now = Date.now(), force = false) {
+async function getCachedOperationalExceptions(db, now = Date.now(), force = false, automatic = false, minScannedAt = 0) {
   const cacheRef = db.ref(OPERATIONAL_EXCEPTION_CACHE_PATH), lockRef = db.ref(OPERATIONAL_EXCEPTION_LOCK_PATH), requestStartedAt = Date.now();
   let cached = (await cacheRef.get()).val() || {};
   if (!force) return cachedOperationalResult(cached) || emptyOperationalResult();
+  if (automatic && Number(cached.scannedAt) >= minScannedAt && cachedOperationalResult(cached)) return cached.result;
   const owner = `scan_${requestStartedAt}_${Math.random().toString(36).slice(2)}`;
   const claim = await lockRef.transaction((current) => {
     if (current && Number(current.expiresAt) > Date.now()) return;
@@ -49,13 +50,13 @@ async function getCachedOperationalExceptions(db, now = Date.now(), force = fals
       cached = (await cacheRef.get()).val() || {};
       if (Number(cached.scannedAt) >= requestStartedAt) return cached.result;
     }
-    if (cachedOperationalResult(cached)) return cached.result;
+    if (cachedOperationalResult(cached) && !automatic) return cached.result;
     throw new HttpsError("unavailable", "The shared operational health scan is still running. Try again shortly.");
   }
   try {
     cached = (await cacheRef.get()).val() || {};
-    if (Number(cached.scannedAt) >= requestStartedAt) return cached.result;
-    const result = await scanOperationalExceptions(db, now);
+    if (Number(cached.scannedAt) >= requestStartedAt || (automatic && Number(cached.scannedAt) >= minScannedAt && cachedOperationalResult(cached))) return cached.result;
+    const result = await scanOperationalExceptions(db, now, automatic);
     await cacheRef.set({scannedAt: Date.now(), result, schemaVersion: 1});
     return result;
   } finally {
@@ -80,11 +81,11 @@ exports.getOperationalExceptions = onCall(
   },
 );
 
-async function scanOperationalExceptions(db, now) {
+async function scanOperationalExceptions(db, now, automatic = false) {
     const days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
     const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, paymentSettingsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, uncostedSnap, closeFollowUpSnap, aiHealthTodaySnap, aiHealthYesterdaySnap, booksChartSnap, cashAccountMapSnap, activeDrawerSnap, posTotalCheckSnap, posPaymentRefSnap, posInvoiceVoidedSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref("/payment").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),db.ref("/uncostedSales").orderByChild("status").equalTo("open").limitToFirst(200).get(),db.ref("/shiftCloseFollowUps").orderByChild("state").equalTo("open").limitToFirst(50).get(),db.ref(`/accazaAiProviderHealth/${days[0]}`).get(),db.ref(`/accazaAiProviderHealth/${days[1]}`).get(),/* download-ok: bounded chart of accounts (about 90 rows) for the bank-account coverage check */db.ref("/booksChart").get(),db.ref("/books/config/cashAccountMap").get(),db.ref("/posActiveShift/drawer").get(),db.ref("/posTotalChecks").orderByChild("at").startAt(now - OperationalExceptions.TOTAL_CHECK_WINDOW_MS).limitToLast(50).get(),db.ref("/posPaymentReferenceChecks").orderByChild("at").startAt(now - OperationalExceptions.TOTAL_CHECK_WINDOW_MS).limitToLast(50).get(),db.ref("/posInvoiceVoided").orderByChild("at").startAt(now - OperationalExceptions.TOTAL_CHECK_WINDOW_MS).limitToLast(50).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
     let booksMonthlyNet = booksMonthlyNetSnap.val() || {};
-    if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
+    if (!booksMonthlyNetMetaSnap.exists()) {if (automatic) throw new Error("Automatic operational scan requires the monthly Books summary; run a manual health check to rebuild it.");booksMonthlyNet = await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});}
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
     const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
     const deadLetters = deadLetterSnap.val() || {};

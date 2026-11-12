@@ -288,3 +288,9 @@ exports.evaluateProductionHealth = onSchedule(
   {schedule: "every 60 minutes", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 120, memory: "256MiB"},
   async () => {await evaluateProductionHealthNow();return null;},
 );
+
+// One scheduled scan daily, sharing the manual scan's lock and recovery checks.
+exports.scanOperationalHealthDaily = onSchedule(
+  {schedule: "0 3 * * *", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 60, memory: "256MiB", retryCount: 3, minBackoffSeconds: 120},
+  async (event) => {const scheduledAt=Date.parse(event.scheduleTime);if (!Number.isFinite(scheduledAt)) throw new Error("Missing scheduled scan time");await getCachedOperationalExceptions(getDatabase(), Date.now(), true, true, scheduledAt);return null;},
+);
