@@ -27,7 +27,7 @@ function evaluate(input,now=Date.now()){
   if(combined.errors>0)telemetry.push(signal("client_errors","Client errors detected",`${combined.errors} privacy-safe client error signal(s) were recorded.`));
   if(Number(operational.counts&&operational.counts.critical)>0)alerts.push(alert("operational_critical","critical","Critical operational exceptions exist",`${Number(operational.counts.critical)} critical exception(s) require controlled review.`));
   const operationalAge=now-Number(operational.generatedAt||0);
-  if(!operational.generatedAt||operationalAge>24*3600000)alerts.push(alert("operational_scan_stale",operationalAge>72*3600000?"critical":"warning","Operational control scan is stale",operational.generatedAt?`Latest manual control scan is ${Math.floor(operationalAge/3600000)} hours old.`:"No completed operational control scan is available."));
+  if(!operational.generatedAt||operationalAge>26*3600000)alerts.push(alert("operational_scan_stale",operationalAge>72*3600000?"critical":"warning","Operational control scan is stale",operational.generatedAt?`Latest control scan is ${Math.floor(operationalAge/3600000)} hours old.`:"No completed operational control scan is available."));
   const rank={critical:0,warning:1};alerts.sort((a,b)=>rank[a.severity]-rank[b.severity]||a.id.localeCompare(b.id));telemetry.sort((a,b)=>a.id.localeCompare(b.id));
   // Only alerts move a business card, so only alerts decide status, counts and the change signature.
   const status=alerts.some(x=>x.severity==="critical")?"critical":alerts.length?"warning":"healthy",signature=crypto.createHash("sha256").update(JSON.stringify(alerts.map(x=>[x.id,x.severity]))).digest("hex").slice(0,24);
