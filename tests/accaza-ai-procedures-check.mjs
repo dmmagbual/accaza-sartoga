@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const ai=fs.readFileSync('src/functions/62-accaza-ai.js','utf8');
+const context=vm.createContext({});
+vm.runInContext(ai.slice(0,ai.indexOf('async function accazaAiKnowledgeFacts'))+'\nthis.lookup=accazaAiKnowledgeCategories; this.seed=ACCAZA_AI_KNOWLEDGE_SEED; this.version=accazaAiSeedVersion;',context);
+for(const q of ['How do I record salary?', 'How are salaries and wages classified?', 'Pay wages in cash', 'How do I enter an operating expense?', 'How do I make a supplier advance?', 'Record a purchase', 'How do I record rent?', 'How do I pay an employee?', 'How do I pay a supplier?']) assert.ok(context.lookup(q).includes('purchases'),q);
+for(const q of ['How do I close a shift?', 'How do I create a recipe?', 'How do inventory and expenses affect profit?']) assert.ok(!context.lookup(q).includes('purchases'),q);
+assert.match(context.seed.purchases.content,/Salaries & wages/);
+assert.match(context.seed.purchases.content,/only an approved voucher posts/i);
+assert.equal(context.version('purchases'),3); assert.equal(context.version('recipes'),2); assert.equal(context.version('pos'),3);
+const browser=fs.readFileSync('assets/js/admin/accaza-ai.js','utf8');
+assert.match(browser,/accazaAiFinancePrompts'\)\.style\.display=isWeb\?'none':'flex'/);
+console.log('Accaza AI procedures and mode checks passed');

@@ -221,9 +221,9 @@ exports.manageAccazaAiKnowledge=onCall({region:ORDER_REGION,enforceAppCheck:ENFO
   if(action==="seed"){
     const writes={},changed=[];
     await Promise.all(Object.entries(ACCAZA_AI_KNOWLEDGE_SEED).map(async([category,article])=>{
-      const existing=(await db.ref(`/accazaAiKnowledge/${category}`).get()).val();
-      if(!existing||(existing.seeded===true&&Number(existing.seedVersion||1)<ACCAZA_AI_MANUAL_VERSION)){
-        writes[`accazaAiKnowledge/${category}`]={...article,status:"published",version:Number(existing&&existing.version||0)+1,createdAt:Number(existing&&existing.createdAt||now),updatedAt:now,updatedBy:actor.uid,seeded:true,seedVersion:ACCAZA_AI_MANUAL_VERSION};changed.push(category);
+      const existing=(await db.ref(`/accazaAiKnowledge/${category}`).get()).val(),seedVersion=accazaAiSeedVersion(category);
+      if(!existing||(existing.seeded===true&&Number(existing.seedVersion||1)<seedVersion)){
+        writes[`accazaAiKnowledge/${category}`]={...article,status:"published",version:Number(existing&&existing.version||0)+1,createdAt:Number(existing&&existing.createdAt||now),updatedAt:now,updatedBy:actor.uid,seeded:true,seedVersion};changed.push(category);
       }
     }));
     if(Object.keys(writes).length)await db.ref().update(Object.assign(writes,{[`operationalAudit/${now}_accaza_ai_knowledge_seed`]:operationalAuditRecord("seed_accaza_ai_knowledge","accazaAiKnowledge","seed",actor,{categories:changed,manualVersion:ACCAZA_AI_MANUAL_VERSION})}));
