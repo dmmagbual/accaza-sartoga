@@ -71,6 +71,7 @@ const OrderRecords = require("./lib/order-records");
 const RetryGuard = require("./lib/retry-guard");
 const DeadLetterResolution = require("./lib/dead-letter-resolution");
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+const ACCAZA_AI_HISTORY_KEY = defineSecret("ACCAZA_AI_HISTORY_KEY");
 // Cloudflare Workers AI replaced Cerebras on 31 Oct 2026 (Cerebras prepaid credit ran out).
 const CLOUDFLARE_AI_TOKEN = defineSecret("CLOUDFLARE_AI_TOKEN");
 const CLOUDFLARE_ACCOUNT_ID = defineSecret("CLOUDFLARE_ACCOUNT_ID");

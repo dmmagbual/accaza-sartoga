@@ -66,7 +66,9 @@ assert.deepEqual(log2, ['portalPresence/u2/conn1'], 'presence is written even wh
 const auth = read('assets/js/admin/portal-auth.mjs');
 assert.ok(auth.includes("watchSessionCutoff(user);await beginPresence(user.uid);beginIdle(user.uid);"), 'Admin starts presence and inactivity control once authorized');
 assert.ok(auth.includes('window.AccazaPortalPresence') && auth.includes('aggregatePortalPresence'), 'Admin exposes the shared device aggregation to the lazy-loaded account screen');
-assert.ok(auth.includes("endIdle();await endPresence(true);try{await signOut(auth);}catch(_o){}") && auth.includes('window.logoutAdmin=async function(){\n    endIdle();await endPresence(true);'), 'Admin waits for presence cleanup before signing out');
+const logoutBody=auth.slice(auth.indexOf('window.logoutAdmin=async function(){'),auth.indexOf('return {authorizePortalUser:authorizePortalUser}'));
+assert.ok(auth.includes("endIdle();await endPresence(true);try{await signOut(auth);}catch(_o){}") && logoutBody.includes('endIdle();await endPresence(true);') && logoutBody.indexOf('await endPresence(true)')<logoutBody.indexOf('await signOut(auth)'), 'Admin waits for presence cleanup before signing out');
+assert.ok(logoutBody.indexOf("getElementById('accazaAiPanel')")<logoutBody.indexOf('await endPresence(true)'), 'logout hides the AI panel before asynchronous cleanup');
 assert.ok(auth.includes("mine=control.users&&control.users[user.uid]"), 'Admin honours the per-account sign-out');
 const books = read('assets/js/books/live-pos.mjs');
 assert.ok(books.includes('app:"books",build:runningBuild(document,"accaza-books-build")'), 'Books reports its own build');
@@ -121,7 +123,7 @@ assert.deepEqual(log3, [], 'handlers are not disarmed when the sign-out writes f
 assert.ok(screen.includes('>Inactive</span>') && screen.includes('>Signed out</span>') && screen.includes("'<small>Not connected since '"), 'Inactive and Signed out states are shown');
 assert.ok(screen.includes('if(seen&&seen.signedOut&&Number(seen.at)>=Number(till&&till.lastContactAt||0))'), 'Signed out only when a Log out is recorded after the last activity');
 assert.ok(screen.includes('Number(row.connectedAt||0)>=cutoff') && screen.includes('if(cutoff&&cutoff>=lastActive)'), 'stale presence before a forced sign-out cannot keep an account Online');
-assert.ok(auth.includes('window.logoutAdmin=async function(){\n    endIdle();await endPresence(true);') && auth.includes('await endPresence(false);stopPresence=startPortalPresence('), 'Admin records real sign-outs only');
+assert.ok(logoutBody.includes('endIdle();await endPresence(true);') && auth.includes('await endPresence(false);stopPresence=startPortalPresence('), 'Admin records real sign-outs only');
 assert.ok(books.includes('window.__booksSignOut=async()=>{ endIdle();await endPresence(true);return signOut(auth); };'), 'Books records real sign-outs');
 assert.ok(read('database.rules.json').includes('"signedOut": { ".validate": "newData.isBoolean()" }'), 'signedOut is validated');
 

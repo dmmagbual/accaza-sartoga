@@ -16,9 +16,10 @@ const run = (source, window, document) => new Function('window', 'document', 'se
   assert.equal(core.mode(), 'accaza');
   assert.ok(manager && typeof manager.section === 'function' && typeof manager.wire === 'function', 'accaza-ai-manager.js must register the manager tools');
   const section = manager.section();
+  assert.ok(section.includes('The Art of Baking'), 'the manual must offer the baking chapter');
   for (const id of ['accazaManual', 'accazaManualChapter', 'accazaManualSeed', 'accazaManualTitle', 'accazaManualContent', 'accazaManualStatus', 'accazaManualState', 'accazaManualSave'])
     assert.ok(section.includes(`id="${id}"`), `the Operations Manual section must keep #${id}`);
-  assert.equal((section.match(/<option value="/g) || []).length, 11 + 2, 'every manual chapter and both publication states must be offered');
+  assert.equal((section.match(/<option value="/g) || []).length, 12 + 2 + 2, 'every manual chapter, publication state and audience must be offered');
 }
 {
   const window = {}, document = {getElementById: () => null};

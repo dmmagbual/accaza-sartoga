@@ -9,7 +9,7 @@
     "build:html": "node tools/build-html-pages.mjs",
     "build:artifacts": "npm run build:runtime && npm run build:html",
     "test:bundle-drift": "node tests/runtime-bundle-drift-check.mjs",
-    "test:ai-deployment": "node tests/ai-deployment-check.mjs",
+    "test:ai-deployment": "node tests/ai-deployment-check.mjs && node tests/accaza-ai-app-knowledge-check.mjs && node tests/accaza-ai-procedures-check.mjs",
     "test:bundle-closure": "node tests/bundle-closure-check.mjs",
     "test:html-drift": "node tests/html-page-drift-check.mjs",
     "test:text-integrity": "node tests/text-integrity-check.mjs",
