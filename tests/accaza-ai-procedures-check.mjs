@@ -8,7 +8,7 @@ for(const q of ['How do I record salary?', 'How are salaries and wages classifie
 for(const q of ['How do I close a shift?', 'How do I create a recipe?', 'How do inventory and expenses affect profit?']) assert.ok(!context.lookup(q).includes('purchases'),q);
 assert.match(context.seed.purchases.content,/Salaries & wages/);
 assert.match(context.seed.purchases.content,/only an approved voucher posts/i);
-assert.equal(context.version('purchases'),3); assert.equal(context.version('recipes'),2); assert.equal(context.version('pos'),3);
+assert.equal(context.version('purchases'),3); assert.equal(context.version('recipes'),4); assert.equal(context.version('pos'),3);
 const browser=fs.readFileSync('assets/js/admin/accaza-ai.js','utf8');
 assert.match(browser,/accazaAiFinancePrompts'\)\.style\.display=isWeb\?'none':'flex'/);
 console.log('Accaza AI procedures and mode checks passed');

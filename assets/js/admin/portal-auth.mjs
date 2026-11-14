@@ -79,6 +79,7 @@ function installPortalAuth(options){
     try{return await portalAuthPromise;}finally{portalAuthPromise=null;}
   }
   onAuthStateChanged(auth,async function(user){
+    if(!user||user.isAnonymous||user.uid!==portalAuthUid){var aiPanel=document.getElementById('accazaAiPanel');if(aiPanel)aiPanel.remove();}
     // A shared anonymous session (created by the public site on the same origin) must never
     // drive the admin portal — treat it as signed-out so it can't hijack the admin login.
     if(!user||user.isAnonymous){endIdle();await endPresence(true);authGateResolved=true;portalAuthUid=null;window.__accazaAuthz=null;window.__accazaSessionControl=null;subscriptionHub.deauthorize();if(onSignedOut)onSignedOut();return;}
@@ -90,6 +91,7 @@ function installPortalAuth(options){
     try{try{await setPersistence(auth,browserLocalPersistence);}catch(_p){}var cred=await signInWithEmailAndPassword(auth,username,pass);await authorizePortalUser(cred.user);}catch(_e){console.error('ACCAZA AUTH ERROR',_e);_le.textContent=(_e&&_e.message&&_e.message.indexOf('not authorized')>-1)?_e.message:'Login failed. Check the email and password.';_le.style.display='block';document.getElementById('adminPass').value='';}finally{if(_btn){_btn.disabled=false;_btn.textContent='Log In';}}
   };
   window.logoutAdmin=async function(){
+    var aiPanel=document.getElementById('accazaAiPanel');if(aiPanel)aiPanel.remove();
     endIdle();await endPresence(true);try{sessionStorage.removeItem('accaza_admin_session');}catch(e){}portalAuthUid=null;window.__accazaAuthz=null;window.__accazaSessionControl=null;subscriptionHub.deauthorize();if(onSignedOut)onSignedOut();var go=function(){window.location.href='index.html';};try{await signOut(auth);}catch(e){}go();
   };
   return {authorizePortalUser:authorizePortalUser};

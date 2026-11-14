@@ -3,9 +3,9 @@ import{createSubscriptionHub}from"./realtime-hub.mjs?v=758";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
-import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=763";
+import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=764";
 import{archiveOutcome}from"./order-display.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=763";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=764";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -1070,6 +1070,7 @@ async function loginSuccess(role,username,uid,serverRole,profile){
   currentUser={role,serverRole:serverRole||role,username,uid,title:profile&&profile.title||''};
   var effectiveRole=String(serverRole||role).toLowerCase();
   window.__accazaAuthz={uid,role:effectiveRole,isPrivileged:['owner','superadmin','admin','manager'].indexOf(effectiveRole)>-1};
+  if(window.__accazaAiIdentityChanged)window.__accazaAiIdentityChanged();
   subscriptionHub.activate(role==='admin'?'dashboard':'auth-pending');subscriptionHub.authorize();
   ensureActiveOrdersCall({}).catch(function(e){console.warn('Active-order projection sweep deferred',e&&e.code);});
   try{sessionStorage.setItem('accaza_admin_session',JSON.stringify({username:username,uid:uid||null}));}catch(e){}
