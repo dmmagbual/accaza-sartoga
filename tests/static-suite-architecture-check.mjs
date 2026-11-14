@@ -27,7 +27,7 @@ for(const file of expected){
   if(Buffer.byteLength(source,'utf8')>47500){const message=`tests/static/${file} is ${Buffer.byteLength(source,'utf8')} bytes of its 50 KB bound. Split it before adding more guards.`;console.warn('STATIC MODULE SIZE WARNING: '+message);if(process.env.GITHUB_ACTIONS)console.log(`::warning file=tests/static/${file}::${message}`);}
   if(file!=='00-context.mjs'&&!runner.includes(`./static/${file}`))throw new Error(`Static-check runner omits domain: ${file}`);
 }
-if((combined.match(/\bfail\(/g)||[]).length!==577)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 577');
+if((combined.match(/\bfail\(/g)||[]).length!==581)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 581');
 if((combined.match(/spawnSync\(/g)||[]).length!==33)throw new Error('Static-check executable-check inventory changed from the reviewed baseline of 33');
 const guardSource=combined.split(/\r?\n/).filter(line=>/\bfail\(|spawnSync\(/.test(line)).map(line=>line.trim()).join('\n');
 const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
@@ -205,6 +205,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // pins the "Not paid yet? Choose On account." guidance instead of the retired "Invoice pending" radio label,
 // and the payable reconciliation guard pins the On-account-only call (no new pending purchases).
 // Same guards, same meaning; guard count stays at 577 and executable checks stay at 33.
-if(guardDigest!=='9e4c647c9931e0cb6a16d443a12b70a1225813bb64265c0f2e5e6df6b5d849cf')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// 15 Nov 2026 (App Check production override): four new guards in 30-server-release.mjs require production to ignore a runtime
+// ENFORCE_APP_CHECK value and run the flag logic for production, UAT and unset cases; the staff-flag regex pins the new declaration.
+// No existing guard was weakened. Guard count goes from 577 to 581 and executable checks stay at 33.
+if(guardDigest!=='d8aa89d950c82849adc81fb5f5dc5e32c9859dd673c43cf421ade7d01ef1eb66')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
-console.log('PASS: all 577 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
+console.log('PASS: all 581 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

@@ -13,7 +13,11 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
 // The flags live in src/functions/00-app-check-flags.js. That section must sort ahead of every
 // section that reads them: the bundle is a plain concatenation, so a const referenced by an
 // earlier onCall options object is still in the temporal dead zone and throws at load time.
-const staffFlagDecl=functionsSource.search(/const ENFORCE_APP_CHECK = String\(process\.env\.ENFORCE_APP_CHECK \|\| "(?:true|false)"\)/); // either committed default, so a one-line rollback stays one line
+const staffFlagDecl=functionsSource.search(/const ENFORCE_APP_CHECK = String\(\(APP_CHECK_PRODUCTION \? "" : APP_CHECK_ENV_STAFF\) \|\| "(?:true|false)"\)/);
+if(!functionsSource.includes('const APP_CHECK_PRODUCTION = process.env.GCLOUD_PROJECT === "accaza-sartoga";'))fail('Production must ignore a runtime ENFORCE_APP_CHECK override: a live Cloud Run value of false once silently disabled staff enforcement');
+{const flagSrc=fs.readFileSync(path.join(root,'src','functions','00-app-check-flags.js'),'utf8');const run=(env)=>new Function('process','console',flagSrc+'\nreturn {ENFORCE_APP_CHECK,ENFORCE_APP_CHECK_ORDERS};')({env},{warn(){}});
+const prodFalse=run({GCLOUD_PROJECT:'accaza-sartoga',ENFORCE_APP_CHECK:'false'}),uatFalse=run({GCLOUD_PROJECT:'accazacoffeepos-uat',ENFORCE_APP_CHECK:'false'}),prodUnset=run({GCLOUD_PROJECT:'accaza-sartoga'});
+if(prodFalse.ENFORCE_APP_CHECK!==prodUnset.ENFORCE_APP_CHECK)fail('App Check staff flag must not change with a runtime ENFORCE_APP_CHECK value in production');if(prodFalse.ENFORCE_APP_CHECK_ORDERS!==false)fail('Order flag must stay in monitor mode by default');if(uatFalse.ENFORCE_APP_CHECK!==false)fail('UAT and local runs must still be able to switch staff enforcement off through the environment');} // either committed default, so a one-line rollback stays one line
 if(staffFlagDecl<0)fail('App Check staff flag must be declared from its committed default in src/functions/00-app-check-flags.js');
 if(!functionsSource.includes('const ENFORCE_APP_CHECK_ORDERS = String(process.env.ENFORCE_APP_CHECK_ORDERS || "false")'))fail('App Check order flag must be declared from its own committed default, not derived from the staff flag');
 if(staffFlagDecl>functionsSource.indexOf('enforceAppCheck:'))fail('App Check flags must be declared before the first onCall options object reads them');
