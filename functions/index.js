@@ -13324,7 +13324,7 @@ exports.manageHistoricalOrderArchive = onCall(
 // Accaza AI is deliberately read-only. Gemini receives a compact, server-built
 // fact pack; it never gets Firebase credentials or permission to change records.
 const ACCAZA_AI_MODEL = "gemini-3.5-flash-lite";
-const ACCAZA_AI_RELEASE_VERSION = "2.1";
+const ACCAZA_AI_RELEASE_VERSION = "2.2";
 // Sep 2026 (Danilo): no message cap for authorized staff accounts. Every question is
 // still role-checked and written to operationalAudit; the old accazaAiUsage counters
 // are no longer written (existing rows are inert history, rules keep them server-only).
@@ -13336,8 +13336,8 @@ function accazaAiEditDistance(left,right){const a=String(left||""),b=String(righ
 function accazaAiItemMatch(menu,question){const q=accazaAiSearchText(question),queryWords=q.split(" ").filter(word=>word.length>2);return Object.entries(menu||{}).map(([id,row])=>{const name=String(row&&row.name||""),words=accazaAiSearchText(name).split(" ").filter(Boolean),exact=q.includes(accazaAiSearchText(name))?100:0,score=exact||words.reduce((total,word)=>total+(queryWords.includes(word)?3:queryWords.some(queryWord=>accazaAiEditDistance(queryWord,word)<=1)?2:0),0);return{id,row:row||{},name,score};}).filter(item=>item.name&&item.score>0).sort((a,b)=>b.score-a.score||b.name.length-a.name.length)[0]||null;}
 const ACCAZA_AI_APP_GUIDE={scope:"Accaza AI is read-only. It can explain the Admin/POS/Finance Books app and report only the supplied live facts.",pos:"POS prices sales on the server, keeps an offline queue for temporary network loss, and requires a verified shift close. Correct a completed sale through the controlled correction/refund workflow; never edit posted orders directly.",inventory:"Inventory is driven by recipes, receiving, internal usage and approved adjustments. Recipe cost uses current inventory costs; posted sales retain their sale-time inventory plan and COGS evidence.",finance:"Finance Books is double-entry. Posted records are corrected by controlled reversals or correction workflows, not overwritten. Cash, receivables, payables, retained float and profit are different balances.",suppliers:"Supplier outstanding balances are open payables. A partial payment reduces remainingAmount and preserves the original supplier invoice and settlement evidence.",staff:"Accaza AI provides operational staff roster facts only; it does not disclose private employee information, credentials, or payroll data."};
 const ACCAZA_AI_DATA_MAP={app_help:{source:"curated server guide",limit:"no database read"},recipe_cost:{source:"menu item, recipe and keyed costing inputs",limit:"one matched item"},inventory:{source:"current inventory catalog",limit:"one matched stock item"},supplier:{source:"supplier master and indexed payable rows",limit:"one supplier; latest 100 invoices"},finance:{source:"current close, cash summary and open-payable summary",limit:"latest 100 open payables"},sales_comparison:{source:"daily Financial Close current summaries",limit:"two named months; at most 62 daily summaries"},staff:{source:"operational staff roster",limit:"no payroll, credentials or private data"}};
-const ACCAZA_AI_MANUAL_VERSION=4;
-function accazaAiSeedVersion(category){return ["recipes","baking"].includes(category)?4:(["general","pos","purchases","suppliers","cash","finance"].includes(category)?3:2);}
+const ACCAZA_AI_MANUAL_VERSION=5;
+function accazaAiSeedVersion(_category){return ACCAZA_AI_MANUAL_VERSION;}
 const ACCAZA_AI_KNOWLEDGE_SEED={
   general:{title:"Accaza Operations Manual — how to use this reference",content:"PURPOSE\nThis manual is the approved reference for using Accaza. Accaza AI is read-only: it explains the procedure and live facts but never creates, approves, posts or changes a record.\n\nUSING THE MANUAL\n1. Use the chapter matching the transaction. 2. Complete the operational record first. 3. Confirm its inventory, cash, payable or Finance Books effect. 4. Keep the source document. 5. Correct a posted record only through its supported, audited amendment, correction or reversal route. Do not edit posted orders, stock movements, supplier liabilities or journals directly.\n\nCONTROL RULE\nIf the screen, permission or source document does not match this manual, stop and ask a manager. The system record, invoice, receipt and audit trail must agree before a period is closed."},
   pos:{title:"POS, completed sale, correction and shift-close procedure",content:"BEFORE SELLING\nOpen only an assigned shift. Confirm the opening float and the cash drawer. Use the published menu; do not change a sale price outside the approved POS controls.\n\nCOMPLETE A SALE\n1. Add the customer order and required options. 2. Confirm tender/payment allocation equals the sale total. 3. Complete the sale. Online confirmation creates the sale evidence and linked inventory/Finance Books evidence. If an eligible cash sale is queued offline, check its Pending, Syncing, Failed or Synced status; only server confirmation means it is synced. Do not re-enter a failed queued sale.\n\nERROR, VOID OR REFUND\nNever edit a completed order directly. Use the controlled correction/refund workflow. State the reason, obtain the required manager approval, return money using the recorded refund payment method, and select inventory return only when the physical ingredients truly return. The workflow preserves the original evidence and posts the reversal.\n\nSHIFT CLOSE\nRecord an outcome for unserved orders, count the physical drawer, record supported cash movements with evidence, investigate differences, and complete the verified close. Expected cash is opening float plus cash sales and tips plus pay-ins less cash refunds and pay-outs. A close exception is an investigation item, not a number to hide."},
@@ -13786,9 +13786,30 @@ function accazaAiWorkflowFacts(question){
  return matched.map(x=>({id:x.row.id,guide:x.row.guide}));
 }
 
-// Standard chapters install only through the management manual action; existing edited chapters are preserved.
-ACCAZA_AI_KNOWLEDGE_SEED.recipes={title:"Recipe creation and costing: step-by-step",content:ACCAZA_AI_WORKFLOWS.find(x=>x.id==="recipes").guide};
-ACCAZA_AI_KNOWLEDGE_SEED.baking={title:"The Art of Baking: product setup and batch cards",content:ACCAZA_AI_WORKFLOWS.find(x=>x.id==="baking").guide};
+// Every source-reviewed workflow belongs to at least one standard Operations Manual
+// chapter. Standard installation preserves chapters edited by management.
+const ACCAZA_AI_MANUAL_WORKFLOWS={
+ general:['backups','reports','settings'],
+ pos:['pos','shifts','refunds','qrorders','verification','orders'],
+ recipes:['recipes'],
+ baking:['baking'],
+ purchases:['purchases','cashpayments'],
+ suppliers:['supplierrefunds','payables'],
+ inventory:['inventory'],
+ cash:['cash','payouts','discrepancy'],
+ finance:['books','periods'],
+ staff:['access','inbox'],
+ operations:['operations'],
+ menu:['catalog','packages','reservations','customers','rewards']
+};
+Object.entries(ACCAZA_AI_MANUAL_WORKFLOWS).forEach(([category,ids])=>{
+ const chapter=ACCAZA_AI_KNOWLEDGE_SEED[category];
+ if(!chapter)return;
+ const procedures=ids.map(id=>ACCAZA_AI_WORKFLOWS.find(row=>row.id===id)).filter(Boolean).map(row=>`${row.id.toUpperCase()}\n${row.guide}`).join('\n\n');
+ if(category==='recipes')ACCAZA_AI_KNOWLEDGE_SEED.recipes={title:"Recipe creation and costing: step-by-step",content:procedures};
+ else if(category==='baking')ACCAZA_AI_KNOWLEDGE_SEED.baking={title:"The Art of Baking: product setup and batch cards",content:procedures};
+ else chapter.content=`${chapter.content}\n\nAPP WORKFLOWS\n${procedures}`;
+});
 // Accaza AI record tools (Sep 2026). In Accaza analysis mode a management user's question can
 // be answered from live records: the model plans which records it needs, calls these tools,
 // reads the results and only then writes the reply. Every tool is READ-ONLY (get() queries

@@ -46,6 +46,27 @@ function accazaAiWorkflowFacts(question){
  return matched.map(x=>({id:x.row.id,guide:x.row.guide}));
 }
 
-// Standard chapters install only through the management manual action; existing edited chapters are preserved.
-ACCAZA_AI_KNOWLEDGE_SEED.recipes={title:"Recipe creation and costing: step-by-step",content:ACCAZA_AI_WORKFLOWS.find(x=>x.id==="recipes").guide};
-ACCAZA_AI_KNOWLEDGE_SEED.baking={title:"The Art of Baking: product setup and batch cards",content:ACCAZA_AI_WORKFLOWS.find(x=>x.id==="baking").guide};
+// Every source-reviewed workflow belongs to at least one standard Operations Manual
+// chapter. Standard installation preserves chapters edited by management.
+const ACCAZA_AI_MANUAL_WORKFLOWS={
+ general:['backups','reports','settings'],
+ pos:['pos','shifts','refunds','qrorders','verification','orders'],
+ recipes:['recipes'],
+ baking:['baking'],
+ purchases:['purchases','cashpayments'],
+ suppliers:['supplierrefunds','payables'],
+ inventory:['inventory'],
+ cash:['cash','payouts','discrepancy'],
+ finance:['books','periods'],
+ staff:['access','inbox'],
+ operations:['operations'],
+ menu:['catalog','packages','reservations','customers','rewards']
+};
+Object.entries(ACCAZA_AI_MANUAL_WORKFLOWS).forEach(([category,ids])=>{
+ const chapter=ACCAZA_AI_KNOWLEDGE_SEED[category];
+ if(!chapter)return;
+ const procedures=ids.map(id=>ACCAZA_AI_WORKFLOWS.find(row=>row.id===id)).filter(Boolean).map(row=>`${row.id.toUpperCase()}\n${row.guide}`).join('\n\n');
+ if(category==='recipes')ACCAZA_AI_KNOWLEDGE_SEED.recipes={title:"Recipe creation and costing: step-by-step",content:procedures};
+ else if(category==='baking')ACCAZA_AI_KNOWLEDGE_SEED.baking={title:"The Art of Baking: product setup and batch cards",content:procedures};
+ else chapter.content=`${chapter.content}\n\nAPP WORKFLOWS\n${procedures}`;
+});
