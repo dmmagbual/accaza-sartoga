@@ -1,8 +1,8 @@
 # Accaza AI knowledge and access maintenance
 
-The server workflow guide in `src/functions/62-accaza-workflows.js` supplies source-linked application guidance. Review its source map and update the affected guide whenever a referenced screen or workflow changes. The detailed Recipe Costing and Art of Baking procedures are also installable standard Operations Manual chapters. Standard manual installation preserves customized chapters; custom chapters default to management-only until a manager explicitly publishes them for staff.
+The server workflow guide in `src/functions/62-accaza-workflows.js` supplies source-linked application guidance. Every guide is assigned to at least one standard Operations Manual chapter through `ACCAZA_AI_MANUAL_WORKFLOWS`. Review its source map, guide and chapter assignment whenever a referenced screen or workflow changes. The detailed Recipe Costing and Art of Baking procedures are dedicated chapters. Standard manual installation preserves customized chapters; custom chapters default to management-only until a manager explicitly publishes them for staff.
 
-The workflow guide covers the listed topics but is not proof that every app action or edge case has a verified procedure. When available evidence is incomplete or conflicts, Accaza AI must say so rather than inventing steps. Prompt instructions do not guarantee a model's response.
+The coverage test proves that every workflow in the curated guide is source-linked, routable and assigned to the Operations Manual. It does not prove that every future app action or edge case has already been documented. When available evidence is incomplete or conflicts, Accaza AI must say so rather than inventing steps. Prompt instructions do not guarantee a model's response.
 
 ## History signing prerequisite
 
