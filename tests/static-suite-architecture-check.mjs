@@ -27,7 +27,7 @@ for(const file of expected){
   if(Buffer.byteLength(source,'utf8')>47500){const message=`tests/static/${file} is ${Buffer.byteLength(source,'utf8')} bytes of its 50 KB bound. Split it before adding more guards.`;console.warn('STATIC MODULE SIZE WARNING: '+message);if(process.env.GITHUB_ACTIONS)console.log(`::warning file=tests/static/${file}::${message}`);}
   if(file!=='00-context.mjs'&&!runner.includes(`./static/${file}`))throw new Error(`Static-check runner omits domain: ${file}`);
 }
-if((combined.match(/\bfail\(/g)||[]).length!==581)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 581');
+if((combined.match(/\bfail\(/g)||[]).length!==582)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 582');
 if((combined.match(/spawnSync\(/g)||[]).length!==33)throw new Error('Static-check executable-check inventory changed from the reviewed baseline of 33');
 const guardSource=combined.split(/\r?\n/).filter(line=>/\bfail\(|spawnSync\(/.test(line)).map(line=>line.trim()).join('\n');
 const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
@@ -212,6 +212,10 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // inventoryIsRecipeType authority and the invNameKey name matcher instead of the retired
 // recipeItem:isSupplyType(type)?false expression, and the Purchases guard pins the duplicate stock item message.
 // No existing guard was weakened or removed. Guard count stays at 581 and executable checks stay at 33.
-if(guardDigest!=='d17cb5bfca62aa58454e917ebdf82671fce1c12fac22583cdc12f5657a73c7cf')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// 15 Nov 2026 (Stock Items Actions menu, Admin 766): the row-actions guard pins the single positioned
+// Actions menu and its fixed-position panel instead of the retired five-column button grid, and a new
+// guard requires every row action to survive inside the menu. Guard count goes from 581 to 582;
+// executable checks stay at 33.
+if(guardDigest!=='84c78d7491b85242ead14fa023724c49626fcf825c3e3e059c27fed176e9e7b0')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
-console.log('PASS: all 581 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
+console.log('PASS: all 582 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
