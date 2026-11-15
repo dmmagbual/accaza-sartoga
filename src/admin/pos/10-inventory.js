@@ -43,6 +43,39 @@ function restoreIngredient(id){
     .then(function(){if(isTab('inventory'))renderInventory();})
     .catch(function(e){alert('Could not restore: '+((e&&e.code)||(e&&e.message)||e)+'\n\nNothing was changed.');});
 }
+/* The Stock Items table scrolls horizontally, and an absolutely positioned menu inside it would be
+   clipped by that scroller. The panel is therefore position:fixed and placed from the button's
+   rectangle on open, flipping above the button when it would run off the bottom of the window. */
+function closeInventoryActionMenus(){
+  var open=document.querySelectorAll('.inv-menu:not([hidden])');
+  for(var n=0;n<open.length;n++){
+    open[n].hidden=true;
+    var owner=document.querySelector('[data-inv-menu="'+open[n].getAttribute('data-inv-menu-panel')+'"]');
+    if(owner)owner.setAttribute('aria-expanded','false');
+  }
+}
+function bindInventoryActionMenus(root){
+  root.querySelectorAll('[data-inv-menu]').forEach(function(btn){
+    btn.onclick=function(e){
+      e.stopPropagation();
+      var id=btn.getAttribute('data-inv-menu'),panel=root.querySelector('.inv-menu[data-inv-menu-panel="'+id+'"]'),wasOpen=panel&&!panel.hidden;
+      closeInventoryActionMenus();
+      if(!panel||wasOpen)return;
+      panel.hidden=false; btn.setAttribute('aria-expanded','true');
+      var r=btn.getBoundingClientRect(),top=r.bottom+6,left=r.right-panel.offsetWidth;
+      if(top+panel.offsetHeight>window.innerHeight-8)top=Math.max(8,r.top-panel.offsetHeight-6);
+      if(left<8)left=8;
+      panel.style.top=top+'px'; panel.style.left=left+'px';
+      var first=panel.querySelector('button'); if(first)first.focus();
+    };
+  });
+  if(window.__invActionMenuBound)return;
+  window.__invActionMenuBound=true;
+  document.addEventListener('click',closeInventoryActionMenus);
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeInventoryActionMenus();});
+  window.addEventListener('resize',closeInventoryActionMenus);
+  window.addEventListener('scroll',closeInventoryActionMenus,true);
+}
 function renderInventory(){
   var root=document.getElementById('inventoryRoot'); if(!root)return;
   var allItems=ings();
@@ -74,12 +107,19 @@ function renderInventory(){
       +'<td>'+num(i.reorder||0)+'</td>'
       +'<td>'+(isUncosted?'<button class="pz-btn warn" data-inv-adjust="'+i.id+'" title="Positive stock has no weighted-average cost. Restate the invoice-backed unit cost.">Set unit cost</button>':(Number(i.cost)>0?peso(i.cost):'—'))+'</td>'
       +'<td>'+linkBadge+'</td>'
+      /* One Actions menu per row instead of five buttons: the table carried 376px of controls on
+         every row. The brand-missing state still shows on the row itself, in the Recipe / brands
+         column, so collapsing the buttons hides no warning. */
       +'<td class="inventory-actions-cell"><div class="inventory-actions">'
-        +'<button class="pz-btn sec" style="'+(recipeLinked&&!brandCount?'border-color:#c98a2b;color:#8a5a00;':'border-color:#3a8a6a;color:#256b52;')+'" data-inv-skus="'+i.id+'">'+(recipeLinked&&!brandCount?'Add brand':'Brands ('+brandCount+')')+'</button>'
-        +'<button class="pz-btn sec" data-inv-adjust="'+i.id+'">Adjust</button>'
-        +'<button class="pz-btn sec" data-inv-edit="'+i.id+'">Edit</button>'
-        +(ingIsArchived(i)?'<button class="pz-btn sec" style="border-color:#3a8a6a;color:#256b52;" data-inv-restore="'+i.id+'" title="Return this item to the active list.">Restore</button>':'<button class="pz-btn sec" data-inv-archive="'+i.id+'" title="Retire this item. It keeps its movement history and stays in valuation and exports, but stops appearing in recipe, purchase, usage and costing pickers.">Archive</button>')
-        +(i.ledgerVersion?'<span class="inventory-delete-slot inventory-lock" title="Ledger items cannot be deleted; preserve their audit trail.">🔒</span>':'<button class="pz-btn warn inventory-delete-slot" data-inv-del="'+i.id+'" aria-label="Delete '+esc(i.name)+'">✕</button>')
+        +'<button class="pz-btn sec inv-menu-btn'+(recipeLinked&&!brandCount?' needs-brand':'')+'" data-inv-menu="'+i.id+'" aria-haspopup="menu" aria-expanded="false" title="Actions for '+esc(i.name)+'">Actions <span aria-hidden="true">▾</span></button>'
+        +'<div class="inv-menu" data-inv-menu-panel="'+i.id+'" role="menu" hidden>'
+          +'<button role="menuitem"'+(recipeLinked&&!brandCount?' class="needs-brand"':'')+' data-inv-skus="'+i.id+'">'+(recipeLinked&&!brandCount?'Add brand':'Brands ('+brandCount+')')+'</button>'
+          +'<button role="menuitem" data-inv-adjust="'+i.id+'">Adjust stock</button>'
+          +'<button role="menuitem" data-inv-edit="'+i.id+'">Edit item</button>'
+          +(ingIsArchived(i)?'<button role="menuitem" data-inv-restore="'+i.id+'" title="Return this item to the active list.">Restore item</button>':'<button role="menuitem" data-inv-archive="'+i.id+'" title="Retire this item. It keeps its movement history and stays in valuation and exports, but stops appearing in recipe, purchase, usage and costing pickers.">Archive item</button>')
+          +'<hr/>'
+          +(i.ledgerVersion?'<span class="inv-menu-note" title="Ledger items cannot be deleted; preserve their audit trail.">🔒 Ledger item — cannot be deleted</span>':'<button role="menuitem" class="danger" data-inv-del="'+i.id+'" aria-label="Delete '+esc(i.name)+'">Delete item</button>')
+        +'</div>'
       +'</div></td></tr>';
   }).join('');
   root.innerHTML=
@@ -151,6 +191,7 @@ function renderInventory(){
   root.querySelectorAll('[data-inv-del]').forEach(function(b){b.onclick=function(){delIngredient(b.getAttribute('data-inv-del'));};});
   root.querySelectorAll('[data-inv-archive]').forEach(function(b){b.onclick=function(){archiveIngredient(b.getAttribute('data-inv-archive'));};});
   root.querySelectorAll('[data-inv-restore]').forEach(function(b){b.onclick=function(){restoreIngredient(b.getAttribute('data-inv-restore'));};});
+  bindInventoryActionMenus(root);
 }
 /* ══════════ INVENTORY ARCHITECTURE v2 — Phase 0 migration (DRY-RUN first) ══════════
    Promotes each inventory item to an Ingredient Master (KEEPS its ID — recipes untouched),
