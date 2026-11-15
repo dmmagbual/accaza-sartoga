@@ -80,7 +80,16 @@ function referencedIngredientIds(){
 function ingsActive(){var refs=referencedIngredientIds();return ings().filter(function(i){return !ingIsArchived(i)||refs[i.id];});}
 function activeSkusFor(masterId){return Object.keys(inventorySkuMap).map(function(k){return Object.assign({id:k},inventorySkuMap[k]);}).filter(function(s){return s.masterId===masterId&&s.active!==false;}).sort(function(a,b){return (Number(a.priority)||0)-(Number(b.priority)||0)||(a.brand||'').localeCompare(b.brand||'');});}
 function treeUsesIngredient(value,id){if(!value||typeof value!=='object')return false;if(value.ing===id)return true;if(Array.isArray(value))return value.some(function(x){return treeUsesIngredient(x,id);});return Object.keys(value).some(function(k){return treeUsesIngredient(value[k],id);});}
-function recipeUsesInventory(id){var item=inventoryMap[id]||{};return item.recipeItem===true||ingType(item)==='consumable'||treeUsesIngredient(recipesMap,id)||treeUsesIngredient(optRecipesMap,id)||treeUsesIngredient(optCostStore(),id);}
+/* "Does a recipe use this item?" is a different question from "may it be one?" above, and it
+   drives the approved-brand requirement in Purchases. Actual use always wins; a supply is never a
+   recipe item whatever a stored flag says; otherwise the stored intent stands. Classifying an item
+   therefore never silently changes what Purchases demands of an item already in use. */
+function recipeUsesInventory(id){
+  var item=inventoryMap[id]||{};
+  if(treeUsesIngredient(recipesMap,id)||treeUsesIngredient(optRecipesMap,id)||treeUsesIngredient(optCostStore(),id))return true;
+  if(item.type&&!inventoryIsRecipeType(ingType(item)))return false;
+  return item.recipeItem===true||ingType(item)==='consumable';
+}
 function recipeHasIngredientRows(rec){return !!(rec&&((rec.base||[]).length||(rec.sharedBase||[]).length||Object.keys(rec.choiceAdd||{}).some(function(g){return Object.keys(rec.choiceAdd[g]||{}).some(function(k){return !!(((rec.choiceAdd[g]||{})[k]||{}).ings||[]).length;});})));}
 function skuDisplay(s){return ((s&&s.brand)||'Unnamed brand')+((s&&s.supplier)?' · '+s.supplier:'');}
 function ingUnit(id){var i=inventoryMap[id];return i?(i.unit||''):'';}
@@ -94,6 +103,14 @@ function recipeStdCost(key,size){ var rec=recipesMap[key]; if(!recipeHasIngredie
 function ingType(i){return (i&&i.type)||'base';}
 function ingsByType(t){return ingsActive().filter(function(i){return ingType(i)===t;});}
 function isSupplyType(type){return type==='operating_supply'||type==='office_supply';}
+/* One authority for recipe use: the stock item TYPE decides it. Base, optional, both and
+   consumable (packaging) are recipe items; operating and office supplies are not. Nothing else
+   may set this, so a stored recipeItem flag can never contradict the type a human can see. */
+function inventoryIsRecipeType(type){return !isSupplyType(type);}
+/* Stock item names are matched on their own key, never on the unit normalizer: an item named
+   after a unit alias ("L", "pack") would otherwise match the wrong record. */
+function invNameKey(name){return String(name==null?'':name).trim().toLowerCase().replace(/\s+/g,' ');}
+function invItemByName(name){var k=invNameKey(name);if(!k)return null;return ings().filter(function(x){return invNameKey(x.name)===k;})[0]||null;}
 function inventoryTypeLabel(type){return type==='consumable'?'🧻 Consumable':type==='option'?'➕ Optional ingredient':type==='both'?'🔀 Base and optional':type==='operating_supply'?'🧹 Operating / Cleaning Supply':type==='office_supply'?'🗂 Office / Administrative Supply':'🧪 Base ingredient';}
 function inventoryTypeOptions(selected){return [['base','Base ingredient'],['option','Optional ingredient'],['both','Base and optional'],['consumable','Consumable — automatic per-order use'],['operating_supply','Operating / Cleaning Supply'],['office_supply','Office / Administrative Supply']].map(function(p){return '<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('');}
 /* Inventory categories (organization + product-cost vs overhead), stored in posSettings (no new rule). */

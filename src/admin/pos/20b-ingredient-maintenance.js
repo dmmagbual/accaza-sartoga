@@ -49,9 +49,9 @@ function editIngredient(id){
     var type=mask.querySelector('#eiType').value;
     var _stdRaw=(mask.querySelector('#eiStd')||{}).value;
     var inventoryAccount=mask.querySelector('#eiAssetAccount').value,costAccount=mask.querySelector('#eiCostAccount').value;if(!inventoryAccount||!costAccount){alert('Choose both the Inventory Asset and Cost account.');return;}
-    var upd={name:(mask.querySelector('#eiName').value||'').trim()||i.name,unit:mask.querySelector('#eiUnit').value,type:type,recipeItem:isSupplyType(type)?false:(i.recipeItem===true),category:(mask.querySelector('#eiCat')||{}).value||'',inventoryAccount:inventoryAccount,costAccount:costAccount,cogsAccount:null,reorder:Number(mask.querySelector('#eiReorder').value)||0,updatedAt:Date.now()};
+    var upd={name:(mask.querySelector('#eiName').value||'').trim()||i.name,unit:mask.querySelector('#eiUnit').value,type:type,recipeItem:inventoryIsRecipeType(type),category:(mask.querySelector('#eiCat')||{}).value||'',inventoryAccount:inventoryAccount,costAccount:costAccount,cogsAccount:null,reorder:Number(mask.querySelector('#eiReorder').value)||0,updatedAt:Date.now()};
     if(manualStd)upd.stdCost=(_stdRaw===''||_stdRaw==null)?null:(Number(_stdRaw)||0);
-    if(type==='consumable'){upd.recipeItem=true;upd.serves=mask.querySelector('#eiServes').value;upd.size=mask.querySelector('#eiSize').value;upd.qtyPerOrder=Number(mask.querySelector('#eiQPO').value)||1;}else if(isSupplyType(type)){upd.serves=null;upd.size=null;upd.qtyPerOrder=null;}
+    if(type==='consumable'){upd.serves=mask.querySelector('#eiServes').value;upd.size=mask.querySelector('#eiSize').value;upd.qtyPerOrder=Number(mask.querySelector('#eiQPO').value)||1;}else if(isSupplyType(type)){upd.serves=null;upd.size=null;upd.qtyPerOrder=null;}
     A().update(A().ref(A().db,'inventory/'+id),upd).then(close).catch(function(e){alert('Could not save: '+((e&&e.message)||e)+'.');});
   };
   return;

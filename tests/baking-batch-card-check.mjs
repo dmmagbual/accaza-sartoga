@@ -64,6 +64,10 @@ assert.ok(inventory.includes('A batch card movement must carry a unit cost great
   const end = baking.indexOf('async function bakingReadProduct', start);
   assert.ok(start >= 0 && end > start, 'mapping validators must exist');
   const context = vm.createContext({ qty6: (v) => Math.round((Number(v) || 0) * 1e6) / 1e6, Costing: costing });
+  const authorityStart = inventory.indexOf('function inventoryIsRecipeItem');
+  const authorityEnd = inventory.indexOf('function inventoryKey', authorityStart);
+  assert.ok(authorityStart >= 0 && authorityEnd > authorityStart, 'the shared recipe-item authority must exist in src/functions/50-inventory.js');
+  vm.runInContext(inventory.slice(authorityStart, authorityEnd), context);
   vm.runInContext(baking.slice(start, end), context);
   const { bakingPastryProblem, bakingLineProblem, bakingMappingFingerprint, bakingStockQty } = context;
   const pastry = { id: 'ing_cookie', name: 'Choco Chip Cookie', unit: 'pc', inventoryAccount: '1240', costAccount: '5030', active: true };
@@ -77,11 +81,19 @@ assert.ok(inventory.includes('A batch card movement must carry a unit cost great
   assert.match(bakingPastryProblem(Object.assign({}, pastry, { costAccount: '5040' }), 'ing_cookie'), /5030/, 'a pastry item on the packaging cost account is refused');
 
   assert.equal(bakingLineProblem(flour, 'ing_flour', 'ing_cookie', 80), '', 'a correctly mapped ingredient passes');
-  assert.match(bakingLineProblem({ name: 'Cups', inventoryAccount: '1230', costAccount: '5040', recipeItem: false, active: true }, 'ing_cups', 'ing_cookie', 2), /supply/, 'a supply cannot be an ingredient');
+  assert.match(bakingLineProblem({ name: 'Cups', type: 'operating_supply', inventoryAccount: '1230', costAccount: '5040', active: true }, 'ing_cups', 'ing_cookie', 2), /supply/, 'a supply cannot be an ingredient');
+  assert.match(bakingLineProblem({ name: 'Bond paper', type: 'office_supply', inventoryAccount: '1230', costAccount: '5040', active: true }, 'ing_paper', 'ing_cookie', 2), /supply/, 'an office supply cannot be an ingredient');
+  assert.equal(bakingLineProblem(Object.assign({}, flour, { type: 'base', recipeItem: false }), 'ing_flour', 'ing_cookie', 80), '', 'a base ingredient carrying a stale recipeItem:false is still a valid ingredient');
+  assert.equal(bakingLineProblem(Object.assign({}, flour, { type: 'consumable', recipeItem: false }), 'ing_box', 'ing_cookie', 80), '', 'packaging consumables are recipe ingredients regardless of a stale flag');
   assert.match(bakingLineProblem(pastry, 'ing_cookie', 'ing_cookie', 30), /own batch card/, 'a pastry item cannot consume itself');
   assert.match(bakingLineProblem(Object.assign({}, flour, { inventoryAccount: '' }), 'ing_flour', 'ing_cookie', 80), /inventory asset account/, 'an unmapped ingredient is refused');
   assert.match(bakingLineProblem(Object.assign({}, flour, { costAccount: '' }), 'ing_flour', 'ing_cookie', 80), /cost account/, 'an ingredient without a cost account is refused');
   assert.match(bakingLineProblem(flour, 'ing_flour', 'ing_cookie', 0), /no cost yet/, 'a zero-cost ingredient is refused, because the batch would be worth nothing');
+  /* Legacy items predate the supply types and are still typed 'base', so the account lists are the
+     backstop: operating and office supply accounts can never be consumed into a pastry. */
+  assert.match(bakingLineProblem({ name: 'Dishwashing liquid', type: 'base', unit: 'L', inventoryAccount: '1270', costAccount: '6070', active: true }, 'ing_soap', 'ing_cookie', 50), /inventory asset account/, 'a cleaning supply on 1270 is refused even when it is still typed as a base ingredient');
+  assert.match(bakingLineProblem({ name: 'Bond paper', type: 'base', unit: 'ream', inventoryAccount: '1280', costAccount: '6075', active: true }, 'ing_paper', 'ing_cookie', 50), /inventory asset account/, 'office stock on 1280 is refused even when it is still typed as a base ingredient');
+  assert.match(bakingLineProblem({ name: 'Mystery', type: 'base', unit: 'kg', inventoryAccount: '1240', costAccount: '6070', active: true }, 'ing_x', 'ing_cookie', 50), /cost account/, 'an overhead expense account is not a baking cost account');
 
   assert.equal(bakingMappingFingerprint(pastry, 'ing_cookie'), bakingMappingFingerprint(Object.assign({}, pastry, { name: 'Chewy Choco Chip' }), 'ing_cookie'),
     'renaming an item must never change the confirmation fingerprint');

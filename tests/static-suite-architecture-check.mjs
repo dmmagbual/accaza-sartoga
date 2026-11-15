@@ -208,6 +208,10 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // 15 Nov 2026 (App Check production override): four new guards in 30-server-release.mjs require production to ignore a runtime
 // ENFORCE_APP_CHECK value and run the flag logic for production, UAT and unset cases; the staff-flag regex pins the new declaration.
 // No existing guard was weakened. Guard count goes from 577 to 581 and executable checks stay at 33.
-if(guardDigest!=='d8aa89d950c82849adc81fb5f5dc5e32c9859dd673c43cf421ade7d01ef1eb66')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// 15 Nov 2026 (stock item type decides recipe use, Admin 764): the supply-classification guard pins the new
+// inventoryIsRecipeType authority and the invNameKey name matcher instead of the retired
+// recipeItem:isSupplyType(type)?false expression, and the Purchases guard pins the duplicate stock item message.
+// No existing guard was weakened or removed. Guard count stays at 581 and executable checks stay at 33.
+if(guardDigest!=='d17cb5bfca62aa58454e917ebdf82671fce1c12fac22583cdc12f5657a73c7cf')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 581 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
