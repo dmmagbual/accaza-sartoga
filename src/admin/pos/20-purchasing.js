@@ -25,10 +25,10 @@
       typeCell='<div class="purchase-expense-account"><span class="pz-lbl">Charge to Finance Books</span><select class="pz-in" data-pf="expenseAccount" data-pi="'+i+'" title="Active 6000-series operating expenses; 6110 Cash Over / Short is controlled separately.">'+expenseOptions.map(function(x){return '<option value="'+esc(x.code)+'"'+(String(ln.expenseAccount)===String(x.code)?' selected':'')+'>'+esc(x.code)+' · '+esc(x.name||'')+'</option>';}).join('')+'</select></div>';
       unitCell='<span style="color:var(--tl);font-size:.82rem;">use</span>';
     } else if(ln.mode==='new'){
-      var newRecipeItem=!isSupplyType(ln.newType)&&(ln.newType==='consumable'||ln.recipeItem!==false);
+      var newRecipeItem=inventoryIsRecipeType(ln.newType);
       firstCell='<div style="flex:1;min-width:160px;"><span class="pz-lbl">New item (generic name)</span><input class="pz-in" data-pf="newName" data-pi="'+i+'" placeholder="e.g. Condensed Milk" value="'+esc(ln.newName)+'"/></div>';
       typeCell='<div><span class="pz-lbl">Type</span><select class="pz-in" data-pf="newType" data-pi="'+i+'" style="width:180px;">'+inventoryTypeOptions(ln.newType)+'</select></div>'
-        +'<label class="purchase-recipe-toggle"><input type="checkbox" data-pf="recipeItem" data-pi="'+i+'"'+(newRecipeItem?' checked':'')+((ln.newType==='consumable'||isSupplyType(ln.newType))?' disabled title="This item type controls recipe use automatically"':'')+'/> Used in recipes</label>';
+        +'<label class="purchase-recipe-toggle"><input type="checkbox" disabled'+(newRecipeItem?' checked':'')+' title="Set by the item type: operating and office supplies are not recipe items, every other type is."/> Used in recipes</label>';
       unitCell='<select class="pz-in" data-pf="newUnit" data-pi="'+i+'" style="width:74px;">'+unitOpts(PURCH_UNITS,ln.newUnit)+'</select>';
       skuCell='<div class="purchase-sku-cell '+(newRecipeItem?'required':'optional')+'"><span class="pz-lbl">First approved brand '+(newRecipeItem?'<b>required</b>':'(optional)')+'</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="e.g. Dabba"/></div>';
     } else {

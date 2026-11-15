@@ -7,6 +7,11 @@ const INVENTORY_MOVEMENT_TYPES = new Set([
 function qty6(value) {
   return Math.round((Number(value) || 0) * 1000000) / 1000000;
 }
+/* One authority for recipe use on the server, mirroring the admin screens: the stock item TYPE
+   decides it. Base, optional, both and consumable (packaging) are recipe items; operating and
+   office supplies are not. A stored recipeItem flag is history, never a gate — legacy items carry
+   a stale false that no screen could clear. */
+function inventoryIsRecipeItem(item) { return String(item && item.type || "").indexOf("supply") < 0; }
 function inventoryKey(value, label) {
   const key = String(value || "").trim();
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(key)) throw new HttpsError("invalid-argument", `${label} is invalid.`);

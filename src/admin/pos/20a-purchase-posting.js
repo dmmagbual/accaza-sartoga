@@ -19,17 +19,24 @@ function postPurchases(){
   var masterSupplier=purchaseSupplierById(P.supplierId);if(!masterSupplier){alert('Select an active supplier from the shared supplier database.');return;}P.supplier=masterSupplier.name;
   var lines=P.lines.filter(function(ln){return (ln.mode==='asset'?(ln.assetName||'').trim():ln.mode==='expense'?(ln.expenseDescription||'').trim():(ln.mode==='new'?(ln.newName||'').trim():ln.ing))&&(Number(ln.qty)||0)>0;});
   if(!lines.length){alert('Add at least one line with an item and a quantity.');return;}
-  var purchaseByName={};ings().forEach(function(x){purchaseByName[uNorm(x.name)]=x;});
+  /* Danilo, 15 Nov 2026: a purchase may never open a second record for an item already in stock.
+     This runs before the account-mapping prompt below, so a refused line cannot rewrite the existing
+     item's accounts on its way through. */
+  for(var di=0;di<lines.length;di++)if(lines[di].mode==='new'){
+    var dup=invItemByName(lines[di].newName);
+    if(dup){alert(ingIsArchived(dup)?'“'+dup.name+'” is already a stock item, currently archived. Restore it under Stock Items, then choose it on this line.':'“'+dup.name+'” is already a stock item ('+inventoryTypeLabel(ingType(dup))+'). Choose it as an existing item on this line instead of recording it again.');return;}
+  }
+  var purchaseByName={};ings().forEach(function(x){purchaseByName[invNameKey(x.name)]=x;});
   var missingMapping=null;
   for(var mi=0;mi<lines.length;mi++)if(lines[mi].mode==='new'){
-    var pendingLine=lines[mi],matchedItem=purchaseByName[uNorm((pendingLine.newName||'').trim())]||null,accounts=matchedItem?invItemAccounts(matchedItem):{inventoryAccount:pendingLine.newInventoryAccount||'',costAccount:pendingLine.newCostAccount||''};
+    var pendingLine=lines[mi],matchedItem=purchaseByName[invNameKey(pendingLine.newName)]||null,accounts=matchedItem?invItemAccounts(matchedItem):{inventoryAccount:pendingLine.newInventoryAccount||'',costAccount:pendingLine.newCostAccount||''};
     if(!validPurchaseAccounts(accounts.inventoryAccount,accounts.costAccount)){missingMapping={line:pendingLine,item:matchedItem};break;}
   }
   if(missingMapping){promptPurchaseItemMapping(missingMapping.line,missingMapping.item).then(function(){renderPurchases();postPurchases();}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not save the item mapping: '+((e&&e.message)||e));});return;}
   for(var i=0;i<lines.length;i++){
     var line=lines[i],c0=purchCalc(line);if(line.mode==='asset'){var aq=Number(line.qty)||0,unitAssetCost=c0&&aq>0?c0.lineTotal/aq:0;if(!Number.isInteger(aq)||aq<1||aq>100){alert('Equipment quantity must be a whole number from 1 to 100.');return;}if(!c0||!(c0.lineTotal>0)){alert('Equipment needs a cost greater than zero.');return;}if(!(Number(line.assetLifeMonths)>=1)){alert('Enter the equipment useful life in months.');return;}if((Number(line.assetSalvage)||0)<0||(Number(line.assetSalvage)||0)>=unitAssetCost){alert('Salvage value per asset must be zero or less than its unit cost.');return;}if(!(line.assetInServiceDate||P.date)){alert('Enter the in-service date.');return;}if(!(line.assetLocation||'').trim()||!(line.assetCustodian||'').trim()){alert('Enter the equipment location and custodian.');return;}continue;}if(line.mode==='expense'){if(!purchaseExpenseAccount(line.expenseAccount)){alert('Choose an active 6000-series operating-expense account for every one-time expense. Cash Over / Short is controlled separately.');return;}if(!c0||!(c0.lineTotal>0)){alert('A one-time expense needs a quantity and cost greater than zero.');return;}continue;}if(!c0||!(c0.stockAdd>0)){alert('A stock line has an invalid quantity/unit — check the measures.');return;}
-    if(line.mode==='new'&&!isSupplyType(line.newType)&&(line.newType==='consumable'||line.recipeItem!==false)&&!(line.brand||'').trim()){alert('Enter the first approved brand for new recipe item “'+((line.newName||'').trim()||'unnamed item')+'”.');return;}
-    if(line.mode!=='new'&&recipeUsesInventory(line.ing)){var validSku=inventorySkuMap[line.skuId];if(!validSku||validSku.masterId!==line.ing||validSku.active===false){alert('Select an active approved brand for recipe item “'+((inventoryMap[line.ing]||{}).name||line.ing)+'” before receiving this purchase.');return;}}
+    if(line.mode==='new'&&inventoryIsRecipeType(line.newType)&&!(line.brand||'').trim()){alert('Enter the first approved brand for new recipe item “'+((line.newName||'').trim()||'unnamed item')+'”.');return;}
+    if(line.mode!=='new'&&recipeUsesInventory(line.ing)){var validSku=inventorySkuMap[line.skuId];if(!validSku||validSku.masterId!==line.ing||validSku.active===false){alert('Select an active approved brand for recipe item “'+((inventoryMap[line.ing]||{}).name||line.ing)+'” before receiving this purchase. If it is really a cleaning or office supply, change its type under Stock Items instead.');return;}}
   }
   if(P.pay==='paid'){ var availableAccounts=(window.__cf&&window.__cf.accounts?window.__cf.accounts():[]).filter(function(x){return !x.disabled;});if(!availableAccounts.length){alert('No available Balance Sheet cash account. Choose another payment option.');return;} if(!P.acct||!availableAccounts.some(function(x){return x.id===P.acct;}))P.acct=availableAccounts[0].id; }
   if(P.pay==='advance'&&!P.advanceId){alert('Select an approved advance payment for this supplier.');return;}
@@ -38,7 +45,7 @@ function postPurchases(){
   if(P.pay==='owner_funded'&&!(A()&&A().postFinancialCommand)){alert('Owner/partner funding service is not ready. Refresh the portal and try again.');return;}
   if(P.pay==='account'&&!(A()&&A().reconcilePurchasePayable)){ alert('Purchase liability service is not ready. Refresh the portal and try again.'); return; }
   /* a "new" line whose name already exists (or repeats within this invoice) blends into that item — no duplicate SKU */
-  var byName={}; ings().forEach(function(x){byName[uNorm(x.name)]=x.id;});
+  var byName={}; ings().forEach(function(x){byName[invNameKey(x.name)]=x.id;});
   window.__purchPosting=true;
   var a=A(); var invoiceId=P.invoiceId||(P.invoiceId=uid('pinv_')); var date=P.date||window.AccazaDate.key(), effectiveRef=(P.ref||'').trim(); /* blank = no supplier reference; the server gives the purchase its PUR number when it is entered */
   var updates={}, seedUpdates={}, invTotal=0, receiptIds=[], invoiceLines=[], agg={}, newByName={}, newSkuByKey={};
@@ -46,12 +53,12 @@ function postPurchases(){
     if(ln.mode==='asset'){var ac=purchCalc(ln),assetQty=Number(ln.qty)||0;invTotal+=ac.lineTotal;invoiceLines.push({lineType:'fixed_asset',itemName:(ln.assetName||'').trim(),assetCategory:ln.assetCategory==='furniture'?'furniture':'equipment',qty:assetQty,unit:'asset',unitCost:Math.round((ac.lineTotal/assetQty)*100)/100,total:ac.lineTotal,usefulLifeMonths:Math.round(Number(ln.assetLifeMonths)||0),depreciationMethod:'straight-line',salvagePerUnit:Math.round((Number(ln.assetSalvage)||0)*100)/100,inServiceDate:ln.assetInServiceDate||date,location:(ln.assetLocation||'').trim(),custodian:(ln.assetCustodian||'').trim()});return;}
     if(ln.mode==='expense'){var ec=purchCalc(ln),expenseQty=Number(ln.qty)||0,expenseName=(ln.expenseDescription||'').trim();invTotal+=ec.lineTotal;invoiceLines.push({lineType:'expense',itemName:expenseName,expenseAccount:ln.expenseAccount,qty:expenseQty,unit:'use',unitCost:expenseQty>0?Math.round((ec.lineTotal/expenseQty)*100000)/100000:0,total:ec.lineTotal});return;}
     var requestedNew=ln.mode==='new';
-    if(ln.mode==='new'){ var mt=byName[uNorm((ln.newName||'').trim())]; if(mt)ln=Object.assign({},ln,{mode:'existing',ing:mt}); }
+    if(ln.mode==='new'){ var mt=byName[invNameKey(ln.newName)]; if(mt)ln=Object.assign({},ln,{mode:'existing',ing:mt}); }
     var c=purchCalc(ln); var ingId=ln.ing; var nm;
     if(ln.mode==='new'){
-      var nk=uNorm((ln.newName||'').trim());
+      var nk=invNameKey(ln.newName);
       if(newByName[nk]){ ingId=newByName[nk]; }
-      else { ingId='ing_'+invoiceId+'_'+lineIndex; newByName[nk]=ingId; agg[ingId]={before:0,oldCost:0,stock:0,value:0,newItem:true,recipeItem:!isSupplyType(ln.newType)&&(ln.newType==='consumable'||ln.recipeItem!==false),name:(ln.newName||'').trim(),unit:ln.newUnit||'',type:ln.newType||'base',inventoryAccount:ln.newInventoryAccount||'',costAccount:ln.newCostAccount||''}; }
+      else { ingId='ing_'+invoiceId+'_'+lineIndex; newByName[nk]=ingId; agg[ingId]={before:0,oldCost:0,stock:0,value:0,newItem:true,recipeItem:inventoryIsRecipeType(ln.newType),name:(ln.newName||'').trim(),unit:ln.newUnit||'',type:ln.newType||'base',inventoryAccount:ln.newInventoryAccount||'',costAccount:ln.newCostAccount||''}; }
       agg[ingId].stock+=c.stockAdd; agg[ingId].value+=c.lineTotal; nm=(ln.newName||'').trim();
     } else {
       var inv=inventoryMap[ingId]||{}; nm=inv.name||'';
@@ -63,13 +70,13 @@ function postPurchases(){
     var selectedSku=inventorySkuMap[ln.skuId]&&inventorySkuMap[ln.skuId].masterId===ingId&&inventorySkuMap[ln.skuId].active!==false?inventorySkuMap[ln.skuId]:null;
     var skuId=selectedSku?ln.skuId:'', skuBrand=selectedSku?(selectedSku.brand||''):(ln.brand||'').trim();
     if(requestedNew&&!selectedSku&&skuBrand){selectedSku=activeSkusFor(ingId).filter(function(s){return uNorm(s.brand)===uNorm(skuBrand);})[0]||null;if(selectedSku)skuId=selectedSku.id;}
-    var needsNewSku=requestedNew&&!isSupplyType(ln.newType)&&(ln.newType==='consumable'||ln.recipeItem!==false)&&!skuId;
+    var needsNewSku=requestedNew&&inventoryIsRecipeType(ln.newType)&&!skuId;
     if(needsNewSku&&skuBrand){var skuKey=ingId+'::'+uNorm(skuBrand);skuId=newSkuByKey[skuKey]||('sku_'+invoiceId+'_'+lineIndex);newSkuByKey[skuKey]=skuId;updates['inventorySku/'+skuId]={masterId:ingId,brand:skuBrand,supplierId:P.supplierId,supplier:(P.supplier||'').trim(),purchaseUnit:c.recvUnit,packSize:null,purchaseCost:null,convToBase:1,costPerBase:lineUnitCost,active:true,priority:activeSkusFor(ingId).length,branchAvail:['main'],seededFrom:'purchase',createdAt:Date.now(),updatedAt:Date.now()};}
-    if(requestedNew&&inventoryMap[ingId])seedUpdates['inventory/'+ingId+'/recipeItem']=!isSupplyType(ln.newType)&&(ln.newType==='consumable'||ln.recipeItem!==false);
+    if(requestedNew&&inventoryMap[ingId])seedUpdates['inventory/'+ingId+'/recipeItem']=inventoryIsRecipeType(ln.newType);
     updates['stockReceipts/'+rid]={ing:ingId,skuId:skuId,skuBrand:skuBrand,name:nm,unit:c.stockUnit,qty:c.stockAdd,recvQty:c.qty,recvUnit:c.recvUnit,unitCost:lineUnitCost,total:c.lineTotal,supplierId:P.supplierId,supplier:(P.supplier||'').trim(),brand:skuBrand,ref:effectiveRef,date:date,receivedBy:(P.by||'').trim(),payMode:P.pay,invoiceId:invoiceId,ts:Date.now()};
     /* P2: a batch/lot per line for expiry + brand tracking (does NOT drive costing — WAC pool stays authoritative) */
     var bid='bat_'+invoiceId+'_'+lineIndex; updates['inventoryBatch/'+bid]={skuId:skuId,masterId:ingId,brand:skuBrand,supplierId:P.supplierId,supplier:(P.supplier||'').trim(),qtyRecv:c.stockAdd,qtyRemaining:c.stockAdd,unit:c.stockUnit,unitCost:lineUnitCost,recvDate:date,expiry:(ln.expiry||''),lot:(ln.lot||''),branch:'main',source:'purchase',invoiceId:invoiceId,receiptId:rid,createdAt:Date.now()};
-    invoiceLines.push({receiptId:rid,itemId:ingId,itemName:nm,recipeItem:!isSupplyType(ln.newType)&&(recipeUsesInventory(ingId)||ln.newType==='consumable'||ln.recipeItem!==false),skuId:skuId,skuBrand:skuBrand,qty:c.stockAdd,unit:c.stockUnit,unitCost:lineUnitCost,total:c.lineTotal});
+    invoiceLines.push({receiptId:rid,itemId:ingId,itemName:nm,recipeItem:requestedNew?inventoryIsRecipeType(ln.newType):recipeUsesInventory(ingId),skuId:skuId,skuBrand:skuBrand,qty:c.stockAdd,unit:c.stockUnit,unitCost:lineUnitCost,total:c.lineTotal});
   });
   var movementRows=[];
   Object.keys(agg).forEach(function(id){ var g=agg[id];

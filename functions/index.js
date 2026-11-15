@@ -10093,7 +10093,7 @@ async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
   };
   for (const add of adds.filter((a) => a.stock)) {
     const it = await loadItem(add.itemId, add.itemId);
-    Object.assign(add.n, {itemName: financeText(it.item.name, 160), unit: financeText(it.item.unit, 40), recipeItem: it.item.recipeItem !== false});
+    Object.assign(add.n, {itemName: financeText(it.item.name, 160), unit: financeText(it.item.unit, 40), recipeItem: inventoryIsRecipeItem(it.item)});
     if (!add.recvUnit) add.recvUnit = add.n.unit;
   }
   const oldVat = Financial.money(invoice.inputVat), vatGiven = data.inputVat !== undefined && data.inputVat !== null && data.inputVat !== "", newVat = vatGiven ? Financial.money(data.inputVat) : oldVat;
@@ -11169,6 +11169,11 @@ const INVENTORY_MOVEMENT_TYPES = new Set([
 function qty6(value) {
   return Math.round((Number(value) || 0) * 1000000) / 1000000;
 }
+/* One authority for recipe use on the server, mirroring the admin screens: the stock item TYPE
+   decides it. Base, optional, both and consumable (packaging) are recipe items; operating and
+   office supplies are not. A stored recipeItem flag is history, never a gate — legacy items carry
+   a stale false that no screen could clear. */
+function inventoryIsRecipeItem(item) { return String(item && item.type || "").indexOf("supply") < 0; }
 function inventoryKey(value, label) {
   const key = String(value || "").trim();
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(key)) throw new HttpsError("invalid-argument", `${label} is invalid.`);
@@ -11850,8 +11855,11 @@ exports.onArchivedOrderInventoryReversal = onValueWritten(
 const BAKING_MANAGER_ROLES = ["owner", "superadmin", "admin", "manager"];
 const BAKING_PASTRY_INVENTORY_ACCOUNT = "1240";
 const BAKING_PASTRY_COST_ACCOUNT = "5030";
-const BAKING_ALLOWED_INGREDIENT_ACCOUNTS = ["1200", "1210", "1220", "1230", "1240", "1270", "1280"];
-const BAKING_ALLOWED_INGREDIENT_COST_ACCOUNTS = ["5000", "5010", "5020", "5030", "5040", "6070", "6075"];
+/* Operating (1270/6070) and office (1280/6075) supply accounts are deliberately absent: a pastry can
+   never be baked out of cleaning or office stock. This holds even for a legacy item still typed
+   "base", so it backstops the type rule rather than trusting it. Packaging uses 1230/5040. */
+const BAKING_ALLOWED_INGREDIENT_ACCOUNTS = ["1200", "1210", "1220", "1230", "1240"];
+const BAKING_ALLOWED_INGREDIENT_COST_ACCOUNTS = ["5000", "5010", "5020", "5030", "5040"];
 const BAKING_MAX_PIECES = 5000;
 const BAKING_MAX_LINES = 40;
 
@@ -11861,7 +11869,9 @@ function bakingItemAccount(item) {
 }
 /* Archived items are excluded from every picker and every card. Absent means active. */
 function bakingItemActive(item) { return !(item && item.active === false); }
-function bakingIsSupply(item) { return String(item && item.type || "").indexOf("supply") >= 0 || (item && item.recipeItem === false); }
+/* Recipe use comes from the shared inventory authority, so a batch card and the admin screens can
+   never disagree. A stale recipeItem flag used to block ordinary ingredients from every card. */
+function bakingIsSupply(item) { return !inventoryIsRecipeItem(item); }
 
 /* The confirmation fingerprint covers only the facts the ledger entry depends on: which item is
    produced and which account it lands in. Names are never included, so renaming an item is cosmetic
@@ -11895,7 +11905,7 @@ function bakingLineProblem(item, itemId, pastryItemId, unitCost) {
   const name = String(item.name || itemId);
   if (!bakingItemActive(item)) return `${name} is archived. Restore it or remove the line.`;
   if (itemId === pastryItemId) return `${name} cannot be an ingredient of its own batch card.`;
-  if (bakingIsSupply(item)) return `${name} is a supply, not a recipe ingredient.`;
+  if (bakingIsSupply(item)) return `${name} is an operating or office supply, not a recipe ingredient. Change its type under Stock Items if it belongs in recipes.`;
   const accounts = bakingItemAccount(item);
   if (!BAKING_ALLOWED_INGREDIENT_ACCOUNTS.includes(accounts.inventory)) return `${name} needs an inventory asset account (12xx) — it maps to ${accounts.inventory || "nothing"}.`;
   if (!BAKING_ALLOWED_INGREDIENT_COST_ACCOUNTS.includes(accounts.cost)) return `${name} needs a cost account (5xxx) — it maps to ${accounts.cost || "nothing"}.`;

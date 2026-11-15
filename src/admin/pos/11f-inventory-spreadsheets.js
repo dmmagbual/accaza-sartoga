@@ -55,19 +55,21 @@ function importInventoryXlsx(file,purpose){
       var rows=XLSX.utils.sheet_to_json(sh,{defval:''});
       if(!rows.length){alert('No rows found on the Inventory sheet.');return;}
       var byId={},byName={};
-      ings().forEach(function(i){byId[i.id]=i;byName[(i.name||'').trim().toLowerCase()]=i;});
+      ings().forEach(function(i){byId[i.id]=i;byName[invNameKey(i.name)]=i;});
       var created=0,updated=0,skipped=0; var a=A(), writes={}, moves=[];
       var importId='xlsx_'+String(file.name||'inventory').replace(/[^A-Za-z0-9_-]/g,'_').slice(0,70)+'_'+Number(file.lastModified||file.size||0);
       rows.forEach(function(r){
         var name=String(r.name||'').trim(); if(!name){skipped++;return;}
         var id=String(r.id||'').trim();
-        var match=(id&&byId[id])||byName[name.toLowerCase()];
+        var match=(id&&byId[id])||byName[invNameKey(name)];
         function has(k){return r[k]!==''&&r[k]!=null;}
-        var type=has('type')?String(r.type).trim().toLowerCase():(match?ingType(match):'base'); if(['base','option','both','consumable','operating_supply','office_supply'].indexOf(type)<0)type='base';
+        var fallbackType=match?ingType(match):'base';
+        var type=has('type')?String(r.type).trim().toLowerCase().replace(/\s+/g,'_'):fallbackType;
+        if(['base','option','both','consumable','operating_supply','office_supply'].indexOf(type)<0)type=fallbackType;
         var desiredStock=has('stock')?(Number(r.stock)||0):(match?(Number(match.stock)||0):0);
         var desiredCost=has('cost')?(Number(r.cost)||0):(match?(Number(match.cost)||0):0);
         var o=match?{}:{reorder:0};
-        o.name=name; o.type=type;o.recipeItem=isSupplyType(type)?false:(match&&match.recipeItem===false?false:true);
+        o.name=name; o.type=type;o.recipeItem=inventoryIsRecipeType(type);
         if(has('unit')){var importedUnit=String(r.unit).trim();if(match&&match.ledgerVersion&&uNorm(importedUnit)!==uNorm(match.unit)){throw new Error('Cannot change the unit of ledger item "'+name+'" by import. Create a new item or correct it before ledger initialization.');}o.unit=importedUnit;}
         if(has('reorder'))o.reorder=Number(r.reorder)||0;
         if(type==='consumable'){

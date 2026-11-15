@@ -141,7 +141,7 @@ async function amendPurchase(db, actor, invoiceId, invoice, data, reason, now) {
   };
   for (const add of adds.filter((a) => a.stock)) {
     const it = await loadItem(add.itemId, add.itemId);
-    Object.assign(add.n, {itemName: financeText(it.item.name, 160), unit: financeText(it.item.unit, 40), recipeItem: it.item.recipeItem !== false});
+    Object.assign(add.n, {itemName: financeText(it.item.name, 160), unit: financeText(it.item.unit, 40), recipeItem: inventoryIsRecipeItem(it.item)});
     if (!add.recvUnit) add.recvUnit = add.n.unit;
   }
   const oldVat = Financial.money(invoice.inputVat), vatGiven = data.inputVat !== undefined && data.inputVat !== null && data.inputVat !== "", newVat = vatGiven ? Financial.money(data.inputVat) : oldVat;
