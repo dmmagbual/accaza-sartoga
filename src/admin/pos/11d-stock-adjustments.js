@@ -5,10 +5,14 @@ function addIngredient(){
   if(openingStock<0){alert('Opening stock cannot be negative. Use Adjust for a controlled count correction.');return;}
   if(openingStock>0&&!(document.getElementById('invOpeningConfirmed')||{}).checked){alert('Confirm that this opening stock is physically present and has not already been included in the system’s recorded physical count.');return;}
   if(openingStock>0&&!(openingCost>0)){alert('Enter the opening cost per unit so the physical stock receives the correct inventory value in Finance Books.');return;}
-  var inventoryAccount=(document.getElementById('invAssetAccount')||{}).value||'',costAccount=(document.getElementById('invCostAccount')||{}).value||'';if(!inventoryAccount||!costAccount){alert('Choose both the Inventory Asset and Cost account.');return;}
+  /* The group is the single choice: it carries the account pair, so an item's label and its
+     accounting are written from one source and cannot drift apart. */
+  var groupCode=(document.getElementById('invGroup')||{}).value||'',group=inventoryGroupByCode(groupCode);
+  if(!group){alert('Choose the group this item belongs to.');return;}
+  var inventoryAccount=group.inventoryAccount,costAccount=group.costAccount;
   var maker=(window.__posShift&&window.__posShift.staff)||'Admin',unit=document.getElementById('invUnit').value,openingValue=Math.round(openingStock*openingCost*100)/100;
   if(!confirm('Confirm stock-item setup\n\nItem: '+name+'\nOpening stock: '+openingStock+' '+unit+'\nOpening cost: '+peso(openingCost)+' / '+unit+'\nOpening inventory value: '+peso(openingValue)+'\nMaker: '+maker+'\n\n'+(openingStock>0?'I confirm this stock is physically present and was not already counted or received.':'This creates the item with zero opening stock. Future deliveries must go through Purchases.')))return;
-  var o={name:name,unit:document.getElementById('invUnit').value,type:type,recipeItem:!isSupplyType(type),category:(document.getElementById('invCat')||{}).value||'',inventoryAccount:inventoryAccount,costAccount:costAccount,stock:0,reorder:Number(document.getElementById('invReorder').value)||0,cost:0,updatedAt:Date.now()};
+  var o={name:name,unit:document.getElementById('invUnit').value,type:type,recipeItem:!isSupplyType(type),group:group.code,inventoryAccount:inventoryAccount,costAccount:costAccount,stock:0,reorder:Number(document.getElementById('invReorder').value)||0,cost:0,updatedAt:Date.now()};
   if(type==='consumable'){ o.serves=(document.getElementById('invServes')||{}).value||'both'; o.size=(document.getElementById('invSize')||{}).value||''; o.qtyPerOrder=Number((document.getElementById('invQPO')||{}).value)||1; }
   var a=A(), id=uid('ing_'), sourceId=uid('new_');a.set(a.ref(a.db,'inventory/'+id),o).then(function(){
     return postMovements([{movementId:movementId('manual_edit',sourceId,id),itemId:id,type:'manual_edit',qty:openingStock,unitCost:openingCost,setCost:true,offsetAccount:'3000',adjustmentNature:'beginning-inventory',sourceType:'new-inventory-item',sourceId:sourceId,note:'Opening quantity confirmed by '+maker+' when item was created',actorName:maker,occurredAt:Date.now()}]);
