@@ -113,16 +113,37 @@ function invNameKey(name){return String(name==null?'':name).trim().toLowerCase()
 function invItemByName(name){var k=invNameKey(name);if(!k)return null;return ings().filter(function(x){return invNameKey(x.name)===k;})[0]||null;}
 function inventoryTypeLabel(type){return type==='consumable'?'🧻 Consumable':type==='option'?'➕ Optional ingredient':type==='both'?'🔀 Base and optional':type==='operating_supply'?'🧹 Operating / Cleaning Supply':type==='office_supply'?'🗂 Office / Administrative Supply':'🧪 Base ingredient';}
 function inventoryTypeOptions(selected){return [['base','Base ingredient'],['option','Optional ingredient'],['both','Base and optional'],['consumable','Consumable — automatic per-order use'],['operating_supply','Operating / Cleaning Supply'],['office_supply','Office / Administrative Supply']].map(function(p){return '<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('');}
-/* Inventory categories (organization + product-cost vs overhead), stored in posSettings (no new rule). */
-function invCatsMap(){return (window.__posSettings&&window.__posSettings.invCategories)||{};}
-function invCats(){var m=invCatsMap();return Object.keys(m).map(function(id){return Object.assign({id:id},m[id]);}).sort(function(a,b){return ((a.order||0)-(b.order||0))||(a.name||'').localeCompare(b.name||'');});}
-function invCatName(id){var c=invCatsMap()[id];return c?c.name:'';}
-function invCatKind(id){var c=invCatsMap()[id];return (c&&c.kind)||'cogs';}
-var ITEM_INVENTORY_ACCOUNTS=[['1200','Coffee & Beans'],['1210','Milk & Dairy'],['1220','Syrups & Flavors'],['1230','Cups & Packaging'],['1240','Food & Pastries'],['1270','Operating & Cleaning Supplies'],['1280','Office Supplies']];
+/* ── Inventory groups ─────────────────────────────────────────────────────────────────────────
+   Danilo's seven stock groups, 15 Nov 2026. They are not a free-form list: each one IS an
+   inventory control account, so the group a stock item belongs to and the accounts its value
+   posts to are the same fact. Choosing the group sets both accounts, which is why the old
+   free-form categories are retired - they could say "Bread & Pastries" while the item's value
+   sat in Syrups, and nothing reconciled the two.
+   01-05 are ingredients; 06 and 07 are overhead supplies, never recipe ingredients. */
+var INVENTORY_GROUPS=[
+  {code:'01',name:'COFFEE & BEANS',inventoryAccount:'1200',costAccount:'5000',supply:false},
+  {code:'02',name:'MILK & DAIRY',inventoryAccount:'1210',costAccount:'5010',supply:false},
+  {code:'03',name:'SYRUPS & FLAVORING',inventoryAccount:'1220',costAccount:'5020',supply:false},
+  {code:'04',name:'CUPS & PACKAGING',inventoryAccount:'1230',costAccount:'5040',supply:false},
+  {code:'05',name:'FOOD & PASTRIES',inventoryAccount:'1240',costAccount:'5030',supply:false},
+  {code:'06',name:'OPERATING SUPPLIES',inventoryAccount:'1270',costAccount:'6070',supply:true},
+  {code:'07',name:'OFFICE SUPPLIES',inventoryAccount:'1280',costAccount:'6075',supply:true}
+];
+function inventoryGroupByCode(code){var c=String(code||'');for(var i=0;i<INVENTORY_GROUPS.length;i++)if(INVENTORY_GROUPS[i].code===c)return INVENTORY_GROUPS[i];return null;}
+/* An item's group reads from its stored group, and falls back to its inventory account, so every
+   existing item resolves correctly before anything is written to it. */
+function inventoryGroupFor(item){
+  var g=inventoryGroupByCode(item&&item.group); if(g)return g;
+  var acct=String(item&&item.inventoryAccount||'');
+  for(var i=0;i<INVENTORY_GROUPS.length;i++)if(INVENTORY_GROUPS[i].inventoryAccount===acct)return INVENTORY_GROUPS[i];
+  return null;
+}
+function inventoryGroupLabel(item){var g=inventoryGroupFor(item);return g?g.code+' \u00b7 '+g.name:'';}
+function inventoryGroupOptions(selected){return INVENTORY_GROUPS.map(function(g){return '<option value="'+g.code+'"'+(String(selected||'')===g.code?' selected':'')+'>'+g.code+' \u00b7 '+g.name+(g.supply?' (overhead supply)':'')+'</option>';}).join('');}
+var ITEM_INVENTORY_ACCOUNTS=INVENTORY_GROUPS.map(function(g){return [g.inventoryAccount,g.code+' \u00b7 '+g.name];});
 var ITEM_COST_ACCOUNTS=[['5000','COGS — Coffee & Beans'],['5010','COGS — Milk & Dairy'],['5020','COGS — Syrups & Flavors'],['5030','COGS — Food & Pastries'],['5040','COGS — Cups & Packaging'],['6070','Expense — Cleaning & Operating Supplies'],['6075','Expense — Office & Administrative Supplies']];
 function itemAccountOptions(selected,kind){var rows=kind==='inventory'?ITEM_INVENTORY_ACCOUNTS:ITEM_COST_ACCOUNTS;return '<option value="">— Unmapped —</option>'+rows.map(function(p){return '<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[0]+' · '+esc((kind==='inventory'?'Inventory — ':'')+p[1])+'</option>';}).join('');}
 function invItemAccounts(i){return{inventoryAccount:String(i&&i.inventoryAccount||''),costAccount:String(i&&(i.costAccount||i.cogsAccount)||'')};}
-function seedInvCats(){ if(Object.keys(invCatsMap()).length)return; var a=A(); if(!a)return; var seed={}; [['Coffee','cogs'],['Milk','cogs'],['Syrup','cogs'],['Powder','cogs'],['Tea','cogs'],['Packaging','cogs'],['Food & Pastries','cogs'],['Cleaning','overhead'],['Office','overhead']].forEach(function(p,i){seed['cat_'+p[0].toLowerCase().replace(/[^a-z0-9]+/g,'_')]={name:p[0],kind:p[1],order:i};}); a.update(a.ref(a.db,'posSettings/invCategories'),seed).catch(function(){}); }
 function catType(cat){var m=(window.__posSettings&&window.__posSettings.catType)||{};return m[cat]||'';}
 /* per-size base quantity, with legacy (qty × sizeMult) fallback */
 function baseQtyForSize(rec,b,size){

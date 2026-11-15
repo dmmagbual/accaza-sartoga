@@ -84,11 +84,11 @@ function renderInventory(){
   var low=list.filter(function(i){return Number(i.stock)<=Number(i.reorder||0)&&Number(i.stock)>=0;});
   var neg=list.filter(function(i){return Number(i.stock)<0;});
   var ozItems=list.filter(function(i){var u=uNorm(i.unit);return !i.ledgerVersion&&(u==='oz'||u==='ounce');});
-  seedInvCats(); var catList=invCats(); var catFilter=window.__invCatFilter||'';
-  var uncat=list.filter(function(i){return !(i.category&&invCatsMap()[i.category]);});
+  var catFilter=window.__invCatFilter||'';
+  var uncat=list.filter(function(i){return !inventoryGroupFor(i);});
   var unmapped=list.filter(function(i){var m=invItemAccounts(i);return !m.inventoryAccount||!m.costAccount;});
   var missingBrand=list.filter(function(i){return recipeUsesInventory(i.id)&&!activeSkusFor(i.id).length;});
-  var shown=catFilter==='__archived__'?archivedItems:(!catFilter?list:(catFilter==='__none__'?uncat:(catFilter==='__brand_missing__'?missingBrand:list.filter(function(i){return (i.category||'')===catFilter;}))));
+  var shown=catFilter==='__archived__'?archivedItems:(!catFilter?list:(catFilter==='__none__'?uncat:(catFilter==='__brand_missing__'?missingBrand:list.filter(function(i){var g=inventoryGroupFor(i);return g&&('grp_'+g.code)===catFilter;}))));
   var unledgered=list.filter(function(i){return !i.ledgerVersion;});
   var uncosted=list.filter(function(i){return Number(i.stock)>0&&!(Number(i.cost)>0);});
   var movements=Object.keys(inventoryMovementsMap||{}).map(function(k){return Object.assign({id:k},inventoryMovementsMap[k]);}).sort(function(x,y){return (Number(y.occurredAt)||0)-(Number(x.occurredAt)||0);}).slice(0,100);
@@ -102,7 +102,7 @@ function renderInventory(){
     return '<tr>'
       +'<td>'+esc(i.name)+(ingIsArchived(i)?' <span class="inv-sku-link neutral" title="Archived '+esc(new Date(Number(i.archivedAt)||0).toLocaleDateString('en-PH'))+(i.archivedBy?' by '+esc(i.archivedBy):'')+'">Archived</span>':'')+'</td>'
       +'<td style="font-size:0.78rem;color:var(--tl);">'+tyBadge+'</td>'
-      +'<td style="font-size:0.78rem;">'+(i.category?esc(invCatName(i.category)):'<span style="color:var(--tl);">—</span>')+(function(){var m=invItemAccounts(i);return m.inventoryAccount&&m.costAccount?' <span style="color:#267354;font-size:0.66rem;">'+m.inventoryAccount+' / '+m.costAccount+'</span>':' <span style="color:#b44336;font-size:0.66rem;">unmapped</span>'})()+'</td>'
+      +'<td style="font-size:0.78rem;">'+(inventoryGroupLabel(i)?esc(inventoryGroupLabel(i)):'<span style="color:var(--tl);">— unassigned —</span>')+(function(){var m=invItemAccounts(i);return m.inventoryAccount&&m.costAccount?' <span style="color:#267354;font-size:0.66rem;">'+m.inventoryAccount+' / '+m.costAccount+'</span>':' <span style="color:#b44336;font-size:0.66rem;">unmapped</span>'})()+'</td>'
       +'<td class="'+((isNeg||isLow)?'pz-low':'')+'">'+num(st)+' '+esc(i.unit||'')+(isNeg?' 🔴 NEGATIVE':(isLow?' ⚠️':''))+'</td>'
       +'<td>'+num(i.reorder||0)+'</td>'
       +'<td>'+(isUncosted?'<button class="pz-btn warn" data-inv-adjust="'+i.id+'" title="Positive stock has no weighted-average cost. Restate the invoice-backed unit cost.">Set unit cost</button>':(Number(i.cost)>0?peso(i.cost):'—'))+'</td>'
@@ -124,7 +124,7 @@ function renderInventory(){
   }).join('');
   root.innerHTML=
     '<div class="pz-h">📦 Stock Items</div>'
-    +'<p class="pz-sub">Each inventory row is the common SKU used by recipes. Inventory Asset and Cost accounts belong to the individual item; Category is only an organizational label.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncosted.length?' <b style="color:#b44336;">'+uncosted.length+' positive-stock item'+(uncosted.length===1?'':'s')+' without a unit cost.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(unmapped.length?' <b style="color:#b44336;">'+unmapped.length+' without accounting mapping.</b>':'')+(missingBrand.length?' <b style="color:#8a5a00;">'+missingBrand.length+' recipe item'+(missingBrand.length===1?'':'s')+' without an approved purchasing brand.</b>':'')+'</p>'
+    +'<p class="pz-sub">Each inventory row is the common SKU used by recipes. The group an item belongs to sets its Inventory Asset and Cost accounts, so its label and its accounting can never disagree.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncosted.length?' <b style="color:#b44336;">'+uncosted.length+' positive-stock item'+(uncosted.length===1?'':'s')+' without a unit cost.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(unmapped.length?' <b style="color:#b44336;">'+unmapped.length+' without accounting mapping.</b>':'')+(missingBrand.length?' <b style="color:#8a5a00;">'+missingBrand.length+' recipe item'+(missingBrand.length===1?'':'s')+' without an approved purchasing brand.</b>':'')+'</p>'
     +'<div class="pz-card" style="margin-bottom:1rem;border:1px solid #b8dfc4;background:#f3faf5;display:flex;gap:0.9rem;align-items:center;flex-wrap:wrap;">'
       +'<div style="flex:1;min-width:240px;"><div style="font-weight:700;color:#1c6b47;font-size:0.92rem;">📥 Receiving a delivery?</div><p style="font-size:0.79rem;color:var(--tm);margin:0.25rem 0 0;line-height:1.35;">Book stock in through the <b>Goods-Received Note</b> — capture supplier, invoice&nbsp;#, quantities and unit costs in one card. It updates the weighted-average cost and raises the payable automatically. <b>Adjust</b> and <b>Edit</b> below are only for count corrections, not for receiving purchases.</p></div>'
       +'<button class="pz-btn ok" id="invReceiveStock" style="white-space:nowrap;">📥 Receive stock →</button>'
@@ -136,12 +136,11 @@ function renderInventory(){
       +'<button class="pz-btn ok" id="invImportBtn">⬆ Import Excel</button>'
       +'<input type="file" id="invImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
       +(ozItems.length?'<button class="pz-btn sec" id="invFixOz" style="border-color:#e6a817;color:#8a5a00;">🔤 Convert '+ozItems.length+' oz → fl oz</button>':'')
-      +'<button class="pz-btn sec" id="invCatMgr">🗂 Categories</button>'
       +'<button class="pz-btn sec" id="invSkuSetup" style="border-color:#3a8a6a;color:#256b52;">🔀 Brand &amp; Batch setup</button>'
       +'<button class="pz-btn sec" id="invExpiry" style="border-color:#c98a2b;color:#8a5a00;">📅 Expiry / batches</button>'
       +'<button class="pz-btn sec" id="invStdCost" style="border-color:#5a6fb0;color:#3a4a86;">📊 Standard costing</button>'
       +(unledgered.length?'<button class="pz-btn ok" id="invLedgerInit" style="border-color:#267354;">🧾 Initialize 3A ledger ('+unledgered.length+')</button>':'<span style="font-size:0.78rem;color:#267354;align-self:center;">✓ 3A ledger active</span>')
-      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option>'+(archivedItems.length?'<option value="__archived__"'+(catFilter==='__archived__'?' selected':'')+'>&mdash; Archived ('+archivedItems.length+') &mdash;</option>':'')+'<option value="__brand_missing__"'+(catFilter==='__brand_missing__'?' selected':'')+'>Recipe items without approved brand ('+missingBrand.length+')</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
+      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All groups</option>'+(archivedItems.length?'<option value="__archived__"'+(catFilter==='__archived__'?' selected':'')+'>&mdash; Archived ('+archivedItems.length+') &mdash;</option>':'')+'<option value="__brand_missing__"'+(catFilter==='__brand_missing__'?' selected':'')+'>Recipe items without approved brand ('+missingBrand.length+')</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— No group ('+uncat.length+') —</option>'+INVENTORY_GROUPS.map(function(g){return '<option value="grp_'+g.code+'"'+(catFilter==='grp_'+g.code?' selected':'')+'>'+g.code+' \u00b7 '+g.name+(g.supply?' (overhead supply)':'')+'</option>';}).join('')+'</select>'
     +'</div>'
     +'<details class="pz-card" style="margin-bottom:1rem;border:1px solid #d8bea0;background:#fffdf9;">'
       +'<summary class="pz-btn sec" style="display:inline-flex;cursor:pointer;list-style:none;">➕ Set up stock item / opening balance</summary>'
@@ -151,9 +150,7 @@ function renderInventory(){
         +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="invName" placeholder="e.g. Espresso beans"/></div>'
         +'<div><span class="pz-lbl">Unit</span><select class="pz-in" id="invUnit"><option>g</option><option>kg</option><option>ml</option><option>L</option><option>fl oz</option><option>pcs</option><option>shot</option><option>pump</option><option>ea</option></select></div>'
         +'<div><span class="pz-lbl">Type</span><select class="pz-in" id="invType">'+inventoryTypeOptions('base')+'</select></div>'
-        +'<div><span class="pz-lbl">Category</span><select class="pz-in" id="invCat"><option value="">—</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>';}).join('')+'</select></div>'
-        +'<div><span class="pz-lbl">Inventory asset account</span><select class="pz-in" id="invAssetAccount">'+itemAccountOptions('', 'inventory')+'</select></div>'
-        +'<div><span class="pz-lbl">Cost / COGS account</span><select class="pz-in" id="invCostAccount">'+itemAccountOptions('', 'cost')+'</select></div>'
+        +'<div><span class="pz-lbl">Group</span><select class="pz-in" id="invGroup"><option value="">— Choose a group —</option>'+inventoryGroupOptions('')+'</select><div style="font-size:.7rem;color:var(--tl);margin-top:.2rem;">The group sets where this item\'s value is held and where its cost lands.</div></div>'
         +'<div><span class="pz-lbl">Opening stock physically on hand</span><input class="pz-in" id="invStock" type="number" min="0" step="any" placeholder="0"/><div style="font-size:.7rem;color:var(--tl);margin-top:.2rem;">Leave 0 when setting up before the first purchase.</div></div>'
         +'<div><span class="pz-lbl">Reorder</span><input class="pz-in" id="invReorder" type="number" step="any" placeholder="0"/></div>'
         +'<div><span class="pz-lbl">Opening cost/unit ₱</span><input class="pz-in" id="invCost" type="number" min="0" step="any" placeholder="Required with opening stock"/></div>'
@@ -167,14 +164,14 @@ function renderInventory(){
       +'</div>'
       +'</div>'
     +'</details>'
-    +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl inventory-table"><thead><tr><th>SKU / stock item</th><th>Type</th><th>Category</th><th>In stock</th><th>Reorder</th><th>Cost</th><th>Recipe / brands</th><th>Actions</th></tr></thead><tbody>'
+    +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl inventory-table"><thead><tr><th>SKU / stock item</th><th>Type</th><th>Group</th><th>In stock</th><th>Reorder</th><th>Cost</th><th>Recipe / brands</th><th>Actions</th></tr></thead><tbody>'
       +(rows||'<tr><td colspan="8" style="color:var(--tl);padding:1rem;">No items in this view.</td></tr>')
     +'</tbody></table></div></div>'
     +'<div class="pz-card" style="margin-top:1rem;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;"><div style="font-weight:600;color:var(--bd);">🧾 Inventory movement ledger</div><span style="font-size:0.74rem;color:var(--tl);">Latest '+movements.length+' loaded · immutable server record</span></div><div style="overflow-x:auto;"><table class="pz-tbl" data-report-page-size="20"><thead><tr><th>Date/time</th><th>Movement</th><th>Item</th><th class="r">Quantity</th><th class="r">Balance</th><th class="r">Unit cost</th><th>Source</th><th>Posted by</th></tr></thead><tbody>'+(movementRows||'<tr><td colspan="8" style="padding:0.7rem;color:var(--tl);">No ledger movements loaded yet. Initialize once to capture today’s stock and cost as opening balances.</td></tr>')+'</tbody></table></div></div>';
   document.getElementById('invAddBtn').onclick=addIngredient;
   var _rs=document.getElementById('invReceiveStock'); if(_rs)_rs.onclick=function(){var b=document.getElementById('tabBtnPurchases'); if(b){b.click();} else if(window.posSwitchTab){window.posSwitchTab('purchases');}};
   var _cf=document.getElementById('invCatFilter'); if(_cf)_cf.onchange=function(){window.__invCatFilter=this.value||'';renderInventory();};
-  var _cm=document.getElementById('invCatMgr'); if(_cm)_cm.onclick=openCatManager;
+
   var _ss=document.getElementById('invSkuSetup'); if(_ss)_ss.onclick=openSkuBatchSetup;
   var _xp=document.getElementById('invExpiry'); if(_xp)_xp.onclick=openExpiryView;
   var _sc=document.getElementById('invStdCost'); if(_sc)_sc.onclick=openStdCosting;
@@ -245,7 +242,7 @@ function openSkuBatchSetup(){
         if(p.done)return; var it=p.it; var wac=Number(it.cost)||0;
         updates['inventory/'+it.id+'/masterUnit']=it.unit||'';
         updates['inventory/'+it.id+'/stdCost']=wac;
-        updates['inventory/'+it.id+'/kind']=(invCatKind(it.category)||'cogs');
+        updates['inventory/'+it.id+'/kind']=((inventoryGroupFor(it)||{}).supply?'overhead':'cogs');
         updates['inventory/'+it.id+'/skuMigrated']=true;
         updates['inventory/'+it.id+'/skuMigratedAt']=now;
         p.brs.forEach(function(bName,ix){ var sid='sku_'+now.toString(36)+'_'+(c++); updates['inventorySku/'+sid]={masterId:it.id,brand:bName,supplier:(brandsByItem[it.id][bName]||{}).supplier||'',purchaseUnit:it.unit||'',packSize:null,purchaseCost:null,convToBase:1,costPerBase:wac,active:true,priority:ix,branchAvail:['main'],seededFrom:'receipts',createdAt:now}; });

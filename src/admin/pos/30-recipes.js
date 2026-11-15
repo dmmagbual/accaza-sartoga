@@ -61,7 +61,10 @@ function optLabelsForItem(item){
   (groups||[]).forEach(function(g){ (g.choices||[]).forEach(function(c){ out.push({group:g.name,label:c.label}); }); });
   return out;
 }
-function isPackagingCostItem(id){var inv=inventoryMap[id]||{},cat=(invCatsMap()[inv.category]||{}).name||inv.category||'';if(/packag|cup|lid|straw|sleeve|tissue|serviette/i.test(String(cat)))return true;return Object.keys(packagingRulesMap||{}).some(function(style){return ((packagingRulesMap[style]||{}).rows||[]).some(function(row){return row&&row.ing===id;});});}
+/* Packaging is group 04 (Cups & Packaging, account 1230). That replaces a regex over a free-form
+   category label, which missed anything named differently and matched anything that happened to
+   contain the word. */
+function isPackagingCostItem(id){var inv=inventoryMap[id]||{},g=inventoryGroupFor(inv);if(g&&g.code==='04')return true;return Object.keys(packagingRulesMap||{}).some(function(style){return ((packagingRulesMap[style]||{}).rows||[]).some(function(row){return row&&row.ing===id;});});}
 function renderSharedIngredients(){
   var root=document.getElementById('sharedIngredientsRoot');if(!root)return;
   var view=window.__sharedIngredientView||'base';
