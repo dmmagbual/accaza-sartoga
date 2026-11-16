@@ -22,6 +22,27 @@ body[data-admin-workspace] #adminServiceConnection.ok strong{color:#07913b}
 body[data-admin-workspace] #adminServiceConnection.ok .admin-status-dot{background:#28d36f;box-shadow:0 0 0 2px rgba(40,211,111,.18)}
 body.admin-pos-workspace #adminServiceStrip{color:#62564d;font-size:.78rem}body.admin-pos-workspace #adminServiceShift.ok strong,body.admin-pos-workspace #adminServiceConnection.ok strong,body.admin-pos-workspace #adminServiceQueue.ok strong{color:#07913b}
 
+/* Accaza AI management tools: keep presentation out of the deferred manager script. */
+#accazaManual{display:none;flex:1;min-height:0;flex-direction:column;padding:1rem;gap:.65rem}
+#accazaManual b{color:#284c39}
+.accaza-manual-description{margin-top:.2rem;color:#6e6256;font-size:.75rem}
+.accaza-manual-chapter-row,.accaza-manual-save-row{display:flex;gap:.5rem;align-items:center}
+#accazaManualChapter{flex:1}
+#accazaManual input,#accazaManual textarea,#accazaManual select,.accaza-ai-issue-field{border:1px solid #bba98e;border-radius:6px;padding:.5rem;font:inherit;font-size:.82rem}
+#accazaManualTitle{padding:.55rem!important;font-size:.84rem!important}
+#accazaManualContent{flex:1;min-height:200px;resize:vertical;padding:.6rem;font-size:.82rem;line-height:1.45}
+#accazaManualStatus{min-height:1.1rem;color:#4d6655;font-size:.73rem}
+#accazaManualAudience,#accazaManualState{padding:.45rem;font-size:.8rem}
+#accazaManualSeed,.accaza-ai-issue-save{border:1px solid #b9c9ef;border-radius:6px;background:#eef3ff;color:#1c3f8a;padding:.45rem .55rem;font-size:.75rem;font-weight:700;cursor:pointer}
+#accazaManualSave{margin-left:auto;border:0;border-radius:6px;background:#2f5c43;color:#fff;padding:.5rem .7rem;font-size:.8rem;font-weight:700;cursor:pointer}
+#accazaAiIssueForm{border:1px solid #d4bd98;border-radius:9px;background:#fff8ec;padding:.7rem;font-size:.8rem;line-height:1.35}
+.accaza-ai-issue-note{margin:.2rem 0;color:#6e6256;font-size:.72rem}
+.accaza-ai-issue-field{box-sizing:border-box;width:100%;margin-top:.4rem;font-size:.8rem}
+textarea.accaza-ai-issue-field{min-height:54px;resize:vertical}
+.accaza-ai-issue-actions{margin-top:.55rem}
+.accaza-ai-issue-save{border:0;background:#735527;color:#fff;padding:.45rem .65rem;font-size:.78rem}
+.accaza-ai-issue-cancel{margin-left:.4rem;border:1px solid #bba98e;border-radius:6px;background:#fff;color:#6e6256;padding:.45rem .65rem;font-size:.78rem;cursor:pointer}
+
 /* Records become the surface instead of sitting inside another white container. */
 body.admin-workspace-focused:not(.admin-pos-workspace) .admin-tab-content{padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
 body.admin-workspace-focused:not(.admin-pos-workspace) .admin-tab-content>div>.pz-h:first-child{margin-bottom:.6rem;color:var(--bo-ink);font-size:1.12rem}
