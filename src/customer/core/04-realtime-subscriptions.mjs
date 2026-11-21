@@ -247,8 +247,6 @@ window.setPaymentRow=function(key){
   var wrap=document.getElementById('bankChoice');
   if(!wrap||wrap.style.display==='none'){return;}
   bankRows.forEach(function(r){var el=document.getElementById(r.el);if(el)el.style.display=r.key===paymentRow?'':'none';});
-  var qrBdo=document.getElementById('qrBdo');
-  if(qrBdo)qrBdo.style.display=paymentRow==='bdo'?'':'none';
 };
 function renderBankChoice(p){
   paymentSettings=p||{};
@@ -269,7 +267,6 @@ function renderBankChoice(p){
 }
 onValue(paymentRef,snap=>{
   const p=snap.val();if(!p)return;
-  renderBankChoice(p);
   if(p.gcashNum)document.getElementById('gcashNum').textContent=p.gcashNum;
   if(p.gcashName)document.getElementById('gcashName').textContent=p.gcashName;
   if(p.bdoNum)document.getElementById('bankNum').textContent=p.bdoNum;
@@ -293,12 +290,15 @@ onValue(paymentRef,snap=>{
   if(ubRow)ubRow.style.display=p.ubEnabled!==false?'block':'none';
   // QR codes
   var qrGcash=document.getElementById('qrGcash');
-  var qrBdo=document.getElementById('qrBdo');
+  var qrUnionBank=document.getElementById('qrUnionBank');
+  var checkoutUnionBankQr=document.getElementById('checkoutUnionBankQr');
+  // The bank-issued QR is tied to this receiving account.
+  var unionBankQrAvailable=p.ubEnabled!==false&&String(p.ubNum||'').replace(/\D/g,'')==='109332379862';
   var qrSection=document.getElementById('qrSection');
   if(qrGcash)qrGcash.style.display=p.gcashEnabled!==false?'block':'none';
-  if(qrBdo)qrBdo.style.display=p.bdoEnabled!==false?'block':'none';
-  // Hide whole QR box if both GCash and BDO are off
-  if(qrSection)qrSection.style.display=(p.gcashEnabled!==false||p.bdoEnabled!==false)?'block':'none';
+  if(qrUnionBank)qrUnionBank.style.display=unionBankQrAvailable?'':'none';
+  if(checkoutUnionBankQr)checkoutUnionBankQr.style.display=unionBankQrAvailable?'':'none';
+  if(qrSection)qrSection.style.display=(p.gcashEnabled!==false||unionBankQrAvailable)?'block':'none';
   ['Gcash','Bdo','Ub','Maya','Bank3','Bank4'].forEach(function(k){
     var note=document.getElementById('chk'+k+'Note');
     var chk=document.getElementById('chk'+k);
@@ -352,4 +352,5 @@ onValue(paymentRef,snap=>{
     if(document.getElementById('editBank4Name'))document.getElementById('editBank4Name').value=p.bank4Name||'';
     if(b4row)b4row.style.display=p.bank4Enabled!==false?'block':'none';
   }else{if(b4row)b4row.style.display='none';}
+  renderBankChoice(p);
 });
