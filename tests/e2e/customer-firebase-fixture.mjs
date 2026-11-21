@@ -16,7 +16,7 @@ const buildModules=(overrides={})=>({
       'menuItems':{latte:{cat:'coffee',name:'Cafe Latte',desc:'Smooth espresso and milk.',priceS:175,priceM:185,priceL:195,optionsSet:true}},
       'publicCatalogVersion':{schemaVersion:1,version:1},
       'availability':{'Cafe Latte':true},
-      'payment':{gcashNum:'09123456789',gcashName:'Accaza',gcashEnabled:true,bdoEnabled:true,ubEnabled:false},
+      'payment':{gcashNum:'09123456789',gcashName:'Accaza',gcashEnabled:true,bdoEnabled:false,ubEnabled:true,ubNum:'1093-3237-9862'},
       'calBlocks':{},
       'reviews':{review1:{name:'Test Customer',stars:5,date:'August 2026',text:'Excellent coffee and service.'}},
       'customerOrders/browser-test-customer':{'ORDER-TEST':{createdAt:1,status:'Ready'}},

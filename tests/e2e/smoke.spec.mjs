@@ -10,7 +10,7 @@ test('customer shell exposes safe connection state and local payment assets',asy
   await installCustomerFirebaseFixture(page);
   const paymentQrRequests=[];
   page.on('request',request=>{
-    if(/\/assets\/img\/payment\/(?:gcash|bdo)-qr\.jpg$/.test(new URL(request.url()).pathname)) paymentQrRequests.push(request.url());
+    if(/\/assets\/img\/payment\/(?:gcash-qr\.jpg|unionbank-qr\.png)$/.test(new URL(request.url()).pathname)) paymentQrRequests.push(request.url());
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await expect(page).toHaveTitle(/Accaza Coffee House/i);
@@ -18,17 +18,18 @@ test('customer shell exposes safe connection state and local payment assets',asy
   await expect(page.locator('#orderServiceStatus')).toBeVisible();
   await expect(page.locator('#orderConnectionRetry')).toBeHidden();
   await expect(page.locator('#qrGcash img')).toHaveCount(0);
-  await expect(page.locator('#qrBdo img')).toHaveCount(0);
+  await expect(page.locator('#qrUnionBank img')).toHaveCount(0);
   await expect(page.locator('#qrGcash [data-payment-qr]')).toHaveText('Click for QR code');
-  await expect(page.locator('#qrBdo [data-payment-qr]')).toHaveText('Click for QR code');
+  await expect(page.locator('#qrUnionBank [data-payment-qr]')).toHaveText('Click for QR code');
   expect(paymentQrRequests).toEqual([]);
 
   await page.locator('#qrGcash [data-payment-qr]').click();
   await expect(page.locator('#qrGcash img')).toHaveAttribute('src','assets/img/payment/gcash-qr.jpg');
-  await page.locator('#qrBdo [data-payment-qr]').click();
-  await expect(page.locator('#qrBdo img')).toHaveAttribute('src','assets/img/payment/bdo-qr.jpg');
+  await page.locator('#qrUnionBank [data-payment-qr]').click();
+  await expect(page.locator('#checkoutUnionBankQr [data-payment-qr]')).toHaveAttribute('data-payment-qr','assets/img/payment/unionbank-qr.png');
+  await expect(page.locator('#qrUnionBank img')).toHaveAttribute('src','assets/img/payment/unionbank-qr.png');
   expect(paymentQrRequests.some(url=>url.endsWith('/assets/img/payment/gcash-qr.jpg'))).toBeTruthy();
-  expect(paymentQrRequests.some(url=>url.endsWith('/assets/img/payment/bdo-qr.jpg'))).toBeTruthy();
+  expect(paymentQrRequests.some(url=>url.endsWith('/assets/img/payment/unionbank-qr.png'))).toBeTruthy();
 });
 
 test('customer page has usable landmarks, labels, and keyboard focus',async({page})=>{
