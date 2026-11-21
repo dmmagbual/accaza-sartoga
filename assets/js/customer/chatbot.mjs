@@ -5,7 +5,7 @@ export function installChatbot({phone:CAFE_PHONE,email:CAFE_EMAIL}){
 let chatOpen=false,chatStarted=false;
 
 const botReplies=[
-  {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 6:00 AM to 12:00 Midnight</strong>. ☕'},
+  {keys:['hour','open','close','time','schedule'],reply:'🕐 <strong>Open 24 hours, 7 days a week</strong>. ☕'},
   {keys:['location','address','where','find'],reply:"📍 <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, Dasmariñas, Cavite</strong>. Near SM Dasmariñas! 😊"},
   {keys:['gcash','pay','payment','bank','bdo'],reply:'💳 We accept <strong>GCash, BDO, and UnionBank</strong>. GCash: <strong>0927 692 4831</strong> (ACCAZA).'},
   {keys:['delivery','deliver'],reply:'🛵 No delivery. Dasmariñas only: pick up, or book and pay your own courier. Or order on <b><b style=color:#d70f64>●</b> foodpanda</b> or <b>🟢 GrabFood</b>.'},

@@ -3,9 +3,9 @@ import{createSubscriptionHub}from"./realtime-hub.mjs?v=758";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
-import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=768";
+import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=769";
 import{archiveOutcome}from"./order-display.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=768";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=769";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -1163,7 +1163,7 @@ window.showTabGroup=function(g,btn){
 };
 
 const botReplies=[
-  {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 6:00 AM to 12:00 Midnight</strong>. ☕'},
+  {keys:['hour','open','close','time','schedule'],reply:'🕐 <strong>Open 24 hours, 7 days a week</strong>. ☕'},
   {keys:['location','address','where','find'],reply:"📍 <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, Dasmariñas, Cavite</strong>. Near SM Dasmariñas! 😊"},
   {keys:['gcash','pay','payment','bank','bdo'],reply:'💳 We accept <strong>GCash, BDO, and UnionBank</strong>. GCash: <strong>0927 692 4831</strong> (ACCAZA).'},
   {keys:['delivery','deliver'],reply:'🛵 We deliver within <strong>Dasmariñas, Cavite</strong> only. Outside? Try <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>.'},

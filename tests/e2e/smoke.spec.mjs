@@ -52,7 +52,7 @@ test('customer help chat answers from its own module and falls back to contact l
   await expect(page.locator('#chatMessages .chat-msg.bot').first()).toContainText('Welcome to Accaza Coffee House');
   await page.locator('.chat-quick-btn',{hasText:'Hours'}).click();
   await expect(page.locator('#chatMessages .chat-msg.user').last()).toHaveText('Opening hours?');
-  await expect(page.locator('#chatMessages .chat-msg.bot').last()).toContainText('6:00 AM to 12:00 Midnight');
+  await expect(page.locator('#chatMessages .chat-msg.bot').last()).toContainText('Open 24 hours, 7 days a week');
   await page.locator('#chatInput').fill('can I bring my dog');
   await page.evaluate(()=>window.sendChat());
   await expect(page.locator('#chatMessages a[href^="mailto:admin@accazacoffee.com"]')).toBeVisible();
