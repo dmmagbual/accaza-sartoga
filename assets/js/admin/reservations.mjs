@@ -2,7 +2,7 @@ import{db,ref,set,get,update,remove}from"./firebase-client.mjs";
 import{escHtml}from"./shared-ui.mjs";
 
 const MAX_GUESTS=30;
-const TIME_SLOTS=Array.from({length:19},(_,i)=>{const h=i+6;return h>23?'12:00 Midnight':(h%12||12)+':00 '+(h<12?'AM':'PM');});
+const TIME_SLOTS=Array.from({length:24},(_,h)=>{return h===0?'12:00 Midnight':(h%12||12)+':00 '+(h<12?'AM':'PM');});
 
 function createReservationManager(deps){
   let reservations={},archived={},calBlocks={},resContactMethod='whatsapp',selectedDate=null,selectedTime=null,adminSelectedDate=null,resArchiveOpen=false,knownResIds=null,resChimeTimer=null,resChimeCount=0;
@@ -30,8 +30,8 @@ function createReservationManager(deps){
   function getConfirmedGuestsForDate(k){return Object.values(reservations).filter(function(r){return r.date===k&&(r.status==='Accepted'||r.status==='Confirmed');}).reduce(function(s,r){return s+(parseInt(r.guests)||0);},0);}
   function getConfirmedSlotsForDate(k){const s=new Set();Object.values(reservations).filter(function(r){return r.date===k&&(r.status==='Accepted'||r.status==='Confirmed');}).forEach(function(r){s.add(r.time);});return s;}
   function dateKey(y,m,d){return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');}
-  function getDateStatus(y,m,d){const k=dateKey(y,m,d),bl=calBlocks[k];if(bl&&bl.blocked)return'blocked';const g=getConfirmedGuestsForDate(k);if(g>=MAX_GUESTS)return'blocked';if(g>0)return'partial';if(bl&&bl.slots&&Object.values(bl.slots).some(function(v){return v===false;}))return'partial';return'open';}
-  function isSlotBlocked(k,slot){const b=calBlocks[k];return !!(b&&(b.blocked||(b.slots&&b.slots[slot]===false)));}
+  function getDateStatus(y,m,d){const k=dateKey(y,m,d),bl=calBlocks[k];if(bl&&(bl.blocked||bl.fullDayReservationId))return'blocked';const g=getConfirmedGuestsForDate(k);if(g>=MAX_GUESTS)return'blocked';if(g>0)return'partial';if(bl&&bl.slots&&Object.values(bl.slots).some(function(v){return v===false;}))return'partial';return'open';}
+  function isSlotBlocked(k,slot){const b=calBlocks[k];return !!(b&&(b.blocked||b.fullDayReservationId||(b.slots&&b.slots[slot]===false)));}
   function renderCustomerCalendar(){
     const titleEl=document.getElementById('calTitle'),grid=document.getElementById('calGrid');if(!titleEl||!grid)return;
     titleEl.textContent=new Date(calYear,calMonth).toLocaleDateString('en-PH',{month:'long',year:'numeric'});
