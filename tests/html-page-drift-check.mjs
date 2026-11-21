@@ -18,7 +18,7 @@ for(const page of pages){
   assert.match(deployed,new RegExp(`<meta name="${page.build}" content="\\d+"\\s*/>`),`${page.target} is missing its build marker`);
   assert.doesNotMatch(deployed,/data:image\/[^;]+;base64,/i,`${page.target} must not embed large base64 assets`);
   if(page.target==='index.html') assert.doesNotMatch(deployed,/assets\/img\/payment\/bdo-qr\.jpg/);
-  for(const paymentAsset of ['assets/img/payment/gcash-qr.jpg',page.target==='index.html'?'assets/img/payment/unionbank-qr.png':'assets/img/payment/bdo-qr.jpg']){
+  for(const paymentAsset of ['assets/img/payment/gcash-qr.jpg',page.target==='index.html'?'assets/img/payment/unionbank-qr.jpg':'assets/img/payment/bdo-qr.jpg']){
     assert.ok(deployed.includes(paymentAsset),`${page.target} is missing ${paymentAsset}`);
     assert.ok(fs.existsSync(path.join(root,paymentAsset)),`${paymentAsset} is missing from the repository`);
   }

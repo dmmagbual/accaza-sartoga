@@ -4,13 +4,13 @@ import {installCustomerFirebaseFixture} from './customer-firebase-fixture.mjs';
 
 const release=JSON.parse(fs.readFileSync(new URL('../../release-manifest.json',import.meta.url),'utf8'));
 
-test.beforeEach(async({page})=>{await page.route(/^https?:\/\/(?!127\.0\.0\.1:4173)/,route=>route.abort());});
+test.beforeEach(async({page,baseURL})=>{await page.route(url=>['http:','https:'].includes(url.protocol)&&url.origin!==new URL(baseURL).origin,route=>route.abort());});
 
 test('customer shell exposes safe connection state and local payment assets',async({page})=>{
   await installCustomerFirebaseFixture(page);
   const paymentQrRequests=[];
   page.on('request',request=>{
-    if(/\/assets\/img\/payment\/(?:gcash-qr\.jpg|unionbank-qr\.png)$/.test(new URL(request.url()).pathname)) paymentQrRequests.push(request.url());
+    if(/\/assets\/img\/payment\/(?:gcash-qr\.jpg|unionbank-qr\.jpg)$/.test(new URL(request.url()).pathname)) paymentQrRequests.push(request.url());
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await expect(page).toHaveTitle(/Accaza Coffee House/i);
@@ -26,10 +26,29 @@ test('customer shell exposes safe connection state and local payment assets',asy
   await page.locator('#qrGcash [data-payment-qr]').click();
   await expect(page.locator('#qrGcash img')).toHaveAttribute('src','assets/img/payment/gcash-qr.jpg');
   await page.locator('#qrUnionBank [data-payment-qr]').click();
-  await expect(page.locator('#checkoutUnionBankQr [data-payment-qr]')).toHaveAttribute('data-payment-qr','assets/img/payment/unionbank-qr.png');
-  await expect(page.locator('#qrUnionBank img')).toHaveAttribute('src','assets/img/payment/unionbank-qr.png');
+  await expect(page.locator('#qrUnionBank img')).toHaveAttribute('src','assets/img/payment/unionbank-qr.jpg');
   expect(paymentQrRequests.some(url=>url.endsWith('/assets/img/payment/gcash-qr.jpg'))).toBeTruthy();
-  expect(paymentQrRequests.some(url=>url.endsWith('/assets/img/payment/unionbank-qr.png'))).toBeTruthy();
+  expect(paymentQrRequests.some(url=>url.endsWith('/assets/img/payment/unionbank-qr.jpg'))).toBeTruthy();
+});
+
+test('installed customer app shows the UnionBank QR on selecting bank transfer',async({page})=>{
+  await installCustomerFirebaseFixture(page);
+  await page.addInitScript(()=>{
+    Object.defineProperty(navigator,'standalone',{value:true});
+  });
+  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await expect(page.locator('html')).toHaveClass(/app-mode/);
+  await expect(page.locator('#qrSection')).toBeHidden();
+  await page.locator('#appLoginName').fill('Browser Test Customer');
+  await page.locator('#appLoginPhone').fill('09123456789');
+  await page.getByRole('button',{name:'Enter App'}).click();
+  const qr=page.locator('#checkoutUnionBankQr img');
+  await expect(qr).toBeHidden();
+  await page.locator('#btnBank').click();
+  await expect(page.locator('#bankNum2')).toBeVisible();
+  await expect(qr).toBeVisible();
+  await qr.scrollIntoViewIfNeeded();
+  await expect.poll(()=>qr.evaluate(img=>img.naturalWidth)).toBe(1074);
 });
 
 test('customer page has usable landmarks, labels, and keyboard focus',async({page})=>{

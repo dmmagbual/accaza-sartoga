@@ -93,7 +93,8 @@ if(customerHtml.includes('Install app on your phone'))throw new Error('Hero must
 const amenitiesRule=customerStyles.match(/\.hero-amenities\{([^}]*)\}/)?.[1]||'';
 if(!amenitiesRule||/(?:^|;)\s*(?:padding|background|border|border-radius|box-shadow):/.test(amenitiesRule))throw new Error('Hero amenities must remain an unwrapped text row');
 if(!customerHtml.includes('<div class="chat-avatar"><img src="/favicon_192x192.png" alt="Accaza Coffee logo"/></div>'))throw new Error('Customer chat header must use the Accaza logo');
-if((customerHtml.match(/>Click for QR code<\/button>/g)||[]).length!==4)throw new Error('GCash and BDO QR controls must require an explicit click in both payment views');
+if((customerHtml.match(/>Click for QR code<\/button>/g)||[]).length!==3)throw new Error('GCash checkout and the Scan to Pay QR controls must require an explicit click');
+if(!/<img[^>]+src="assets\/img\/payment\/unionbank-qr\.jpg"[^>]+loading="lazy"/i.test(customerHtml))throw new Error('UnionBank checkout must show its QR with lazy loading');
 if(/<img[^>]+src="assets\/img\/payment\/(?:gcash|bdo)-qr\.jpg"/i.test(customerHtml))throw new Error('Payment QR images must not have an eager browser src');
 for(const marker of ["closest('[data-payment-qr]')","button.textContent='Loading QR code…'","image.src=src","button.replaceWith(image)","button.textContent='Click for QR code'"])if(!source.includes(marker))throw new Error(`On-demand payment QR behavior missing: ${marker}`);
 
