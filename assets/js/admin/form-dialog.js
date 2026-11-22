@@ -27,6 +27,50 @@
   }
   // One-button in-page message (no fields). Resolves when closed either way.
   function notice(message,title){return run({title:title||'Accaza',subtitle:String(message==null?'':message),submitLabel:'OK',fields:[]},null).catch(function(){return null;});}
+  function saleDetailsLink(id,label){
+    return '<button type="button" data-sale-details="'+esc(id)+'" aria-haspopup="dialog" style="background:none;border:0;padding:0;color:var(--bd);cursor:pointer;text-decoration:underline;font:inherit;">'+esc(label)+'</button>';
+  }
+  function openSaleDetails(order,trigger){
+    var dialog=document.createElement('dialog');
+    dialog.setAttribute('aria-labelledby','accaza-sale-details-title');
+    dialog.style.cssText='width:min(26rem,calc(100% - 2rem));border:1px solid var(--cd);border-radius:10px;padding:1.25rem;background:var(--cr);color:var(--bd);';
+    var shiftId=String(order.shiftId||'');
+    dialog.innerHTML='<h2 id="accaza-sale-details-title" style="font-size:1.05rem;margin:0 0 .75rem;">Sale details</h2>'
+      +'<div><b>Shift reference</b><div data-shift-reference role="status">'+(shiftId?'Loading shift…':'No shift linked')+'</div></div>'
+      +'<dl style="margin:.8rem 0;"><dt>POS reference</dt><dd style="margin:0 0 .5rem;">'+esc(order.id)+'</dd>'
+      +(order.platformRef?'<dt>Platform reference</dt><dd style="margin:0 0 .5rem;">'+esc(order.platformRef)+'</dd>':'')
+      +'<dt>Sale date</dt><dd style="margin:0;">'+esc([order.date,order.time].filter(Boolean).join(' · ')||'Unavailable')+'</dd></dl>'
+      +'<details data-shift-details hidden style="margin-bottom:.8rem;"><summary>Open shift details</summary><p style="margin:.5rem 0;"></p></details>'
+      +'<form method="dialog"><button class="pz-btn sec" autofocus>Close</button></form>';
+    document.body.append(dialog);
+    dialog.addEventListener('close',function(){dialog.remove();if(trigger.isConnected)trigger.focus();},{once:true});
+    dialog.showModal();
+    if(!shiftId)return;
+    var reference=dialog.querySelector('[data-shift-reference]');
+    Promise.resolve().then(function(){
+      if (!/^[a-zA-Z0-9_-]+$/.test(shiftId)) throw new Error("Invalid shift key");
+      var a=global.__accaza;
+      return a.get(a.ref(a.db,'shifts/'+shiftId));
+    }).then(function(snapshot){
+      var shift=snapshot.val();
+      if(!shift){reference.textContent='Shift details unavailable';return;}
+      reference.textContent=shift.shiftReference||(shift.zReport&&shift.zReport.shiftReference)||'Reference unavailable';
+      var details=dialog.querySelector('[data-shift-details]');
+      var opened=Number(shift.openAt);
+      var date=opened>0?new Date(opened).toLocaleString('en-PH',{timeZone:'Asia/Manila'}):'';
+      details.querySelector('p').textContent=[shift.staff,date,(shift.status==='closed'?'Closed shift':shift.status==='open'?'Open shift':'')].filter(Boolean).join(' · ');
+      details.hidden=false;
+    }).catch(function(){reference.textContent='Shift details unavailable';});
+  }
+  function bindSaleDetails(root,getOrder){
+    root.querySelectorAll('[data-sale-details]').forEach(function(button){
+      button.onclick=function(){
+        var order=getOrder(button.getAttribute('data-sale-details'));
+        if(order)openSaleDetails(order,button);
+      };
+    });
+  }
+  global.AccazaSaleDetails={link:saleDetailsLink,bind:bindSaleDetails};
   global.AccazaFormDialog={run:run,open:function(config){return run(config,function(values){return values;});},notice:notice};
   // Safety net for blocked browser popups. Some embedded browsers (for example an app's built-in
   // browser pane) suppress alert/confirm and return immediately, so a button looks like it did
