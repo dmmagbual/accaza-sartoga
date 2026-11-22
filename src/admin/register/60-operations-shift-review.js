@@ -37,6 +37,7 @@ function renderOps(){
     +(acts.length?acts.map(function(x){return '<tr><td style="white-space:nowrap;color:var(--tl);font-size:0.75rem;">'+new Date(x.ts).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</td><td><b>'+esc(x.action)+'</b> '+esc(activityRefLabel(x))+'</td><td>'+esc(x.detail||'')+'</td><td style="color:var(--tl);">'+esc(x.staff||'')+'</td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No activity yet.</td></tr>')
     +'</tbody></table></div>';
   root.innerHTML=html;
+  if(window.AccazaSaleDetails)window.AccazaSaleDetails.bind(root,function(id){return ordersMap[id]&&Object.assign({id:id},ordersMap[id]);});
   // wire
   var handovers=document.getElementById('opsHandovers');if(handovers)handovers.onclick=reviewShiftHandovers;
   var payVerify=document.getElementById('opsPayVerify');if(payVerify)payVerify.onclick=openPaymentVerificationQueue;

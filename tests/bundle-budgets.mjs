@@ -31,6 +31,7 @@ export const BUNDLE_HARD_RESERVES=Object.freeze({
   'assets/js/admin/pos.js':50000
 });
 export const BUNDLE_BUDGETS=Object.freeze({
+  'assets/js/admin/form-dialog.js':12300,
   // Also enforced by the Phase 6 customer-runtime guard in tests/static/10-syntax-rendering.mjs.
   // Sep 2026 re-baseline under the budget policy: reviewed 110,089 bytes (customer 85).
   // Oct 2026 (customer 96): the help chat moved to customer/chatbot.mjs (115,002 -> ~109,750 bytes).
