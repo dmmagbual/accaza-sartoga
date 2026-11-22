@@ -5,7 +5,7 @@ import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,shouldAlertOrder}from"./admin-orders.mjs?v=769";
 import{archiveOutcome}from"./order-display.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=772";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=773";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";

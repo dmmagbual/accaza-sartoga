@@ -4,8 +4,8 @@
    the device BEFORE the voucher was saved (a failed save left a gap; an unreachable counter fell back
    to a timestamp number), and Finance Books showed the voucher as "POS revolving fund … pv_<key>"
    under a separate JE number. Now:
-   - the server issues the number when the voucher is approved (a rejected or never-approved request
-     never takes one), keeps it on the voucher at once, and a retried approval reuses it;
+   - the server numbers new requests after creation and keeps the number through approval or
+     rejection. Approval also numbers older requests that were saved without a number;
    - the voucher's own posting carries that number as its document number, so Finance Books,
      Undeposited Collection and the cash ledger capture the same reference as the voucher;
    - screens and journal text say Cash Voucher, never POS / Revolving Fund / the internal key. */
@@ -26,13 +26,16 @@ check(block.startsWith('async function cashVoucherNumber('), 'cashVoucherNumber 
 class HttpsError extends Error { constructor(code, message) { super(message); this.code = code; } }
 const financeText = (v, n) => String(v == null ? '' : v).trim().slice(0, n || 160);
 const financeKey = (v) => String(v);
-const cashVoucherNumber = new Function('financeText', 'financeKey', 'HttpsError', `${block}\nreturn cashVoucherNumber;`)(financeText, financeKey, HttpsError);
+const date = sales.match(/^function financeDateFromTimestamp\(.*$/m)[0];
+const cashVoucherNumber = new Function('financeText', 'financeKey', 'HttpsError', `${date}\n${block}\nreturn cashVoucherNumber;`)(financeText, financeKey, HttpsError);
 function fakeDb(data) {
   const at = (p) => p.replace(/^\//, '').split('/').filter(Boolean);
   const get = (p) => at(p).reduce((n, k) => (n == null ? undefined : n[k]), data);
   const set = (p, v) => { const k = at(p), last = k.pop(); let n = data; for (const x of k) n = n[x] = n[x] || {}; n[last] = v; };
   return {data, ref: (p) => ({
-    get: async () => ({val: () => (get(p) === undefined ? null : get(p))}),
+    get: async () => ({val: () => structuredClone(get(p) ?? null)}),
+    set: async (value) => set(p, structuredClone(value)),
+    update: async (writes) => Object.entries(writes).forEach(([key,value]) => set(key,structuredClone(value))),
     /* Admin SDK shape: first pass on an empty cache (null); undefined there aborts; else re-run on the server value. */
     transaction: async (fn) => { const cur = get(p); let next = fn(null); if (next === undefined) return {committed: false, snapshot: {val: () => null}}; if (cur !== undefined) next = fn(cur); if (next === undefined) return {committed: false, snapshot: {val: () => cur}}; set(p, next); return {committed: true, snapshot: {val: () => next}}; },
   })};
@@ -49,10 +52,49 @@ const race = fakeDb({pettyCashCounter: {}, pettyCashVouchers: {pv_r: {}}});
 const [r1, r2] = await Promise.all([cashVoucherNumber(race, {}, 'pv_r'), cashVoucherNumber(race, {}, 'pv_r')]);
 check(r1 === r2 && race.data.pettyCashVouchers.pv_r.voucherNo === r1, 'Concurrent approvals of one voucher must agree on a single number.');
 
-/* ---------- 2. issued on approval only, kept on the approved voucher ---------- */
+/* ---------- 2. pending creation, retries and reuse at approval ---------- */
+const attention = read('src/functions/21a-undeposited-pages.js');
+const projection = attention.slice(attention.indexOf('function pettyVoucherAttentionProjection('), attention.indexOf('async function voucherHasPostingEvidence('));
+const eventHandler = attention.slice(attention.indexOf('async function syncPettyVoucherAttentionEvent('), attention.indexOf('function undepositedCursor('));
+const pending = {voucherNo:'',status:'pending',date:'2026-11-30',amount:42,recipient:'Maria'};
+const queue = fakeDb({pettyCashVouchers:{pv_created:{...pending},pv_legacy:{...pending},pv_rejected:{...pending,status:'rejected'}}});
+let allocatedClaims=0,releases=0,failIssue=false;
+const claim = async () => {allocatedClaims++;return {release:async()=>{releases++;}};};
+const issue = async (...args) => {if(failIssue)throw new Error('Counter unavailable');return cashVoucherNumber(...args);};
+const handler = new Function('getDatabase','claimPettyVoucherMutation','cashVoucherNumber','financeText','financeKey','Financial',`${projection}\n${eventHandler}\nreturn syncPettyVoucherAttentionEvent;`)(()=>queue,claim,issue,financeText,financeKey,{money:Number});
+const snap = value => ({exists:()=>value!=null,val:()=>structuredClone(value)});
+const event = (id,before,after) => ({params:{voucherId:id},time:'2026-11-30T16:05:00Z',data:{before:snap(before),after:snap(after)}});
+const requested = event('pv_created',null,{...pending});
+failIssue=true;
+try {await handler(requested);check(false,'An allocation failure should retry the creation event.');} catch(error) {check(error.message==='Counter unavailable','The trigger must surface allocation failure for retry.');}
+check(queue.data.pettyVoucherAttentionIndex.pending.pv_created.status==='pending'&&releases===1,'A failed number assignment must leave the request visible and release the claim.');
+failIssue=false;
+await handler(requested);
+const created = structuredClone(queue.data.pettyCashVouchers.pv_created);
+check(created.voucherNo==='PV-202612-0001'&&created.status==='pending'&&created.amount===42,'The official number must use the creation event’s Manila month and preserve pending status and value.');
+await handler(event('pv_created',pending,created));
+await handler(requested);
+check(queue.data.pettyVoucherAttentionIndex.pending.pv_created.voucherNo===created.voucherNo&&queue.data.pettyCashCounter['202612']===1,'The numbered request must reach the queue and duplicate delivery must keep its number.');
+check(await cashVoucherNumber(queue,created,'pv_created')===created.voucherNo&&queue.data.pettyCashCounter['202612']===1,'Approval must reuse the pending voucher number without advancing the counter.');
+const verifySource = attention.slice(attention.indexOf('async function verifyPendingVoucherIndex('), attention.indexOf('async function voucherHasPostingEvidence('));
+const verify = new Function('financeKey','financeText','Financial',`${verifySource}\nreturn verifyPendingVoucherIndex;`)(financeKey,financeText,{money:Number});
+await queue.ref('pettyCashVouchers/pv_created/amount').set(52);
+for(const delayedRow of [pending,created]){
+  await handler(event('pv_created',pending,delayedRow));
+  const [visible] = await verify(queue,queue.data.pettyVoucherAttentionIndex.pending);
+  check(visible.voucherNo===created.voucherNo&&visible.amount===52,'A delayed index event must not show an old amount or strip the official PV number from the queue.');
+}
+await handler(event('pv_legacy',pending,pending));
+check(!queue.data.pettyCashVouchers.pv_legacy.voucherNo,'A later update must not backfill a legacy pending request.');
+await handler(event('pv_rejected',null,pending));
+check(queue.data.pettyCashVouchers.pv_rejected.status==='rejected'&&queue.data.pettyCashVouchers.pv_rejected.voucherNo==='PV-202612-0002'&&!queue.data.pettyVoucherAttentionIndex.pending.pv_rejected,'A new request rejected before numbering keeps its official number and stays out of the pending queue.');
+await handler(event('pv_deleted',null,pending));
+check(!queue.data.pettyCashVouchers.pv_deleted&&queue.data.pettyCashCounter['202612']===2,'A delayed event must not recreate a removed request or draw a number for it.');
+check(allocatedClaims===releases,'All creation-event numbering claims must be released.');
+
 const manage = read('src/functions/21-staff-advance-liquidation.js');
-check(manage.includes('const issuedVoucherNo = action === "approve" ? await cashVoucherNumber(db, voucher, id) : "";'), 'Only an approval may issue a cash voucher number.');
-check(manage.indexOf('await cashVoucherNumber(') > manage.indexOf('approvalAction = "approve_petty_voucher";'), 'The number must be issued only after every approval check has passed.');
+check(manage.includes('const issuedVoucherNo = action === "approve" ? await cashVoucherNumber(db, voucher, id) : "";'), 'The approval path must retain the fallback for older requests.');
+check(manage.indexOf('await cashVoucherNumber(') > manage.indexOf('approvalAction = "approve_petty_voucher";'), 'The approval-time fallback must stay behind the existing validation.');
 check(manage.includes('all[id] = Object.assign({}, current, {voucherNo: financeText(current.voucherNo, 60) || issuedVoucherNo, status: "approved",'), 'The approved voucher must carry its issued number.');
 check(!manage.includes('Revolving Fund voucher not found'), 'Messages must say cash voucher, not Revolving Fund.');
 
@@ -78,11 +120,11 @@ check(/^POS shift cash to custody/.test(shift.memo), 'Real POS movements keep th
 /* ---------- 5. Cash Payments screen ---------- */
 const fund = read('src/admin/register/40-revolving-fund.js');
 const numbering = fund.slice(fund.indexOf('function nextVoucherNo('), fund.indexOf('function cashVoucherActionsMenu('));
-check(numbering.includes("cb('');") && !/runTransaction|pettyCashCounter|Date\.now\(\)/.test(numbering), 'The device must never draw a cash voucher number (the server issues it on approval).');
-check(fund.includes("'<span style=\"color:var(--tl);\">Awaiting approval</span>'"), 'A voucher awaiting approval must say so instead of showing a number.');
+check(numbering.includes("cb('');") && !/runTransaction|pettyCashCounter|Date\.now\(\)/.test(numbering), 'The device must never draw a cash voucher number.');
+check(read('assets/js/admin/undeposited.js').includes("esc(v.voucherNo||'PV number pending')"), 'The approval queue must show the official PV number or a pending label.');
 check(fund.includes('CASH VOUCHER') && !fund.includes('REVOLVING FUND VOUCHER'), 'The printed voucher must be titled Cash Voucher.');
 check(fund.includes("'</td><td>'+cashVoucherActionsMenu(act)+'</td></tr>';") && fund.includes("root.querySelectorAll('details.purchase-actions').forEach("), 'Each voucher row must use one Actions menu.');
 check(!read('src/books/app/50-controlled-transactions.js').includes('>Revolving Fund</option>'), 'The retired Revolving Fund must not be offered as a payment source.');
 
 if (failures.length) { console.error(`FAIL: ${failures.length} cash voucher reference check(s)\n- ${failures.join('\n- ')}`); process.exit(1); }
-console.log('PASS: cash vouchers are numbered PV-YYYYMM-NNNN by the server on approval (reused on retry, never on the device), the posting carries the voucher number as its Finance Books reference, and screens and journal text say Cash Voucher.');
+console.log('PASS: the server numbers new cash voucher requests, retries and approval keep that number, and the posting uses it as the Finance Books reference.');

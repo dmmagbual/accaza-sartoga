@@ -100,7 +100,7 @@ The plan blocks each one:
 - **Server authority:** pricing, inventory, COGS, postings, approvals and numbering stay in Cloud Functions. The browser never computes an account to post to without the server re-validating it.
 - **Document lifecycles stay separate:**
   - **Purchase:** receive → bill or paid → reverse or Amend.
-  - **Cash Voucher:** request → approve (numbered) → post → void, correct, settle, return or allocate.
+  - **Cash Voucher:** request (numbered) → approve → post → void, correct, settle, return or allocate.
   - **Supplier bill:** pay, batch pay, reverse payment.
 - **Payment sources:**
   - `register` and `cash_float` are always refused, with the existing messages.
@@ -411,7 +411,7 @@ Each row has its existing retry action (**Post payment**, **Repair payable**, **
 - [ ] The Firebase-cost estimate goes in the PR.
 - [ ] Specialists: Database Optimizer, Bookkeeper, Frontend Developer, Code Reviewer.
 
-⚖️ **Decision Gate 2.1:** ⚠️ this decision is open. Should pending vouchers be numbered at creation instead of at approval (today they show "Awaiting approval")? This affects what the queue shows.
+⚖️ **Decision Gate 2.1:** Danilo approved server-issued PV numbers when new requests are saved on 22 Nov 2026. Approval remains the gate for posting. The approval path can still number older requests.
 
 #### Task 2.2: One reference search (PUR / PV / supplier ref)
 
@@ -547,6 +547,8 @@ Every phase starts from its **R0 restore point** (§5A). The order is always: fl
 5. **Proportion:** no code bodies; signatures, tests and decisions only.
 
 ## 12. Decisions and results log
+
+- **22 Nov 2026, Danilo approved PV numbering at request creation (Decision Gate 2.1).** Keep assigned numbers through approval, rejection and reversal. Existing unnumbered requests keep the approval-time fallback. This decision does not authorize a production backfill or the rest of Task 2.1.
 
 - **7 Oct 2026, plan adopted as binding for Claude and Codex** (Danilo).
 - **7 Oct 2026, already shipped before this plan:**

@@ -234,17 +234,14 @@ exports.retireRevolvingFund = onCall(
     return {balance: bal, retired: true, amount: bal, approvalId: approval.id};
   },
 );
-// A Cash Voucher's number, PV-YYYYMM-NNNN (Manila month it is issued, same monthly counter as before).
-// Issued by the server when the voucher is approved, so a request that is rejected or never approved
-// never takes a number, and kept on the voucher at once so a retried approval reuses it. Vouchers that
-// already carry a number (all vouchers created before this change) keep it.
-// Firebase cost: one small read and two small transactions, once per voucher, inside the approval call.
-async function cashVoucherNumber(db, voucher, voucherId) {
+// The server uses the existing Manila-month PV sequence. New requests use the creation event time.
+// Approval can still issue a number if none was assigned. A stored number is permanent.
+async function cashVoucherNumber(db, voucher, voucherId, issuedAt = Date.now()) {
   const existing = financeText(voucher && voucher.voucherNo, 60); if (existing) return existing;
   const numberRef = db.ref(`/pettyCashVouchers/${financeKey(voucherId, "Voucher ID")}/voucherNo`);
   const saved = financeText((await numberRef.get()).val(), 60);
   if (saved) { if (voucher) voucher.voucherNo = saved; return saved; }
-  const key = new Date(Date.now() + 28800000).toISOString().slice(0, 7).replace("-", "");
+  const key = financeDateFromTimestamp(issuedAt).slice(0, 7).replace("-", "");
   const counter = await db.ref(`/pettyCashCounter/${key}`).transaction((current) => (Number(current) || 0) + 1);
   const seq = Number(counter && counter.snapshot && counter.snapshot.val()) || 0;
   if (!seq) throw new HttpsError("unavailable", "The cash voucher number could not be issued. Try again.");
