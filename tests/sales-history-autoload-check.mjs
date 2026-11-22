@@ -5,7 +5,7 @@ import vm from 'node:vm';
 const source=fs.readFileSync(path.join(process.cwd(),'assets','js','admin','sales-history.js'),'utf8');
 const callbacks={},loadCalls=[];
 let summaryCalls=0;
-let moduleHandler=null,styleAdded=false;
+let moduleHandler=null,styleAdded=false,visibleSale=null;
 const root={innerHTML:''};
 const hub={
   historyStatus(pathName){return{hasOlder:pathName==='archivedOrders',loading:false,error:null};},
@@ -29,7 +29,8 @@ const window={
   sessionStorage:{getItem:key=>sessionValues.get(key)||null,setItem:(key,value)=>sessionValues.set(key,value),removeItem:key=>sessionValues.delete(key)},
   __accazaRegisterModule(name,handler){if(name==='saleshistory')moduleHandler=handler;},
   addEventListener(){},
-  AccazaSales:{stamp(){return 0;},qualifies(){return false;},amounts(){return{gross:0,discount:0,refund:0,net:0};}},
+  AccazaSales:{stamp(order){return order.timestamp||0;},qualifies(){return true;},amounts(){return{gross:0,discount:0,refund:0,net:0};}},
+  AccazaSaleDetails:{link(id,label){return `<button data-sale-details="${id}">${label}</button>`;},bind(_root,getOrder){visibleSale=getOrder('POS-SHIFT');}},
   AccazaReportPeriod:{get(){return{period:'month'};}}
 };
 const sandbox={window,document,console,setTimeout,clearTimeout,Blob:function(){},URL:{createObjectURL(){return'';},revokeObjectURL(){}},Date,Object,Array,String,Number,Math,Promise,CustomEvent:function(){}};
@@ -49,4 +50,6 @@ if(!root.innerHTML.includes('Authoritative sales register'))throw new Error('Sal
 if(!root.innerHTML.includes('Load 100 older sales'))throw new Error('Sales History must expose manual bounded paging when more records exist.');
 if(!root.innerHTML.includes('Selected-period totals are compact and saved for this tab'))throw new Error('Sales History must disclose cached compact totals separately from paged rows.');
 for(const marker of ['Updates paused — showing saved Sales History','The saved rows stay visible','New, corrected, refunded, or deleted sales are applied by exact order ID'])if(!source.includes(marker))throw new Error('Sales History saved-data behavior missing: '+marker);
+callbacks.archivedOrders({val(){return{'POS-SHIFT':{timestamp:Date.now(),shiftId:'SH-ARCHIVED'}};}});
+if(!root.innerHTML.includes('data-sale-details="POS-SHIFT"')||visibleSale?.id!=='POS-SHIFT'||visibleSale.shiftId!=='SH-ARCHIVED')throw new Error('The Sales History reference must open the existing dialog with the exact archived sale and shift link.');
 console.log('PASS: Sales History reuses one compact selected-period total and renders bounded detail feeds without automatic historical downloads.');

@@ -12574,7 +12574,8 @@ const HISTORICAL_PERIOD_MAX_MS = 93 * 86400000;
 const HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3;
 // V8 rebuilds cashier attribution from the sale-time seller. Older summaries
 // used the shift owner, which could assign crew sales to Maria/OWNER.
-const HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 9;
+const HISTORICAL_SALES_ROLLUP_BASE_ANALYTICS_VERSION = 9;
+const HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 10;
 
 function expectedReportingMonths(from, to) {
   const start = String(from || "").match(/^(\d{4})-(\d{2})$/), end = String(to || "").match(/^(\d{4})-(\d{2})$/);
@@ -12630,10 +12631,10 @@ function historicalDailyResetInMs(now = Date.now()) {
 }
 
 async function reserveHistoricalRollupReadBudget(db, documents) {
-  // One page read, one contribution and at most two months per order.
-  // The repair transaction has one attempt; failures keep this reservation.
+  // One page read, a fresh replica read in the transaction, one contribution,
+  // and at most two months per order. Failed batches keep their reservation.
   const day = new Intl.DateTimeFormat("en-CA", {timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-  const reads = Math.max(1, Number(documents) || 1) * 4;
+  const reads = Math.max(1, Number(documents) || 1) * 5;
   const result = await db.ref("/systemMaintenance/historicalRollupReadBudget").transaction((state) => {
     const used = state && state.day === day ? Number(state.reads) || 0 : 0;
     if (used + reads > 1000) return;
@@ -12649,7 +12650,7 @@ async function reserveHistoricalRollupCompletionBudget(db, runId, actorUid, docu
   const safeRunId = String(runId || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128);
   const safeActorUid = String(actorUid || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128);
   if (!safeRunId || !safeActorUid) throw new HttpsError("failed-precondition", "An active owner-approved reporting repair is required.");
-  const reads = Math.max(1, Number(documents) || 1) * 4;
+  const reads = Math.max(1, Number(documents) || 1) * 5;
   const ref = db.ref(`/systemMaintenance/historicalRollupCompletion/${safeRunId}`);
   const result = await ref.transaction((current) => {
     if (current && (current.runId !== safeRunId || current.actorUid !== safeActorUid || current.complete === true)) return;
@@ -12922,13 +12923,16 @@ function logHistoricalContention(scope) {
   return (info) => logger.warn("Historical archive replayed a transient Firestore failure", Object.assign({scope}, info));
 }
 
-async function reconcileHistoricalSalesOrder(firestore, orderId, order) {
+async function reconcileHistoricalSalesOrder(firestore, orderId) {
   // The rollup backfill writes many orders into the same monthly summary, where
   // contention is normal; a bounded replay replaces a first-attempt ABORTED. Its
   // budget is short because one callable writes a whole page of orders and must
   // still save its progress cursor.
-  return FirestoreRetry.runTransaction(firestore, async (transaction) => reconcileHistoricalSalesRollup(firestore, orderId, order, transaction),
-    FirestoreRetry.batchOptions({onRetry: logHistoricalContention("sales-rollup-backfill")}));
+  return FirestoreRetry.runTransaction(firestore, async (transaction) => {
+    const replica = await transaction.get(firestore.collection(HistoricalArchive.COLLECTION).doc(orderId));
+    const order = replica.exists ? (replica.data() || {}).order : null;
+    return reconcileHistoricalSalesRollup(firestore, orderId, order, transaction);
+  }, FirestoreRetry.batchOptions({onRetry: logHistoricalContention("sales-rollup-backfill")}));
 }
 
 async function replicateHistoricalOrder(db, firestore, orderId, order, now = Date.now(), options = {}) {
@@ -13089,6 +13093,7 @@ exports.readHistoricalSalesRollup = onCall(
     ]);
     const rollupState = rollupStateSnap.val() || {}, rollupVersion = Number(rollupState.schemaVersion) || 0;
     const ready = readySnap.val() === true && rollupState.complete === true && rollupVersion >= HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION;
+    const baseAnalyticsReady = readySnap.val() === true && ((rollupState.complete === true && rollupVersion >= HISTORICAL_SALES_ROLLUP_BASE_ANALYTICS_VERSION) || rollupState.compatibleAnalyticsReady === true);
     // V4 already proved that the compact day/payment/item totals were complete.
     // A V8 sale-time cashier upgrade must never blank those valid totals while it
     // is pending or running. MTD/YTD comparisons remain explicitly unavailable
@@ -13111,11 +13116,18 @@ exports.readHistoricalSalesRollup = onCall(
     // month is an authoritative zero-sales month (for example, before the shop
     // began operating), not missing history.
     const absentMonths = expectedMonths.filter((month) => !Object.prototype.hasOwnProperty.call(months, month));
-    const coverageComplete = ready || absentMonths.length === 0;
+    const coverageComplete = baseAnalyticsReady || absentMonths.length === 0;
     const missingMonths = coverageComplete ? [] : absentMonths;
-    const rich = ready && Object.values(months).every((month) => Number(month && month.schemaVersion) >= 3);
+    const rich = baseAnalyticsReady && Object.values(months).every((month) => Number(month && month.schemaVersion) >= 3);
     const analyticsReady = rich && coverageComplete && Object.values(months).every((month) => Number(month && month.analyticsSchemaVersion) >= 2);
-    return {ready:true, months, schemaVersion:rich ? 3 : 2, analyticsReady, coverageComplete, missingMonths, needsMaintenance:!rich || !analyticsReady};
+    const result = {ready:true, months, schemaVersion:rich ? 3 : 2, analyticsReady, coverageComplete, missingMonths, needsMaintenance:!rich || !analyticsReady};
+    if (data.includeCashierRoster === true) {
+      const staff = (await db.ref("/posStaff").get()).val() || {};
+      result.cashierRoster = Object.entries(staff).filter(([,row]) => row && row.role === "cashier" && financeText(row.name, 120))
+        .map(([id,row]) => ({id, name:financeText(row.name, 120), active:row.active !== false}));
+      result.cashierHistoryReady = ready;
+    }
+    return result;
   },
 );
 
@@ -13218,12 +13230,18 @@ exports.manageHistoricalOrderArchive = onCall(
     // Replaying historicalArchiveInputs here would re-read RTDB financial and
     // inventory evidence for every historical order, defeating this cost fix.
     if (["sales-at-audit", "sales-at-backfill", "sales-at-verify", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
-      let runId = financeText(data.runId, 100), stateRef = null, rollupCompatibleBase = false;
+      let runId = financeText(data.runId, 100), stateRef = null, rollupCompatibleBase = false, rollupCompatibleAnalytics = false, rollupSourceReplicaRunId = null;
       if (["sales-at-backfill", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
         const stateName = action === "sales-at-backfill" ? "salesAtBackfill" : action === "sales-ledger-backfill" ? "salesLedgerBackfill" : "salesRollupBackfill";
         stateRef = db.ref(`/systemHealth/historicalArchive/${stateName}`);
         const state = (await stateRef.get()).val() || {};
-        if (action === "sales-rollup-backfill") rollupCompatibleBase = state.compatibleBaseReady === true || (state.complete === true && Number(state.schemaVersion) >= 4);
+        if (action === "sales-rollup-backfill") {
+          rollupCompatibleBase = state.compatibleBaseReady === true || (state.complete === true && Number(state.schemaVersion) >= 4);
+          rollupCompatibleAnalytics = state.compatibleAnalyticsReady === true || (state.complete === true && Number(state.schemaVersion) >= HISTORICAL_SALES_ROLLUP_BASE_ANALYTICS_VERSION);
+          if (cursor && Number(state.schemaVersion) !== HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION) throw new HttpsError("failed-precondition", "Restart reporting repair from the beginning for the current cashier attribution version.");
+          rollupSourceReplicaRunId = state.sourceReplicaRunId;
+          if (completionOverride && rollupCompatibleAnalytics) throw new HttpsError("failed-precondition", "Use the regular bounded reporting repair for the cashier attribution upgrade.");
+        }
         const startingRollupUpgrade = completionOverride && action === "sales-rollup-backfill" && !cursor && !runId;
         if (completionOverride && !startingRollupUpgrade && (!cursor || !runId)) {
           throw new HttpsError("failed-precondition", "The one-time completion override must continue the saved V8 monthly summary repair.");
@@ -13237,7 +13255,7 @@ exports.manageHistoricalOrderArchive = onCall(
         else if (!runId || state.runId !== runId || state.expectedCursor !== cursor || state.complete === true) {
           throw new HttpsError("failed-precondition", "Continue the active salesAt backfill with its returned run ID and cursor, or restart from the beginning.");
         }
-        if (completionOverride && !startingRollupUpgrade && (action !== "sales-rollup-backfill" || Number(state.schemaVersion) < HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION || state.complete === true)) {
+        if (completionOverride && !startingRollupUpgrade && (action !== "sales-rollup-backfill" || Number(state.schemaVersion) < HISTORICAL_SALES_ROLLUP_BASE_ANALYTICS_VERSION || state.complete === true)) {
           throw new HttpsError("failed-precondition", "The one-time completion override requires the active V8 monthly summary repair.");
         }
         if (action === "sales-rollup-backfill") {
@@ -13248,6 +13266,7 @@ exports.manageHistoricalOrderArchive = onCall(
       }
       const replicaState = (await db.ref("/systemHealth/historicalArchive/salesReplicaBackfill").get()).val() || {};
       if (!replicaState.complete || !replicaState.runId) throw new HttpsError("failed-precondition", "Complete the bounded historical sales replica before rebuilding reporting indexes.");
+      if (action === "sales-rollup-backfill" && cursor && rollupSourceReplicaRunId !== replicaState.runId) throw new HttpsError("failed-precondition", "The reporting source changed. Restart reporting repair from the beginning.");
       let query = firestore.collection(HistoricalArchive.COLLECTION).orderBy(FieldPath.documentId());
       if (cursor) query = query.startAfter(cursor);
       const snap = await query.limit(limit).get(), docs = snap.docs;
@@ -13260,7 +13279,7 @@ exports.manageHistoricalOrderArchive = onCall(
         if (legacyOnly) summary.legacyOnly++;
         if (!stamp) summary.zeroSalesAt++;
         if (action === "sales-rollup-backfill") {
-          const changed = await reconcileHistoricalSalesOrder(firestore, document.id, order);
+          const changed = await reconcileHistoricalSalesOrder(firestore, document.id);
           if (changed) summary.written++; else summary.alreadyPresent++;
           continue;
         }
@@ -13281,7 +13300,7 @@ exports.manageHistoricalOrderArchive = onCall(
       const nextCursor = docs.length === limit ? docs[docs.length - 1].id : "";
       if (["sales-at-backfill", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
         const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, sourceReplicaRunId:replicaState.runId, schemaVersion:action === "sales-at-backfill" ? HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION : action === "sales-rollup-backfill" ? HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION : 2};
-        if (action === "sales-rollup-backfill") progress.compatibleBaseReady = rollupCompatibleBase;
+        if (action === "sales-rollup-backfill") Object.assign(progress, {compatibleBaseReady:rollupCompatibleBase, compatibleAnalyticsReady:rollupCompatibleAnalytics});
         await stateRef.set(progress);
         if (!nextCursor && action === "sales-at-backfill") {
           await db.ref("/systemHealth/historicalArchive/salesAtReady").set(true);

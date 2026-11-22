@@ -68,9 +68,13 @@ function reportingWeekday(stamp) {
 function reportingCashier(order) {
   const raw = String(order && (order.soldBy || order.soldByName || order.staff || order.cashier || order.completedByName) || "")
     .replace(/\s+/g, " ").trim().slice(0, 120);
-  const token = raw.toLowerCase().replace(/[^a-z0-9]+/g, "");
-  const name = token.includes("rya") ? "Rya" : token.includes("alex") ? "Alex" : token.includes("louize") ? "Louize" : "Maria";
-  return {key:name.toLowerCase(), name};
+  const staffId = String(order && order.soldByStaffId || "").trim(), token = raw.toLowerCase();
+  const alias = ({maria:"Maria", owner:"Maria", unassigned:"Maria", rya:"Rya", alex:"Alex", louize:"Louize"})[token];
+  const name = typeof alias === "string" ? alias : raw || "Maria";
+  if (/^[a-zA-Z0-9_-]{1,120}$/.test(staffId)) return {key:`staff_${order.soldByRole === "cashier" ? "cashier" : "id"}_${staffId}`, name};
+  if (!raw || typeof alias === "string") return {key:name.toLowerCase(), name};
+  // Keep the saved name so the report can match later staff additions without reading each order.
+  return {key:`staff_${token}`, name};
 }
 
 /* The wallet that received the money, for any e-money account. Known brands keep one spelling

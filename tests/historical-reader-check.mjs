@@ -44,8 +44,8 @@ assert.equal(queryLimitContext.historicalPeriodQueryLimit(100,true),100,'the can
 assert(server.includes('const reservedReads = mode === "period" && !salesAtReady ? (periodQueryLimit + 1) * 3 : limit'),'legacy history must reserve its three query sentinels without weakening the read cap');
 const budgetSource=server.slice(0,server.indexOf('async function reserveHistoricalMaintenanceBudget'));
 const rollupSource=server.slice(server.indexOf('exports.readHistoricalSalesRollup'),server.indexOf('// Books may be posted'));
-let counters={},queries=0,rollupDocs=[],rollupState={complete:false,schemaVersion:5,runId:'first-incomplete'};
-const fakeDb={ref(path){return {async get(){return {val:()=>path.endsWith("salesRollupBackfill")?rollupState:true};},async transaction(update){const next=update(counters[path]);if(next===undefined)return {committed:false};counters[path]=next;return {committed:true};}};}};
+let counters={},queries=0,staffReads=0,rollupDocs=[],rollupState={complete:false,schemaVersion:5,runId:'first-incomplete'};
+const fakeDb={ref(path){return {async get(){if(path==='/posStaff'){staffReads++;return{val:()=>({j:{name:'Justine',role:'cashier',email:'private'},n:{name:'Nikko',role:'cashier'},manager:{name:'Manager',role:'manager'}})};}return {val:()=>path.endsWith("salesRollupBackfill")?rollupState:true};},async transaction(update){const next=update(counters[path]);if(next===undefined)return {committed:false};counters[path]=next;return {committed:true};}};}};
 const budgetContext={Intl,Date,Object,String,Number,Math,exports:{},ORDER_REGION:'test',ENFORCE_APP_CHECK:false,onCall(options,handler){return handler;},getDatabase(){return fakeDb;},requirePortalPermission:async()=>({uid:'test_user'}),financeText:value=>String(value||''),HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}},HistoricalArchive:{MONTH_COLLECTION:'months'},FieldPath:{documentId:()=> '__name__'},getFirestore(){return {collection(){const query={orderBy(){return query;},startAt(){return query;},endAt(){return query;},limit(){return query;},async get(){queries++;return {docs:rollupDocs};}};return query;}};}};
 vm.createContext(budgetContext);vm.runInContext(budgetSource+rollupSource,budgetContext);
 const partial=await budgetContext.exports.readHistoricalSalesRollup({data:{from:'2026-01',to:'2026-12'}});assert.equal(partial.ready,false);assert.equal(queries,0,'a first-ever incomplete rollup must fail closed');
@@ -70,4 +70,17 @@ const operationStartCoverage=await budgetContext.exports.readHistoricalSalesRoll
 assert.equal(operationStartCoverage.coverageComplete,true,'completed V9 proves pre-operation months with no documents are zero-sales months');
 assert.equal(operationStartCoverage.analyticsReady,true,'YTD analytics must render when the completed source pass contains July-to-date operations');
 assert.deepEqual([...operationStartCoverage.missingMonths],[],'January-to-June must not be requested for a shop that began in July');
+assert.equal(staffReads,0,'ordinary compact sales readers must not load the staff roster');
+const rosterQuery={from:'2026-01',to:'2026-09',includeCashierRoster:true};
+const legacyCashiers=await budgetContext.exports.readHistoricalSalesRollup({data:rosterQuery});
+assert.equal(legacyCashiers.analyticsReady,true,'existing charts remain usable before the cashier rebuild');
+assert.equal(legacyCashiers.cashierHistoryReady,false);
+assert.equal(staffReads,1);
+assert.deepEqual(JSON.parse(JSON.stringify(legacyCashiers.cashierRoster)),[{id:'j',name:'Justine',active:true},{id:'n',name:'Nikko',active:true}],'expose cashier names and IDs without account fields');
+rollupState={complete:false,schemaVersion:10,compatibleBaseReady:true,compatibleAnalyticsReady:true};
+const duringUpgrade=await budgetContext.exports.readHistoricalSalesRollup({data:rosterQuery});
+assert.equal(duringUpgrade.analyticsReady,true,'the existing charts must remain available during the cashier rebuild');
+assert.equal(duringUpgrade.cashierHistoryReady,false);
+rollupState={complete:true,schemaVersion:10};
+assert.equal((await budgetContext.exports.readHistoricalSalesRollup({data:rosterQuery})).cashierHistoryReady,true);
 console.log('PASS: old summary clients are limited before Firestore reads, with an independent atomic budget.');

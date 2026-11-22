@@ -70,7 +70,8 @@ assert.equal(transactionAttempts,0,'the no-op decision must be read-only');
 
 for(const marker of [
   'FirestoreRetry.retryTransient(() => historicalRollupWriteNeeded(firestore, orderId, next.order),',
-  'FirestoreRetry.runTransaction(firestore, async (transaction) => reconcileHistoricalSalesRollup',
+  'const replica = await transaction.get(firestore.collection(HistoricalArchive.COLLECTION).doc(orderId))',
+  'return reconcileHistoricalSalesRollup(firestore, orderId, order, transaction)',
   'const rollupChanged = duplicate && !rollupRequired ? false : await reconcileHistoricalSalesRollup',
   'historicalRollupWriteRequired(previous, next, months, snapshots)',
   'onRetry: logHistoricalContention("replica-precheck")',
