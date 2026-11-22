@@ -3225,17 +3225,14 @@ exports.retireRevolvingFund = onCall(
     return {balance: bal, retired: true, amount: bal, approvalId: approval.id};
   },
 );
-// A Cash Voucher's number, PV-YYYYMM-NNNN (Manila month it is issued, same monthly counter as before).
-// Issued by the server when the voucher is approved, so a request that is rejected or never approved
-// never takes a number, and kept on the voucher at once so a retried approval reuses it. Vouchers that
-// already carry a number (all vouchers created before this change) keep it.
-// Firebase cost: one small read and two small transactions, once per voucher, inside the approval call.
-async function cashVoucherNumber(db, voucher, voucherId) {
+// The server uses the existing Manila-month PV sequence. New requests use the creation event time.
+// Approval can still issue a number if none was assigned. A stored number is permanent.
+async function cashVoucherNumber(db, voucher, voucherId, issuedAt = Date.now()) {
   const existing = financeText(voucher && voucher.voucherNo, 60); if (existing) return existing;
   const numberRef = db.ref(`/pettyCashVouchers/${financeKey(voucherId, "Voucher ID")}/voucherNo`);
   const saved = financeText((await numberRef.get()).val(), 60);
   if (saved) { if (voucher) voucher.voucherNo = saved; return saved; }
-  const key = new Date(Date.now() + 28800000).toISOString().slice(0, 7).replace("-", "");
+  const key = financeDateFromTimestamp(issuedAt).slice(0, 7).replace("-", "");
   const counter = await db.ref(`/pettyCashCounter/${key}`).transaction((current) => (Number(current) || 0) + 1);
   const seq = Number(counter && counter.snapshot && counter.snapshot.val()) || 0;
   if (!seq) throw new HttpsError("unavailable", "The cash voucher number could not be issued. Try again.");
@@ -3378,20 +3375,23 @@ async function verifyUndepositedIndexes(db, indexRows, missingRows) {
   return result;
 }
 
-// A failed/delayed voucher trigger can leave an already approved voucher in the pending index.
+// A delayed event can leave old voucher details or an already approved voucher in the pending index.
 // Recheck only the bounded rows displayed by the control snapshot; never scan voucher history.
 async function verifyPendingVoucherIndex(db, pendingRows) {
   const stale = [];
-  await Promise.all(Object.keys(pendingRows || {}).map(async (id) => {
+  const rows = await Promise.all(Object.keys(pendingRows || {}).map(async (id) => {
     const snap = await db.ref(`/pettyCashVouchers/${financeKey(id, "Voucher ID")}`).get();
     const row = snap.val();
-    if (!row || row.voided === true || row.status !== "pending") stale.push(id);
+    if (row && row.voided !== true && row.status === "pending") return pettyVoucherAttentionProjection(id,row);
+    stale.push(id);
+    return null;
   }));
-  if (!stale.length) return [];
-  const auditKey = db.ref("/operationalAudit").push().key, writes = {[`operationalAudit/${auditKey}`]: operationalAuditRecord("repair_voucher_attention_index", "pettyVoucher", "pendingIndex", {uid: "server", role: "server"}, {voucherIds: stale, accounting: "Only stale pending attention flags were removed; voucher and Finance Books postings were not changed."})};
-  stale.forEach((id) => { writes[`pettyVoucherAttentionIndex/pending/${financeKey(id, "Voucher ID")}`] = null; });
-  await db.ref().update(writes);
-  return stale;
+  if (stale.length) {
+    const auditKey = db.ref("/operationalAudit").push().key, writes = {[`operationalAudit/${auditKey}`]: operationalAuditRecord("repair_voucher_attention_index", "pettyVoucher", "pendingIndex", {uid: "server", role: "server"}, {voucherIds: stale, accounting: "Only stale pending attention flags were removed; voucher and Finance Books postings were not changed."})};
+    stale.forEach((id) => { writes[`pettyVoucherAttentionIndex/pending/${financeKey(id, "Voucher ID")}`] = null; });
+    await db.ref().update(writes);
+  }
+  return rows.filter(Boolean);
 }
 
 function pettyVoucherAttentionProjection(id, row) {
@@ -3460,7 +3460,7 @@ exports.getUndepositedControlSnapshot = onCall(
     const openIndex=openCustodySnap.val()||{};if(Object.keys(openIndex).length>500)throw new HttpsError("resource-exhausted","Undeposited Collection has more than 500 open custody rows. Deposit or archive older settled rows before opening this control.");
     const verification=verificationSnap.val()||{},verifyDue=Date.now()-Number(verification.checkedAt||0)>=600000,verified=verifyDue?await verifyUndepositedIndexes(db,openIndex,missingVoucherSnap.val()||{}):{checked:false,custodyRowsRepaired:0,missingVouchersCleared:0,index:openIndex,falseMissing:[]};
     const custodyRemaining=Financial.money(Object.values(verified.index||{}).reduce((sum,row)=>sum+Number(row&&row.remaining||0),0));
-    const pendingIndex=pendingVoucherSnap.val()||{},stalePendingVoucherIds=await verifyPendingVoucherIndex(db,pendingIndex),pendingVouchers=Object.values(pendingIndex).filter((row)=>row&&!row.voided&&!stalePendingVoucherIds.includes(row.id)).sort((a,b)=>String(b.date).localeCompare(String(a.date))),missingApprovedVouchers=Object.values(missingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided&&!(verified.falseMissing||[]).includes(row.id));
+    const pendingVouchers=(await verifyPendingVoucherIndex(db,pendingVoucherSnap.val())).sort((a,b)=>String(b.date).localeCompare(String(a.date))),missingApprovedVouchers=Object.values(missingVoucherSnap.val()||{}).filter((row)=>row&&!row.voided&&!(verified.falseMissing||[]).includes(row.id));
     const custodyGap=Financial.money(undeposited-custodyRemaining);let custodyGapCandidates=[];
     if(custodyGap>0){const candidateSnap=await db.ref("/undepositedLedgerPageIndex").orderByChild("netAmount").equalTo(custodyGap).limitToLast(25).get();custodyGapCandidates=Object.entries(candidateSnap.val()||{}).map(([id,row])=>Object.assign({id},row||{})).filter((row)=>!row.reversalOf&&!row.reversedByMovementId);}
     return{undepositedBalance:undeposited,revolvingBalance:revolving,custodyRemaining,custodyGap,pendingVouchers,missingApprovedVouchers,missingApprovedVoucherIds:missingApprovedVouchers.map((row)=>row.id),custodyGapCandidates,retirementPosted:retirementSnap.exists(),openingPosted:openingSnap.exists(),indexVerification:{checked:verified.checked,custodyRowsRepaired:verified.custodyRowsRepaired,missingVouchersCleared:verified.missingVouchersCleared},calculatedAt:Date.now(),authority:"server_all_time",pageSize:UNDEPOSITED_PAGE_SIZE};
@@ -3480,16 +3480,32 @@ exports.syncUndepositedLedgerPageIndex = onValueWritten(
 
 exports.syncPettyVoucherAttentionIndex = onValueWritten(
   {ref:"/pettyCashVouchers/{voucherId}",region:ORDER_REGION,retry:true},
-  async (event) => {
-    const db=getDatabase(),id=event.params.voucherId,row=event.data.after.exists()?event.data.after.val():null,writes={[`pettyVoucherAttentionIndex/pending/${id}`]:null,[`pettyVoucherAttentionIndex/missing/${id}`]:null};
-    if(row&&row.voided!==true&&row.status==="pending")writes[`pettyVoucherAttentionIndex/pending/${id}`]=pettyVoucherAttentionProjection(id,row);
-    if(row&&row.voided!==true&&row.status==="approved"&&!(await voucherHasPostingEvidence(db,id,row)))writes[`pettyVoucherAttentionIndex/missing/${id}`]=pettyVoucherAttentionProjection(id,row);
-    await db.ref().update(writes);
-    // Write-then-verify: the posting trigger sets the posting index and clears "missing" in one
-    // update, so whichever trigger runs second leaves the right answer (7 Oct 2026 race).
-    if(writes[`pettyVoucherAttentionIndex/missing/${id}`]&&(await voucherHasPostingEvidence(db,id,row)))await db.ref(`/pettyVoucherAttentionIndex/missing/${id}`).remove();
-  },
+  async (event) => syncPettyVoucherAttentionEvent(event),
 );
+
+async function syncPettyVoucherAttentionEvent(event) {
+  const db=getDatabase(),id=event.params.voucherId,row=event.data.after.exists()?event.data.after.val():null;
+  if(row&&row.status==="pending"&&row.voided!==true&&!row.voucherNo&&!event.data.before.exists()){
+    const claim=await claimPettyVoucherMutation(db,id,`number_created_${id}`);
+    try{
+      const current=(await db.ref(`/pettyCashVouchers/${financeKey(id,"Voucher ID")}`).get()).val();
+      if(current&&current.voided!==true&&!current.voucherNo&&(current.status==="pending"||current.status==="rejected")){
+        // Keep the request visible if issuing its number needs a retry.
+        if(current.status==="pending")await db.ref(`/pettyVoucherAttentionIndex/pending/${id}`).set(pettyVoucherAttentionProjection(id,current));
+        await cashVoucherNumber(db,current,id,Date.parse(event.time)||Date.now());
+      }
+    }finally{await claim.release();}
+    // The number write fires the next event, which publishes the numbered row.
+    return;
+  }
+  const writes={[`pettyVoucherAttentionIndex/pending/${id}`]:null,[`pettyVoucherAttentionIndex/missing/${id}`]:null};
+  if(row&&row.voided!==true&&row.status==="pending")writes[`pettyVoucherAttentionIndex/pending/${id}`]=pettyVoucherAttentionProjection(id,row);
+  if(row&&row.voided!==true&&row.status==="approved"&&!(await voucherHasPostingEvidence(db,id,row)))writes[`pettyVoucherAttentionIndex/missing/${id}`]=pettyVoucherAttentionProjection(id,row);
+  await db.ref().update(writes);
+  // Write-then-verify: the posting trigger sets the posting index and clears "missing" in one
+  // update, so whichever trigger runs second leaves the right answer (7 Oct 2026 race).
+  if(writes[`pettyVoucherAttentionIndex/missing/${id}`]&&(await voucherHasPostingEvidence(db,id,row)))await db.ref(`/pettyVoucherAttentionIndex/missing/${id}`).remove();
+}
 
 function undepositedCursor(data, field) {
   const cursor = data && data.cursor;

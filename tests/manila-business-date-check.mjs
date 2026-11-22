@@ -98,9 +98,10 @@ function zoneProbe(){
 
   const voucherModule=read('src/functions/21-staff-advance-liquidation.js'),voucher=voucherModule.slice(voucherModule.indexOf('async function cashVoucherNumber('),voucherModule.indexOf('// End of cash voucher numbering.')),keyExpr=(/const key = ([^;]+);/.exec(voucher)||[])[1];
   if(!keyExpr)fail('petty cash voucher month expression not found');
-  const voucherMonth=new Function(`return ${keyExpr};`);
-  eq(at(EVE,voucherMonth),'202612','petty cash voucher month on New Year\'s Eve');
-  eq(at(NEW_YEAR,voucherMonth),'202701','petty cash voucher month after midnight');
+  const financeDate=fn(read('src/functions/40-sales-finance.js'),'financeDateFromTimestamp');
+  const voucherMonth=new Function('issuedAt',`${financeDate}\nreturn ${keyExpr};`);
+  eq(voucherMonth(Date.parse(EVE)),'202612','petty cash voucher month on New Year\'s Eve');
+  eq(voucherMonth(Date.parse(NEW_YEAR)),'202701','petty cash voucher month after midnight');
 
   const core=read('assets/js/admin/core.mjs');
   for(const marker of ["const todayKey=new Date(Date.now()+28800000).toISOString().slice(0,10),startToday=Date.parse(todayKey+'T00:00:00+08:00');","const startMonth=Date.parse(todayKey.slice(0,7)+'-01T00:00:00+08:00');"])if(!core.includes(marker))fail(`Admin dashboard boundaries are no longer Manila midnights: ${marker}`);

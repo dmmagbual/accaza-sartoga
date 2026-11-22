@@ -432,8 +432,7 @@ function compressImage(file,cb){
   rd.readAsDataURL(file);
 }
 function nextVoucherNo(cb){
-  // Cash Voucher numbers (PV-YYYYMM-NNNN) are issued by the server when the voucher is approved, so a
-  // request that is never approved never takes a number and a failed save cannot leave a gap (Oct 2026).
+  // The server assigns the PV number after the new request has been saved.
   cb('');
 }
 /* One Actions menu per voucher (same buttons and data-pv* hooks inside), like Purchases. */

@@ -302,9 +302,9 @@ Database node → every Cloud Function whose code (or helpers) writes it. Browse
 | `paymentReferenceClaims` | `managePosSaleRecovery`, `manageShiftHandover`, `onShiftEndResolveEarlierHandovers`, `resolvePendingShiftHandovers`, `syncOfflinePosSale` |
 | `paymentVerificationQueue` | `ensureFinancialLedger`, `onOrderFinancialPosting`, `processOrderAdjustment`, `recordPlatformCatchup` |
 | `pendingShiftHandovers` | `manageShiftHandover`, `onShiftEndResolveEarlierHandovers`, `resolvePendingShiftHandovers` |
-| `pettyCashCounter` | `managePettyVoucher` |
+| `pettyCashCounter` | `managePettyVoucher`, `syncPettyVoucherAttentionIndex` |
 | `pettyCashReceipts` | `backupDatabaseDaily`, `getSupplierAdvanceDetails`, `runDatabaseBackupNow` |
-| `pettyCashVouchers` | `backupDatabaseDaily`, `ensureFinancialLedger`, `getSupplierAdvanceDetails`, `managePettyVoucher`, `manageSupplier`, `onPettyVoucherFinancial`, `repairPettyExpenseClassifications`, `repairPettyVoucherFinancial`, `repairReversalAccountingDate`, `runDatabaseBackupNow` |
+| `pettyCashVouchers` | `backupDatabaseDaily`, `ensureFinancialLedger`, `getSupplierAdvanceDetails`, `managePettyVoucher`, `manageSupplier`, `onPettyVoucherFinancial`, `repairPettyExpenseClassifications`, `repairPettyVoucherFinancial`, `repairReversalAccountingDate`, `runDatabaseBackupNow`, `syncPettyVoucherAttentionIndex` |
 | `pettyVoucherAttentionIndex/missing` | `getUndepositedControlSnapshot`, `getUndepositedPage`, `syncPettyVoucherAttentionIndex`, `syncUndepositedLedgerPageIndex` |
 | `pettyVoucherAttentionIndex/pending` | `getUndepositedControlSnapshot`, `getUndepositedPage`, `syncPettyVoucherAttentionIndex` |
 | `pettyVoucherPostingIndex` | `getUndepositedControlSnapshot`, `getUndepositedPage`, `syncUndepositedLedgerPageIndex` |
@@ -402,7 +402,7 @@ Database node → every Cloud Function whose code (or helpers) writes it. Browse
 | `updatePublicCatalogVersionOnPackages` | `/packages` | onValueWritten | `publicCatalogVersion` | `menuPriceHistory`, `packages` | `src/functions/24-public-catalog-version.js` |
 | `onPettyReplenishmentFinancial` | `/pettyCashReplenishments/{replenishmentId}` | onValueWritten | `cashCustodyOpenIndex`, `financialCommandClaims`, `financialMovements` | `accountingPeriods`, `cashCustody`, `pettyCashReplenishments` | `src/functions/41-expense-assets.js` |
 | `onPettyVoucherFinancial` | `/pettyCashVouchers/{voucherId}` | onValueWritten | `cashCustody`, `cashCustodyOpenIndex`, `cfLedger`, `financialCommandClaims`, `financialMovements`, `operationalAudit`, `pettyCashVouchers` | `accountingPeriods` | `src/functions/41-expense-assets.js` |
-| `syncPettyVoucherAttentionIndex` | `/pettyCashVouchers/{voucherId}` | onValueWritten | `pettyVoucherAttentionIndex/missing`, `pettyVoucherAttentionIndex/pending` | `financialMovements`, `pettyCashVouchers`, `pettyVoucherPostingIndex` | `src/functions/21a-undeposited-pages.js` |
+| `syncPettyVoucherAttentionIndex` | `/pettyCashVouchers/{voucherId}` | onValueWritten | `pettyCashCounter`, `pettyCashVouchers`, `pettyVoucherAttentionIndex/missing`, `pettyVoucherAttentionIndex/pending` | `financialMovements`, `pettyVoucherPostingIndex` | `src/functions/21a-undeposited-pages.js` |
 | `onPosActiveShiftWritten` | `/posActiveShift` | onValueWritten | `activeOrders`, `archivedOrders`, `books/journal`, `operationalAudit`, `orders`, `publicOrderStatus` | `accountingPeriods`, `posActiveShift`, `posSettings`, `posSettings/fixedFloat` | `src/functions/30-orders.js` |
 | `syncRegisterCashFloat` | `/posSettings/fixedFloat` | onValueWritten | `books/journal`, `operationalAudit` | `accountingPeriods`, `posActiveShift`, `posSettings`, `posSettings/fixedFloat` | `src/functions/10-books-bridge.js` |
 | `notifyStaffOnReservation` | `/reservations/{resId}` | onValueCreated | `staffPushTokens` | `admins`, `reservations` | `src/functions/00-bootstrap-notifications.js` |
