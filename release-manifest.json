@@ -12,20 +12,24 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 775,
+    "admin": 776,
     "books": 166,
     "customer": 109,
-    "serviceWorkerCache": 780
+    "serviceWorkerCache": 781
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
     "assets/js/admin/weekly-sales.mjs",
     "admin.html",
     "hr.html",
+    "hr-attendance.html",
     "assets/css/hr.css",
     "assets/js/hr.mjs",
+    "assets/js/hr-attendance.mjs",
+    "assets/js/hr-attendance-workspace.mjs",
     "src/functions/20c-hr-workspace.js",
     "functions/lib/hr-workspace.js",
+    "functions/lib/hr-attendance.js",
     "index.html",
     "menu.html",
     "manifest-menu.json",
@@ -434,6 +438,7 @@
     "setPlatformPayoutDate",
     "manageStaffMessage",
     "manageHrWorkspace",
+    "recordHrAttendance",
     "manageIncident",
     "repairClosedShiftTurnover",
     "repairShiftDeclaredTips",

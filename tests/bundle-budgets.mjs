@@ -31,8 +31,10 @@ export const BUNDLE_HARD_RESERVES=Object.freeze({
   'assets/js/admin/pos.js':50000
 });
 export const BUNDLE_BUDGETS=Object.freeze({
-  // Standalone HR workspace (Admin 775): reviewed at 33,579 bytes.
-  'assets/js/hr.mjs':35300,
+  // HR attendance (Admin 776): workspace shell 35,359 bytes, lazy attendance workspace 13,245, tablet 11,037.
+  'assets/js/hr.mjs':37200,
+  'assets/js/hr-attendance-workspace.mjs':14000,
+  'assets/js/hr-attendance.mjs':11600,
   'assets/js/admin/form-dialog.js':12300,
   // Also enforced by the Phase 6 customer-runtime guard in tests/static/10-syntax-rendering.mjs.
   // Sep 2026 re-baseline under the budget policy: reviewed 110,089 bytes (customer 85).

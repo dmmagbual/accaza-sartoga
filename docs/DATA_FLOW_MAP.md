@@ -6,7 +6,7 @@ Use this map to find *where to look*, then confirm in the source it points to. I
 
 Screens and server code connect through the Realtime Database rather than through imports: a screen writes a record or calls a callable, and a Cloud Function that watches that record reacts. Sources are the `src/functions/` sections that `npm run build:runtime` joins into `functions/index.js`; search the file for `exports.<name>` to find a function.
 
-Inventory: 38 database triggers, 119 callables, 7 scheduled jobs, 0 backup markers. Generated from `src/functions/` and `functions/lib/`.
+Inventory: 38 database triggers, 120 callables, 7 scheduled jobs, 0 backup markers. Generated from `src/functions/` and `functions/lib/`.
 
 ## 1. Money paths
 
@@ -511,6 +511,7 @@ Database node → every Cloud Function whose code (or helpers) writes it. Browse
 | `reconcilePurchasePayable` | `books/chartCodeMigrations`, `books/journal`, `booksChart`, `cashCustodyOpenIndex`, `financialCommandClaims`, `financialMovements`, `operationalAudit`, `payables`, `purchaseInvoices`, `stockReceipts` | `accountingPeriods`, `adminPerms`, `admins`, `cashCustody`, `inventory`, `sessionControl/cutoff`, `sessionControl/users`, `suppliers` | `src/functions/43a-purchase-payable.js` |
 | `reconcileUndepositedCustody` | `cashCustody`, `financialApprovals`, `operationalAudit` | `adminPerms`, `admins`, `financialMovements`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/22-close-controls.js` |
 | `recordClientTelemetry` | `clientTelemetryDaily` | `admins`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/20-portal-operations.js` |
+| `recordHrAttendance` | — | `admins` | `src/functions/20c-hr-workspace.js` |
 | `recordPlatformCatchup` | `cashCustodyOpenIndex`, `cfLedger`, `financialApprovals`, `financialCommandClaims`, `financialMovements`, `operationalAudit`, `orders`, `paymentVerificationQueue`, `platformRefIndex` | `accountingPeriods`, `adminPerms`, `admins`, `archivedOrders`, `cashCustody`, `cfAccounts`, `menuItems`, `sessionControl/cutoff`, `sessionControl/users`, `taxSettings` | `src/functions/43h-platform-catchup.js` |
 | `releaseLoyaltyClaim` | `loyaltyBalances`, `loyaltyLedger`, `loyaltyRewards` | `adminPerms`, `admins`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/26-loyalty2-admin.js` |
 | `reopenDiscrepancy` | `discrepancies`, `financialApprovals`, `operationalAudit`, `shifts` | `adminPerms`, `admins`, `financialMovements`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/21-operational-controls.js` |

@@ -1,6 +1,6 @@
 import {expect, test} from '@playwright/test';
 
-async function installHrFirebase(page, response) {
+async function installHrFirebase(page, response, callable = 'manageHrWorkspace') {
   const modules = {
     'firebase-app.js': 'export function initializeApp(config,name){globalThis.hrTestAppName=name;return {config,name};}',
     'firebase-app-check.js': 'export class ReCaptchaEnterpriseProvider{} export function initializeAppCheck(){return {};} export async function getToken(){return {token:"test"};}',
@@ -28,7 +28,7 @@ async function installHrFirebase(page, response) {
     });
   });
   await page.exposeFunction('hrTestRequest', (name, payload) => {
-    expect(name).toBe('manageHrWorkspace');
+    expect(name).toBe(callable);
     return response(payload);
   });
 }
@@ -165,4 +165,48 @@ test('a manager can assign work to an employee on a later roster page', async ({
   await editor.getByLabel('Deadline (Manila date)').fill('2026-11-27');
   await editor.getByRole('button', {name: 'Save'}).click();
   await expect(page.getByText('Prep counter', {exact: true})).toBeVisible();
+});
+
+test('the attendance tablet retries unconfirmed punches and blocks expired retries', async ({page}) => {
+  const requests = [];
+  await page.clock.install({time: new Date('2026-11-23T09:00:00+08:00')});
+  await installHrFirebase(page, (payload) => {
+    if (payload.action === 'pair') return {credential: 'synthetic-tablet-credential', expiresAt: Date.parse('2026-12-23T09:00:00+08:00')};
+    if (payload.action === 'roster') return {rows: [{id: 'staff-1', name: 'Taylor'}], nextCursor: null};
+    if (payload.action === 'punch') {
+      requests.push(payload.requestId);
+      if (requests.length !== 2) return {error: {code: 'functions/unavailable', message: 'Offline'}};
+      return {id: 'shift-1', at: Date.parse('2026-11-23T09:00:00+08:00'), type: 'in'};
+    }
+    throw new Error('Unexpected tablet action ' + payload.action);
+  }, 'recordHrAttendance');
+
+  const selectPunch = async (direction) => {
+    await page.getByLabel('Employee').selectOption('staff-1');
+    await page.getByLabel('Clock action').selectOption(direction);
+    await page.getByLabel('Your six-digit HR PIN').fill('012345');
+  };
+  await page.goto('/hr-attendance.html');
+  await page.getByLabel('Pairing code').fill('synthetic-code');
+  await page.getByRole('button', {name: 'Pair tablet'}).click();
+  await selectPunch('in');
+  await page.getByRole('button', {name: 'Record attendance'}).click();
+  await expect(page.getByRole('alert')).toContainText(/unconfirmed|could not confirm/i);
+  await expect(page.getByLabel('Your six-digit HR PIN')).toHaveValue('');
+  await page.reload();
+  await selectPunch('in');
+  await page.getByRole('button', {name: 'Retry attendance'}).click();
+  await expect(page.getByRole('status')).toContainText('Clock-in recorded');
+  expect(requests[1]).toEqual(requests[0]);
+
+  await selectPunch('out');
+  await page.getByRole('button', {name: 'Record attendance'}).click();
+  await expect(page.getByRole('alert')).toContainText(/unconfirmed|could not confirm/i);
+  await page.clock.fastForward(6 * 60 * 1000);
+  await page.reload();
+  await page.getByLabel('Employee').selectOption('staff-1');
+  await page.getByLabel('Clock action').selectOption('out');
+  await expect(page.locator('#tablet-retry')).toContainText(/manager/i);
+  await expect(page.locator('#tablet-submit')).toBeDisabled();
+  expect(requests).toHaveLength(3);
 });

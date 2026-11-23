@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="theme-color" content="#f3f5f2">
+  <title>Attendance tablet · Accaza HR</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="assets/css/hr.css">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="brand">
+        <img src="/favicon_192x192.png" width="36" height="36" alt="">
+        <span>Accaza <strong>HR</strong></span>
+      </div>
+    </div>
+  </header>
+  <main class="attendance-tablet" id="main" tabindex="-1">
+    <h1>Attendance tablet</h1>
+    <noscript><p class="notice">Enable JavaScript to record attendance.</p></noscript>
+    <p id="tablet-status" class="notice" role="status">Connecting to Accaza HR…</p>
+    <p id="tablet-error" class="notice error" role="alert" hidden></p>
+    <section class="card stack" id="tablet-pair" aria-labelledby="pair-title" hidden>
+      <h2 id="pair-title">Pair this tablet</h2>
+      <p>Enter a one-time pairing code from an HR manager.</p>
+      <form id="tablet-pair-form" class="fields" autocomplete="off">
+        <label for="pair-code">Pairing code</label>
+        <input id="pair-code" name="code" type="password" autocapitalize="none" spellcheck="false" maxlength="200" required>
+        <button type="submit" class="button primary">Pair tablet</button>
+      </form>
+    </section>
+    <section class="card stack" id="tablet-punch" aria-labelledby="punch-title" hidden>
+      <h2 id="punch-title">Clock in or out</h2>
+      <form id="tablet-punch-form" class="fields" autocomplete="off">
+        <label for="tablet-employee">Employee</label>
+        <select id="tablet-employee" name="employeeId" required>
+          <option value="">Choose your name</option>
+        </select>
+        <button id="tablet-more" type="button" class="button secondary" hidden>Load more names</button>
+        <label for="tablet-type">Clock action</label>
+        <select id="tablet-type" name="type" required>
+          <option value="">Choose clock in or out</option>
+          <option value="in">Clock in</option>
+          <option value="out">Clock out</option>
+        </select>
+        <p id="tablet-retry" class="detail" role="status" hidden></p>
+        <button id="tablet-acknowledge" type="button" class="button secondary" hidden>Manager checked. Clear attempt</button>
+        <label for="tablet-pin">Your six-digit HR PIN</label>
+        <input id="tablet-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" aria-describedby="tablet-retry" required>
+        <button id="tablet-submit" type="submit" class="button primary">Record attendance</button>
+      </form>
+      <button id="tablet-refresh" type="button" class="button secondary">Refresh employee list</button>
+    </section>
+  </main>
+  <script type="module" src="assets/js/hr-attendance.mjs"></script>
+</body>
+</html>

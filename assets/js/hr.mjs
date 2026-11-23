@@ -15,7 +15,7 @@ const navigation = [...document.querySelectorAll("[data-view]")];
 const editor = byId("editor");
 const editorForm = byId("editor-form");
 const view = byId("view");
-const labels = { home: "My workspace", team: "Team", manage: "Management" };
+const labels = { home: "My workspace", team: "Team", attendance: "Attendance", manage: "Management" };
 const resources = { announcements: "Announcements", tasks: "Tasks", shifts: "Schedules", members: "Employees" };
 const statusLabels = {
   "in-progress": "In progress", in_progress: "In progress", pending: "Pending",
@@ -29,6 +29,8 @@ let state = null;
 let pendingEditor = null;
 let busy = false;
 let session = 0;
+let attendanceWorkspace = null;
+let attendanceModule = null;
 
 function make(tag, text = "", className = "") {
   const node = document.createElement(tag);
@@ -87,6 +89,7 @@ function allowed(current) {
 }
 
 function clearWorkspace() {
+  attendanceWorkspace?.reset(state);
   state = null;
   busy = false;
   pendingEditor = null;
@@ -233,8 +236,36 @@ function listRows(current, resource, management = false) {
   return current.lists.get(listKey(resource, management))?.rows || [];
 }
 
+async function loadAttendance(current) {
+  try {
+    if (!attendanceWorkspace) {
+      message("workspace-status", "Loading attendance…");
+      attendanceModule ||= import("./hr-attendance-workspace.mjs")
+        .then(({ createAttendanceWorkspace }) => {
+          attendanceWorkspace = createAttendanceWorkspace({
+            allowed, button, entries, entry, errorMessage, field, formatDay, make, manilaInput, manilaTimestamp,
+            message, newId, openEditor, render, request, rosterField, rosterForEditor, save, section, textArea, textControl
+          });
+        }).catch(error => {
+          attendanceModule = null;
+          throw error;
+        });
+      await attendanceModule;
+      if (!allowed(current) || current.route !== "attendance") return;
+      message("workspace-status", "");
+      render(current);
+    }
+    await attendanceWorkspace.load(current);
+  } catch (error) {
+    if (!allowed(current) || current.route !== "attendance") return;
+    message("workspace-status", "");
+    message("workspace-error", errorMessage(error, "Could not open Attendance. Select Refresh to retry."));
+  }
+}
+
 async function loadVisible(current) {
   if (!allowed(current) || current.route === "home") return;
+  if (current.route === "attendance") return loadAttendance(current);
   const route = current.route;
   const resource = current.resource;
   const jobs = route === "team"
@@ -255,6 +286,7 @@ async function loadVisible(current) {
 function showRoute(route) {
   const current = state;
   if (!allowed(current) || !canView(current, route) || current.route === route) return;
+  if (current.route === "attendance") attendanceWorkspace?.clearPairing(current);
   current.route = route;
   message("workspace-status", "");
   message("workspace-error", "");
@@ -286,6 +318,7 @@ function discardList(current, resource, management = false) {
 }
 
 function discardViews(current) {
+  attendanceWorkspace?.reset(current);
   current.loads.clear();
   current.lists.clear();
 }
@@ -591,7 +624,11 @@ function render(current) {
     if (control.dataset.view === current.route) control.setAttribute("aria-current", "page");
     else control.removeAttribute("aria-current");
   }
-  const renders = { home: renderHome, team: renderTeam, manage: renderManagement };
+  const renders = {
+    home: renderHome, team: renderTeam,
+    attendance: current => attendanceWorkspace?.render(current) || make("div"),
+    manage: renderManagement
+  };
   view.replaceChildren(renders[current.route](current));
   if (focusKey) {
     [...view.querySelectorAll("[data-focus-key]")].find(node => node.dataset.focusKey === focusKey)?.focus();
@@ -641,12 +678,13 @@ function newId() {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, "0")).join("");
 }
 
-function openEditor(current, title, fields, saveDetails, trigger) {
+function openEditor(current, title, fields, saveDetails, trigger, submitLabel = "Save") {
   if (!allowed(current) || busy || editor.open) return;
   byId("editor-title").textContent = title;
   byId("editor-fields").replaceChildren(...fields);
   message("editor-error", "");
   pendingEditor = { current, saveDetails, trigger };
+  byId("editor-submit").textContent = submitLabel;
   editor.showModal();
 }
 
@@ -823,11 +861,14 @@ async function save(current, resource, action, payload, fromEditor = false) {
   setBusy(true);
   let committed = false;
   try {
-    await request(action, payload);
+    const result = await request(action, payload);
     if (!allowed(current)) return;
     committed = true;
     if (fromEditor) closeEditor();
-    if (action === "setChart") {
+    let confirmation = "Saved.";
+    if (resource === "attendance") {
+      confirmation = await attendanceWorkspace.afterSave(current, action, result);
+    } else if (action === "setChart") {
       current.home.member.chart = payload.chart;
       render(current);
     } else {
@@ -838,7 +879,7 @@ async function save(current, resource, action, payload, fromEditor = false) {
       render(current);
       await loadVisible(current);
     }
-    if (allowed(current) && byId("workspace-error").hidden) message("workspace-status", "Saved.");
+    if (allowed(current) && byId("workspace-error").hidden) message("workspace-status", confirmation);
   } catch (error) {
     if (!allowed(current)) return;
     if (committed && ["functions/permission-denied", "functions/unauthenticated"].includes(error?.code)) {

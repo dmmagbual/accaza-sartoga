@@ -109,6 +109,10 @@ export const GATED = {
 
 /** Callables whose access comes from another signal; each still needs a recorded reason. */
 export const NEEDS_REVIEW = {
+  "20c-hr-workspace:recordHrAttendance": {
+    "signals": ["enforceAppCheck: true", "return attendance.tablet(request.data)"],
+    "review": true
+  },
   "20c-hr-workspace:manageHrWorkspace": {
     "signals": ["enforceAppCheck", "requirePortalUser(", "return workspace(actor, request.data)"],
     "review": true
@@ -475,6 +479,8 @@ export const NEEDS_REVIEW = {
 };
 
 export const REASONS = {
+  "enforceAppCheck: true|return attendance.tablet(request.data)":
+    "Mandatory App Check and a one-time pairing code or an active revocable kiosk credential. Punches also need current employee access and a rate-limited individual HR PIN.",
   "enforceAppCheck|requirePortalUser(|return workspace(actor, request.data)":
     "App Check and an active portal login, then the HR service checks enrollment and action-specific grants, including task ownership.",
   "actor.role|actor.uid|enforceAppCheck|requirePortalUser(":
