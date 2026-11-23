@@ -15,6 +15,8 @@ try{
   await assertFails(getDoc(doc(guest,'historicalOrders','seed')));
   await assertFails(getDoc(doc(owner,'historicalOrders','seed')));
   await assertFails(setDoc(doc(owner,'historicalOrders','browser-write'),{order:{id:'browser-write'}}));
+  await assertFails(getDoc(doc(owner,'hrWorkspace','pilot','members','someone')));
+  await assertFails(setDoc(doc(owner,'hrWorkspace','pilot','members','someone'),{canManage:true}));
   await env.withSecurityRulesDisabled(async(context)=>{
     await assertSucceeds(getDoc(doc(context.firestore(),'historicalOrders','seed')));
   });

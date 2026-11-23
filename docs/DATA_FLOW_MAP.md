@@ -6,7 +6,7 @@ Use this map to find *where to look*, then confirm in the source it points to. I
 
 Screens and server code connect through the Realtime Database rather than through imports: a screen writes a record or calls a callable, and a Cloud Function that watches that record reacts. Sources are the `src/functions/` sections that `npm run build:runtime` joins into `functions/index.js`; search the file for `exports.<name>` to find a function.
 
-Inventory: 38 database triggers, 118 callables, 7 scheduled jobs, 0 backup markers. Generated from `src/functions/` and `functions/lib/`.
+Inventory: 38 database triggers, 119 callables, 7 scheduled jobs, 0 backup markers. Generated from `src/functions/` and `functions/lib/`.
 
 ## 1. Money paths
 
@@ -480,6 +480,7 @@ Database node → every Cloud Function whose code (or helpers) writes it. Browse
 | `manageDragonQuest` | `dragonQuestConfig/activeSeasonId`, `dragonQuestMissions`, `dragonQuestSeasons`, `operationalAudit` | `adminPerms`, `admins`, `loyaltyRewardCatalog`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/26b-dragon-quest.js` |
 | `manageFixedAsset` | `cashCustodyOpenIndex`, `financialCommandClaims`, `financialMovements`, `fixedAssets`, `payables`, `purchaseInvoices` | `accountingPeriods`, `adminPerms`, `admins`, `cashCustody`, `cfAccounts`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/41-expense-assets.js` |
 | `manageHistoricalOrderArchive` | `historicalArchiveSync`, `operationalAudit`, `systemHealth/historicalArchive`, `systemMaintenance/historicalArchiveDaily`, `systemMaintenance/historicalArchiveReplicaDaily`, `systemMaintenance/historicalRollupCompletion`, `systemMaintenance/historicalRollupReadBudget` | `admins`, `archivedOrders`, `books/journal`, `financialMovements`, `inventoryMovements`, `orderInventoryPlans`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/61-historical-archive.js` |
+| `manageHrWorkspace` | — | `admins`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/20c-hr-workspace.js` |
 | `manageIncident` | `incidentCommandClaims`, `incidents`, `operationalAudit` | `admins`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/20-portal-auth.js` |
 | `manageLoyaltyCurrency` | `operationalAudit` | `adminPerms`, `admins`, `loyaltyEarningRules`, `loyaltyRewardCatalog`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/26-loyalty2-admin.js` |
 | `manageLoyaltyEarningRule` | `loyaltyEarningRules`, `operationalAudit` | `adminPerms`, `admins`, `sessionControl/cutoff`, `sessionControl/users` | `src/functions/26-loyalty2-admin.js` |

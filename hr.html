@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="theme-color" content="#f3f5f2">
+  <title>Accaza HR</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="assets/css/hr.css">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="brand">
+        <img src="/favicon_192x192.png" width="36" height="36" alt="">
+        <span>Accaza <strong>HR</strong></span>
+      </div>
+      <div class="account">
+        <a href="admin.html">Accaza Admin</a>
+        <button class="button secondary" id="sign-out" type="button" hidden>Sign out</button>
+      </div>
+    </div>
+  </header>
+  <main id="main" tabindex="-1">
+    <p id="page-status" class="notice" role="status">Connecting to Accaza HR…</p>
+    <noscript><p class="notice">Enable JavaScript to use the staff workspace.</p></noscript>
+    <section class="login card" id="login" aria-labelledby="login-title" hidden>
+      <h1 id="login-title">Staff sign-in</h1>
+      <p>Use your individual Accaza account to open the HR workspace.</p>
+      <form id="login-form" class="fields">
+        <label>Email <input type="email" name="email" autocomplete="username" maxlength="320" required></label>
+        <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+        <button type="submit" class="button primary">Sign in</button>
+      </form>
+      <p id="login-error" class="notice error" role="alert" hidden></p>
+    </section>
+    <div class="dashboard" id="workspace" hidden>
+      <nav class="views" aria-label="HR workspace">
+        <button type="button" data-view="home" aria-current="page">My workspace</button>
+        <button type="button" data-view="team" hidden>Team</button>
+        <button type="button" data-view="manage" hidden>Management</button>
+      </nav>
+      <div class="dashboard-content">
+        <div class="intro">
+          <div>
+            <h1 id="workspace-title" tabindex="-1">My workspace</h1>
+            <p id="employee-name"></p>
+          </div>
+          <button class="button secondary" id="refresh" type="button">Refresh</button>
+        </div>
+        <p id="workspace-status" class="notice" role="status" hidden></p>
+        <p id="workspace-error" class="notice error" role="alert" hidden></p>
+        <div id="view"></div>
+      </div>
+    </div>
+    <dialog id="editor" aria-labelledby="editor-title">
+      <form id="editor-form" class="fields">
+        <h2 id="editor-title"></h2>
+        <div id="editor-fields" class="fields"></div>
+        <p id="editor-error" class="notice error" role="alert" hidden></p>
+        <div class="actions">
+          <button class="button secondary" id="editor-cancel" type="button">Cancel</button>
+          <button class="button primary" id="editor-submit" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+  </main>
+  <script type="module" src="assets/js/hr.mjs"></script>
+</body>
+</html>

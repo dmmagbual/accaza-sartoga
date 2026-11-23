@@ -109,6 +109,10 @@ export const GATED = {
 
 /** Callables whose access comes from another signal; each still needs a recorded reason. */
 export const NEEDS_REVIEW = {
+  "20c-hr-workspace:manageHrWorkspace": {
+    "signals": ["enforceAppCheck", "requirePortalUser(", "return workspace(actor, request.data)"],
+    "review": true
+  },
   "20-portal-auth:manageStaffMessage": {
     "signals": [
       "actor.role",
@@ -471,6 +475,8 @@ export const NEEDS_REVIEW = {
 };
 
 export const REASONS = {
+  "enforceAppCheck|requirePortalUser(|return workspace(actor, request.data)":
+    "App Check and an active portal login, then the HR service checks enrollment and action-specific grants, including task ownership.",
   "actor.role|actor.uid|enforceAppCheck|requirePortalUser(":
     "Shared portal gate then an inline role check, on an App Check attested device: requirePortalUser rejects an unauthenticated caller, a disabled account, a role outside the seven allowed roles and a session older than the Super Admin cutoff.",
   "request.auth|enforceAppCheck":

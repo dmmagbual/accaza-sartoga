@@ -167,6 +167,7 @@ if(!analytics.includes('ACCAZA_AI_FIRESTORE_DAILY_READ_CAP')||!analytics.include
 if(/\.ref\([^)]*\)\.(set|update|push|remove|transaction)\(/.test(business)||/\.(delete|update|add|batch|bulkWriter|create)\(/.test(business))throw new Error('The Accaza AI campaign log must not write the Realtime Database or delete anything.');
 const writes=[...business.matchAll(/(firestore\.collection\("([a-zA-Z]+)"\)\.doc\([^)]*\)\.set\(|transaction\.set\(ref)/g)];if(!writes.length||writes.some(m=>m[2]&&m[2]!=='aiBusiness'))throw new Error('The Accaza AI campaign log may only write aiBusiness/aiCampaigns.');
 if(!/firestore\.collection\("aiCampaigns"\)\.doc\(/.test(business)||!business.includes('if(!ACCAZA_AI_TOOL_ROLES.includes(actor.role))throw new HttpsError("permission-denied"'))throw new Error('The campaign log must stay management-only and use the aiCampaigns collection.');}
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('setTaxSettings'),0,'manageHrWorkspace');
 const actualFunctionExports=[...functionsSource.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map(match=>match[1]);
 if(JSON.stringify(actualFunctionExports)!==JSON.stringify(expectedFunctionExports))throw new Error('The public Firebase Functions export contract changed. Review deployment, trigger, callable, and removal consequences explicitly.');
 if(new Set(actualFunctionExports).size!==actualFunctionExports.length)throw new Error('A Firebase Function export is registered more than once.');
