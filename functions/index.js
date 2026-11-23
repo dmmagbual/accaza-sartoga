@@ -2180,6 +2180,30 @@ exports.manageHrWorkspace = onCall(
     return workspace(actor, request.data);
   },
 );
+
+exports.recordHrAttendance = onCall(
+  {region: ORDER_REGION, enforceAppCheck: true, timeoutSeconds: 20, memory: "256MiB"},
+  async (request) => {
+    const {createHrAttendance} = require("./lib/hr-attendance");
+    const attendance = createHrAttendance({
+      firestore: getFirestore(),
+      HttpsError,
+      async isPortalActive(uid) {
+        const [admin, user] = await Promise.all([
+          getDatabase().ref("/admins").child(uid).get(),
+          getAdminAuth().getUser(uid).catch((error) => {
+            if (error.code === "auth/user-not-found") return null;
+            throw error;
+          }),
+        ]);
+        const row = admin.val();
+        return !!user && !user.disabled && row?.disabled !== true && row?.active !== false &&
+          PORTAL_ACCOUNT_ROLES.has(portalRoleValue(row));
+      },
+    });
+    return attendance.tablet(request.data);
+  },
+);
 const TAX_MODES = ["none", "vat", "percentage"];
 const TAX_STRUCTURES = ["sole", "opc", "corporation"];
 // Server-side canonical BIR requirement checklist. The client renders its own labels for

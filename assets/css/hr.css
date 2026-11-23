@@ -250,3 +250,19 @@ dialog::backdrop { background: rgb(21 39 29 / .55); }
 @media (prefers-reduced-motion: reduce) {
   .button, .views button { transition: none; }
 }
+
+.attendance-tabs { display: flex; flex-wrap: wrap; gap: .45rem; }
+.attendance-tabs [aria-current="page"] { background: var(--pale); color: var(--forest); border-color: #abc6b4; }
+.attendance-date { grid-template-columns: minmax(12rem, 1fr) auto; align-items: end; }
+.attendance-link { justify-self: start; text-decoration: none; }
+.attendance-pairing { padding: .85rem; border: 1px solid var(--edge); border-radius: .65rem; }
+.attendance-pairing .button { justify-self: start; }
+.attendance-tablet { max-width: 33rem; }
+.attendance-tablet h1 { margin-bottom: 1rem; }
+.attendance-tablet .card { margin-top: .8rem; }
+.attendance-tablet form label { margin-bottom: -.55rem; }
+.attendance-tablet button, .attendance-tablet input, .attendance-tablet select { min-height: 3rem; }
+.attendance-tablet input[type="password"] { letter-spacing: .12em; }
+@media (max-width: 28rem) {
+  .attendance-date { grid-template-columns: 1fr; }
+}

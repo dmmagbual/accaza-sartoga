@@ -286,6 +286,14 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
       case "saveShift": return saveRecord(actor, "shifts", data, time);
       case "addStep":
       case "setStep": return updateStep(actor, data, time);
+      case "listAttendance":
+      case "setAttendancePin":
+      case "createAttendancePairing":
+      case "revokeAttendanceKiosk":
+      case "correctAttendance": {
+        const {createHrAttendance} = require("./hr-attendance");
+        return createHrAttendance({firestore, HttpsError, now}).staff(actor, data, access);
+      }
       case "setChart": {
         const chart = choice(data.chart, ["bar", "donut"], "Chart type");
         return firestore.runTransaction(async (transaction) => {

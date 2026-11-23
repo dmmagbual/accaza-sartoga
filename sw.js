@@ -36,7 +36,7 @@ self.addEventListener('notificationclick',function(e){
 /* Versioned customer + POS app shells. Installation downloads only the customer
    shell. Admin explicitly warms its larger offline shell after opening Admin;
    authenticated POS cash sales use the durable IndexedDB continuity queue. */
-const CACHE='accaza-v780';
+const CACHE='accaza-v781';
 const ASSETS=[
   '/index.html','/menu.html','/manifest.json','/manifest-menu.json','/manifest-rewards.json',
   '/favicon.ico','/favicon_32x32.png','/favicon_180x180.png','/favicon_192x192.png',
@@ -73,7 +73,7 @@ self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET')return;
   const url=new URL(e.request.url);
   if(url.origin!==location.origin)return; /* Firebase & CDNs go straight to network */
-  if(['/hr.html','/assets/js/hr.mjs','/assets/css/hr.css'].includes(url.pathname))return;
+  if(['/hr.html','/hr-attendance.html','/assets/js/hr.mjs','/assets/js/hr-attendance.mjs','/assets/js/hr-attendance-workspace.mjs','/assets/css/hr.css'].includes(url.pathname))return;
   e.respondWith(fetch(e.request).then(r=>{if(r&&r.ok){const cp=r.clone();caches.open(CACHE).then(c=>c.put(e.request,cp));}return r;}).catch(()=>caches.match(e.request).then(m=>{
     if(m)return m;
     if(e.request.mode==='navigate'){
