@@ -6,6 +6,10 @@ const MAX_STEPS = 30;
 const PH_DATE = new Intl.DateTimeFormat("sv-SE", {
   timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
 });
+const {ROLES, memberRole, canManageWorkspace, isApprover, approvalBlock, APPROVAL_MESSAGES} = require("./hr-roles");
+const {validateHoursSettings, validateEffectiveFrom, settingsForWeek} = require("./hr-settings");
+const {payWeekStart, manilaDate} = require("./hr-hours");
+const APPROVER_ROLES = ["hr_manager", "assistant_hr"];
 
 function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date.now}) {
   const root = firestore.doc("hrWorkspace/pilot");
@@ -64,8 +68,8 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
     return task.assigneeId + "~" + (completed ? "1" : "0") + "~" + task.teamKey;
   }
   function memberView(member, canReview) {
-    const {id, name, active, canManage, chart, revision} = member;
-    return canReview ? {id, name, active, canManage, chart, revision} : {id, name, active};
+    const {id, name, active, chart, revision} = member;
+    return canReview ? {id, name, active, role: memberRole(member), canManage: canManageWorkspace(member), chart, revision} : {id, name, active};
   }
   function present(resource, row, time, viewerId) {
     const {id, title, revision, status} = row;
@@ -89,7 +93,9 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
   async function access(actor, reader = (ref) => ref.get()) {
     const link = (await reader(account(actor.uid))).data();
     const stored = link ? (await reader(profile(link.employeeId))).data() : null;
-    const member = stored?.active === true && stored.accountUid === actor.uid ? stored : null;
+    const linked = stored?.active === true && stored.accountUid === actor.uid ? stored : null;
+    // Role decides management access. Members enrolled before roles keep their stored canManage.
+    const member = linked ? {...linked, role: memberRole(linked), canManage: canManageWorkspace(linked)} : null;
     const canEnroll = actor.role === "superadmin";
     if (!member && !canEnroll) fail("permission-denied", "Ask your manager to enroll you in Accaza HR.", {hrAccess: "inactive"});
     return {member, canEnroll};
@@ -170,17 +176,23 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
     const ref = existing ? profile(id(data.id)) : collection("members").doc();
     const name = text(data.name, 120, "Employee name");
     const active = flag(data.active, "Active status");
-    const canManage = flag(data.canManage, "Management access");
+    const role = data.role === undefined ? null : choice(data.role, ROLES, "HR role");
+    const legacyManage = role === null ? flag(data.canManage, "Management access") : null;
     return firestore.runTransaction(async (transaction) => {
       const current = (await transaction.get(ref)).data();
       if (existing && !current) fail("not-found", "Employee enrollment was not found.");
       requireRevision(current, data.revision);
+      if (role === null && memberRole(current)) fail("failed-precondition", "Reload the HR page to manage roles.");
+      if (role && APPROVER_ROLES.includes(role) && (current?.accountUid ?? accountUid) === actor.uid) {
+        fail("permission-denied", "You cannot give your own login an approver role.");
+      }
+      const canManage = role === null ? legacyManage : role !== "employee";
       const linkRef = account(current?.accountUid ?? accountUid);
       if (!existing && (await transaction.get(linkRef)).exists) {
         fail("already-exists", "This account is already enrolled. Edit its existing employee record.");
       }
       const row = {
-        id: ref.id, name, active, canManage, chart: current?.chart ?? "bar",
+        id: ref.id, name, active, ...(role === null ? {} : {role}), canManage, chart: current?.chart ?? "bar",
         revision: (current?.revision ?? 0) + 1, accountUid: current?.accountUid ?? accountUid,
       };
       transaction.set(ref, row);
@@ -274,6 +286,91 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
     });
   }
 
+  function requireApprover(context) {
+    if (!isApprover(context.member)) fail("permission-denied", APPROVAL_MESSAGES.not_approver, {hrAccess: "approval-required"});
+    return context.member;
+  }
+  function checked(run) {
+    try {
+      return run();
+    } catch (error) {
+      if (error instanceof RangeError) fail("invalid-argument", error.message);
+      throw error;
+    }
+  }
+  function earliestEffective(time) {
+    // Becomes the day after the last locked pay week once week locking exists.
+    return payWeekStart(manilaDate(time));
+  }
+
+  async function listHoursSettings(context, data, time) {
+    requireManager(context);
+    const result = await page(listQuery("hoursSettings", "sortKey", "desc"), "sortKey", data.cursor, PAGE_SIZE);
+    const approved = (await collection("hoursSettings").where("status", "==", "approved").get()).docs.map((doc) => doc.data());
+    const current = settingsForWeek(approved, earliestEffective(time));
+    return {current, earliest: earliestEffective(time), canApprove: isApprover(context.member), ...result};
+  }
+
+  async function proposeHoursSettings(actor, data, time) {
+    const requestId = id(data.requestId);
+    const values = checked(() => validateHoursSettings(data.values));
+    const reason = text(data.reason, 500, "Reason for the change");
+    const ref = collection("hoursSettings").doc(requestId);
+    return firestore.runTransaction(async (transaction) => {
+      const member = requireApprover(await access(actor, (key) => transaction.get(key)));
+      const prior = (await transaction.get(ref)).data();
+      if (prior) {
+        // Compare field by field: Firestore does not keep map key order.
+        const same = prior.proposedBy === member.id && prior.effectiveFrom === data.effectiveFrom && prior.reason === reason &&
+          Object.keys(values).every((key) => prior.values?.[key] === values[key]);
+        if (!same) fail("already-exists", "This settings request was already used for a different change.");
+        return {id: requestId};
+      }
+      // Checked only for new requests, so a retry after the week rolls over still returns the original result.
+      const effectiveFrom = checked(() => validateEffectiveFrom(data.effectiveFrom, earliestEffective(time)));
+      const row = {
+        id: requestId, status: "proposed", values, effectiveFrom, reason,
+        proposedBy: member.id, proposedByName: member.name, proposedAt: time,
+        sortKey: timeKey(time, requestId), revision: 1,
+      };
+      transaction.create(ref, row);
+      audit(transaction, actor, "hoursSettings", row, time);
+      return {id: requestId};
+    });
+  }
+
+  async function decideHoursSettings(actor, data, time) {
+    const recordId = id(data.id);
+    const decision = choice(data.decision, ["approve", "reject"], "Decision");
+    const ref = collection("hoursSettings").doc(recordId);
+    return firestore.runTransaction(async (transaction) => {
+      const context = await access(actor, (key) => transaction.get(key));
+      const member = requireApprover(context);
+      const current = (await transaction.get(ref)).data();
+      if (!current) fail("not-found", "This settings change was not found.");
+      if (current.status === (decision === "approve" ? "approved" : "rejected") && current.decidedBy === member.id) {
+        return {id: recordId, status: current.status};
+      }
+      requireRevision(current, data.revision);
+      if (current.status !== "proposed") fail("failed-precondition", "This settings change was already decided.");
+      const block = approvalBlock(member, {initiatorId: current.proposedBy});
+      if (block) fail("permission-denied", APPROVAL_MESSAGES[block]);
+      if (decision === "approve") {
+        checked(() => validateHoursSettings(current.values));
+        if (current.effectiveFrom < earliestEffective(time)) {
+          fail("failed-precondition", "The effective date has passed. Propose the change again with a current date.");
+        }
+      }
+      const row = {
+        ...current, status: decision === "approve" ? "approved" : "rejected",
+        decidedBy: member.id, decidedByName: member.name, decidedAt: time, revision: current.revision + 1,
+      };
+      transaction.set(ref, row);
+      audit(transaction, actor, "hoursSettings", row, time);
+      return {id: recordId, status: row.status};
+    });
+  }
+
   return async (actor, data = {}) => {
     if (!data || typeof data !== "object" || Array.isArray(data)) fail("invalid-argument", "Invalid HR request.");
     const time = now();
@@ -286,6 +383,9 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
       case "saveShift": return saveRecord(actor, "shifts", data, time);
       case "addStep":
       case "setStep": return updateStep(actor, data, time);
+      case "listHoursSettings": return listHoursSettings(await access(actor), data, time);
+      case "proposeHoursSettings": return proposeHoursSettings(actor, data, time);
+      case "decideHoursSettings": return decideHoursSettings(actor, data, time);
       case "listAttendance":
       case "setAttendancePin":
       case "createAttendancePairing":

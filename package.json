@@ -165,7 +165,7 @@
     "test:order-financial-trigger": "node tests/order-financial-trigger-check.mjs",
     "test:cash-balance-unavailable": "node tests/cash-balance-unavailable-check.mjs",
     "test:functions-cold-start": "node tests/functions-cold-start-check.mjs && node tests/pos-active-shift-trigger-check.mjs",
-    "test:hr-hours": "node tests/hr-hours-check.mjs"
+    "test:hr-hours": "node tests/hr-hours-check.mjs && node tests/hr-roles-settings-check.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",

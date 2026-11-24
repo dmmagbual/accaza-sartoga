@@ -5,14 +5,14 @@ const requireFunctions = createRequire(new URL('../functions/package.json', impo
 const {computeWeekHours, payWeekStart, manilaDate} = requireFunctions('./lib/hr-hours.js');
 
 const at = (local) => Date.parse(local + ':00+08:00');
-const settings = {dailyRegularMin: 480, breakThresholdMin: 300, breakDeductMin: 30};
+const settings = {dailyRegularMin: 480, breakThresholdMin: 300, breakDeductMin: 30, restDay: 0, longShiftFlagMin: 960};
 const week = '2026-11-21';
 let seq = 0;
 const rec = (employeeId, from, to, id = 'r' + ++seq) => ({id, employeeId, inAt: at(from), outAt: to === null ? null : at(to)});
 const run = (records, extra = {}) => computeWeekHours({weekStart: week, records, holidays: [], holidayYears: [2026], settings, ...extra});
-const totals = (row) => ({regularMin: row.regularMin, dailyOtMin: row.dailyOtMin, sundayMin: row.sundayMin,
+const totals = (row) => ({regularMin: row.regularMin, dailyOtMin: row.dailyOtMin, restDayMin: row.restDayMin,
   regularHolidayMin: row.regularHolidayMin, specialHolidayMin: row.specialHolidayMin});
-const zero = {regularMin: 0, dailyOtMin: 0, sundayMin: 0, regularHolidayMin: 0, specialHolidayMin: 0};
+const zero = {regularMin: 0, dailyOtMin: 0, restDayMin: 0, regularHolidayMin: 0, specialHolidayMin: 0};
 
 // Pay week and Manila dates.
 assert.equal(payWeekStart('2026-11-21'), '2026-11-21');
@@ -34,12 +34,12 @@ assert.equal(manilaDate(Date.parse('2026-11-22T16:30:00Z')), '2026-11-23', 'Mani
   assert.equal(result.blocked, false);
   assert.deepEqual(result.issues, []);
   const [amy] = result.employees;
-  assert.deepEqual(totals(amy), {...zero, regularMin: 1650, dailyOtMin: 240, sundayMin: 330});
+  assert.deepEqual(totals(amy), {...zero, regularMin: 1650, dailyOtMin: 240, restDayMin: 330});
   assert.equal(amy.paidMin, 2220);
   assert.equal(amy.grossMin, 2340);
   assert.equal(amy.breakMin, 120);
   assert.deepEqual(amy.days.map((day) => [day.date, day.dayType, day.paidMin]), [
-    ['2026-11-22', 'sunday', 330], ['2026-11-23', 'ordinary', 570], ['2026-11-24', 'ordinary', 630],
+    ['2026-11-22', 'rest_day', 330], ['2026-11-23', 'ordinary', 570], ['2026-11-24', 'ordinary', 630],
     ['2026-11-25', 'ordinary', 240], ['2026-11-27', 'ordinary', 450],
   ]);
 }
@@ -88,12 +88,26 @@ assert.equal(manilaDate(Date.parse('2026-11-22T16:30:00Z')), '2026-11-23', 'Mani
   assert.equal(result.employees.some((row) => row.employeeId === 'eve'), false, 'open and invalid records add no hours');
 }
 
-// Over 16 hours is flagged for review, not blocking, and still counted.
+// Over the long-shift setting (16 h default) is flagged for review, not blocking, and still counted.
 {
   const result = run([rec('hal', '2026-11-23T06:00', '2026-11-23T23:00', 'long-1')]);
-  assert.deepEqual(result.issues.map((item) => [item.code, item.blocking]), [['over_16h', false]]);
+  assert.deepEqual(result.issues.map((item) => [item.code, item.blocking]), [['long_shift', false]]);
   assert.equal(result.blocked, false);
   assert.deepEqual(totals(result.employees[0]), {...zero, regularMin: 480, dailyOtMin: 510});
+}
+
+// Rest day and long-shift threshold come from settings, not code.
+{
+  const custom = {...settings, restDay: 1, longShiftFlagMin: 600, dailyRegularMin: 420, breakThresholdMin: 360, breakDeductMin: 60};
+  const result = run([
+    rec('mo', '2026-11-22T08:00', '2026-11-22T14:00'), // Sunday is ordinary now: 360 gross, no break (not over 360)
+    rec('mo', '2026-11-23T07:00', '2026-11-23T18:00'), // Monday rest day: 660 gross, 600 paid, flagged long
+  ], {settings: custom});
+  const [mo] = result.employees;
+  assert.deepEqual(totals(mo), {...zero, regularMin: 360, restDayMin: 600});
+  assert.deepEqual(mo.days.map((day) => day.dayType), ['ordinary', 'rest_day']);
+  assert.deepEqual(result.issues.map((item) => item.code), ['long_shift']);
+  assert.deepEqual(result.settings, custom);
 }
 
 // Records whose Manila start date is outside the week are ignored.
@@ -114,9 +128,11 @@ assert.equal(manilaDate(Date.parse('2026-11-22T16:30:00Z')), '2026-11-23', 'Mani
 // Invalid input is rejected outright.
 assert.throws(() => run([], {weekStart: '2026-11-23'}), /Saturday/);
 assert.throws(() => run([], {weekStart: '2026-02-30'}), /real calendar date/);
-assert.throws(() => run([], {settings: {...settings, breakDeductMin: 301}}), /cannot exceed/);
+assert.throws(() => run([], {settings: {...settings, breakThresholdMin: 20, breakDeductMin: 30}}), /cannot exceed/);
 assert.throws(() => run([], {settings: {...settings, dailyRegularMin: 0}}), /dailyRegularMin/);
 assert.throws(() => run([], {settings: {...settings, breakDeductMin: 1.5}}), /breakDeductMin/);
+assert.throws(() => run([], {settings: {dailyRegularMin: 480, breakThresholdMin: 300, breakDeductMin: 30}}), /restDay/);
+assert.throws(() => run([], {settings: {...settings, restDay: 7}}), /restDay/);
 assert.throws(() => run([], {holidays: [{date: '2026-11-23', type: 'local'}]}), /unknown type/);
 assert.throws(() => run([], {holidays: [{date: '2026-11-23', type: 'regular'}, {date: '2026-11-23', type: 'special_non_working'}]}), /two different types/);
 assert.throws(() => run([{id: 'x', employeeId: 'a', inAt: 1.5, outAt: null}]), /clock-in/);

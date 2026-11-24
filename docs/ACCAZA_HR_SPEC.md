@@ -127,7 +127,7 @@ Per `shiftDate`, sum `paid`, then classify the whole day:
 - Regular holiday: everything to `regularHolidayMin`.
 - Special non-working day: everything to `specialHolidayMin`.
 - Special working day: treated as an ordinary day.
-- Else Sunday: everything to `sundayMin`.
+- Else the rest day (setting, default Sunday): everything to `restDayMin`.
 - Else: `regularMin` = min(total, 480), `dailyOtMin` = the rest.
 
 Output is integer minutes. A record belongs to the pay week of its `shiftDate`. Open records block week approval. Over 16 hours is flagged. Zero or negative durations are rejected. The week snapshot stores the settings version and holiday list used.
@@ -183,8 +183,9 @@ Owner's decision: everyone sees everyone's attendance. Proposed split:
 ## 7. Build order
 
 0. Done: tablet attendance is merged (PR #926). Its emulator tests (`test:rules`) still need a run on a machine with the Firebase emulator.
-1. Roles and approval routing.
-2. Hours engine, weekly summary and CSV export, with the holiday table and manual entry. Build and test it before screens.
+1. Built (PR #927): roles (`employee`, `hr_manager`, `assistant_hr`) on members, approval rule (`functions/lib/hr-roles.js`), and attendance corrections limited to approvers and never on their own record. Members enrolled before roles keep workspace access but cannot approve or correct.
+2. Built (PR #927): hours engine (`functions/lib/hr-hours.js`) and versioned hours settings (`functions/lib/hr-settings.js`): break, daily regular hours, rest day, long-shift flag. One owner proposes, the other approves, effective from a Saturday no earlier than the current pay week. Still to build: the settings screen, weekly summary screen, CSV export and holiday table. Pay week start stays Saturday in code until week locking exists.
+   After deploying: the system administrator must give the two owners their roles (HR Manager, Assistant HR). Until then nobody can correct attendance.
 3. Correction requests, approvals and the pay-week lock.
 4. Phone clock-in channel.
 5. Roster publish, availability and swaps.

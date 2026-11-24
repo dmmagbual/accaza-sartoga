@@ -481,9 +481,12 @@ function taskRow(row, current, roster, mode) {
   return node;
 }
 
+const roleLabels = { employee: "Employee", hr_manager: "HR Manager", assistant_hr: "Assistant HR" };
+
 function memberRow(row, current) {
   const node = entry(row.name, row.active ? "active" : "inactive");
-  if (row.canManage) node.append(make("p", "HR manager", "detail"));
+  const label = roleLabels[row.role] || (row.canManage ? "Manager (no approval rights)" : "");
+  if (label) node.append(make("p", label, "detail"));
   node.append(button("Edit access", () => editRecord(current, "members", row)));
   return node;
 }
@@ -775,11 +778,16 @@ async function editRecord(current, resource, row) {
         ...(!existing ? [field("Accaza account email", textControl("email", "", { type: "email", maxLength: 320 }))] : []),
         field("Display name", textControl("name", row?.name, { maxLength: 100 })),
         field("HR access active", checkboxControl("active", row?.active ?? true)),
-        field("Can manage announcements, tasks, and schedules", checkboxControl("canManage", row?.canManage ?? false))
+        field("HR role", selectControl("role", [
+          // Members enrolled before roles keep their access until a role is chosen.
+          ...(existing && !row.role && row.canManage ? [["legacy", "Manager (no approval rights)"]] : []),
+          ["employee", "Employee"], ["hr_manager", "HR Manager"], ["assistant_hr", "Assistant HR"]
+        ], row?.role || (existing && row.canManage ? "legacy" : "employee")))
       ];
       saveDetails = data => ["saveMember", {
         ...(existing ? identifiers : { email: data.get("email") }),
-        name: data.get("name"), active: data.has("active"), canManage: data.has("canManage")
+        name: data.get("name"), active: data.has("active"),
+        ...(data.get("role") === "legacy" ? { canManage: true } : { role: data.get("role") })
       }];
       break;
     case "shifts":

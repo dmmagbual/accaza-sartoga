@@ -113,9 +113,10 @@ test('an unenrolled Super Admin can enroll the first HR manager', async ({page})
     if (payload.action === 'home') return {member: null, canEnroll: true, announcements: [], tasks: [], shifts: []};
     if (payload.action === 'list') return {rows: employees, nextCursor: null};
     if (payload.action === 'saveMember') {
-      expect(payload).toMatchObject({email: 'lead@example.test', name: 'Team Lead', active: true, canManage: true});
+      expect(payload).toMatchObject({email: 'lead@example.test', name: 'Team Lead', active: true, role: 'hr_manager'});
+      expect(payload).not.toHaveProperty('canManage');
       expect(payload).not.toHaveProperty('id');
-      employees.push({id: 'employee-2', name: payload.name, active: true, canManage: true, revision: 1});
+      employees.push({id: 'employee-2', name: payload.name, active: true, role: 'hr_manager', canManage: true, revision: 1});
       return {id: 'employee-2'};
     }
     throw new Error('Unexpected HR action ' + payload.action);
@@ -126,9 +127,10 @@ test('an unenrolled Super Admin can enroll the first HR manager', async ({page})
   const editor = page.getByRole('dialog');
   await editor.getByLabel('Accaza account email').fill('lead@example.test');
   await editor.getByLabel('Display name').fill('Team Lead');
-  await editor.getByLabel('Can manage announcements, tasks, and schedules').check();
+  await editor.getByLabel('HR role').selectOption('hr_manager');
   await editor.getByRole('button', {name: 'Save'}).click();
   await expect(page.getByText('Team Lead', {exact: true})).toBeVisible();
+  await expect(page.getByText('HR Manager', {exact: true})).toBeVisible();
 });
 
 test('a manager can assign work to an employee on a later roster page', async ({page}) => {

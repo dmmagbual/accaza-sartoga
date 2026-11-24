@@ -35,11 +35,11 @@ const amy = {uid: 'amy', role: 'staff'};
 const ben = {uid: 'ben', role: 'staff'};
 const call = (actor, action, data) => staff(actor, {action, ...data});
 const reject = (operation, code = 'permission-denied') => assert.rejects(operation, {code});
-const enroll = (uid, name, canManage = false) =>
-  call(owner, 'saveMember', {email: uid + '@example.test', name, canManage, active: true});
+const enroll = (uid, name, role = 'employee') =>
+  call(owner, 'saveMember', {email: uid + '@example.test', name, role, active: true});
 
 try {
-  await enroll('manager', 'Shift Lead', true);
+  const {id: managerId} = await enroll('manager', 'Shift Lead', 'hr_manager');
   const {id: employeeId} = await enroll('amy', 'Amy');
   const {id: benId} = await enroll('ben', 'Ben');
   await reject(call(amy, 'createAttendancePairing'));
@@ -90,6 +90,11 @@ try {
   const manualResult = await call(manager, 'correctAttendance', manual);
   assert.deepEqual(await call(manager, 'correctAttendance', manual), manualResult);
   await reject(call(manager, 'correctAttendance', {...manual, outAt: inAt + 10, requestId: 'overlap'}), 'failed-precondition');
+  // Corrections follow the approval rules: never on your own record, and legacy managers without a role cannot correct.
+  await reject(call(manager, 'correctAttendance', {...manual, employeeId: managerId, requestId: 'own-record'}));
+  const lead = {uid: 'lead', role: 'manager'};
+  await call(owner, 'saveMember', {email: 'lead@example.test', name: 'Old Lead', canManage: true, active: true});
+  await reject(call(lead, 'correctAttendance', {...manual, inAt: inAt - 14400000, outAt: inAt - 10800000, requestId: 'legacy-lead'}));
   const corrections = await firestore.collection('hrWorkspace/pilot/attendanceAudit').where('action', '==', 'correct').get();
   assert.equal(corrections.size, 2);
   const edited = corrections.docs.find((row) => row.get('recordId') === 'punch-in').data();
