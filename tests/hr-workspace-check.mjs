@@ -40,7 +40,7 @@ try {
   assert.deepEqual((await call(amy, 'list', {resource: 'members'})).rows.find((row) => row.id === managerId),
     {id: managerId, name: 'Team Lead', active: true});
 
-  // Roles: the two owners approve each other. The system administrator cannot make their own login an approver.
+  // Roles: the two owners act directly. The system administrator cannot make their own login an owner.
   const ownerA = {uid: 'ownera', role: 'owner'};
   const ownerB = {uid: 'ownerb', role: 'owner'};
   const {id: ownerAId} = await call(owner, 'saveMember', {email: 'ownera@example.test', name: 'Owner A', role: 'hr_manager', active: true});
@@ -53,35 +53,30 @@ try {
   assert.equal(roster.find((row) => row.id === managerId).role, null, 'legacy manager has no role');
   await denied(call(owner, 'saveMember', {id: ownerBId, name: 'Owner B', active: true, canManage: true, revision: 1}), 'failed-precondition');
 
-  // Hours settings: proposed by one owner, approved by the other, never backdated.
+  // Hours settings: an owner saves directly from a Saturday no earlier than the current pay week.
   const values = {dailyRegularMin: 480, breakThresholdMin: 300, breakDeductMin: 60, restDay: 0, longShiftFlagMin: 960};
-  const proposal = {requestId: 'break-60', values, effectiveFrom: '2026-11-28', reason: 'One-hour meal break.'};
+  const change = {requestId: 'break-60', values, effectiveFrom: '2026-11-28', reason: 'One-hour meal break.'};
   await denied(call(amy, 'listHoursSettings'));
-  await denied(call(manager, 'proposeHoursSettings', proposal));
-  await denied(call(ownerA, 'proposeHoursSettings', {...proposal, effectiveFrom: '2026-11-14'}), 'invalid-argument');
-  await denied(call(ownerA, 'proposeHoursSettings', {...proposal, effectiveFrom: '2026-11-24'}), 'invalid-argument');
-  await denied(call(ownerA, 'proposeHoursSettings', {...proposal, values: {...values, breakDeductMin: 400}}), 'invalid-argument');
-  assert.deepEqual(await call(ownerA, 'proposeHoursSettings', proposal), {id: 'break-60'});
-  assert.deepEqual(await call(ownerA, 'proposeHoursSettings', proposal), {id: 'break-60'}, 'retry is idempotent');
-  await denied(call(ownerA, 'proposeHoursSettings', {...proposal, reason: 'Different'}), 'already-exists');
-  await denied(call(ownerA, 'decideHoursSettings', {id: 'break-60', decision: 'approve', revision: 1}));
-  await denied(call(manager, 'decideHoursSettings', {id: 'break-60', decision: 'approve', revision: 1}));
-  assert.deepEqual(await call(ownerB, 'decideHoursSettings', {id: 'break-60', decision: 'approve', revision: 1}), {id: 'break-60', status: 'approved'});
-  assert.deepEqual(await call(ownerB, 'decideHoursSettings', {id: 'break-60', decision: 'approve', revision: 1}), {id: 'break-60', status: 'approved'});
-  await denied(call(ownerB, 'decideHoursSettings', {id: 'break-60', decision: 'reject', revision: 2}), 'failed-precondition');
+  await denied(call(manager, 'saveHoursSettings', change));
+  await denied(call(ownerA, 'proposeHoursSettings', change), 'invalid-argument');
+  await denied(call(ownerA, 'saveHoursSettings', {...change, effectiveFrom: '2026-11-14'}), 'invalid-argument');
+  await denied(call(ownerA, 'saveHoursSettings', {...change, effectiveFrom: '2026-11-24'}), 'invalid-argument');
+  await denied(call(ownerA, 'saveHoursSettings', {...change, values: {...values, breakDeductMin: 400}}), 'invalid-argument');
+  assert.deepEqual(await call(ownerA, 'saveHoursSettings', change), {id: 'break-60'});
+  assert.deepEqual(await call(ownerA, 'saveHoursSettings', change), {id: 'break-60'}, 'retry is idempotent');
+  await denied(call(ownerA, 'saveHoursSettings', {...change, reason: 'Different'}), 'already-exists');
   let settings = await call(ownerA, 'listHoursSettings');
   assert.equal(settings.earliest, '2026-11-21');
-  assert.equal(settings.current.versionId, 'default', 'the approved change starts next week');
-  assert.equal(settings.canApprove, true);
-  await call(ownerB, 'proposeHoursSettings', {requestId: 'now', values: {...values, dailyRegularMin: 420}, effectiveFrom: '2026-11-21', reason: 'Seven-hour day.'});
-  await call(ownerA, 'decideHoursSettings', {id: 'now', decision: 'approve', revision: 1});
+  assert.equal(settings.current.versionId, 'default', 'the saved change starts next week');
+  assert.equal(settings.canEdit, true);
+  assert.equal(settings.rows[0].status, 'approved');
+  assert.equal(settings.rows[0].decidedBy, ownerAId);
+  await call(ownerB, 'saveHoursSettings', {requestId: 'now', values: {...values, dailyRegularMin: 420}, effectiveFrom: '2026-11-21'});
   settings = await call(manager, 'listHoursSettings');
   assert.equal(settings.current.versionId, 'now');
   assert.equal(settings.current.values.dailyRegularMin, 420);
-  assert.equal(settings.canApprove, false);
-  await call(ownerB, 'proposeHoursSettings', {requestId: 'nope', values, effectiveFrom: '2026-12-05', reason: 'Trial.'});
-  assert.deepEqual(await call(ownerA, 'decideHoursSettings', {id: 'nope', decision: 'reject', revision: 1}), {id: 'nope', status: 'rejected'});
-  assert.equal((await firestore.collection('hrWorkspace/pilot/audit').where('resource', '==', 'hoursSettings').get()).size, 6);
+  assert.equal(settings.canEdit, false);
+  assert.equal((await firestore.collection('hrWorkspace/pilot/audit').where('resource', '==', 'hoursSettings').get()).size, 2);
 
   const announcement = {id: 'reminder', title: 'Reminder', body: 'Inventory meeting', status: 'draft'};
   await denied(call(amy, 'saveAnnouncement', announcement));
@@ -148,7 +143,7 @@ try {
   await denied(call(amy, 'setChart', {chart: 'bar'}));
   await call(owner, 'saveMember', {id: managerId, name: 'Team Lead', active: true, canManage: false, revision: 1});
   await denied(call(manager, 'saveAnnouncement', {...announcement, status: 'archived', revision: 2}));
-  console.log('PASS: HR enrollment, roles, settings approval, revocation, announcements, task ownership/progress, overnight shifts, audit, and bounded pagination.');
+  console.log('PASS: HR enrollment, roles, owner settings, revocation, announcements, task ownership/progress, overnight shifts, audit, and bounded pagination.');
 } finally {
   await firestore.terminate();
   await deleteApp(app);

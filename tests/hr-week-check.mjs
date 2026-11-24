@@ -66,7 +66,7 @@ try {
   await denied(call(amy, 'weeklyHours', {weekStart: '2026-11-23'}), 'invalid-argument');
   await denied(call(amy, 'weeklyHours', {weekStart: '2026-02-29'}), 'invalid-argument');
 
-  // Only HR approvers edit holidays and mark a year complete.
+  // Only the owners (HR Manager, Assistant HR) edit holidays and mark a year complete.
   const holiday = {date: '2026-11-25', name: 'Test special day', type: 'special_non_working'};
   await denied(call(amy, 'saveHoliday', holiday));
   await denied(call(lead, 'saveHoliday', holiday));

@@ -6,7 +6,7 @@
 
 const {computeWeekHours} = require("./hr-hours");
 const {isSaturday, settingsForWeek} = require("./hr-settings");
-const {isApprover, APPROVAL_MESSAGES} = require("./hr-roles");
+const {isOwner, OWNER_ONLY} = require("./hr-roles");
 
 const HOLIDAY_TYPES = ["regular", "special_non_working", "special_working"];
 const MAX_WEEK_RECORDS = 2000;
@@ -33,8 +33,8 @@ function createHrWeek({firestore, HttpsError, now = Date.now}) {
       fail("aborted", "This record changed. Reload and try again.");
     }
   }
-  function requireApprover(context) {
-    if (!isApprover(context.member)) fail("permission-denied", APPROVAL_MESSAGES.not_approver, {hrAccess: "approval-required"});
+  function requireOwner(context) {
+    if (!isOwner(context.member)) fail("permission-denied", OWNER_ONLY, {hrAccess: "owner-required"});
     return context.member;
   }
   function audit(transaction, actor, resource, row, time) {
@@ -115,7 +115,7 @@ function createHrWeek({firestore, HttpsError, now = Date.now}) {
     ]);
     return {
       year: value, complete: yearDoc.get("complete") === true, yearRevision: yearDoc.get("revision") ?? 0,
-      canEdit: isApprover(context.member),
+      canEdit: isOwner(context.member),
       rows: rows.docs.map((doc) => doc.data()).filter((row) => row.active === true),
     };
   }
@@ -129,7 +129,7 @@ function createHrWeek({firestore, HttpsError, now = Date.now}) {
     if (active && !HOLIDAY_TYPES.includes(data.type)) fail("invalid-argument", "Choose a holiday type.");
     const ref = collection("holidays").doc(date);
     return firestore.runTransaction(async (transaction) => {
-      const member = requireApprover(await access(actor, (key) => transaction.get(key)));
+      const member = requireOwner(await access(actor, (key) => transaction.get(key)));
       const current = (await transaction.get(ref)).data();
       // A removed holiday is hidden from lists, so adding the date again starts without a revision.
       if (current?.active === true || data.revision !== undefined) requireRevision(current, data.revision);
@@ -150,7 +150,7 @@ function createHrWeek({firestore, HttpsError, now = Date.now}) {
     if (typeof data.complete !== "boolean") fail("invalid-argument", "Choose whether the holiday list is complete.");
     const ref = collection("holidayYears").doc(String(value));
     return firestore.runTransaction(async (transaction) => {
-      const member = requireApprover(await access(actor, (key) => transaction.get(key)));
+      const member = requireOwner(await access(actor, (key) => transaction.get(key)));
       const current = (await transaction.get(ref)).data();
       requireRevision(current, data.revision);
       const row = {

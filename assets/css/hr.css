@@ -215,8 +215,7 @@ textarea { resize: vertical; }
 .status-chip[data-status="pending"], .status-chip[data-status="draft"],
 .status-chip[data-status="archived"], .status-chip[data-status="inactive"] { background: #edf0ed; color: var(--muted); }
 .status-chip[data-status="overdue"] { background: var(--soft-orange); color: var(--orange); }
-.status-chip[data-status="proposed"] { background: var(--soft-orange); color: var(--orange); }
-.status-chip[data-status="rejected"] { background: #edf0ed; color: var(--muted); }
+.status-chip[data-status="not-applied"] { background: #edf0ed; color: var(--muted); }
 .status-chip[data-status="in-progress"] { background: #e8eff9; color: #2c4d76; }
 .detail, .empty { color: var(--muted); font-size: .875rem; }
 .section-head .detail { flex-basis: 100%; }

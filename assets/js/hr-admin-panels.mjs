@@ -11,7 +11,7 @@ export function createAdminPanels(ui) {
 
   function memberRow(row, current, editRecord) {
     const node = entry(row.name, row.active ? "active" : "inactive");
-    const label = roleLabels[row.role] || (row.canManage ? "Manager (no approval rights)" : "");
+    const label = roleLabels[row.role] || (row.canManage ? "Manager" : "");
     if (label) node.append(make("p", label, "detail"));
     node.append(button("Edit access", () => editRecord(current, "members", row)));
     return node;
@@ -25,7 +25,7 @@ export function createAdminPanels(ui) {
       field("Display name", textControl("name", row?.name, { maxLength: 100 })),
       field("HR access active", checkboxControl("active", row?.active ?? true)),
       field("HR role", selectControl("role", [
-        ...(legacy ? [["legacy", "Manager (no approval rights)"]] : []),
+        ...(legacy ? [["legacy", "Manager"]] : []),
         ...Object.entries(roleLabels)
       ], row?.role || (legacy ? "legacy" : "employee")))
     ];
@@ -65,25 +65,20 @@ export function createAdminPanels(ui) {
 
   function settingsIntro(meta) {
     if (!meta) return [];
-    const from = meta.current.effectiveFrom ? "Approved, in force since " + formatDay(meta.current.effectiveFrom) + "." : "Starting defaults. No change has been approved yet.";
+    const from = meta.current.effectiveFrom ? "In force since " + formatDay(meta.current.effectiveFrom) + "." : "Starting defaults. Nothing has been changed yet.";
     const nodes = [make("h3", "In force this pay week"), make("p", from, "detail"), settingsList(meta.current.values)];
-    nodes.push(make("p", meta.canApprove
-      ? "Changes need the other approver's agreement and start on a Saturday, from " + formatDay(meta.earliest) + " onwards."
-      : "Only the HR Manager or Assistant HR can propose or approve changes.", "detail"));
+    nodes.push(make("p", meta.canEdit
+      ? "A change starts on a Saturday, from " + formatDay(meta.earliest) + " onwards. Earlier weeks keep the settings they used."
+      : "Only the HR Manager or Assistant HR can change these.", "detail"));
     return nodes;
   }
 
-  function settingsRow(row, current, meta) {
-    const node = entry("From " + formatDay(row.effectiveFrom), row.status);
+  function settingsRow(row) {
+    // Saves are applied directly. Proposals left from the earlier two-owner flow were never applied.
+    const node = entry("From " + formatDay(row.effectiveFrom), row.status === "approved" ? "saved" : "not-applied");
     node.append(settingsList(row.values));
-    node.append(make("p", "Reason: " + row.reason, "detail"));
-    node.append(make("p", "Proposed by " + row.proposedByName + (row.decidedByName
-      ? "; " + (row.status === "approved" ? "approved" : "rejected") + " by " + row.decidedByName : ""), "detail"));
-    if (row.status === "proposed" && meta?.canApprove && row.proposedBy !== current.home.member?.id) {
-      node.append(button("Review", () => decideSettings(current, row)));
-    } else if (row.status === "proposed" && row.proposedBy === current.home.member?.id) {
-      node.append(make("p", "Waiting for the other approver.", "detail"));
-    }
+    if (row.reason) node.append(make("p", "Reason: " + row.reason, "detail"));
+    node.append(make("p", (row.status === "approved" ? "Changed by " : "Proposed by ") + row.proposedByName, "detail"));
     return node;
   }
 
@@ -107,25 +102,25 @@ export function createAdminPanels(ui) {
     return minutes;
   }
 
-  function proposeSettings(current, meta) {
+  function editSettings(current, meta) {
     const values = meta.current.values;
     const requestId = newId();
     const date = textControl("effectiveFrom", nextSaturdayAfter(meta.earliest), { type: "date" });
     date.min = meta.earliest;
-    openEditor(current, "Propose hours settings", [
+    openEditor(current, "Change hours settings", [
       field("Takes effect from (a Saturday)", date),
       field("Unpaid break (minutes)", numberControl("breakDeductMin", values.breakDeductMin, { min: 0, max: 240, step: 5 })),
       field("Deduct the break on shifts longer than (hours)", numberControl("breakThresholdHours", values.breakThresholdMin / 60, { min: 0, max: 24, step: 0.25 })),
       field("Regular hours per day before overtime", numberControl("dailyRegularHours", values.dailyRegularMin / 60, { min: 0.25, max: 24, step: 0.25 })),
       field("Rest day", selectControl("restDay", weekdays.map((name, index) => [String(index), name]), String(values.restDay))),
       field("Flag shifts longer than (hours)", numberControl("longShiftFlagHours", values.longShiftFlagMin / 60, { min: 1, max: 24, step: 0.25 })),
-      field("Reason for the change", textArea("reason", "", 500, true))
+      field("Reason for the change (optional)", textArea("reason", "", 500, false))
     ], data => {
       const effectiveFrom = data.get("effectiveFrom");
       if (new Date(effectiveFrom + "T00:00:00Z").getUTCDay() !== 6) throw new Error("Choose a Saturday, the first day of a pay week.");
       return {
         resource: "settings",
-        args: ["proposeHoursSettings", {
+        args: ["saveHoursSettings", {
           requestId, effectiveFrom, reason: data.get("reason"),
           values: {
             breakDeductMin: Number(data.get("breakDeductMin")),
@@ -136,30 +131,18 @@ export function createAdminPanels(ui) {
           }
         }]
       };
-    }, document.activeElement, "Send for approval");
-  }
-
-  function decideSettings(current, row) {
-    openEditor(current, "Review hours settings", [
-      make("p", "Proposed by " + row.proposedByName + ", to take effect from " + formatDay(row.effectiveFrom) + ".", "detail"),
-      settingsList(row.values),
-      make("p", "Reason: " + row.reason, "detail"),
-      field("Decision", selectControl("decision", [["approve", "Approve"], ["reject", "Reject"]], "approve"))
-    ], data => ({
-      resource: "settings",
-      args: ["decideHoursSettings", { id: row.id, decision: data.get("decision"), revision: row.revision }]
-    }), document.activeElement, "Confirm");
+    }, document.activeElement, "Save");
   }
 
   const settings = {
     affects: ["hours"],
     load: async (request, cursor) => {
       const page = await request("listHoursSettings", { ...(cursor && { cursor }) });
-      return { ...page, meta: { current: page.current, earliest: page.earliest, canApprove: page.canApprove === true } };
+      return { ...page, meta: { current: page.current, earliest: page.earliest, canEdit: page.canEdit === true } };
     },
     intro: settingsIntro,
     row: settingsRow,
-    action: (current, meta) => meta?.canApprove ? button("Propose change", () => proposeSettings(current, meta), true) : null
+    action: (current, meta) => meta?.canEdit ? button("Change settings", () => editSettings(current, meta), true) : null
   };
   return { memberRow, memberEditor, views: { settings, ...hours } };
 }

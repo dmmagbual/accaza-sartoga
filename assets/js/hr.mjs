@@ -22,7 +22,7 @@ const statusLabels = {
   "in-progress": "In progress", in_progress: "In progress", pending: "Pending",
   overdue: "Overdue", completed: "Completed", archived: "Archived",
   draft: "Draft", published: "Published", active: "Active", inactive: "Inactive",
-  proposed: "Awaiting approval", approved: "Approved", rejected: "Rejected"
+  saved: "Saved", "not-applied": "Not applied"
 };
 const dayFormatter = new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeZone: "Asia/Manila" });
 const timeFormatter = new Intl.DateTimeFormat("en-PH", { timeStyle: "short", timeZone: "Asia/Manila" });

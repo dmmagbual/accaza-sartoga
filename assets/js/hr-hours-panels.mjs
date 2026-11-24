@@ -26,7 +26,7 @@ function csvCell(value) {
 
 export function createHoursPanels(ui) {
   const { button, describeSettings, entry, field, formatDay, make, openEditor, reload, save, selectControl, textControl } = ui;
-  // Default to the last finished pay week: the one HR approves on Saturday morning.
+  // Default to the last finished pay week: the one an owner checks on Saturday morning.
   let week = shift(saturdayOf(manilaToday()), -7);
   let year = Number(manilaToday().slice(0, 4));
 
@@ -64,7 +64,7 @@ export function createHoursPanels(ui) {
         button("Next week", go(7)));
       const nodes = [nav];
       if (meta.employees.length) nodes.push(button("Download CSV", () => exportCsv(meta)));
-      nodes.push(make("p", meta.blocked ? "Fix these before the week is approved:" : "No blocking issues this week.", "detail"));
+      nodes.push(make("p", meta.blocked ? "Fix these before the week is closed:" : "No blocking issues this week.", "detail"));
       if (meta.issues.length) {
         const list = make("ul", "", "detail");
         list.append(...meta.issues.map(issue => make("li", issueText(issue))));
@@ -72,7 +72,7 @@ export function createHoursPanels(ui) {
       }
       for (const day of meta.holidays) nodes.push(make("p", "Holiday: " + formatDay(day.date) + ", " + day.name + " (" + TYPES[day.type] + ")", "detail"));
       const settings = make("details");
-      settings.append(make("summary", meta.settings.effectiveFrom ? "Settings approved from " + formatDay(meta.settings.effectiveFrom) : "Starting default settings"));
+      settings.append(make("summary", meta.settings.effectiveFrom ? "Settings in force from " + formatDay(meta.settings.effectiveFrom) : "Starting default settings"));
       const list = make("ul", "", "detail");
       list.append(...describeSettings(meta.settings.values).map(line => make("li", line)));
       settings.append(list);
@@ -121,7 +121,7 @@ export function createHoursPanels(ui) {
       nav.append(button("Previous year", go(-1)), make("p", String(meta.year)), button("Next year", go(1)));
       const nodes = [nav, make("p", "Check each year against the official proclamation. Eid holidays are proclaimed separately.", "detail"),
         make("p", meta.complete ? "The " + meta.year + " list is marked complete." : "The " + meta.year + " list is not complete. Weeks in "
-          + meta.year + " cannot be approved until it is.", "detail")];
+          + meta.year + " cannot be closed until it is.", "detail")];
       if (meta.canEdit) {
         nodes.push(button(meta.complete ? "Mark as incomplete" : "Mark " + meta.year + " complete", () => save(current, "holidays",
           "setHolidayYear", { year: meta.year, complete: !meta.complete, revision: meta.yearRevision })));
