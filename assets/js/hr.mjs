@@ -17,7 +17,7 @@ const editor = byId("editor");
 const editorForm = byId("editor-form");
 const view = byId("view");
 const labels = { home: "My workspace", team: "Team", attendance: "Attendance", manage: "Management" };
-const resources = { announcements: "Announcements", tasks: "Tasks", shifts: "Schedules", settings: "Hours settings", hours: "Weekly hours", holidays: "Holidays", members: "Employees" };
+const resources = { announcements: "Announcements", tasks: "Tasks", performance: "Performance", shifts: "Schedules", settings: "Hours settings", hours: "Weekly hours", holidays: "Holidays", members: "Employees" };
 const statusLabels = {
   "in-progress": "In progress", in_progress: "In progress", pending: "Pending",
   overdue: "Overdue", completed: "Completed", archived: "Archived",
@@ -543,6 +543,8 @@ function renderHome(current) {
   grid.append(tasks.node, shifts.node);
   const stack = make("div", "", "stack");
   stack.append(announcements.node, grid);
+  const score = adminPanels().homeCard(current.home);
+  if (score) stack.append(score);
   return stack;
 }
 
@@ -577,7 +579,7 @@ function selectControl(name, options, value) {
 
 function adminPanels() {
   panels ||= createAdminPanels({
-    button, checkboxControl, entry, field, formatDay, make, newId, openEditor, save, selectControl, textArea, textControl,
+    button, checkboxControl, entry, field, formatDay, make, newId, openEditor, save, section, selectControl, textArea, textControl,
     reload: current => { discardList(current, current.resource, true); render(current); void loadVisible(current); }
   });
   return panels;

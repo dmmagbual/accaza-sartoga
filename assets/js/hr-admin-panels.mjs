@@ -2,12 +2,14 @@
 // Rules live on the server (functions/lib/hr-roles.js, hr-settings.js); these only collect and show them.
 
 import { createHoursPanels } from "./hr-hours-panels.mjs";
+import { createPerformancePanel } from "./hr-performance-panel.mjs";
 
 const roleLabels = { employee: "Employee", hr_manager: "HR Manager", assistant_hr: "Assistant HR" };
 
 export function createAdminPanels(ui) {
   const { button, checkboxControl, entry, field, formatDay, make, newId, openEditor, selectControl, textArea, textControl } = ui;
   const hours = createHoursPanels({ ...ui, describeSettings });
+  const performance = createPerformancePanel(ui);
 
   function memberRow(row, current, editRecord) {
     const node = entry(row.name, row.active ? "active" : "inactive");
@@ -144,5 +146,5 @@ export function createAdminPanels(ui) {
     row: settingsRow,
     action: (current, meta) => meta?.canEdit ? button("Change settings", () => editSettings(current, meta), true) : null
   };
-  return { memberRow, memberEditor, views: { settings, ...hours } };
+  return { memberRow, memberEditor, homeCard: performance.homeCard, views: { performance: performance.view, settings, ...hours } };
 }
