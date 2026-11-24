@@ -195,6 +195,47 @@ test('owners see a performance scorecard and staff see their own on the dashboar
   await expect.poll(() => calls.filter((call) => call.action === 'performance').at(-1)).toMatchObject({from: '2026-11-21', to: '2026-11-27'});
 });
 
+test('staff mark announcements read and owners see who has not read them', async ({page}) => {
+  const owner = {id: 'owner-a', name: 'Owner A', role: 'hr_manager', canManage: true, chart: 'bar'};
+  const note = {id: 'note', title: 'Fridge repair', body: 'Use the back fridge today.', status: 'published', pinned: true, read: false, revision: 1};
+  const calls = [];
+  await installHrFirebase(page, (payload) => {
+    calls.push(payload);
+    if (payload.action === 'home') return {member: owner, canEnroll: false, announcements: [note], tasks: [], shifts: []};
+    if (payload.action === 'readAnnouncement') {
+      note.read = true;
+      return {id: payload.id, read: true};
+    }
+    if (payload.action === 'list' && payload.resource === 'members') {
+      return {rows: [{id: 'owner-a', name: 'Owner A', active: true}, {id: 'ben', name: 'Ben', active: true}], nextCursor: null};
+    }
+    if (payload.action === 'list' && payload.resource === 'announcements') {
+      return {rows: [{...note, readIds: ['owner-a']}], nextCursor: null};
+    }
+    if (payload.action === 'saveAnnouncement') return {id: payload.id};
+    if (payload.action === 'list') return {rows: [], nextCursor: null};
+    throw new Error('Unexpected HR action ' + payload.action);
+  });
+  await signIn(page);
+  await expect(page.getByText('Pinned: Fridge repair')).toBeVisible();
+  await page.getByRole('button', {name: 'Mark as read'}).click();
+  await expect(page.getByText('Read', {exact: true})).toBeVisible();
+  expect(calls.find((call) => call.action === 'readAnnouncement')).toEqual({action: 'readAnnouncement', id: 'note'});
+
+  await page.getByRole('button', {name: 'Management'}).click();
+  await page.getByRole('combobox', {name: 'Manage', exact: true}).selectOption('announcements');
+  await expect(page.getByText('Read by 1 of 2. Not read yet: Ben')).toBeVisible();
+  await page.getByRole('button', {name: 'New announcement'}).click();
+  const editor = page.getByRole('dialog');
+  await editor.getByLabel('Title').fill('Stock count');
+  await editor.getByLabel('Announcement').fill('Count cups at close.');
+  await editor.getByRole('combobox', {name: 'Status'}).selectOption('published');
+  await editor.getByLabel('Pin to the top').check();
+  await editor.getByRole('button', {name: 'Save'}).click();
+  await expect.poll(() => calls.find((call) => call.action === 'saveAnnouncement')).toMatchObject(
+    {title: 'Stock count', body: 'Count cups at close.', status: 'published', pinned: true});
+});
+
 test('an HR owner changes hours settings directly', async ({page}) => {
   const owner = {id: 'owner-a', name: 'Owner A', role: 'hr_manager', canManage: true, chart: 'bar'};
   const values = {dailyRegularMin: 480, breakThresholdMin: 300, breakDeductMin: 30, restDay: 0, longShiftFlagMin: 960};

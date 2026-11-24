@@ -276,7 +276,7 @@ async function loadVisible(current) {
   const jobs = route === "team"
     ? [["members", false], ["tasks", false], ["shifts", false]]
     : [[resource, true]];
-  if (route === "manage" && ["tasks", "shifts"].includes(resource)) jobs.push(["members", false]);
+  if (route === "manage" && ["tasks", "shifts", "announcements"].includes(resource)) jobs.push(["members", false]);
   const needed = jobs.filter(([key, management]) => !current.lists.has(listKey(key, management)));
   if (!needed.length) return;
   message("workspace-status", "Loading…");
@@ -433,10 +433,7 @@ function entry(title, status) {
 }
 
 function announcementRow(row, current, management) {
-  const node = entry(row.title, management ? row.status : null);
-  node.append(make("p", row.body));
-  if (management) node.append(button("Edit announcement", () => editRecord(current, "announcements", row)));
-  return node;
+  return adminPanels().announcementRow(row, current, management, editRecord);
 }
 
 function shiftRow(row, current, roster, mode) {
@@ -526,7 +523,7 @@ function renderHome(current) {
   const announcements = section("Announcements");
   announcements.node.classList.add("announcement");
   const publishedList = current.lists.get(listKey("announcements", false));
-  announcements.end.append(entries(publishedList?.rows || current.home.announcements, row => announcementRow(row),
+  announcements.end.append(entries(publishedList?.rows || current.home.announcements, row => announcementRow(row, current),
     "There are no current announcements."));
   if (publishedList) {
     appendMore(announcements.end, current, "announcements");
@@ -580,7 +577,8 @@ function selectControl(name, options, value) {
 function adminPanels() {
   panels ||= createAdminPanels({
     button, checkboxControl, entry, field, formatDay, make, newId, openEditor, save, section, selectControl, textArea, textControl,
-    reload: current => { discardList(current, current.resource, true); render(current); void loadVisible(current); }
+    reload: current => { discardList(current, current.resource, true); render(current); void loadVisible(current); },
+    team: current => listRows(current, "members")
   });
   return panels;
 }
@@ -776,12 +774,7 @@ async function editRecord(current, resource, row) {
   switch (resource) {
     case "announcements":
       title = existing ? "Edit announcement" : "New announcement";
-      fields = [
-        field("Title", textControl("title", row?.title, { maxLength: 100 })),
-        field("Announcement", textArea("body", row?.body, 1000, true)),
-        field("Status", selectControl("status", [["draft", "Draft"], ["published", "Published"], ["archived", "Archived"]], row?.status || "draft"))
-      ];
-      saveDetails = data => ["saveAnnouncement", { ...identifiers, ...Object.fromEntries(data) }];
+      ({ fields, saveDetails } = adminPanels().announcementEditor(row, identifiers));
       break;
     case "members":
       title = existing ? "Edit employee access" : "Enroll employee";

@@ -19,6 +19,38 @@ export function createAdminPanels(ui) {
     return node;
   }
 
+  function announcementRow(row, current, management, editRecord) {
+    const node = entry((row.pinned ? "Pinned: " : "") + row.title, management ? row.status : null);
+    node.append(make("p", row.body));
+    if (management) {
+      if (row.status === "published" && row.readIds) {
+        const team = ui.team(current).filter(member => member.active);
+        const unread = team.filter(member => !row.readIds.includes(member.id)).map(member => member.name);
+        node.append(make("p", team.length ? "Read by " + (team.length - unread.length) + " of " + team.length
+          + (unread.length ? ". Not read yet: " + unread.join(", ") : "") : "Read by " + row.readIds.length, "detail"));
+      }
+      node.append(button("Edit announcement", () => editRecord(current, "announcements", row)));
+    } else if (row.read) {
+      node.append(make("p", "Read", "detail"));
+    } else {
+      node.append(button("Mark as read", () => ui.save(current, "announcements", "readAnnouncement", { id: row.id })));
+    }
+    return node;
+  }
+
+  function announcementEditor(row, identifiers) {
+    const fields = [
+      field("Title", textControl("title", row?.title, { maxLength: 100 })),
+      field("Announcement", textArea("body", row?.body, 1000, true)),
+      field("Status", selectControl("status", [["draft", "Draft"], ["published", "Published"], ["archived", "Archived"]], row?.status || "draft")),
+      field("Pin to the top", checkboxControl("pinned", row?.pinned ?? false))
+    ];
+    const saveDetails = data => ["saveAnnouncement", {
+      ...identifiers, title: data.get("title"), body: data.get("body"), status: data.get("status"), pinned: data.has("pinned")
+    }];
+    return { fields, saveDetails };
+  }
+
   function memberEditor(row, existing, identifiers) {
     // Members enrolled before roles keep their access until a role is chosen.
     const legacy = existing && !row.role && row.canManage;
@@ -146,5 +178,5 @@ export function createAdminPanels(ui) {
     row: settingsRow,
     action: (current, meta) => meta?.canEdit ? button("Change settings", () => editSettings(current, meta), true) : null
   };
-  return { memberRow, memberEditor, homeCard: performance.homeCard, views: { performance: performance.view, settings, ...hours } };
+  return { announcementRow, announcementEditor, memberRow, memberEditor, homeCard: performance.homeCard, views: { performance: performance.view, settings, ...hours } };
 }
