@@ -24,13 +24,13 @@ Corrections to v1:
 |---|---|---|
 | `employee` | 4 staff | Own record, tasks, roster, clock-in, requests, own pay. |
 | `hr_manager`, `assistant_hr` | The two owners | Identical access. Everything the spec gives to Supervisor, HR or Management. |
-| `system_admin` | Danilo | Accounts, device approvals, settings, holiday imports, audit read. No pay access and no approvals by default. Maps to the café's existing Super Admin, which already enrols members. |
+| `system_admin` | Danilo | Accounts and roles, audit read. No pay access. Maps to the café's existing Super Admin, which already enrols members. |
 
 - Wherever sections 2 to 9 say Supervisor or Management, read HR Manager or Assistant HR. The `supervisor` and `management` roles are not built for now. Add them if the team grows.
-- The two owners also have their own attendance, leave and pay. Neither approves their own. The other approves it.
-- Pay-term changes: one owner initiates, the other approves. Initiator and approver are never the same person.
-- Both away: everything waits (decided 24 Nov 2026). Nobody else approves, including the system administrator. Requests queue and clock-in keeps working. A pay week cannot be approved or locked until an owner returns, so the weekly hours export waits too.
-- The administrator can read the whole database outside the app, and the app cannot prevent that. Keep audit logging on and keep the administrator out of pay approvals.
+- **Simple model (decided 24 Nov 2026):** owners act directly, staff view and request, and everything is logged. There is no second-person approval anywhere. Owners may correct their own records; the audit log shows who changed what.
+- Pay-term changes: either owner saves them directly, audited.
+- Both owners away: only staff requests (leave, missed clock-in) wait. Clock-in and viewing keep working.
+- The administrator can read the whole database outside the app, and the app cannot prevent that. Keep audit logging on.
 - Existing `canManage` members keep today's HR access. The two owners are given the explicit roles.
 
 ## 1. Decisions
@@ -40,13 +40,13 @@ Locked by Danilo:
 |---|---|
 | Scope | `ACCAZA HR.md` is the live scope, for Accaza Coffee House staff and management only. |
 | Clock-in | Either the café tablet or the employee's own phone. |
-| Pay week | Saturday to Friday. HR approves Saturday morning, then the week locks. Pay date recorded per run, usually the weekend. |
+| Pay week | Saturday to Friday. An owner closes the week on Saturday morning, then it locks. Pay date recorded per run, usually the weekend. |
 | Hours buckets | Regular, daily overtime, Sunday, regular holiday, special non-working day. Each paid minute counts once. |
 | Daily overtime | Paid time beyond 8 hours (480 min) on an ordinary day. |
 | Sunday, holiday | All paid hours on those days go in their own bucket. |
 | Midnight shifts | Whole shift counts under the day it started. |
 | Breaks | Unpaid, deducted. |
-| Approvers | HR Manager and Assistant HR, identical access. Each approves the other's requests. They are also the owners, so there is no separate backstop. See 0A. |
+| Owners | HR Manager and Assistant HR, identical access, acting directly. See 0A. |
 | Payroll | Not built. The app exports a weekly hours summary. Statutory contributions and 13th-month pay are out of scope. |
 | Team | 4 staff, 2 managers (the HR Manager and Assistant HR, who are also the owners), 1 system administrator (Danilo). 7 people. Operations began July 2026, so no leave has accrued. |
 | Leave | Follow what Philippine law requires. See 6. |
@@ -81,9 +81,9 @@ Operating rules are settings, not code. The HR Manager or Assistant HR changes t
 Guardrails, which are not settings:
 - **Every change has an effective date** and is stored as a new version with who, when and why. Old versions are never edited.
 - **Never backwards into a locked week.** The earliest effective date is the day after the last locked pay week. Open weeks recalculate, and the screen shows which open weeks are affected before saving.
-- **Pay-affecting settings need the other owner's approval** (break, regular hours, rest day, pay week start, holidays, SIL). Recommendation, not decided. Other settings save immediately.
+- **No second approval.** Either owner saves settings directly. Every save is a new version with who, when and an optional reason.
 - **Changing the pay week start day** takes effect on the new start day, after the last locked week. The days in between become one transition period.
-- Fixed in code, not configurable: integer minutes, append-only history, the pay-week lock, no self-approval, and everything waits when both owners are away.
+- Fixed in code, not configurable: integer minutes, append-only history and the pay-week lock.
 - The rest day may matter legally. I believe Philippine premium pay is tied to the employee's scheduled rest day, not to Sunday as such. That is why the rest day can be set per employee. Confirm with your accountant or DOLE.
 
 ## 2. What exists and what is missing
@@ -98,7 +98,7 @@ Guardrails, which are not settings:
 | Phone clock-in | None. | New channel, see 3. |
 | Corrections | Manager edits a record with a reason, a revision check and a receipt for retries. The audit entry stores previous and next values. History lives in the audit log, not on the record. | Employee request, approval routing, no self-approval, lock after approval. |
 | Hours | None. | Hours engine, see 4. |
-| Pay week | None. | `payPeriods`, approve and lock, prior-period lines. |
+| Pay week | None. | `payPeriods`, close and lock, prior-period lines. |
 | Leave | None found. | Types, ledger, requests, approval, calendar. |
 | Pay view | None found. | Own pay and status, see 6. |
 | Audit | Two logs (`audit`, `attendanceAudit`). | One naming scheme, add approvals, locks and pay views. |
@@ -108,7 +108,7 @@ Guardrails, which are not settings:
 Writes the same `attendanceRecords` as the tablet, with `channel` (`tablet` or `phone`).
 
 - **Per-employee setting:** HR chooses which channels each employee may use.
-- **Device binding:** first use registers the phone as `pending`. HR or Asst HR approves. One active phone per employee. Lost phone: HR revokes. Unapproved phone cannot punch.
+- **Device binding:** first use registers the phone. The system administrator or an owner activates it in Admin. One active phone per employee. Lost phone: revoke it.
 - **Live selfie** from the camera stream, never from the gallery. Stored privately, 90-day retention, visible to the employee, supervisor, HR and management.
 - **Geofence:** branch latitude, longitude and radius. Outside the radius, or poor accuracy, records the punch and flags it for supervisor review. It does not block.
 - **Offline:** the phone queues the punch with its own time. The server stores both times and flags it. Older than a set limit is rejected and needs a correction.
@@ -130,7 +130,7 @@ Per `shiftDate`, sum `paid`, then classify the whole day:
 - Else the rest day (setting, default Sunday): everything to `restDayMin`.
 - Else: `regularMin` = min(total, 480), `dailyOtMin` = the rest.
 
-Output is integer minutes. A record belongs to the pay week of its `shiftDate`. Open records block week approval. Over 16 hours is flagged. Zero or negative durations are rejected. The week snapshot stores the settings version and holiday list used.
+Output is integer minutes. A record belongs to the pay week of its `shiftDate`. Open records block closing the week. Over 16 hours is flagged. Zero or negative durations are rejected. The week snapshot stores the settings version and holiday list used.
 
 Worked examples (break 30 min over 300 min, to be set by HR):
 | Shift | Gross | Paid | Result |
@@ -141,13 +141,13 @@ Worked examples (break 30 min over 300 min, to be set by HR):
 | Wed 06:00-10:00 | 240 | 240 | 240 regular |
 | Holiday on a Sunday, 6 h | 360 | 330 | 330 in the holiday bucket for its type, 0 Sunday |
 
-## 5. Roles, approvals, corrections, lock
+## 5. Roles, corrections, lock
 
 - Add `role` to `members`: `employee`, `supervisor`, `hr_manager`, `assistant_hr`, `management`.
 - **Existing `canManage` stays working.** Until roles are assigned it grants today's HR access and nothing new. **Pay features must never be tied to `canManage`.** They need an explicit pay role, or everyone who manages today would see salaries.
-- Approval routing (enforced in the function): approver is never the requester. HR Manager requests go to Assistant HR and the reverse. If that person is on approved leave for the date, route to Management. Pay-term changes: HR initiates, Management approves.
-- Corrections: employee submits a request with a reason, HR approves. HR may still correct directly with a reason, never on their own record. Keep the existing revision check, receipt and before-and-after audit.
-- **Pay-week lock:** HR approves on Saturday. Allowed only with no open records, no unreviewed flagged punches and no pending corrections for the week. After lock, changes to that week are rejected. A late correction becomes a prior-period line in the next open week. No reopening in phase 1.
+- No approval routing. Owners act directly. Staff requests (leave, missed clock-in) go to either owner.
+- Corrections: anyone with HR management access corrects directly with a reason, including their own record. The revision check, retry receipt and before-and-after audit stay. Staff can request a missed clock-in fix.
+- **Pay-week close:** an owner closes the week on Saturday. Allowed only with no open records and no blocking issues. After closing, changes to that week are rejected. A late correction becomes a prior-period line in the next open week.
 
 ## 5A. Attendance visibility
 
@@ -177,16 +177,16 @@ Owner's decision: everyone sees everyone's attendance. Proposed split:
 - **Auto-capture with HR confirmation.** Holidays are proclaimed each year by the President and dates can move. The 2027 list is Proclamation 1427, signed 8 September 2026, and it leaves Eid'l Fitr and Eid'l Adha to separate proclamations. A fixed rule table would drift. So a scheduled function checks a configured source and creates `proposed` holidays. HR or Assistant HR confirms or rejects each one. Only confirmed holidays affect hours. An import never confirms a holiday by itself.
 - **Source:** the official proclamation is the truth. I have not picked a feed. Evaluate a holiday data service against reading the proclamation page, and confirm what each one returns before relying on it.
 - **Alerts:** no confirmed holidays for next year by 1 December, a new proclamation that differs from a confirmed holiday, and the Eid dates when they are proclaimed.
-- **Pre-approval check:** a pay week cannot be approved unless the holiday table is loaded for that year. A missing entry would otherwise pay a holiday as an ordinary day without any error.
-- **Locked weeks:** the holiday snapshot at approval never changes. A later proclamation change shows as an adjustment in the next open week.
+- **Pre-close check:** a pay week cannot be closed unless the holiday table is loaded for that year. A missing entry would otherwise pay a holiday as an ordinary day without any error.
+- **Locked weeks:** the holiday snapshot at close never changes. A later proclamation change shows as an adjustment in the next open week.
 
 ## 7. Build order
 
 0. Done: tablet attendance is merged (PR #926). Its emulator tests (`test:rules`) still need a run on a machine with the Firebase emulator.
-1. Built (PR #927): roles (`employee`, `hr_manager`, `assistant_hr`) on members, approval rule (`functions/lib/hr-roles.js`), and attendance corrections limited to approvers and never on their own record. Members enrolled before roles keep workspace access but cannot approve or correct.
-2. Built (PR #927): hours engine (`functions/lib/hr-hours.js`) and versioned hours settings (`functions/lib/hr-settings.js`): break, daily regular hours, rest day, long-shift flag. One owner proposes, the other approves, effective from a Saturday no earlier than the current pay week. Settings screen built: Management > Hours settings shows what is in force this week, lets either owner propose a change and lets the other review it (`assets/js/hr-admin-panels.mjs`). Weekly hours built (`functions/lib/hr-week.js`, `assets/js/hr-hours-panels.mjs`): Management > Weekly hours totals any Saturday-to-Friday week with the approved settings and confirmed holidays, lists blocking issues by employee, and downloads a CSV (hours to two decimals, paid minutes, status, settings version, formula-safe cells). Managers see the team; the server limits an employee to their own row. Management > Holidays: HR approvers add, edit and remove holidays and mark a year complete; until a year is complete its weeks show as blocked. Every holiday change is audited. Decided 24 Nov 2026: one approver can change holidays without the other's approval, unlike hours settings, and holidays are entered by hand. Auto-import of the proclamation is deferred. Still to build: week approval and lock, and an employee-facing view of their own weekly hours. Pay week start stays Saturday in code until week locking exists.
+1. Built (PR #928): roles (`employee`, `hr_manager`, `assistant_hr`) on members (`functions/lib/hr-roles.js`). Simplified on 24 Nov 2026: no second-person approval; corrections are back to the original rule (anyone with HR management access).
+2. Built (PR #927, #928): hours engine (`functions/lib/hr-hours.js`) and versioned hours settings (`functions/lib/hr-settings.js`). Either owner saves a change directly, effective from a Saturday no earlier than the current pay week. Settings screen, weekly hours, CSV and holiday table are built (see section 6A notes).
    After deploying: the system administrator must give the two owners their roles (HR Manager, Assistant HR). Until then nobody can correct attendance.
-3. Correction requests, approvals and the pay-week lock.
+3. Pay-week close and lock, and staff requests for a missed clock-in.
 4. Phone clock-in channel.
 5. Roster publish, availability and swaps.
 6. Leave with the Philippine statutory types, the calendar page and holiday auto-import.
@@ -201,14 +201,14 @@ Right-sizing (agreed 24 Nov 2026): with 7 people, defer shift swaps, availabilit
 
 - Hours: every row in section 4, plus exactly at the break threshold, zero or negative duration, two shifts in one day, a Friday-night shift into Saturday, a holiday on a Sunday, and a locked-week config change.
 - Rules: each role against each collection. Client access to `hrWorkspace` stays denied.
-- Approvals: self-approval rejected, mutual HR routing, Management fallback.
-- Lock: open record blocks approval, edit after lock rejected, late correction posts to the next open week.
+- Owners: only HR Manager or Assistant HR change settings and holidays; legacy managers and staff are refused.
+- Close: open record blocks closing, edit after lock rejected, late correction posts to the next open week.
 - Phone: unapproved device, revoked device, outside geofence, offline sync, same request id sent twice, clock in on tablet and out on phone.
 - Pay: `canManage` alone cannot read pay, HR read leaves an audit entry, HR cannot edit own pay terms.
 - Leave: overlap, balance limit, cancel restores balance.
 - SIL: no entitlement at 11 months, 5 days at 12 months, `silApplies` off blocks it, year-end balance exported.
 - Event leaves: eligibility flag required, never inferred from other fields.
-- Holidays: proposal does not change hours until confirmed, `special_working` pays as ordinary, week approval blocked with no holiday table, confirmed change after lock leaves the snapshot alone.
+- Holidays: proposal does not change hours until confirmed, `special_working` pays as ordinary, week close blocked with no holiday table, confirmed change after lock leaves the snapshot alone.
 - Shared attendance view: restricted fields absent from the response for a non-privileged user.
 
 ## 9. Risks and open items

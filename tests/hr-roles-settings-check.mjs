@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 
 const requireFunctions = createRequire(new URL('../functions/package.json', import.meta.url));
-const {ROLES, memberRole, canManageWorkspace, isApprover, approvalBlock, APPROVAL_MESSAGES} = requireFunctions('./lib/hr-roles.js');
+const {ROLES, memberRole, canManageWorkspace, isOwner, OWNER_ONLY} = requireFunctions('./lib/hr-roles.js');
 const {DEFAULT_HOURS_SETTINGS, validateHoursSettings, validateEffectiveFrom, settingsForWeek, isSaturday} = requireFunctions('./lib/hr-settings.js');
 
 // Roles.
@@ -22,25 +22,13 @@ assert.equal(canManageWorkspace(staff), false);
 assert.equal(canManageWorkspace({...staff, canManage: true}), false, 'an explicit role overrides a stale canManage');
 assert.equal(canManageWorkspace(legacyLead), true, 'legacy managers keep workspace access');
 assert.equal(canManageWorkspace(legacyStaff), false);
-assert.equal(isApprover(hrManager), true);
-assert.equal(isApprover(assistant), true);
-assert.equal(isApprover(legacyLead), false, 'legacy managers never approve');
-assert.equal(isApprover(staff), false);
-assert.equal(isApprover({...hrManager, active: false}), false);
-assert.equal(isApprover(null), false);
-
-// Approval routing: each owner approves the other, nobody approves themselves.
-assert.equal(approvalBlock(hrManager, {subjectId: 'staff-1'}), null);
-assert.equal(approvalBlock(assistant, {subjectId: 'owner-a'}), null, 'assistant approves the HR Manager');
-assert.equal(approvalBlock(hrManager, {subjectId: 'owner-b'}), null, 'HR Manager approves the assistant');
-assert.equal(approvalBlock(hrManager, {subjectId: 'owner-a'}), 'own_record');
-assert.equal(approvalBlock(assistant, {initiatorId: 'owner-b'}), 'own_proposal');
-assert.equal(approvalBlock(assistant, {initiatorId: 'owner-a'}), null);
-assert.equal(approvalBlock(staff, {subjectId: 'owner-a'}), 'not_approver');
-assert.equal(approvalBlock(legacyLead, {subjectId: 'staff-1'}), 'not_approver');
-assert.equal(approvalBlock(hrManager, {subjectId: 'owner-a', initiatorId: 'owner-b'}), 'own_record');
-assert.equal(approvalBlock(hrManager), null);
-for (const code of ['not_approver', 'own_record', 'own_proposal']) assert.ok(APPROVAL_MESSAGES[code]);
+assert.equal(isOwner(hrManager), true);
+assert.equal(isOwner(assistant), true);
+assert.equal(isOwner(legacyLead), false, 'legacy managers are not owners');
+assert.equal(isOwner(staff), false);
+assert.equal(isOwner({...hrManager, active: false}), false);
+assert.equal(isOwner(null), false);
+assert.ok(OWNER_ONLY);
 
 // Settings validation.
 assert.deepEqual(validateHoursSettings({...DEFAULT_HOURS_SETTINGS}), {...DEFAULT_HOURS_SETTINGS});
