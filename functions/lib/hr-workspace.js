@@ -9,6 +9,8 @@ const PH_DATE = new Intl.DateTimeFormat("sv-SE", {
 const {ROLES, memberRole, canManageWorkspace, isOwner, OWNER_ONLY} = require("./hr-roles");
 const {validateHoursSettings, validateEffectiveFrom, settingsForWeek} = require("./hr-settings");
 const {payWeekStart, manilaDate} = require("./hr-hours");
+const {scoreTasks} = require("./hr-performance");
+const MAX_PERIOD_TASKS = 2000;
 const OWNER_ROLES = ["hr_manager", "assistant_hr"];
 
 function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date.now}) {
@@ -133,6 +135,38 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
   function teamShifts(time) {
     return listQuery("shifts", "endKey", "asc", timeKey(time, ""));
   }
+  // Task scorecard for tasks due in [from, to]. Managers see everyone; staff only themselves.
+  async function performance(context, from, to, time) {
+    const member = requireMember(context);
+    const team = member.canManage === true;
+    const tasks = team ? await teamTasks(from, to) : await ownTasks(member.id, from, to);
+    return {from, to, team, people: scoreTasks(tasks, PH_DATE.format(time))};
+  }
+  function bounded(snapshot) {
+    if (snapshot.size > MAX_PERIOD_TASKS) fail("resource-exhausted", "Too many tasks in this period. Choose a shorter period.");
+    return snapshot.docs.map((doc) => doc.data());
+  }
+  async function teamTasks(from, to) {
+    return bounded(await collection("tasks").where("dueDate", ">=", from).where("dueDate", "<=", to)
+      .orderBy("dueDate").limit(MAX_PERIOD_TASKS + 1).get());
+  }
+  // One person's active tasks through employeeKey (assignee~done~dueDate~id); archived tasks have none.
+  async function ownTasks(memberId, from, to) {
+    const after = new Date(Date.parse(to + "T00:00:00Z") + 86400000).toISOString().slice(0, 10);
+    const reads = ["0", "1"].map((done) => collection("tasks")
+      .where("employeeKey", ">=", memberId + "~" + done + "~" + from)
+      .where("employeeKey", "<", memberId + "~" + done + "~" + after)
+      .orderBy("employeeKey").limit(MAX_PERIOD_TASKS + 1).get());
+    return (await Promise.all(reads)).flatMap(bounded);
+  }
+  function period(data) {
+    const from = dueDate(data.from);
+    const to = dueDate(data.to);
+    const days = (Date.parse(to) - Date.parse(from)) / 86400000;
+    if (days < 0 || days > 92) fail("invalid-argument", "Choose a period of up to three months.");
+    return [from, to];
+  }
+
   async function home(context, time) {
     const {member, canEnroll} = context;
     if (!member) return {member: null, canEnroll, announcements: [], tasks: [], shifts: []};
@@ -142,8 +176,13 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
       page(listQuery("tasks", "employeeKey", "asc", prefix, prefix + "\uf8ff"), "employeeKey", null, HOME_SIZE),
       page(listQuery("shifts", "employeeEndKey", "asc", prefix + timeKey(time, ""), prefix + "\uf8ff"), "employeeEndKey", null, HOME_SIZE),
     ]);
+    const today = PH_DATE.format(time);
+    const monthEnd = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    const own = await ownTasks(member.id, today.slice(0, 8) + "01", monthEnd);
+    const month = {from: today.slice(0, 8) + "01", to: monthEnd, people: scoreTasks(own, today)};
     return {
       member: memberView(member, true), canEnroll,
+      scorecard: {from: month.from, to: month.to, ...(month.people.find((row) => row.id === member.id) ?? null)},
       announcements: announcements.rows.map((row) => present("announcements", row, time)),
       tasks: tasks.rows.map((row) => present("tasks", row, time, member.id)),
       shifts: shifts.rows.map((row) => present("shifts", row, time)),
@@ -225,6 +264,7 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
         const deadline = dueDate(data.dueDate);
         row = {
           ...row, status, assigneeId, assigneeName: assignee.name, dueDate: deadline, title: text(data.title, 160, "Title"), steps: current?.steps ?? [],
+          completedAt: current?.completedAt ?? null,
         };
         if (status === "active") {
           row.teamKey = deadline + "~" + recordId;
@@ -278,8 +318,10 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
         requireRevision(task, data.revision);
         steps[stepIndex] = {...steps[stepIndex], done};
       }
+      const complete = steps.length > 0 && steps.every((step) => step.done);
       transaction.update(ref, {
         steps, employeeKey: employeeTaskKey({...task, steps}),
+        completedAt: complete ? (task.completedAt ?? time) : null,
         sortKey: timeKey(time, taskId), revision: task.revision + 1,
       });
       return {id: taskId};
@@ -354,6 +396,7 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
       case "saveShift": return saveRecord(actor, "shifts", data, time);
       case "addStep":
       case "setStep": return updateStep(actor, data, time);
+      case "performance": return performance(await access(actor), ...period(data), time);
       case "listHoursSettings": return listHoursSettings(await access(actor), data, time);
       case "saveHoursSettings": return saveHoursSettings(actor, data, time);
       case "weeklyHours":

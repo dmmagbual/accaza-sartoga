@@ -169,6 +169,32 @@ test('a manager can assign work to an employee on a later roster page', async ({
   await expect(page.getByText('Prep counter', {exact: true})).toBeVisible();
 });
 
+test('owners see a performance scorecard and staff see their own on the dashboard', async ({page}) => {
+  await page.clock.install({time: new Date('2026-11-24T09:00:00+08:00')});
+  const owner = {id: 'owner-a', name: 'Owner A', role: 'hr_manager', canManage: true, chart: 'bar'};
+  const amy = {id: 'amy', name: 'Amy', assigned: 3, completed: 2, onTime: 1, late: 1, timingUnknown: 0, overdue: 1, open: 0,
+    completionPct: 67, onTimePct: 50, tasks: [{id: 't1', title: 'Clean grinder', dueDate: '2026-11-20', outcome: 'late'}]};
+  const calls = [];
+  await installHrFirebase(page, (payload) => {
+    calls.push(payload);
+    if (payload.action === 'home') {
+      return {member: owner, canEnroll: false, announcements: [], tasks: [], shifts: [],
+        scorecard: {from: '2026-11-01', to: '2026-11-30', ...amy, id: 'owner-a', name: 'Owner A'}};
+    }
+    if (payload.action === 'list') return {rows: [], nextCursor: null};
+    if (payload.action === 'performance') return {from: payload.from, to: payload.to, team: true, people: [amy]};
+    throw new Error('Unexpected HR action ' + payload.action);
+  });
+  await signIn(page);
+  await expect(page.getByRole('heading', {name: 'My performance this month'})).toBeVisible();
+  await page.getByRole('button', {name: 'Management'}).click();
+  await page.getByRole('combobox', {name: 'Manage', exact: true}).selectOption('performance');
+  await expect(page.getByText('Completed 2 of 3 (67%) · On time 1 of 2 (50%) · Overdue now 1')).toBeVisible();
+  expect(calls.find((call) => call.action === 'performance')).toMatchObject({from: '2026-11-01', to: '2026-11-30'});
+  await page.getByRole('combobox', {name: 'Period'}).selectOption('week');
+  await expect.poll(() => calls.filter((call) => call.action === 'performance').at(-1)).toMatchObject({from: '2026-11-21', to: '2026-11-27'});
+});
+
 test('an HR owner changes hours settings directly', async ({page}) => {
   const owner = {id: 'owner-a', name: 'Owner A', role: 'hr_manager', canManage: true, chart: 'bar'};
   const values = {dailyRegularMin: 480, breakThresholdMin: 300, breakDeductMin: 30, restDay: 0, longShiftFlagMin: 960};

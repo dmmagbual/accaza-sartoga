@@ -101,12 +101,26 @@ try {
   await call(amy, 'setStep', {...step, revision: 2, done: true});
   assert.equal((await call(amy, 'home')).tasks[0].progress, 100);
   assert.equal((await call(amy, 'home')).tasks[0].status, 'completed');
+  // The step that completes a task records when; the task was due yesterday, so it is late.
+  const taskDoc = firestore.doc('hrWorkspace/pilot/tasks/opening-check');
+  assert.equal((await taskDoc.get()).get('completedAt'), now);
+  const own = await call(amy, 'performance', {from: '2026-11-01', to: '2026-11-30'});
+  assert.equal(own.team, false);
+  assert.deepEqual(own.people.map((row) => [row.id, row.completed, row.late, row.onTimePct]), [[amyId, 1, 1, 0]]);
+  assert.deepEqual((await call(amy, 'home')).scorecard.tasks.map((row) => row.outcome), ['late']);
+  const teamScore = await call(manager, 'performance', {from: '2026-11-01', to: '2026-11-30'});
+  assert.equal(teamScore.team, true);
+  assert.equal(teamScore.people.find((row) => row.id === amyId).assigned, 1);
+  assert.deepEqual((await call(ben, 'performance', {from: '2026-11-01', to: '2026-11-30'})).people, [], 'staff never see others');
+  await denied(call(amy, 'performance', {from: '2026-11-30', to: '2026-11-01'}), 'invalid-argument');
+  await denied(call(amy, 'performance', {from: '2026-01-01', to: '2026-11-30'}), 'invalid-argument');
   assert.deepEqual((await call(ben, 'list', {resource: 'tasks'})).rows[0].steps, []);
   const newTask = {...task, id: 'new-task', dueDate: '2026-11-28'};
   await call(manager, 'saveTask', newTask);
   assert.equal((await call(amy, 'home')).tasks[0].id, 'new-task');
   await call(manager, 'saveTask', {...newTask, revision: 1, status: 'archived'});
   await call(amy, 'setStep', {...step, revision: 3, done: false});
+  assert.equal((await taskDoc.get()).get('completedAt'), null, 'reopening clears the completion time');
   assert.equal((await call(amy, 'home')).tasks[0].status, 'overdue');
   await call(manager, 'saveTask', {...task, assigneeId: benId, revision: 4});
   await denied(call(amy, 'setStep', {...step, revision: 5, done: true}));
