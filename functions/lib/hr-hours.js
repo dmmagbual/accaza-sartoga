@@ -7,11 +7,10 @@
 const MANILA_DATE = new Intl.DateTimeFormat("sv-SE", {timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"});
 const MINUTE_MS = 60000;
 const DAY_MS = 86400000;
-const REVIEW_SESSION_MIN = 16 * 60;
 const SATURDAY = 6;
-const SUNDAY = 0;
 const HOLIDAY_TYPES = new Set(["regular", "special_non_working", "special_working"]);
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const {validateHoursSettings} = require("./hr-settings");
 
 function fail(message) {
   throw new RangeError(message);
@@ -42,20 +41,6 @@ function payWeekStart(date) {
   return addDays(date, -((weekday(date) - SATURDAY + 7) % 7));
 }
 
-function minutes(value, label, min) {
-  if (!Number.isSafeInteger(value) || value < min) fail(label + " must be a whole number of at least " + min + ".");
-  return value;
-}
-
-function readSettings(settings) {
-  if (!settings || typeof settings !== "object") fail("Hours settings are required.");
-  const dailyRegularMin = minutes(settings.dailyRegularMin, "dailyRegularMin", 1);
-  const breakThresholdMin = minutes(settings.breakThresholdMin, "breakThresholdMin", 0);
-  const breakDeductMin = minutes(settings.breakDeductMin, "breakDeductMin", 0);
-  if (breakDeductMin > breakThresholdMin) fail("breakDeductMin cannot exceed breakThresholdMin, or a short shift could pay negative time.");
-  return {dailyRegularMin, breakThresholdMin, breakDeductMin};
-}
-
 function readHolidays(holidays) {
   const types = new Map();
   for (const row of holidays ?? []) {
@@ -68,19 +53,19 @@ function readHolidays(holidays) {
   return types;
 }
 
-function dayType(date, holidays) {
+function dayType(date, holidays, restDay) {
   const holiday = holidays.get(date);
   if (holiday === "regular") return "regular_holiday";
   if (holiday === "special_non_working") return "special_holiday";
   // A special working day is an ordinary day for pay purposes.
-  return weekday(date) === SUNDAY ? "sunday" : "ordinary";
+  return weekday(date) === restDay ? "rest_day" : "ordinary";
 }
 
 function emptyTotals() {
-  return {regularMin: 0, dailyOtMin: 0, sundayMin: 0, regularHolidayMin: 0, specialHolidayMin: 0};
+  return {regularMin: 0, dailyOtMin: 0, restDayMin: 0, regularHolidayMin: 0, specialHolidayMin: 0};
 }
 
-const BUCKET = {sunday: "sundayMin", regular_holiday: "regularHolidayMin", special_holiday: "specialHolidayMin"};
+const BUCKET = {rest_day: "restDayMin", regular_holiday: "regularHolidayMin", special_holiday: "specialHolidayMin"};
 
 /**
  * @param {object} input
@@ -88,12 +73,17 @@ const BUCKET = {sunday: "sundayMin", regular_holiday: "regularHolidayMin", speci
  * @param {Array<{id:string, employeeId:string, inAt:number, outAt:number|null}>} input.records
  * @param {Array<{date:string, type:"regular"|"special_non_working"|"special_working"}>} input.holidays Confirmed holidays only.
  * @param {number[]} input.holidayYears Years whose holiday list HR has confirmed as loaded.
- * @param {{dailyRegularMin:number, breakThresholdMin:number, breakDeductMin:number}} input.settings
+ * @param {object} input.settings Full hours settings, see hr-settings.js. restDay: 0 = Sunday ... 6 = Saturday.
  */
 function computeWeekHours({weekStart, records, holidays, holidayYears, settings}) {
   if (weekday(weekStart) !== SATURDAY) fail("weekStart must be a Saturday. The pay week runs Saturday to Friday.");
   const weekEnd = addDays(weekStart, 6);
-  const rules = readSettings(settings);
+  let rules;
+  try {
+    rules = validateHoursSettings(settings);
+  } catch (error) {
+    fail(error.message);
+  }
   const holidayTypes = readHolidays(holidays);
   const issues = [];
   const issue = (code, record, blocking) => issues.push({code, recordId: record?.id ?? null, employeeId: record?.employeeId ?? null, blocking});
@@ -130,7 +120,7 @@ function computeWeekHours({weekStart, records, holidays, holidayYears, settings}
     }
     const grossMin = Math.floor((record.outAt - record.inAt) / MINUTE_MS);
     const breakMin = grossMin > rules.breakThresholdMin ? rules.breakDeductMin : 0;
-    if (grossMin > REVIEW_SESSION_MIN) issue("over_16h", record, false);
+    if (grossMin > rules.longShiftFlagMin) issue("long_shift", record, false);
     sessions.push({id: record.id, employeeId: record.employeeId, date, inAt: record.inAt, outAt: record.outAt, grossMin, breakMin, paidMin: grossMin - breakMin});
   }
 
@@ -159,7 +149,7 @@ function computeWeekHours({weekStart, records, holidays, holidayYears, settings}
   for (const row of [...employees.values()].sort((a, b) => a.employeeId.localeCompare(b.employeeId))) {
     const days = [];
     for (const [date, paidMin] of [...row.days.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-      const type = dayType(date, holidayTypes);
+      const type = dayType(date, holidayTypes, rules.restDay);
       const day = {date, dayType: type, paidMin, ...emptyTotals()};
       if (type === "ordinary") {
         day.regularMin = Math.min(paidMin, rules.dailyRegularMin);
@@ -170,13 +160,13 @@ function computeWeekHours({weekStart, records, holidays, holidayYears, settings}
       for (const key of Object.keys(emptyTotals())) row[key] += day[key];
       days.push(day);
     }
-    const bucketSum = row.regularMin + row.dailyOtMin + row.sundayMin + row.regularHolidayMin + row.specialHolidayMin;
+    const bucketSum = row.regularMin + row.dailyOtMin + row.restDayMin + row.regularHolidayMin + row.specialHolidayMin;
     if (bucketSum !== row.paidMin) throw new Error("Hours buckets do not sum to paid minutes for " + row.employeeId + ".");
     result.push({...row, days, sessions: row.sessions.map(({employeeId, ...session}) => session)});
   }
 
   issues.sort((a, b) => a.code.localeCompare(b.code) || String(a.recordId).localeCompare(String(b.recordId)));
-  return {weekStart, weekEnd, employees: result, issues, blocked: issues.some((item) => item.blocking)};
+  return {weekStart, weekEnd, settings: rules, employees: result, issues, blocked: issues.some((item) => item.blocking)};
 }
 
 module.exports = {computeWeekHours, payWeekStart, manilaDate};

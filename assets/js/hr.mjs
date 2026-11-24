@@ -3,6 +3,7 @@ import { browserSessionPersistence, initializeAuth, inMemoryPersistence, onAuthS
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import { initializeAccazaAppCheck } from "./shared/firebase-app-check.mjs";
 import { accazaFirebaseConfig, markUatPage } from "./shared/firebase-env.mjs";
+import { createAdminPanels } from "./hr-admin-panels.mjs";
 
 markUatPage("Accaza HR");
 const app = initializeApp(accazaFirebaseConfig(location.hostname), "accaza-hr");
@@ -16,11 +17,12 @@ const editor = byId("editor");
 const editorForm = byId("editor-form");
 const view = byId("view");
 const labels = { home: "My workspace", team: "Team", attendance: "Attendance", manage: "Management" };
-const resources = { announcements: "Announcements", tasks: "Tasks", shifts: "Schedules", members: "Employees" };
+const resources = { announcements: "Announcements", tasks: "Tasks", shifts: "Schedules", settings: "Hours settings", hours: "Weekly hours", holidays: "Holidays", members: "Employees" };
 const statusLabels = {
   "in-progress": "In progress", in_progress: "In progress", pending: "Pending",
   overdue: "Overdue", completed: "Completed", archived: "Archived",
-  draft: "Draft", published: "Published", active: "Active", inactive: "Inactive"
+  draft: "Draft", published: "Published", active: "Active", inactive: "Inactive",
+  proposed: "Awaiting approval", approved: "Approved", rejected: "Rejected"
 };
 const dayFormatter = new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeZone: "Asia/Manila" });
 const timeFormatter = new Intl.DateTimeFormat("en-PH", { timeStyle: "short", timeZone: "Asia/Manila" });
@@ -30,6 +32,7 @@ let pendingEditor = null;
 let busy = false;
 let session = 0;
 let attendanceWorkspace = null;
+let panels = null;
 let attendanceModule = null;
 
 function make(tag, text = "", className = "") {
@@ -210,11 +213,13 @@ async function readList(current, resource, { management = false, more = false } 
   current.loads.set(key, ticket);
   ticket.promise = (async () => {
     try {
-      const page = await request("list", { resource, ...(management && { management: true }), ...(cursor && { cursor }) });
+      const custom = adminPanels().views[resource];
+      const page = custom ? await custom.load(request, cursor)
+        : await request("list", { resource, ...(management && { management: true }), ...(cursor && { cursor }) });
       if (!allowed(current) || current.loads.get(key) !== ticket) return;
       const rows = new Map((more ? previous.rows : []).map(row => [row.id, row]));
       for (const row of page.rows || []) rows.set(row.id, row);
-      current.lists.set(key, { rows: [...rows.values()], nextCursor: page.nextCursor || null });
+      current.lists.set(key, { rows: [...rows.values()], nextCursor: page.nextCursor || null, meta: page.meta });
     } finally {
       if (current.loads.get(key) === ticket) current.loads.delete(key);
     }
@@ -481,13 +486,6 @@ function taskRow(row, current, roster, mode) {
   return node;
 }
 
-function memberRow(row, current) {
-  const node = entry(row.name, row.active ? "active" : "inactive");
-  if (row.canManage) node.append(make("p", "HR manager", "detail"));
-  node.append(button("Edit access", () => editRecord(current, "members", row)));
-  return node;
-}
-
 async function moreRecords(current, resource, management = false, first = false) {
   if (!allowed(current)) return;
   const key = listKey(resource, management);
@@ -577,9 +575,18 @@ function selectControl(name, options, value) {
   return control;
 }
 
+function adminPanels() {
+  panels ||= createAdminPanels({
+    button, checkboxControl, entry, field, formatDay, make, newId, openEditor, save, selectControl, textArea, textControl,
+    reload: current => { discardList(current, current.resource, true); render(current); void loadVisible(current); }
+  });
+  return panels;
+}
+
 function renderManagement(current) {
   const options = Object.entries(resources).filter(([key]) => key === "members"
     ? current.home.canEnroll : current.home.member?.canManage);
+  if (!options.some(([key]) => key === current.resource)) current.resource = options[0]?.[0] || "members";
   const label = make("label", "Manage");
   const resourceSelect = selectControl("resource", options, current.resource);
   resourceSelect.addEventListener("change", () => {
@@ -594,18 +601,23 @@ function renderManagement(current) {
   filters.append(label);
   const currentResource = current.resource;
   const addLabels = { announcements: "New announcement", tasks: "Assign task", shifts: "Add shift", members: "Enroll employee" };
-  const active = section(resources[currentResource],
-    button(addLabels[currentResource], () => editRecord(current, currentResource), true));
+  const custom = adminPanels().views[currentResource];
+  const meta = current.lists.get(listKey(currentResource, true))?.meta;
+  const addAction = custom ? custom.action(current, meta)
+    : button(addLabels[currentResource], () => editRecord(current, currentResource), true);
+  const active = section(resources[currentResource], addAction);
   const roster = names(current);
   const mappings = {
     announcements: row => announcementRow(row, current, true),
     tasks: row => taskRow(row, current, roster, "manage"),
     shifts: row => shiftRow(row, current, roster, "manage"),
-    members: row => memberRow(row, current)
+    members: row => adminPanels().memberRow(row, current, editRecord)
   };
+  if (custom) mappings[currentResource] = row => custom.row(row, current, meta);
   if (currentResource === "members") active.end.append(
     make("p", "Enroll existing Accaza account holders and control their HR access.", "detail")
   );
+  if (custom && meta) active.end.append(...custom.intro(meta, current));
   active.end.append(entries(listRows(current, currentResource, true), mappings[currentResource],
     current.lists.has(listKey(currentResource, true)) ? "There are no saved records." : "Records will appear here after loading."));
   appendMore(active.end, current, currentResource, true);
@@ -771,16 +783,7 @@ async function editRecord(current, resource, row) {
       break;
     case "members":
       title = existing ? "Edit employee access" : "Enroll employee";
-      fields = [
-        ...(!existing ? [field("Accaza account email", textControl("email", "", { type: "email", maxLength: 320 }))] : []),
-        field("Display name", textControl("name", row?.name, { maxLength: 100 })),
-        field("HR access active", checkboxControl("active", row?.active ?? true)),
-        field("Can manage announcements, tasks, and schedules", checkboxControl("canManage", row?.canManage ?? false))
-      ];
-      saveDetails = data => ["saveMember", {
-        ...(existing ? identifiers : { email: data.get("email") }),
-        name: data.get("name"), active: data.has("active"), canManage: data.has("canManage")
-      }];
+      ({ fields, saveDetails } = adminPanels().memberEditor(row, existing, identifiers));
       break;
     case "shifts":
     case "tasks": {
@@ -872,8 +875,10 @@ async function save(current, resource, action, payload, fromEditor = false) {
       current.home.member.chart = payload.chart;
       render(current);
     } else {
-      discardList(current, resource);
-      discardList(current, resource, true);
+      for (const name of [resource, ...(adminPanels().views[resource]?.affects || [])]) {
+        discardList(current, name);
+        discardList(current, name, true);
+      }
       await refreshHome(current);
       if (!allowed(current)) return;
       render(current);

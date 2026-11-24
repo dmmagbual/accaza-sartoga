@@ -1,5 +1,7 @@
 "use strict";
 
+const {approvalBlock, APPROVAL_MESSAGES} = require("./hr-roles");
+
 const {createHash, randomBytes, scrypt, timingSafeEqual} = require("node:crypto");
 const {promisify} = require("node:util");
 const derivePin = promisify(scrypt);
@@ -279,7 +281,12 @@ function createHrAttendance({firestore, HttpsError, isPortalActive, now = Date.n
     if (!editing && outAt === null) fail("invalid-argument", "A manual record needs both clock times.");
     const fingerprint = digest(JSON.stringify([actor.uid, data.id ?? null, data.revision ?? null, employeeId, inAt, outAt, reason]));
     return firestore.runTransaction(async (transaction) => {
-      manager(await access(actor, (key) => transaction.get(key)));
+      const context = await access(actor, (key) => transaction.get(key));
+      manager(context);
+      // A correction changes paid time, so it follows the approval rules: an
+      // HR approver only, and never on their own record.
+      const block = approvalBlock(context.member, {subjectId: employeeId});
+      if (block) fail("permission-denied", APPROVAL_MESSAGES[block]);
       const [record, receipt, member, open] = await transaction.getAll(
         recordRef, receiptRef, doc("members", employeeId), openRef,
       );
