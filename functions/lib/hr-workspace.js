@@ -73,9 +73,14 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
     const {id, name, active, chart, revision} = member;
     return canReview ? {id, name, active, role: memberRole(member), canManage: canManageWorkspace(member), chart, revision} : {id, name, active};
   }
-  function present(resource, row, time, viewerId) {
+  function present(resource, row, time, viewerId, management = false) {
     const {id, title, revision, status} = row;
-    if (resource === "announcements") return {id, title, body: row.body, revision, status};
+    if (resource === "announcements") {
+      // Staff see only whether they have read it; managers also see who has.
+      const readIds = Object.keys(row.readBy ?? {});
+      return {id, title, body: row.body, revision, status, pinned: row.pinned === true, read: readIds.includes(viewerId),
+        ...(management && {readIds})};
+    }
     if (resource === "shifts") {
       const {employeeId, employeeName, startAt, endAt, note} = row;
       return {id, employeeId, employeeName, startAt, endAt, note, revision, status};
@@ -167,6 +172,18 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
     return [from, to];
   }
 
+  async function readAnnouncement(actor, data, time) {
+    const recordId = id(data.id);
+    const ref = collection("announcements").doc(recordId);
+    return firestore.runTransaction(async (transaction) => {
+      const member = requireMember(await access(actor, (key) => transaction.get(key)));
+      const row = (await transaction.get(ref)).data();
+      if (!row || row.status !== "published") fail("not-found", "This announcement is no longer published.");
+      if (!row.readBy?.[member.id]) transaction.update(ref, {["readBy." + member.id]: time});
+      return {id: recordId, read: true};
+    });
+  }
+
   async function home(context, time) {
     const {member, canEnroll} = context;
     if (!member) return {member: null, canEnroll, announcements: [], tasks: [], shifts: []};
@@ -183,7 +200,7 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
     return {
       member: memberView(member, true), canEnroll,
       scorecard: {from: month.from, to: month.to, ...(month.people.find((row) => row.id === member.id) ?? null)},
-      announcements: announcements.rows.map((row) => present("announcements", row, time)),
+      announcements: announcements.rows.map((row) => present("announcements", row, time, member.id)),
       tasks: tasks.rows.map((row) => present("tasks", row, time, member.id)),
       shifts: shifts.rows.map((row) => present("shifts", row, time)),
     };
@@ -203,7 +220,7 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
     const direction = management || resource === "announcements" ? "desc" : "asc";
     const query = !management && resource === "shifts" ? teamShifts(time) : listQuery(resource, field, direction);
     const result = await page(query, field, data.cursor, PAGE_SIZE);
-    return {...result, rows: result.rows.map((row) => present(resource, row, time, context.member.id))};
+    return {...result, rows: result.rows.map((row) => present(resource, row, time, context.member.id, management))};
   }
 
   async function saveMember(actor, data, time) {
@@ -252,8 +269,16 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
       let row = {id: recordId, sortKey: timeKey(time, recordId), revision: (current?.revision ?? 0) + 1};
       if (resource === "announcements") {
         const status = choice(data.status, ["draft", "published", "archived"], "Announcement status");
-        row = {...row, status, title: text(data.title, 120, "Title"), body: text(data.body, 2000, "Announcement")};
-        if (status === "published") row.publishedKey = current?.publishedKey ?? row.sortKey;
+        // A save that does not mention pinning (an older cached page) keeps the current pin.
+        const pinned = data.pinned === undefined ? current?.pinned === true : data.pinned === true || data.pinned === "on";
+        row = {...row, status, pinned, readBy: current?.readBy ?? {}, title: text(data.title, 120, "Title"), body: text(data.body, 2000, "Announcement")};
+        if (status === "published") {
+          // Newest first. Unpinned keys stay as before pinning existed (they start with "0"), and
+          // "1~" sorts above them, so pinned posts lead without rewriting any older announcement.
+          const earlier = current?.publishedKey && !current.publishedKey.startsWith("1~") ? current.publishedKey : null;
+          row.publishedBase = current?.publishedBase ?? earlier ?? row.sortKey;
+          row.publishedKey = pinned ? "1~" + row.publishedBase : row.publishedBase;
+        }
       } else if (resource === "tasks") {
         const status = choice(data.status, ["active", "archived"], "Task status");
         const assigneeId = id(data.assigneeId);
@@ -392,6 +417,7 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
       case "list": return list(await access(actor), data, time);
       case "saveMember": return saveMember(actor, data, time);
       case "saveAnnouncement": return saveRecord(actor, "announcements", data, time);
+      case "readAnnouncement": return readAnnouncement(actor, data, time);
       case "saveTask": return saveRecord(actor, "tasks", data, time);
       case "saveShift": return saveRecord(actor, "shifts", data, time);
       case "addStep":

@@ -197,7 +197,8 @@ Run attendance and hours alongside the current process for at least two pay week
 
 Focus (decided 24 Nov 2026): performance monitoring, announcements and the work schedule come first. Timesheet pieces (hours settings, weekly hours, holidays) stay as built and are finished later.
 - Built: performance scorecard (`functions/lib/hr-performance.js`, `assets/js/hr-performance-panel.mjs`). Measure: tasks due in a period, completed, on time vs late (completion date in Manila against the due date), overdue now. Completion time is recorded when the last step is ticked and cleared if the task reopens; tasks finished before this count as done with unknown timing. Owners see everyone under Management > Performance; staff see their own card on the dashboard.
-- Next: announcement read tracking and pinning; weekly schedule grid with copy last week.
+- Built: announcement read tracking and pinning. Staff mark an announcement as read and see only their own state; owners see "Read by X of Y" over active staff with the names still unread. Owners pin announcements to the top; unpinned order is unchanged from before pinning existed.
+- Next: weekly schedule grid with copy last week.
 
 Right-sizing (agreed 24 Nov 2026): with 7 people, defer shift swaps, availability, recurring task templates and automatic leave accruals until someone asks for them. Leave can start as request, approval and a manual balance. Keep the hours engine, week lock, holiday table, tasks, announcements and clock-in.
 

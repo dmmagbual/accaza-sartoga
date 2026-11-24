@@ -87,6 +87,42 @@ try {
   await call(manager, 'saveAnnouncement', {...announcement, revision: 1, status: 'published'});
   assert.equal((await call(amy, 'home')).announcements[0].id, announcement.id);
 
+  // Read tracking: staff see only their own read state; managers see who has read it.
+  let mine = (await call(amy, 'home')).announcements[0];
+  assert.deepEqual([mine.read, mine.pinned, 'readIds' in mine], [false, false, false]);
+  assert.deepEqual(await call(amy, 'readAnnouncement', {id: announcement.id}), {id: announcement.id, read: true});
+  assert.deepEqual(await call(amy, 'readAnnouncement', {id: announcement.id}), {id: announcement.id, read: true}, 'replay');
+  assert.equal((await call(amy, 'home')).announcements[0].read, true);
+  assert.equal((await call(ben, 'list', {resource: 'announcements'})).rows[0].read, false);
+  assert.equal('readIds' in (await call(ben, 'list', {resource: 'announcements'})).rows[0], false);
+  assert.deepEqual((await call(manager, 'list', {resource: 'announcements', management: true})).rows[0].readIds, [amyId]);
+  await call(manager, 'saveAnnouncement', {id: 'draft-note', title: 'Draft', body: 'Not yet', status: 'draft'});
+  await denied(call(amy, 'readAnnouncement', {id: 'draft-note'}), 'not-found');
+  await denied(call(amy, 'readAnnouncement', {id: 'missing'}), 'not-found');
+
+  // Pinned announcements come first; unpinning returns them to date order. Reads survive edits.
+  await call(manager, 'saveAnnouncement', {id: 'aaa-urgent', title: 'Urgent', body: 'Fridge repair', status: 'published', pinned: true});
+  let order = (await call(amy, 'home')).announcements.map((row) => [row.id, row.pinned]);
+  assert.deepEqual(order, [['aaa-urgent', true], [announcement.id, false]]);
+  await call(manager, 'saveAnnouncement', {id: 'aaa-urgent', title: 'Urgent', body: 'Fridge repair', status: 'published', pinned: false, revision: 1});
+  order = (await call(amy, 'home')).announcements.map((row) => row.id);
+  assert.deepEqual(order, [announcement.id, 'aaa-urgent'], 'same publish time: id order, unpinned');
+  await call(manager, 'saveAnnouncement', {...announcement, revision: 2, status: 'published', pinned: true});
+  mine = (await call(amy, 'home')).announcements[0];
+  assert.deepEqual([mine.id, mine.pinned, mine.read], [announcement.id, true, true]);
+  // An announcement published before pinning existed keeps its key, so editing it never reorders older posts.
+  const legacyKey = String(now - 1000).padStart(15, '0') + '~legacy';
+  await firestore.doc('hrWorkspace/pilot/announcements/legacy').set({id: 'legacy', title: 'Old', body: 'Old note', status: 'published',
+    revision: 1, sortKey: legacyKey, publishedKey: legacyKey});
+  await call(manager, 'saveAnnouncement', {id: 'legacy', title: 'Old', body: 'Old note', status: 'published', revision: 1});
+  assert.equal((await firestore.doc('hrWorkspace/pilot/announcements/legacy').get()).get('publishedKey'), legacyKey);
+  assert.deepEqual((await call(amy, 'home')).announcements.map((row) => row.id), [announcement.id, 'aaa-urgent', 'legacy']);
+  await call(manager, 'saveAnnouncement', {id: 'aaa-urgent', title: 'Urgent', body: 'Fridge repair', status: 'published', pinned: true, revision: 2});
+  await call(manager, 'saveAnnouncement', {id: 'aaa-urgent', title: 'Urgent edit', body: 'Fridge repair', status: 'published', revision: 3});
+  assert.equal((await call(amy, 'home')).announcements.find((row) => row.id === 'aaa-urgent').pinned, true, 'no pinned field keeps the pin');
+  await call(manager, 'saveAnnouncement', {id: 'legacy', title: 'Old', body: 'Old note', status: 'archived', revision: 2});
+  await call(manager, 'saveAnnouncement', {id: 'aaa-urgent', title: 'Urgent', body: 'Fridge repair', status: 'archived', revision: 4});
+
   const task = {id: 'opening-check', title: 'Opening check', assigneeId: amyId, dueDate: '2026-11-22', status: 'active'};
   await denied(call(manager, 'saveTask', {...task, dueDate: '2026-02-30'}), 'invalid-argument');
   await call(manager, 'saveTask', task);
