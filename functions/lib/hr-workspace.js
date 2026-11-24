@@ -386,6 +386,13 @@ function createHrWorkspace({firestore, HttpsError, findPortalAccount, now = Date
       case "listHoursSettings": return listHoursSettings(await access(actor), data, time);
       case "proposeHoursSettings": return proposeHoursSettings(actor, data, time);
       case "decideHoursSettings": return decideHoursSettings(actor, data, time);
+      case "weeklyHours":
+      case "listHolidays":
+      case "saveHoliday":
+      case "setHolidayYear": {
+        const {createHrWeek} = require("./hr-week");
+        return createHrWeek({firestore, HttpsError, now})(actor, data, access);
+      }
       case "listAttendance":
       case "setAttendancePin":
       case "createAttendancePairing":

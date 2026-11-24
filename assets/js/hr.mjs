@@ -17,7 +17,7 @@ const editor = byId("editor");
 const editorForm = byId("editor-form");
 const view = byId("view");
 const labels = { home: "My workspace", team: "Team", attendance: "Attendance", manage: "Management" };
-const resources = { announcements: "Announcements", tasks: "Tasks", shifts: "Schedules", settings: "Hours settings", members: "Employees" };
+const resources = { announcements: "Announcements", tasks: "Tasks", shifts: "Schedules", settings: "Hours settings", hours: "Weekly hours", holidays: "Holidays", members: "Employees" };
 const statusLabels = {
   "in-progress": "In progress", in_progress: "In progress", pending: "Pending",
   overdue: "Overdue", completed: "Completed", archived: "Archived",
@@ -213,14 +213,13 @@ async function readList(current, resource, { management = false, more = false } 
   current.loads.set(key, ticket);
   ticket.promise = (async () => {
     try {
-      const page = resource === "settings"
-        ? await request("listHoursSettings", { ...(cursor && { cursor }) })
+      const custom = adminPanels().views[resource];
+      const page = custom ? await custom.load(request, cursor)
         : await request("list", { resource, ...(management && { management: true }), ...(cursor && { cursor }) });
       if (!allowed(current) || current.loads.get(key) !== ticket) return;
       const rows = new Map((more ? previous.rows : []).map(row => [row.id, row]));
       for (const row of page.rows || []) rows.set(row.id, row);
-      const meta = resource === "settings" ? { current: page.current, earliest: page.earliest, canApprove: page.canApprove === true } : null;
-      current.lists.set(key, { rows: [...rows.values()], nextCursor: page.nextCursor || null, meta });
+      current.lists.set(key, { rows: [...rows.values()], nextCursor: page.nextCursor || null, meta: page.meta });
     } finally {
       if (current.loads.get(key) === ticket) current.loads.delete(key);
     }
@@ -578,7 +577,8 @@ function selectControl(name, options, value) {
 
 function adminPanels() {
   panels ||= createAdminPanels({
-    button, checkboxControl, entry, field, formatDay, make, newId, openEditor, selectControl, textArea, textControl
+    button, checkboxControl, entry, field, formatDay, make, newId, openEditor, save, selectControl, textArea, textControl,
+    reload: current => { discardList(current, current.resource, true); render(current); void loadVisible(current); }
   });
   return panels;
 }
@@ -601,9 +601,9 @@ function renderManagement(current) {
   filters.append(label);
   const currentResource = current.resource;
   const addLabels = { announcements: "New announcement", tasks: "Assign task", shifts: "Add shift", members: "Enroll employee" };
-  const settingsMeta = current.lists.get(listKey("settings", true))?.meta;
-  const addAction = currentResource === "settings"
-    ? (settingsMeta?.canApprove ? button("Propose change", () => adminPanels().propose(current, settingsMeta), true) : null)
+  const custom = adminPanels().views[currentResource];
+  const meta = current.lists.get(listKey(currentResource, true))?.meta;
+  const addAction = custom ? custom.action(current, meta)
     : button(addLabels[currentResource], () => editRecord(current, currentResource), true);
   const active = section(resources[currentResource], addAction);
   const roster = names(current);
@@ -611,13 +611,13 @@ function renderManagement(current) {
     announcements: row => announcementRow(row, current, true),
     tasks: row => taskRow(row, current, roster, "manage"),
     shifts: row => shiftRow(row, current, roster, "manage"),
-    members: row => adminPanels().memberRow(row, current, editRecord),
-    settings: row => adminPanels().row(row, current, settingsMeta)
+    members: row => adminPanels().memberRow(row, current, editRecord)
   };
+  if (custom) mappings[currentResource] = row => custom.row(row, current, meta);
   if (currentResource === "members") active.end.append(
     make("p", "Enroll existing Accaza account holders and control their HR access.", "detail")
   );
-  if (currentResource === "settings") active.end.append(...adminPanels().intro(settingsMeta));
+  if (custom && meta) active.end.append(...custom.intro(meta, current));
   active.end.append(entries(listRows(current, currentResource, true), mappings[currentResource],
     current.lists.has(listKey(currentResource, true)) ? "There are no saved records." : "Records will appear here after loading."));
   appendMore(active.end, current, currentResource, true);
@@ -875,8 +875,10 @@ async function save(current, resource, action, payload, fromEditor = false) {
       current.home.member.chart = payload.chart;
       render(current);
     } else {
-      discardList(current, resource);
-      discardList(current, resource, true);
+      for (const name of [resource, ...(adminPanels().views[resource]?.affects || [])]) {
+        discardList(current, name);
+        discardList(current, name, true);
+      }
       await refreshHome(current);
       if (!allowed(current)) return;
       render(current);

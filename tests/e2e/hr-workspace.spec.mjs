@@ -226,6 +226,56 @@ test('HR approvers propose and review hours settings for the other owner', async
   expect(calls.find((call) => call.action === 'decideHoursSettings')).toEqual({action: 'decideHoursSettings', id: 'from-b', decision: 'approve', revision: 1});
 });
 
+test('managers see weekly hours, export them, and approvers keep the holiday table', async ({page}) => {
+  await page.clock.install({time: new Date('2026-11-30T09:00:00+08:00')});
+  const owner = {id: 'owner-a', name: 'Owner A', role: 'hr_manager', canManage: true, chart: 'bar'};
+  const values = {dailyRegularMin: 480, breakThresholdMin: 300, breakDeductMin: 30, restDay: 0, longShiftFlagMin: 960};
+  const holidays = [];
+  const calls = [];
+  await installHrFirebase(page, (payload) => {
+    calls.push(payload);
+    if (payload.action === 'home') return {member: owner, canEnroll: false, announcements: [], tasks: [], shifts: []};
+    if (payload.action === 'list') return {rows: [], nextCursor: null};
+    if (payload.action === 'weeklyHours') {
+      return {
+        weekStart: payload.weekStart, weekEnd: '2026-11-27', team: true, blocked: true, holidays: [],
+        settings: {versionId: 'default', effectiveFrom: null, values},
+        employees: [{employeeId: 'amy', name: 'Amy', regularMin: 930, dailyOtMin: 90, restDayMin: 330, regularHolidayMin: 0,
+          specialHolidayMin: 0, paidMin: 1350, grossMin: 1440, breakMin: 90, days: []}],
+        issues: [{code: 'holidays_not_loaded', year: 2026, blocking: true, recordId: null, employeeId: null, employeeName: null}],
+      };
+    }
+    if (payload.action === 'listHolidays') return {year: payload.year, complete: false, yearRevision: 0, canEdit: true, rows: holidays};
+    if (payload.action === 'saveHoliday') {
+      holidays.push({id: payload.date, date: payload.date, name: payload.name, type: payload.type, active: true, revision: 1});
+      return {id: payload.date, revision: 1};
+    }
+    throw new Error('Unexpected HR action ' + payload.action);
+  });
+  await signIn(page);
+  await page.getByRole('button', {name: 'Management'}).click();
+  await page.getByRole('combobox', {name: 'Manage', exact: true}).selectOption('hours');
+  await expect(page.getByText('Paid 22 h 30 min (unpaid breaks 1 h 30 min)')).toBeVisible();
+  await expect(page.getByText(/2026 holiday list is not marked complete/)).toBeVisible();
+  expect(calls.find((call) => call.action === 'weeklyHours').weekStart).toBe('2026-11-21');
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', {name: 'Download CSV'}).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe('accaza-hours-2026-11-21.csv');
+  const csv = await (await download.createReadStream()).toArray().then((chunks) => Buffer.concat(chunks).toString('utf8'));
+  expect(csv).toContain('"2026-11-21","2026-11-27","Has issues to fix","Amy","amy","15.50","1.50","5.50","0.00","0.00","22.50","1350","1.50","default"');
+
+  await page.getByRole('combobox', {name: 'Manage', exact: true}).selectOption('holidays');
+  await page.getByRole('button', {name: 'Add holiday'}).click();
+  const editor = page.getByRole('dialog');
+  await editor.getByLabel('Date').fill('2026-12-25');
+  await editor.getByLabel('Name').fill('Christmas Day');
+  await editor.getByRole('combobox', {name: 'Type'}).selectOption('regular');
+  await editor.getByRole('button', {name: 'Save'}).click();
+  await expect(page.getByText(/Christmas Day/)).toBeVisible();
+  expect(calls.find((call) => call.action === 'saveHoliday')).toEqual({action: 'saveHoliday', date: '2026-12-25', name: 'Christmas Day', type: 'regular'});
+});
+
 test('the attendance tablet retries unconfirmed punches and blocks expired retries', async ({page}) => {
   const requests = [];
   await page.clock.install({time: new Date('2026-11-23T09:00:00+08:00')});

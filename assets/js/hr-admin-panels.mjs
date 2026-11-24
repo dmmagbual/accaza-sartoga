@@ -1,10 +1,13 @@
 // Accaza HR management panels: employee roles and the hours settings screen.
 // Rules live on the server (functions/lib/hr-roles.js, hr-settings.js); these only collect and show them.
 
+import { createHoursPanels } from "./hr-hours-panels.mjs";
+
 const roleLabels = { employee: "Employee", hr_manager: "HR Manager", assistant_hr: "Assistant HR" };
 
 export function createAdminPanels(ui) {
   const { button, checkboxControl, entry, field, formatDay, make, newId, openEditor, selectControl, textArea, textControl } = ui;
+  const hours = createHoursPanels({ ...ui, describeSettings });
 
   function memberRow(row, current, editRecord) {
     const node = entry(row.name, row.active ? "active" : "inactive");
@@ -148,5 +151,15 @@ export function createAdminPanels(ui) {
     }), document.activeElement, "Confirm");
   }
 
-  return { memberRow, memberEditor, intro: settingsIntro, row: settingsRow, propose: proposeSettings };
+  const settings = {
+    affects: ["hours"],
+    load: async (request, cursor) => {
+      const page = await request("listHoursSettings", { ...(cursor && { cursor }) });
+      return { ...page, meta: { current: page.current, earliest: page.earliest, canApprove: page.canApprove === true } };
+    },
+    intro: settingsIntro,
+    row: settingsRow,
+    action: (current, meta) => meta?.canApprove ? button("Propose change", () => proposeSettings(current, meta), true) : null
+  };
+  return { memberRow, memberEditor, views: { settings, ...hours } };
 }
